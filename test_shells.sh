@@ -33,3 +33,4 @@ echo ""
 echo "To test manually, run any of the above commands."
 echo "The session will start in passthrough mode where you can type commands naturally."
 echo "Other users can join using: roterm join <session-id> --peer <node-addr>"
+

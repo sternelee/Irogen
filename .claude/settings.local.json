@@ -12,7 +12,13 @@
       "Bash(./target/debug/iroh-code-remote:*)",
       "Bash(timeout:*)",
       "Bash(chmod:*)",
-      "Bash(./test_shells.sh:*)"
+      "Bash(./test_shells.sh:*)",
+      "Bash(ls:*)",
+      "Bash(echo $ZDOTDIR)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(./test_zsh_config.sh:*)",
+      "Bash(pwsh:*)"
     ],
     "deny": []
   }
