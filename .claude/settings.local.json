@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.iroh.computer)",
+      "Bash(cargo check:*)",
+      "Bash(cargo build:*)",
+      "Bash(./target/release/iroh-code-remote:*)",
+      "Bash(cargo doc:*)",
+      "Bash(cargo:*)",
+      "Bash(./target/debug/iroh-code-remote:*)",
+      "Bash(timeout:*)"
+    ],
+    "deny": []
+  }
+}
