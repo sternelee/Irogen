@@ -14,6 +14,7 @@ use tracing::error;
 use uuid::Uuid;
 
 use crate::p2p::{P2PNetwork, ShareMessage};
+use crate::shell::{ShellConfig, ShellDetector, ShellType};
 use crate::terminal::{SessionHeader, TerminalEvent, TerminalPlayer, TerminalRecorder};
 
 #[derive(Parser)]
@@ -28,8 +29,8 @@ pub struct Cli {
 pub enum Commands {
     #[command(about = "Start a new shared terminal session")]
     Host {
-        #[arg(short, long, default_value = "bash")]
-        command: String,
+        #[arg(long, help = "Shell to use (bash, zsh, fish, nu, pwsh, etc.)")]
+        shell: Option<String>,
 
         #[arg(short, long)]
         title: Option<String>,
@@ -45,6 +46,9 @@ pub enum Commands {
 
         #[arg(long, help = "Enable passthrough mode (like asciinema)")]
         passthrough: bool,
+
+        #[arg(long, help = "List available shells and exit")]
+        list_shells: bool,
     },
 
     #[command(about = "Join an existing shared session")]
@@ -90,14 +94,20 @@ impl CliApp {
     pub async fn run(&mut self, cli: Cli) -> Result<()> {
         match cli.command {
             Commands::Host {
-                command,
+                shell,
                 title,
                 width,
                 height,
                 save,
                 passthrough,
+                list_shells,
             } => {
-                self.host_session(command, title, width, height, save, passthrough)
+                if list_shells {
+                    self.list_available_shells();
+                    return Ok(());
+                }
+
+                self.host_session(shell, title, width, height, save, passthrough)
                     .await
             }
             Commands::Join { session_id, peer } => self.join_session(session_id, peer).await,
@@ -108,13 +118,24 @@ impl CliApp {
 
     async fn host_session(
         &mut self,
-        command: String,
+        shell: Option<String>,
         title: Option<String>,
         width: u16,
         height: u16,
         save_file: Option<String>,
         passthrough: bool,
     ) -> Result<()> {
+        // Determine shell to use
+        let shell_type = if let Some(shell_cmd) = shell {
+            ShellDetector::validate_shell_command(&shell_cmd)
+                .with_context(|| format!("Invalid shell: {}", shell_cmd))?
+        } else {
+            ShellDetector::get_default_shell()
+        };
+
+        let shell_config = ShellConfig::new(shell_type.clone());
+        let (command, args) = shell_config.get_full_command();
+
         let session_id = Uuid::new_v4().to_string();
 
         let header = SessionHeader {
@@ -125,7 +146,7 @@ impl CliApp {
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
             title,
-            command: Some(command.clone()),
+            command: Some(format!("{} {}", command, args.join(" "))),
             session_id: session_id.clone(),
         };
 
@@ -137,12 +158,12 @@ impl CliApp {
         if let Ok(node_addr) = self.network.get_node_addr().await {
             println!("📍 Node Address: {:?}", node_addr);
             println!(
-                "💡 Others can join using: iroh-code-remote join {} --peer {:?}",
+                "💡 Others can join using: roterm join {} --peer {:?}",
                 session_id, node_addr
             );
         }
 
-        println!("💻 Command: {}", command);
+        println!("🐚 Shell: {} ({})", shell_type.get_display_name(), command);
         println!("📏 Size: {}x{}", width, height);
         if passthrough {
             println!("🔄 Mode: Passthrough (asciinema-like)");
@@ -178,11 +199,11 @@ impl CliApp {
         if passthrough {
             println!("✅ Starting passthrough terminal session. Press Ctrl+C to exit.");
             recorder
-                .start_passthrough_session(&command, width, height)
+                .start_passthrough_session_with_config(&shell_config, width, height)
                 .await?;
         } else {
             println!("✅ Starting terminal session. Press Ctrl+C to exit.");
-            recorder.start_session(&command, width, height)?;
+            recorder.start_session_with_config(&shell_config, width, height)?;
             tokio::signal::ctrl_c().await?;
         }
 
@@ -371,6 +392,47 @@ impl CliApp {
 
         println!("\n✅ Playback completed.");
         Ok(())
+    }
+
+    fn list_available_shells(&self) {
+        println!("🐚 Available Shells:");
+        println!();
+
+        let available_shells = ShellDetector::detect_available_shells();
+        let current_shell = ShellDetector::get_current_shell();
+
+        if available_shells.is_empty() {
+            println!("❌ No supported shells found on this system");
+            return;
+        }
+
+        for (index, shell) in available_shells.iter().enumerate() {
+            let is_current = current_shell.as_ref() == Some(shell);
+            let marker = if is_current { "→" } else { " " };
+            let status = if is_current { " (current)" } else { "" };
+
+            execute!(
+                io::stdout(),
+                SetForegroundColor(if is_current {
+                    Color::Green
+                } else {
+                    Color::Cyan
+                }),
+                Print(format!(
+                    "{}{}. {} - {}{}\n",
+                    marker,
+                    index + 1,
+                    shell.get_display_name(),
+                    shell.get_command_path(),
+                    status
+                )),
+                ResetColor
+            )
+            .ok();
+        }
+
+        println!();
+        println!("💡 Use --shell <name> to specify a shell, or let roterm detect automatically");
     }
 
     async fn handle_input_forwarding(&self, mut input_receiver: mpsc::UnboundedReceiver<String>) {

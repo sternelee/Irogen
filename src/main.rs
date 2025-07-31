@@ -1,5 +1,6 @@
 mod cli;
 mod p2p;
+mod shell;
 mod terminal;
 
 use anyhow::Result;

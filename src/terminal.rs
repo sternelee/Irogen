@@ -8,6 +8,8 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 
+use crate::shell::ShellConfig;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalEvent {
     pub timestamp: f64,
@@ -144,6 +146,298 @@ impl TerminalRecorder {
             .with_context(|| format!("Failed to write session to file: {}", file_path))?;
 
         info!("Session saved to file: {}", file_path);
+        Ok(())
+    }
+
+    pub async fn start_passthrough_session_with_config(
+        &self,
+        shell_config: &ShellConfig,
+        width: u16,
+        height: u16,
+    ) -> Result<()> {
+        let (command, args) = shell_config.get_full_command();
+        info!(
+            "Starting passthrough terminal session with {}: {} {}",
+            shell_config.shell_type.get_display_name(),
+            command,
+            args.join(" ")
+        );
+
+        // Enable raw mode for direct terminal interaction
+        crossterm::terminal::enable_raw_mode().context("Failed to enable raw mode")?;
+
+        let pty_system = native_pty_system();
+        let pty_size = PtySize {
+            rows: height,
+            cols: width,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+
+        let pty_pair = pty_system.openpty(pty_size).context("Failed to open PTY")?;
+
+        let mut cmd = CommandBuilder::new(&command);
+        for arg in &args {
+            cmd.arg(arg);
+        }
+
+        // Set environment variables from shell config
+        for (key, value) in &shell_config.environment_vars {
+            cmd.env(key, value);
+        }
+        cmd.env("ROTERM_SESSION_ID", &self.session_id);
+
+        let mut child = pty_pair
+            .slave
+            .spawn_command(cmd)
+            .context("Failed to spawn command")?;
+
+        let mut reader = pty_pair.master.try_clone_reader()?;
+        let mut writer = pty_pair.master.take_writer()?;
+
+        let event_sender = self.event_sender.clone();
+        let start_event = TerminalEvent {
+            timestamp: self.get_relative_timestamp(),
+            event_type: EventType::Start,
+            data: format!("{} {}", command, args.join(" ")),
+        };
+        event_sender.send(start_event)?;
+
+        // Send shell initialization commands
+        for init_cmd in &shell_config.init_commands {
+            let init_bytes = format!("{}\n", init_cmd);
+            if let Err(e) = writer.write(init_bytes.as_bytes()) {
+                error!("Failed to send init command: {}", e);
+            } else {
+                writer.flush().ok();
+                // Small delay to allow command to execute
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            }
+        }
+
+        // Clone necessary data for the tasks
+        let recorder_clone = self.clone();
+        let event_sender_clone = self.event_sender.clone();
+
+        // Handle PTY output -> stdout + iroh sharing
+        let output_task = tokio::spawn(async move {
+            let mut buffer = [0u8; 8192];
+            loop {
+                match reader.read(&mut buffer) {
+                    Ok(0) => {
+                        debug!("PTY reader reached EOF");
+                        break;
+                    }
+                    Ok(n) => {
+                        let data = &buffer[..n];
+
+                        // Write directly to stdout for immediate display
+                        if let Err(e) = std::io::stdout().write_all(data) {
+                            error!("Failed to write to stdout: {}", e);
+                            break;
+                        }
+                        std::io::stdout().flush().ok();
+
+                        // Record and share the output event
+                        if let Err(e) = recorder_clone.record_output(data) {
+                            error!("Failed to record output: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to read from PTY: {}", e);
+                        break;
+                    }
+                }
+            }
+
+            let end_event = TerminalEvent {
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs_f64(),
+                event_type: EventType::End,
+                data: String::new(),
+            };
+            event_sender_clone.send(end_event).ok();
+        });
+
+        // Handle stdin -> PTY + iroh sharing
+        let recorder_input_clone = self.clone();
+        let input_task = tokio::spawn(async move {
+            let mut stdin = tokio::io::stdin();
+            let mut buffer = [0u8; 1024];
+
+            loop {
+                match stdin.read(&mut buffer).await {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let data = &buffer[..n];
+
+                        // Write to PTY
+                        if let Err(e) = writer.write(data) {
+                            error!("Failed to write to PTY: {}", e);
+                            break;
+                        }
+                        writer.flush().ok();
+
+                        // Record and share the input event
+                        if let Err(e) = recorder_input_clone.record_input(data) {
+                            error!("Failed to record input: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to read from stdin: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Wait for child process
+        let child_task = tokio::spawn(async move {
+            if let Ok(status) = child.wait() {
+                info!("Child process exited with status: {:?}", status);
+            }
+        });
+
+        // Wait for any task to complete
+        tokio::select! {
+            _ = output_task => {},
+            _ = input_task => {},
+            _ = child_task => {},
+        }
+
+        // Restore terminal mode
+        crossterm::terminal::disable_raw_mode().context("Failed to disable raw mode")?;
+
+        Ok(())
+    }
+
+    pub fn start_session_with_config(
+        &self,
+        shell_config: &ShellConfig,
+        width: u16,
+        height: u16,
+    ) -> Result<()> {
+        let (command, args) = shell_config.get_full_command();
+        info!(
+            "Starting terminal session with {}: {} {}",
+            shell_config.shell_type.get_display_name(),
+            command,
+            args.join(" ")
+        );
+
+        let pty_system = native_pty_system();
+        let pty_size = PtySize {
+            rows: height,
+            cols: width,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+
+        let pty_pair = pty_system.openpty(pty_size).context("Failed to open PTY")?;
+
+        let mut cmd = CommandBuilder::new(&command);
+        for arg in &args {
+            cmd.arg(arg);
+        }
+
+        // Set environment variables from shell config
+        for (key, value) in &shell_config.environment_vars {
+            cmd.env(key, value);
+        }
+
+        let mut child = pty_pair
+            .slave
+            .spawn_command(cmd)
+            .context("Failed to spawn command")?;
+
+        let mut reader = pty_pair.master.try_clone_reader()?;
+        let mut writer = pty_pair.master.take_writer()?;
+
+        let event_sender = self.event_sender.clone();
+        let start_event = TerminalEvent {
+            timestamp: 0.0,
+            event_type: EventType::Start,
+            data: format!("{} {}", command, args.join(" ")),
+        };
+        event_sender.send(start_event)?;
+
+        tokio::spawn(async move {
+            let mut buffer = [0u8; 8192];
+            loop {
+                match reader.read(&mut buffer) {
+                    Ok(0) => {
+                        debug!("PTY reader reached EOF");
+                        break;
+                    }
+                    Ok(n) => {
+                        let data = &buffer[..n];
+                        if let Err(e) = std::io::stdout().write_all(data) {
+                            error!("Failed to write to stdout: {}", e);
+                            break;
+                        }
+                        std::io::stdout().flush().ok();
+
+                        let output_event = TerminalEvent {
+                            timestamp: SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs_f64(),
+                            event_type: EventType::Output,
+                            data: String::from_utf8_lossy(data).to_string(),
+                        };
+
+                        if event_sender.send(output_event).is_err() {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to read from PTY: {}", e);
+                        break;
+                    }
+                }
+            }
+
+            let end_event = TerminalEvent {
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs_f64(),
+                event_type: EventType::End,
+                data: String::new(),
+            };
+            event_sender.send(end_event).ok();
+        });
+
+        tokio::spawn(async move {
+            let mut stdin = tokio::io::stdin();
+            let mut buffer = [0u8; 1024];
+
+            loop {
+                match stdin.read(&mut buffer).await {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let data = &buffer[..n];
+                        if let Err(e) = writer.write(data) {
+                            error!("Failed to write to PTY: {}", e);
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to read from stdin: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+
+        tokio::spawn(async move {
+            if let Ok(status) = child.wait() {
+                info!("Child process exited with status: {:?}", status);
+            }
+        });
+
         Ok(())
     }
 

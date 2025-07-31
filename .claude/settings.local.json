@@ -10,7 +10,9 @@
       "Bash(cargo doc:*)",
       "Bash(cargo:*)",
       "Bash(./target/debug/iroh-code-remote:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(chmod:*)",
+      "Bash(./test_shells.sh:*)"
     ],
     "deny": []
   }
