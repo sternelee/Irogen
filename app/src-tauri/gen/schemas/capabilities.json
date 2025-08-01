@@ -1,0 +1,1 @@
+{"main":{"identifier":"main","description":"Main application capabilities","local":true,"windows":["main"],"permissions":["core:event:allow-listen","core:event:default"]}}
