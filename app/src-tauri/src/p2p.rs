@@ -432,8 +432,21 @@ impl P2PNetwork {
     }
 
     pub async fn get_node_addr(&self) -> Result<NodeAddr> {
-        // Get the actual node address with network information
-        Ok(NodeAddr::new(self.endpoint.node_id()))
+        // Wait a bit for the network to initialize
+        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+
+        let node_id = self.endpoint.node_id();
+        let mut node_addr = NodeAddr::new(node_id);
+
+        // Add a placeholder direct address (localhost for testing)
+        // In production, this should be the actual public IP/port
+        let placeholder_addr = "127.0.0.1:11204"
+            .parse::<std::net::SocketAddr>()
+            .map_err(|e| anyhow::anyhow!("Failed to parse placeholder address: {}", e))?;
+        node_addr = node_addr.with_direct_addresses([placeholder_addr]);
+
+        info!("Generated node address: {:?}", node_addr);
+        Ok(node_addr)
     }
 
     pub async fn connect_to_peer(&self, node_addr: NodeAddr) -> Result<()> {
@@ -447,7 +460,8 @@ impl P2PNetwork {
     }
 
     pub async fn create_session_ticket(&self, topic_id: TopicId) -> Result<SessionTicket> {
-        let me = NodeAddr::new(self.endpoint.node_id());
+        // Get the actual node address with network information
+        let me = self.get_node_addr().await?;
         let nodes = vec![me];
         Ok(SessionTicket { topic_id, nodes })
     }
