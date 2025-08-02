@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use tracing::error;
 use uuid::Uuid;
 
-use crate::p2p::{P2PNetwork, ShareMessage};
+use crate::p2p::P2PNetwork;
 use crate::shell::{ShellConfig, ShellDetector, ShellType};
 use crate::terminal::{SessionHeader, TerminalEvent, TerminalPlayer, TerminalRecorder};
 
@@ -76,19 +76,15 @@ pub enum Commands {
 
 pub struct CliApp {
     network: P2PNetwork,
-    message_receiver: mpsc::UnboundedReceiver<ShareMessage>,
 }
 
 impl CliApp {
     pub async fn new() -> Result<Self> {
-        let (network, message_receiver) = P2PNetwork::new()
+        let network = P2PNetwork::new()
             .await
             .context("Failed to initialize P2P network")?;
 
-        Ok(Self {
-            network,
-            message_receiver,
-        })
+        Ok(Self { network })
     }
 
     pub async fn run(&mut self, cli: Cli) -> Result<()> {
@@ -172,23 +168,42 @@ impl CliApp {
         }
         println!();
 
-        let input_receiver = self
+        let (topic_id, sender, input_receiver) = self
             .network
             .create_shared_session(header.clone())
             .await
             .context("Failed to create shared session")?;
 
+        // Create and display session ticket
+        let ticket = self.network.create_session_ticket(topic_id).await?;
+        println!("🎫 Session Ticket: {}", ticket);
+
         let (recorder, mut event_receiver) = TerminalRecorder::new(session_id.clone());
 
         let network_clone = self.network.clone();
-        let session_id_clone = session_id.clone();
+        let sender_clone = sender.clone();
         tokio::spawn(async move {
             while let Some(event) = event_receiver.recv().await {
-                if let Err(e) = network_clone
-                    .send_terminal_event(session_id_clone.clone(), event)
-                    .await
-                {
-                    error!("Failed to send terminal event: {}", e);
+                match event.event_type {
+                    crate::terminal::EventType::Output => {
+                        if let Err(e) = network_clone
+                            .send_terminal_output(&sender_clone, event.data)
+                            .await
+                        {
+                            error!("Failed to send terminal output: {}", e);
+                        }
+                    }
+                    crate::terminal::EventType::Resize { width, height } => {
+                        if let Err(e) = network_clone
+                            .send_resize_event(&sender_clone, width, height)
+                            .await
+                        {
+                            error!("Failed to send resize event: {}", e);
+                        }
+                    }
+                    _ => {
+                        // Handle other event types if needed
+                    }
                 }
             }
         });
@@ -207,7 +222,7 @@ impl CliApp {
             tokio::signal::ctrl_c().await?;
         }
 
-        self.network.end_session(session_id.clone()).await?;
+        self.network.end_session(&sender, session_id.clone()).await?;
 
         if let Some(save_path) = save_file {
             println!("💾 Saving session to: {}", save_path);
@@ -224,27 +239,23 @@ impl CliApp {
         println!("🔗 Joining session: {}", session_id);
         println!("🌐 Your Node ID: {}", self.network.get_node_id().await);
 
-        // Connect to peer if specified
-        if let Some(peer_addr) = peer {
-            println!("📡 Connecting to peer: {}", peer_addr);
-            // TODO: Implement peer connection parsing and connection
-            // let node_addr: iroh::NodeAddr = peer_addr.parse()
-            //     .with_context(|| format!("Invalid peer address format: {}", peer_addr))?;
-            //
-            // self.network.connect_to_peer(node_addr).await
-            //     .context("Failed to connect to peer")?;
+        // Parse session ticket
+        let ticket = if let Some(ticket_str) = peer {
+            println!("📡 Parsing session ticket...");
+            ticket_str.parse::<crate::p2p::SessionTicket>()
+                .context("Failed to parse session ticket")?
+        } else {
+            return Err(anyhow::anyhow!("Session ticket is required to join a session"));
+        };
 
-            println!("✅ Peer connection feature coming soon");
-        }
-
-        let mut event_receiver = self
+        let (sender, mut event_receiver) = self
             .network
-            .join_session(session_id.clone())
+            .join_session(ticket.topic_id, ticket.nodes)
             .await
             .context("Failed to join session")?;
 
         let network_clone = self.network.clone();
-        let session_id_clone = session_id.clone();
+        let sender_clone = sender.clone();
         tokio::spawn(async move {
             loop {
                 if let Ok(has_event) = event::poll(std::time::Duration::from_millis(100)) {
@@ -268,7 +279,7 @@ impl CliApp {
                                     };
 
                                     if let Err(e) = network_clone
-                                        .send_input(session_id_clone.clone(), input_data)
+                                        .send_input(&sender_clone, input_data)
                                         .await
                                     {
                                         error!("Failed to send input: {}", e);

@@ -19,7 +19,10 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 iroh = { workspace = true }
+iroh-gossip = { workspace = true }
 futures = { workspace = true }
+data-encoding = "2.6"
+rand = { workspace = true }
 
 [features]
 default = ["custom-protocol"]

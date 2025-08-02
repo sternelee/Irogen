@@ -117,8 +117,8 @@ function App() {
   };
 
   const handleConnect = async () => {
-    if (!nodeAddress.trim() || !sessionId.trim()) {
-      alert("Please enter both node address and session ID");
+    if (!nodeAddress.trim()) {
+      alert("Please enter session ticket");
       return;
     }
 
@@ -151,10 +151,9 @@ function App() {
         },
       );
 
-      // Connect to peer and join session
+      // Connect using session ticket
       await invoke("connect_to_peer", {
-        nodeAddress: nodeAddress.trim(),
-        sessionId: sessionId.trim(),
+        sessionTicket: nodeAddress.trim(),
       });
 
       setIsConnected(true);
@@ -208,31 +207,20 @@ function App() {
         <div className="connection-form">
           <h1>🌐 RiTerm - Remote Terminal</h1>
           <div className="form-group">
-            <label htmlFor="nodeAddress">Iroh Node Address:</label>
+            <label htmlFor="nodeAddress">Session Ticket:</label>
             <input
               id="nodeAddress"
               type="text"
               value={nodeAddress}
               onChange={(e) => setNodeAddress(e.target.value)}
-              placeholder="node_id@address:port"
-              disabled={connecting}
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="sessionId">Session ID:</label>
-            <input
-              id="sessionId"
-              type="text"
-              value={sessionId}
-              onChange={(e) => setSessionId(e.target.value)}
-              placeholder="Enter session ID to join"
+              placeholder="Paste session ticket here"
               disabled={connecting}
             />
           </div>
           <button
             className="connect-btn"
             onClick={handleConnect}
-            disabled={connecting || !nodeAddress.trim() || !sessionId.trim()}
+            disabled={connecting || !nodeAddress.trim()}
           >
             {connecting ? "Connecting..." : "Connect"}
           </button>

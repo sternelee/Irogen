@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::str::FromStr;
+
 use std::sync::Mutex;
 use tauri::{Emitter, State};
 use tokio::sync::mpsc;
@@ -8,45 +8,13 @@ use tokio::sync::mpsc;
 mod p2p;
 mod terminal_events;
 
-use p2p::P2PNetwork;
+use p2p::{P2PNetwork, SessionTicket};
+use iroh_gossip::api::GossipSender;
 use terminal_events::{EventType, TerminalEvent};
 
-// Helper function to validate node address format
-fn is_valid_node_address(address: &str) -> bool {
-    let parts: Vec<&str> = address.split('@').collect();
-    if parts.len() != 2 {
-        return false;
-    }
-
-    let node_id = parts[0];
-    let addr_port = parts[1];
-
-    // Node ID should be a hex string of reasonable length (typically 64 chars for ed25519)
-    if node_id.len() < 32 || node_id.len() > 128 {
-        return false;
-    }
-
-    // Check if node_id contains only hex characters
-    if !node_id.chars().all(|c| c.is_ascii_hexdigit()) {
-        return false;
-    }
-
-    // Address:port should contain a colon and have reasonable format
-    if !addr_port.contains(':') {
-        return false;
-    }
-
-    let addr_parts: Vec<&str> = addr_port.split(':').collect();
-    if addr_parts.len() != 2 {
-        return false;
-    }
-
-    // Validate port is a number
-    if addr_parts[1].parse::<u16>().is_err() {
-        return false;
-    }
-
-    true
+// Helper function to validate session ticket format
+fn is_valid_session_ticket(ticket: &str) -> bool {
+    ticket.parse::<SessionTicket>().is_ok()
 }
 
 #[derive(Default)]
@@ -58,6 +26,7 @@ pub struct AppState {
 #[derive(Clone)]
 pub struct TerminalSession {
     pub id: String,
+    pub sender: GossipSender,
     pub event_sender: mpsc::UnboundedSender<TerminalEvent>,
 }
 
@@ -69,7 +38,7 @@ pub struct ConnectionConfig {
 
 #[tauri::command]
 async fn initialize_network(state: State<'_, AppState>) -> Result<String, String> {
-    let (network, _) = P2PNetwork::new()
+    let network = P2PNetwork::new()
         .await
         .map_err(|e| format!("Failed to initialize P2P network: {}", e))?;
 
@@ -83,23 +52,18 @@ async fn initialize_network(state: State<'_, AppState>) -> Result<String, String
 
 #[tauri::command]
 async fn connect_to_peer(
-    node_address: String,
-    session_id: String,
+    session_ticket: String,
     state: State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     // Validate inputs
-    if node_address.trim().is_empty() {
-        return Err("Node address cannot be empty".to_string());
-    }
-    if session_id.trim().is_empty() {
-        return Err("Session ID cannot be empty".to_string());
+    if session_ticket.trim().is_empty() {
+        return Err("Session ticket cannot be empty".to_string());
     }
 
-    // Validate node address format more thoroughly
-    if !is_valid_node_address(&node_address) {
-        return Err("Invalid node address format. Expected: node_id@address:port".to_string());
-    }
+    // Parse session ticket
+    let ticket = session_ticket.parse::<SessionTicket>()
+        .map_err(|e| format!("Invalid session ticket format: {}", e))?;
 
     let network = {
         let network_guard = state.network.lock().unwrap();
@@ -111,9 +75,11 @@ async fn connect_to_peer(
         }
     };
 
+    let session_id = format!("session_{}", ticket.topic_id);
+
     // Join session
-    let mut event_receiver = network
-        .join_session(session_id.clone())
+    let (sender, mut event_receiver) = network
+        .join_session(ticket)
         .await
         .map_err(|e| format!("Failed to join session: {}", e))?;
 
@@ -121,6 +87,7 @@ async fn connect_to_peer(
     let (tx, mut rx) = mpsc::unbounded_channel();
     let terminal_session = TerminalSession {
         id: session_id.clone(),
+        sender: sender.clone(),
         event_sender: tx,
     };
 
@@ -140,12 +107,12 @@ async fn connect_to_peer(
 
     // Handle outgoing input events
     let network_clone = network.clone();
-    let session_id_clone2 = session_id.clone();
+    let sender_clone = sender.clone();
     tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
             if let EventType::Input = event.event_type {
                 if let Err(e) = network_clone
-                    .send_input(session_id_clone2.clone(), event.data)
+                    .send_input(&sender_clone, event.data)
                     .await
                 {
                     eprintln!("Failed to send input: {}", e);
@@ -210,12 +177,12 @@ async fn get_node_info(state: State<'_, AppState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn parse_node_address(address: String) -> Result<String, String> {
+async fn parse_session_ticket(ticket: String) -> Result<String, String> {
     // Use the same validation function
-    if is_valid_node_address(&address) {
-        Ok(address)
+    if is_valid_session_ticket(&ticket) {
+        Ok(ticket)
     } else {
-        Err("Invalid node address format. Expected: node_id@address:port".to_string())
+        Err("Invalid session ticket format".to_string())
     }
 }
 
@@ -230,7 +197,7 @@ pub fn run() {
             disconnect_session,
             get_active_sessions,
             get_node_info,
-            parse_node_address
+            parse_session_ticket
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
