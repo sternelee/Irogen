@@ -2,7 +2,6 @@ mod cli;
 mod p2p;
 mod shell;
 mod terminal;
-mod remote_terminal;
 
 use anyhow::Result;
 use clap::Parser;

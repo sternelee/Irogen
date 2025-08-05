@@ -155,14 +155,15 @@ impl P2PNetwork {
     pub async fn create_shared_session(
         &self,
         header: SessionHeader,
-    ) -> Result<(TopicId, GossipSender, broadcast::Receiver<TerminalEvent>)> {
+    ) -> Result<(TopicId, GossipSender, mpsc::UnboundedReceiver<String>)> {
         let session_id = header.session_id.clone();
         info!("Creating shared session: {}", session_id);
 
         // Create topic for this session using random bytes
         let topic_id = TopicId::from_bytes(rand::random());
 
-        let (event_sender, event_receiver) = broadcast::channel(1000);
+        let (event_sender, _event_receiver) = broadcast::channel(1000);
+        let (_input_sender, input_receiver) = mpsc::unbounded_channel();
 
         let session = SharedSession {
             header: header.clone(),
@@ -190,7 +191,7 @@ impl P2PNetwork {
         });
         sender.broadcast(message.to_vec().into()).await?;
 
-        Ok((topic_id, sender, event_receiver))
+        Ok((topic_id, sender, input_receiver))
     }
 
     pub async fn join_session(
