@@ -20,3 +20,4 @@ bytes = { workspace = true }
 futures = { workspace = true }
 rand = { workspace = true }
 data-encoding = "2.6"
+url = "2.5"

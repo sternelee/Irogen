@@ -30,7 +30,10 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:www.npmjs.com)",
       "Bash(gtimeout:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "mcp__mcp-hub__tavily-mcp-tavily-search",
+      "mcp__mcp-hub__tavily-mcp-tavily-extract",
+      "mcp__mcp-hub__tavily-mcp-tavily-crawl"
     ],
     "deny": []
   }

@@ -23,6 +23,7 @@ iroh-gossip = { workspace = true }
 futures = { workspace = true }
 data-encoding = "2.6"
 rand = { workspace = true }
+url = "2.5"
 
 [features]
 default = ["custom-protocol"]

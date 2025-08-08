@@ -22,7 +22,8 @@ async fn main() -> Result<()> {
     CliApp::print_banner();
 
     let cli = Cli::parse();
-    let mut app = CliApp::new().await?;
+    let relay = cli.relay.clone();
+    let mut app = CliApp::new(relay).await?;
 
     app.run(cli).await?;
 

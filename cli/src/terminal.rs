@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use crossterm;
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::AsyncReadExt;
-use tokio::sync::{mpsc, broadcast, Mutex};
+use tokio::sync::{broadcast, mpsc, Mutex};
 use tracing::{debug, error, info};
 
 use crate::shell::ShellConfig;

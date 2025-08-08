@@ -8,8 +8,8 @@ use tokio::sync::mpsc;
 mod p2p;
 mod terminal_events;
 
-use p2p::{P2PNetwork, SessionTicket};
 use iroh_gossip::api::GossipSender;
+use p2p::{P2PNetwork, SessionTicket};
 use terminal_events::{EventType, TerminalEvent};
 
 // Helper function to validate session ticket format
@@ -36,9 +36,22 @@ pub struct ConnectionConfig {
     pub session_id: String,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct NetworkConfig {
+    pub relay_url: Option<String>,
+}
+
 #[tauri::command]
 async fn initialize_network(state: State<'_, AppState>) -> Result<String, String> {
-    let network = P2PNetwork::new()
+    initialize_network_with_relay(None, state).await
+}
+
+#[tauri::command]
+async fn initialize_network_with_relay(
+    relay_url: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let network = P2PNetwork::new(relay_url)
         .await
         .map_err(|e| format!("Failed to initialize P2P network: {}", e))?;
 
@@ -62,7 +75,8 @@ async fn connect_to_peer(
     }
 
     // Parse session ticket
-    let ticket = session_ticket.parse::<SessionTicket>()
+    let ticket = session_ticket
+        .parse::<SessionTicket>()
         .map_err(|e| format!("Invalid session ticket format: {}", e))?;
 
     let network = {
@@ -114,10 +128,7 @@ async fn connect_to_peer(
     tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
             if let EventType::Input = event.event_type {
-                if let Err(e) = network_clone
-                    .send_input(&sender_clone, event.data)
-                    .await
-                {
+                if let Err(e) = network_clone.send_input(&sender_clone, event.data).await {
                     eprintln!("Failed to send input: {}", e);
                 }
             }
@@ -221,6 +232,7 @@ pub fn run() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             initialize_network,
+            initialize_network_with_relay,
             connect_to_peer,
             send_terminal_input,
             execute_remote_command,

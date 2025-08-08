@@ -621,6 +621,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
 ]
 
@@ -2476,9 +2477,9 @@ dependencies = [
 
 [[package]]
 name = "iroh"
-version = "0.91.0"
+version = "0.91.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef05c956df0788a649d65c33fdbbb8fc4442d7716af3d67a1bd6d00a9ee56ead"
+checksum = "c6a98c47bb5f720edeb77be502a8acd238a3c0755f0b1ad865a716224d794a59"
 dependencies = [
  "aead",
  "backon",
@@ -2537,9 +2538,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-base"
-version = "0.91.0"
+version = "0.91.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f68b5c5e190d8965699b2fd583f301a7e6094a0b89bb4d6c5baa94761fd1b7a3"
+checksum = "78bde4e612191173e8ade55e3aa719044514edfff952292ffbf581be35cbb59c"
 dependencies = [
  "curve25519-dalek",
  "data-encoding",
@@ -4683,6 +4684,7 @@ dependencies = [
  "tauri-build",
  "tokio",
  "tracing",
+ "url",
  "uuid",
 ]
 

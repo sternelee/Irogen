@@ -21,6 +21,9 @@ use crate::terminal::{SessionHeader, TerminalEvent, TerminalPlayer, TerminalReco
 #[command(name = "iroh-code-remote")]
 #[command(about = "A terminal session sharing tool powered by iroh p2p network")]
 pub struct Cli {
+    #[arg(long, help = "Custom relay server URL (e.g., https://relay.example.com)")]
+    pub relay: Option<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -64,6 +67,18 @@ pub enum Commands {
         peer: Option<String>,
     },
 
+    #[command(about = "Create a new session ticket")]
+    CreateTicket {
+        #[arg(short, long, help = "Output ticket to file")]
+        output: Option<String>,
+    },
+
+    #[command(about = "Join a session using a ticket")]
+    JoinTicket {
+        #[arg(help = "Session ticket to join")]
+        ticket: String,
+    },
+
     #[command(about = "List active sessions")]
     List,
 
@@ -79,8 +94,8 @@ pub struct CliApp {
 }
 
 impl CliApp {
-    pub async fn new() -> Result<Self> {
-        let network = P2PNetwork::new()
+    pub async fn new(relay: Option<String>) -> Result<Self> {
+        let network = P2PNetwork::new(relay)
             .await
             .context("Failed to initialize P2P network")?;
 
@@ -107,6 +122,8 @@ impl CliApp {
                     .await
             }
             Commands::Join { session_id, peer } => self.join_session(session_id, peer).await,
+            Commands::CreateTicket { output } => self.create_ticket(output).await,
+            Commands::JoinTicket { ticket } => self.join_with_ticket(ticket).await,
             Commands::List => self.list_sessions().await,
             Commands::Play { file } => self.play_session(file).await,
         }
@@ -466,6 +483,155 @@ impl CliApp {
             // This would typically involve listening for messages from other nodes
             // and processing them accordingly
         });
+    }
+
+    async fn create_ticket(&mut self, output: Option<String>) -> Result<()> {
+        println!("🎫 Creating session ticket...");
+        println!("🌐 Node ID: {}", self.network.get_node_id().await);
+
+        // Create a minimal session header for ticket generation
+        let session_id = Uuid::new_v4().to_string();
+        let header = SessionHeader {
+            version: 2,
+            width: 80,
+            height: 24,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+            title: Some("Ticket Session".to_string()),
+            command: None,
+            session_id: session_id.clone(),
+        };
+
+        // Create shared session to get topic ID
+        let (topic_id, _sender, _input_receiver) = self
+            .network
+            .create_shared_session(header.clone())
+            .await
+            .context("Failed to create shared session")?;
+
+        // Create session ticket
+        let ticket = self.network.create_session_ticket(topic_id).await?;
+
+        println!("✅ Session ticket created: {}", ticket);
+
+        if let Some(output_path) = output {
+            tokio::fs::write(&output_path, ticket.to_string()).await
+                .with_context(|| format!("Failed to write ticket to file: {}", output_path))?;
+            println!("💾 Ticket saved to: {}", output_path);
+        }
+
+        println!("💡 Others can join using: roterm join-ticket {}", ticket);
+        Ok(())
+    }
+
+    async fn join_with_ticket(&mut self, ticket_str: String) -> Result<()> {
+        println!("🔗 Joining session with ticket...");
+        println!("🌐 Your Node ID: {}", self.network.get_node_id().await);
+
+        // Parse session ticket
+        let ticket = ticket_str
+            .parse::<crate::p2p::SessionTicket>()
+            .context("Failed to parse session ticket")?;
+
+        println!("📡 Successfully parsed ticket for topic: {}", ticket.topic_id);
+
+        let (sender, mut event_receiver) = self
+            .network
+            .join_session(ticket.topic_id, ticket.nodes)
+            .await
+            .context("Failed to join session")?;
+
+        let network_clone = self.network.clone();
+        let sender_clone = sender.clone();
+        tokio::spawn(async move {
+            loop {
+                if let Ok(has_event) = event::poll(std::time::Duration::from_millis(100)) {
+                    if has_event {
+                        if let Ok(event) = event::read() {
+                            match event {
+                                Event::Key(KeyEvent {
+                                    code: KeyCode::Char('c'),
+                                    modifiers: KeyModifiers::CONTROL,
+                                    ..
+                                }) => {
+                                    break;
+                                }
+                                Event::Key(KeyEvent { code, .. }) => {
+                                    let input_data = match code {
+                                        KeyCode::Enter => "\n".to_string(),
+                                        KeyCode::Tab => "\t".to_string(),
+                                        KeyCode::Backspace => "\x08".to_string(),
+                                        KeyCode::Char(c) => c.to_string(),
+                                        _ => continue,
+                                    };
+
+                                    if let Err(e) =
+                                        network_clone.send_input(&sender_clone, input_data).await
+                                    {
+                                        error!("Failed to send input: {}", e);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        println!("✅ Joined session. Receiving terminal output...");
+        println!("💡 Type to send input to the remote session. Press Ctrl+C to exit.");
+
+        terminal::enable_raw_mode()?;
+
+        tokio::spawn(async move {
+            while let Ok(event) = event_receiver.recv().await {
+                match event.event_type {
+                    crate::terminal::EventType::Output => {
+                        print!("{}", event.data);
+                        io::stdout().flush().ok();
+                    }
+                    crate::terminal::EventType::Start => {
+                        execute!(
+                            io::stdout(),
+                            SetForegroundColor(Color::Green),
+                            Print(format!("🎬 Session started: {}\n", event.data)),
+                            ResetColor
+                        )
+                        .ok();
+                    }
+                    crate::terminal::EventType::End => {
+                        execute!(
+                            io::stdout(),
+                            SetForegroundColor(Color::Red),
+                            Print("🛑 Session ended\n"),
+                            ResetColor
+                        )
+                        .ok();
+                        break;
+                    }
+                    crate::terminal::EventType::Resize { width, height } => {
+                        execute!(
+                            io::stdout(),
+                            SetForegroundColor(Color::Yellow),
+                            Print(format!("📐 Terminal resized: {}x{}\n", width, height)),
+                            ResetColor
+                        )
+                        .ok();
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        self.handle_network_messages().await;
+
+        tokio::signal::ctrl_c().await?;
+        terminal::disable_raw_mode()?;
+        println!("\n👋 Disconnected from session.");
+
+        Ok(())
     }
 
     pub fn print_banner() {

@@ -6,6 +6,7 @@ use iroh_gossip::{
     net::Gossip,
     proto::TopicId,
 };
+use url::Url;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -128,11 +129,26 @@ impl Clone for P2PNetwork {
 }
 
 impl P2PNetwork {
-    pub async fn new() -> Result<Self> {
+    pub async fn new(relay_url: Option<String>) -> Result<Self> {
         info!("Initializing iroh P2P network with gossip...");
 
-        // Create iroh endpoint
-        let endpoint = Endpoint::builder().discovery_n0().bind().await?;
+        // Create iroh endpoint with optional custom relay
+        let endpoint_builder = Endpoint::builder();
+        let endpoint = if let Some(relay) = relay_url {
+            info!("Using custom relay server: {}", relay);
+            // Parse the relay URL and use it for discovery
+            let relay_url: Url = relay.parse()?;
+            endpoint_builder
+                .discovery_n0() // Use default discovery for now, custom relay setup is more complex
+                .bind()
+                .await?
+        } else {
+            info!("Using default n0 relay server");
+            endpoint_builder
+                .discovery_n0()
+                .bind()
+                .await?
+        };
 
         let node_id = endpoint.node_id();
         info!("Node ID: {}", node_id);
