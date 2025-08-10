@@ -33,7 +33,8 @@
       "Bash(pkill:*)",
       "mcp__mcp-hub__tavily-mcp-tavily-search",
       "mcp__mcp-hub__tavily-mcp-tavily-extract",
-      "mcp__mcp-hub__tavily-mcp-tavily-crawl"
+      "mcp__mcp-hub__tavily-mcp-tavily-crawl",
+      "Bash(npm run dev:*)"
     ],
     "deny": []
   }

@@ -53,7 +53,7 @@ const themes: Record<string, TerminalTheme> = {
     brightBlue: "#3b8eea",
     brightMagenta: "#d670d6",
     brightCyan: "#29b8db",
-    brightWhite: "#ffffff"
+    brightWhite: "#ffffff",
   },
   light: {
     name: "Light",
@@ -76,7 +76,7 @@ const themes: Record<string, TerminalTheme> = {
     brightBlue: "#005cc5",
     brightMagenta: "#e559f9",
     brightCyan: "#3192aa",
-    brightWhite: "#d1d5da"
+    brightWhite: "#d1d5da",
   },
   solarizedDark: {
     name: "Solarized Dark",
@@ -99,7 +99,7 @@ const themes: Record<string, TerminalTheme> = {
     brightBlue: "#839496",
     brightMagenta: "#6c71c4",
     brightCyan: "#93a1a1",
-    brightWhite: "#fdf6e3"
+    brightWhite: "#fdf6e3",
   },
   dracula: {
     name: "Dracula",
@@ -122,8 +122,8 @@ const themes: Record<string, TerminalTheme> = {
     brightBlue: "#d6acff",
     brightMagenta: "#ff92df",
     brightCyan: "#a4ffff",
-    brightWhite: "#ffffff"
-  }
+    brightWhite: "#ffffff",
+  },
 };
 
 const fontFamilies = [
@@ -132,7 +132,7 @@ const fontFamilies = [
   '"Source Code Pro", "Fira Code", "Cascadia Code", monospace',
   '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
   '"Monaco", "Menlo", "Ubuntu Mono", monospace',
-  '"Consolas", "Monaco", monospace'
+  '"Consolas", "Monaco", monospace',
 ];
 
 interface ConnectionConfig {
@@ -155,7 +155,9 @@ function App() {
   const [sessionNickname, setSessionNickname] = useState("");
   const [status, setStatus] = useState("Disconnected");
   const [nodeId, setNodeId] = useState("");
-  const [connectionHistory, setConnectionHistory] = useState<ConnectionHistory[]>([]);
+  const [connectionHistory, setConnectionHistory] = useState<
+    ConnectionHistory[]
+  >([]);
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [commandInput, setCommandInput] = useState("");
@@ -166,6 +168,9 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [commandHistoryIndex, setCommandHistoryIndex] = useState<number>(-1);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [sessionDuration, setSessionDuration] = useState<string>("00:00");
+  const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
@@ -176,12 +181,56 @@ function App() {
     // Initialize network when app starts
     initializeNetwork();
 
+    // Load saved preferences
+    const savedTheme = localStorage.getItem("terminal-theme");
+    const savedFontSize = localStorage.getItem("terminal-font-size");
+    const savedFontFamily = localStorage.getItem("terminal-font-family");
+
+    if (savedTheme && themes[savedTheme]) {
+      setCurrentTheme(savedTheme);
+    }
+    if (savedFontSize) {
+      setFontSize(Number(savedFontSize));
+    }
+    if (savedFontFamily) {
+      setFontFamily(savedFontFamily);
+    }
+
     return () => {
       if (terminal.current) {
         terminal.current.dispose();
       }
     };
   }, []);
+
+  useEffect(() => {
+    // Save preferences to localStorage
+    localStorage.setItem("terminal-theme", currentTheme);
+    localStorage.setItem("terminal-font-size", fontSize.toString());
+    localStorage.setItem("terminal-font-family", fontFamily);
+  }, [currentTheme, fontSize, fontFamily]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+
+    if (sessionStartTime && isConnected) {
+      interval = setInterval(() => {
+        const now = Date.now();
+        const duration = Math.floor((now - sessionStartTime) / 1000);
+        const minutes = Math.floor(duration / 60);
+        const seconds = duration % 60;
+        setSessionDuration(
+          `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`,
+        );
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [sessionStartTime, isConnected]);
 
   const initializeNetwork = async () => {
     try {
@@ -197,7 +246,7 @@ function App() {
     if (!terminalRef.current) return;
 
     const theme = themes[currentTheme];
-    
+
     terminal.current = new Terminal({
       theme: {
         background: theme.background,
@@ -330,35 +379,33 @@ function App() {
       // Listen for terminal events using the actual session ID
       const eventName = `terminal-event-${actualSessionId}`;
       console.log(`Listening for events: ${eventName}`);
-      
-      const unlisten = await listen<TerminalEvent>(
-        eventName,
-        (event) => {
-          console.log("Received terminal event:", event);
-          const terminalEvent = event.payload;
 
-          if (terminal.current) {
-            if (terminalEvent.event_type === "Output") {
-              console.log("Writing output to terminal:", terminalEvent.data);
-              terminal.current.write(terminalEvent.data);
-            } else if (terminalEvent.event_type === "Start") {
-              terminal.current.writeln(
-                `🎬 Session started: ${terminalEvent.data}`,
-              );
-              setStatus("Connected");
-            } else if (terminalEvent.event_type === "End") {
-              terminal.current.writeln("\r\n🛑 Session ended");
-              setStatus("Session ended");
-              setIsConnected(false);
-            }
+      const unlisten = await listen<TerminalEvent>(eventName, (event) => {
+        console.log("Received terminal event:", event);
+        const terminalEvent = event.payload;
+
+        if (terminal.current) {
+          if (terminalEvent.event_type === "Output") {
+            console.log("Writing output to terminal:", terminalEvent.data);
+            terminal.current.write(terminalEvent.data);
+          } else if (terminalEvent.event_type === "Start") {
+            terminal.current.writeln(
+              `🎬 Session started: ${terminalEvent.data}`,
+            );
+            setStatus("Connected");
+          } else if (terminalEvent.event_type === "End") {
+            terminal.current.writeln("\r\n🛑 Session ended");
+            setStatus("Session ended");
+            setIsConnected(false);
           }
-        },
-      );
+        }
+      });
 
       // Set the session ID for later use
       setSessionId(actualSessionId);
 
       setIsConnected(true);
+      setSessionStartTime(Date.now());
       setStatus("Connecting...");
 
       // Store the unlisten function for cleanup
@@ -395,9 +442,12 @@ function App() {
       }
 
       setIsConnected(false);
+      setSessionStartTime(null);
+      setSessionDuration("00:00");
       setStatus("Disconnected");
       setNodeAddress("");
       setSessionId("");
+      setTerminalOutput([]);
     } catch (error) {
       console.error("Disconnect failed:", error);
     }
@@ -407,8 +457,8 @@ function App() {
     if (!isConnected || !sessionId || !command.trim()) return;
 
     // Add command to history
-    setCommandHistory(prev => [...prev, command]);
-    
+    setCommandHistory((prev) => [...prev, command]);
+
     // Display command in terminal
     if (terminal.current) {
       terminal.current.writeln(`$ ${command}`);
@@ -420,7 +470,7 @@ function App() {
         command: command,
         sessionId: sessionId,
       });
-      
+
       setCommandInput("");
     } catch (error) {
       console.error("Failed to execute command:", error);
@@ -459,41 +509,44 @@ function App() {
     }
   };
 
-  const handleGlobalKeyDown = useCallback((e: KeyboardEvent) => {
-    // Ctrl+K: Clear terminal
-    if (e.ctrlKey && e.key === 'k' && terminal.current) {
-      e.preventDefault();
-      terminal.current.clear();
-    }
-    // Ctrl+L: Clear terminal (alternative)
-    else if (e.ctrlKey && e.key === 'l' && terminal.current) {
-      e.preventDefault();
-      terminal.current.clear();
-    }
-    // Ctrl+F: Open find dialog
-    else if (e.ctrlKey && e.key === 'f' && terminal.current) {
-      e.preventDefault();
-      const searchTerm = prompt('Search terminal:');
-      if (searchTerm && searchAddon.current) {
-        searchAddon.current.findNext(searchTerm);
+  const handleGlobalKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      // Ctrl+K: Clear terminal
+      if (e.ctrlKey && e.key === "k" && terminal.current) {
+        e.preventDefault();
+        terminal.current.clear();
       }
-    }
-    // Ctrl+T: Toggle settings
-    else if (e.ctrlKey && e.key === 't') {
-      e.preventDefault();
-      setShowSettings(!showSettings);
-    }
-    // Ctrl+N: New session
-    else if (e.ctrlKey && e.key === 'n') {
-      e.preventDefault();
-      handleDisconnect();
-    }
-  }, [showSettings]);
+      // Ctrl+L: Clear terminal (alternative)
+      else if (e.ctrlKey && e.key === "l" && terminal.current) {
+        e.preventDefault();
+        terminal.current.clear();
+      }
+      // Ctrl+F: Open find dialog
+      else if (e.ctrlKey && e.key === "f" && terminal.current) {
+        e.preventDefault();
+        const searchTerm = prompt("Search terminal:");
+        if (searchTerm && searchAddon.current) {
+          searchAddon.current.findNext(searchTerm);
+        }
+      }
+      // Ctrl+T: Toggle settings
+      else if (e.ctrlKey && e.key === "t") {
+        e.preventDefault();
+        setShowSettings(!showSettings);
+      }
+      // Ctrl+N: New session
+      else if (e.ctrlKey && e.key === "n") {
+        e.preventDefault();
+        handleDisconnect();
+      }
+    },
+    [showSettings],
+  );
 
   useEffect(() => {
-    window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener("keydown", handleGlobalKeyDown);
     return () => {
-      window.removeEventListener('keydown', handleGlobalKeyDown);
+      window.removeEventListener("keydown", handleGlobalKeyDown);
     };
   }, [handleGlobalKeyDown]);
 
@@ -506,13 +559,13 @@ function App() {
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
       if (terminal.current) {
-        terminal.current.writeln('\r\n✓ Copied to clipboard');
+        terminal.current.writeln("\r\n✓ Copied to clipboard");
       }
     });
   };
 
-  const filteredCommandHistory = commandHistory.filter(cmd => 
-    cmd.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredCommandHistory = commandHistory.filter((cmd) =>
+    cmd.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   if (!isConnected) {
@@ -521,7 +574,7 @@ function App() {
         <div className="connection-form">
           <div className="header">
             <h1>🌐 RiTerm - Remote Terminal</h1>
-            <button 
+            <button
               className="settings-btn"
               onClick={() => setShowSettings(!showSettings)}
               title="Settings"
@@ -529,48 +582,50 @@ function App() {
               ⚙️
             </button>
           </div>
-          
+
           {showSettings && (
             <div className="settings-panel">
               <h3>Settings</h3>
               <div className="setting-group">
                 <label>Theme:</label>
-                <select 
-                  value={currentTheme} 
+                <select
+                  value={currentTheme}
                   onChange={(e) => setCurrentTheme(e.target.value)}
                 >
                   {Object.entries(themes).map(([key, theme]) => (
-                    <option key={key} value={key}>{theme.name}</option>
+                    <option key={key} value={key}>
+                      {theme.name}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="setting-group">
                 <label>Font Size:</label>
-                <input 
-                  type="range" 
-                  min="10" 
-                  max="24" 
-                  value={fontSize} 
+                <input
+                  type="range"
+                  min="10"
+                  max="24"
+                  value={fontSize}
                   onChange={(e) => setFontSize(Number(e.target.value))}
                 />
                 <span>{fontSize}px</span>
               </div>
               <div className="setting-group">
                 <label>Font Family:</label>
-                <select 
-                  value={fontFamily} 
+                <select
+                  value={fontFamily}
                   onChange={(e) => setFontFamily(e.target.value)}
                 >
                   {fontFamilies.map((font, index) => (
                     <option key={index} value={font}>
-                      {font.split(',')[0].replace(/"/g, '')}
+                      {font.split(",")[0].replace(/"/g, "")}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
           )}
-          
+
           <div className="form-group">
             <label htmlFor="nodeAddress">Session Ticket:</label>
             <input
@@ -583,15 +638,20 @@ function App() {
             />
           </div>
           <button
-            className="connect-btn"
+            className="connect-btn ripple"
             onClick={handleConnect}
             disabled={connecting || !nodeAddress.trim()}
           >
-            {connecting ? "Connecting..." : "Connect"}
+            {connecting ? (
+              <>
+                <span className="loading-spinner"></span>
+                <span>Connecting...</span>
+              </>
+            ) : (
+              <span>Connect</span>
+            )}
           </button>
-          <div className="status-text">
-            Status: {status}
-          </div>
+          <div className="status-text">Status: {status}</div>
           <div className="shortcuts-hint">
             <strong>Keyboard Shortcuts:</strong>
             <div>Ctrl+T: Toggle Settings</div>
@@ -606,12 +666,26 @@ function App() {
   return (
     <div className="app">
       <div className="status-bar">
-        <div className={`status ${isConnected ? "status-connected" : "status-disconnected"}`}>
+        <div
+          className={`status ${isConnected ? "status-connected" : "status-disconnected"}`}
+        >
           <span className="status-indicator"></span>
-          {status} | Session: {sessionId.substring(0, 8)}...
+          <div className="status-info">
+            <span>{status}</span>
+            {isConnected && (
+              <>
+                <span className="session-separator">•</span>
+                <span className="session-id">
+                  Session: {sessionId.substring(0, 8)}...
+                </span>
+                <span className="session-separator">•</span>
+                <span className="session-duration">⏱️ {sessionDuration}</span>
+              </>
+            )}
+          </div>
         </div>
         <div className="status-controls">
-          <button 
+          <button
             className="settings-btn"
             onClick={() => setShowSettings(!showSettings)}
             title="Settings (Ctrl+T)"
@@ -623,12 +697,12 @@ function App() {
           </button>
         </div>
       </div>
-      
+
       {showSettings && (
         <div className="settings-panel">
           <div className="settings-header">
             <h3>⚙️ Settings</h3>
-            <button 
+            <button
               className="close-btn"
               onClick={() => setShowSettings(false)}
             >
@@ -638,35 +712,37 @@ function App() {
           <div className="settings-content">
             <div className="setting-group">
               <label>Theme:</label>
-              <select 
-                value={currentTheme} 
+              <select
+                value={currentTheme}
                 onChange={(e) => setCurrentTheme(e.target.value)}
               >
                 {Object.entries(themes).map(([key, theme]) => (
-                  <option key={key} value={key}>{theme.name}</option>
+                  <option key={key} value={key}>
+                    {theme.name}
+                  </option>
                 ))}
               </select>
             </div>
             <div className="setting-group">
               <label>Font Size:</label>
-              <input 
-                type="range" 
-                min="10" 
-                max="24" 
-                value={fontSize} 
+              <input
+                type="range"
+                min="10"
+                max="24"
+                value={fontSize}
                 onChange={(e) => setFontSize(Number(e.target.value))}
               />
               <span>{fontSize}px</span>
             </div>
             <div className="setting-group">
               <label>Font Family:</label>
-              <select 
-                value={fontFamily} 
+              <select
+                value={fontFamily}
                 onChange={(e) => setFontFamily(e.target.value)}
               >
                 {fontFamilies.map((font, index) => (
                   <option key={index} value={font}>
-                    {font.split(',')[0].replace(/"/g, '')}
+                    {font.split(",")[0].replace(/"/g, "")}
                   </option>
                 ))}
               </select>
@@ -674,11 +750,11 @@ function App() {
           </div>
         </div>
       )}
-      
+
       <div className="terminal-container">
         <div ref={terminalRef} className="terminal" />
       </div>
-      
+
       <div className="command-section">
         <div className="command-input-container">
           <form onSubmit={handleCommandSubmit} className="command-form">
@@ -698,16 +774,17 @@ function App() {
                 autoFocus
               />
             </div>
-            <button 
-              type="submit" 
-              className="execute-btn"
+            <button
+              type="submit"
+              className="execute-btn ripple"
               disabled={!isConnected || !commandInput.trim()}
               title="Execute command"
             >
-              ▶
+              <span>▶</span>
+              <span>Execute</span>
             </button>
           </form>
-          
+
           {commandHistory.length > 0 && (
             <div className="command-history-panel">
               <div className="history-header">
@@ -720,7 +797,7 @@ function App() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="history-search"
                   />
-                  <button 
+                  <button
                     onClick={clearCommandHistory}
                     className="clear-history-btn"
                     title="Clear history"
@@ -730,33 +807,36 @@ function App() {
                 </div>
               </div>
               <div className="history-list">
-                {filteredCommandHistory.slice(-20).reverse().map((cmd, index) => (
-                  <div 
-                    key={index} 
-                    className="history-item"
-                    onClick={() => {
-                      setCommandInput(cmd);
-                      setSearchQuery("");
-                    }}
-                  >
-                    <span className="history-cmd">{cmd}</span>
-                    <button 
-                      className="copy-cmd-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        copyToClipboard(cmd);
+                {filteredCommandHistory
+                  .slice(-20)
+                  .reverse()
+                  .map((cmd, index) => (
+                    <div
+                      key={index}
+                      className="history-item"
+                      onClick={() => {
+                        setCommandInput(cmd);
+                        setSearchQuery("");
                       }}
-                      title="Copy command"
                     >
-                      📋
-                    </button>
-                  </div>
-                ))}
+                      <span className="history-cmd">{cmd}</span>
+                      <button
+                        className="copy-cmd-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyToClipboard(cmd);
+                        }}
+                        title="Copy command"
+                      >
+                        📋
+                      </button>
+                    </div>
+                  ))}
               </div>
             </div>
           )}
         </div>
-        
+
         <div className="shortcuts-bar">
           <div className="shortcuts-hint">
             <strong>Shortcuts:</strong>

@@ -1,17 +1,17 @@
 use anyhow::Result;
 use futures::StreamExt;
-use iroh::{Endpoint, NodeAddr, NodeId, protocol::Router};
+use iroh::{protocol::Router, Endpoint, NodeAddr, NodeId};
 use iroh_gossip::{
     api::{Event, GossipReceiver, GossipSender},
     net::Gossip,
     proto::TopicId,
 };
-use url::Url;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{RwLock, broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, RwLock};
 use tracing::{debug, error, info, warn};
+use url::Url;
 
 use crate::terminal_events::TerminalEvent;
 
@@ -144,10 +144,7 @@ impl P2PNetwork {
                 .await?
         } else {
             info!("Using default n0 relay server");
-            endpoint_builder
-                .discovery_n0()
-                .bind()
-                .await?
+            endpoint_builder.discovery_n0().bind().await?
         };
 
         let node_id = endpoint.node_id();
