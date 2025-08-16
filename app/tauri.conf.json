@@ -4,19 +4,20 @@
   "version": "0.1.0",
   "identifier": "com.riterm.app",
   "build": {
-    "beforeBuildCommand": "npm run build",
-    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "frontendDist": "../../dist"
+    "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
         "title": "RiTerm - Remote Terminal",
-        "width": 800,
-        "height": 600,
+        "width": 960,
+        "height": 640,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "titleBarStyle": "Overlay"
       }
     ],
     "security": {
@@ -38,4 +39,3 @@
     "targets": "all"
   }
 }
-

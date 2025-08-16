@@ -1,0 +1,736 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+src/
+  lib.rs
+  main.rs
+Cargo.toml
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/lib.rs">
+use std::{
+    collections::HashMap,
+    fmt,
+    net::{Ipv4Addr, SocketAddrV4},
+    str::FromStr,
+    sync::Arc,
+};
+
+#[derive(Debug, serde::Serialize)]
+pub struct IrohInfo {
+    pub node_id: Option<String>,
+    pub topic: Option<String>,
+    pub ticket: Option<String>,
+}
+
+use bytes::Bytes;
+use clap::Parser;
+use ed25519_dalek::Signature;
+use futures_lite::StreamExt;
+use iroh::{Endpoint, NodeAddr, PublicKey, RelayMode, RelayUrl, SecretKey, Watcher};
+use iroh_gossip::{
+    api::{Event, GossipReceiver},
+    net::{GOSSIP_ALPN, Gossip},
+    proto::TopicId,
+};
+use lazy_static::lazy_static;
+use n0_future::task;
+use n0_snafu::{Result, ResultExt};
+use serde::{Deserialize, Serialize};
+use snafu::whatever;
+use tokio::sync::Mutex as TokioMutex;
+
+// 全局变量用于保存IROH连接和相关资源
+lazy_static! {
+    static ref IROH_ENDPOINT: TokioMutex<Option<Arc<Endpoint>>> = TokioMutex::new(None);
+    static ref IROH_GOSSIP: TokioMutex<Option<Arc<Gossip>>> = TokioMutex::new(None);
+    static ref IROH_ROUTER: TokioMutex<Option<iroh::protocol::Router>> = TokioMutex::new(None);
+    static ref RUNNING: TokioMutex<bool> = TokioMutex::new(false);
+    static ref CURRENT_TOPIC: TokioMutex<Option<TopicId>> = TokioMutex::new(None);
+    static ref CURRENT_TICKET: TokioMutex<Option<String>> = TokioMutex::new(None);
+}
+
+/// Chat over iroh-gossip
+///
+/// This broadcasts signed messages over iroh-gossip and verifies signatures
+/// on received messages.
+#[derive(Parser, Debug)]
+pub struct Args {
+    /// secret key to derive our node id from.
+    #[clap(long)]
+    pub secret_key: Option<String>,
+    /// Set a custom relay server. By default, the relay server hosted by n0 will be used.
+    #[clap(short, long)]
+    pub relay: Option<RelayUrl>,
+    /// Disable relay completely.
+    #[clap(long)]
+    pub no_relay: bool,
+    /// Set your nickname.
+    #[clap(short, long)]
+    pub name: Option<String>,
+    /// Set the bind port for our socket. By default, a random port will be used.
+    #[clap(short, long, default_value = "0")]
+    pub bind_port: u16,
+    #[clap(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Parser, Debug)]
+pub enum Command {
+    /// Open a chat room for a topic and print a ticket for others to join.
+    ///
+    /// If no topic is provided, a new topic will be created.
+    Open {
+        /// Optionally set the topic id (64 bytes, as hex string).
+        topic: Option<TopicId>,
+    },
+    /// Join a chat room from a ticket.
+    Join {
+        /// The ticket, as base32 string.
+        ticket: String,
+    },
+}
+
+/// Open a chat room
+pub async fn open(
+    topic: Option<TopicId>,
+    secret_key: Option<String>,
+    relay: Option<RelayUrl>,
+    no_relay: bool,
+    name: Option<String>,
+    bind_port: u16,
+) -> Result<(TopicId, String, String)> {
+    tracing_subscriber::fmt::init();
+
+    let topic = topic.unwrap_or_else(|| TopicId::from_bytes(rand::random()));
+    println!("> opening chat room for topic {topic}");
+
+    let node_id = run_chat(
+        topic,
+        vec![],
+        secret_key,
+        relay,
+        no_relay,
+        name,
+        bind_port,
+        true,
+    )
+    .await?;
+
+    // 等待一下确保 endpoint 已经保存
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    let ticket = {
+        let endpoint_guard = IROH_ENDPOINT.lock().await;
+        if let Some(endpoint) = endpoint_guard.as_ref() {
+            let me = endpoint.node_addr().initialized().await;
+            Ticket {
+                topic,
+                peers: vec![me],
+            }
+            .to_string()
+        } else {
+            String::new()
+        }
+    };
+
+    // 保存 ticket 到全局变量
+    *CURRENT_TICKET.lock().await = Some(ticket.clone());
+
+    // 打印二维码显示 ticket 值
+    print_qr_code(&ticket);
+
+    Ok((topic, node_id, ticket))
+}
+
+/// Join a chat room from a ticket
+pub async fn join(
+    ticket: String,
+    secret_key: Option<String>,
+    relay: Option<RelayUrl>,
+    no_relay: bool,
+    name: Option<String>,
+    bind_port: u16,
+) -> Result<()> {
+    tracing_subscriber::fmt::init();
+
+    let Ticket { topic, peers } = Ticket::from_str(&ticket)?;
+    println!("> joining chat room for topic {topic}");
+
+    let _node_id = run_chat(
+        topic, peers, secret_key, relay, no_relay, name, bind_port, true,
+    )
+    .await?;
+    Ok(())
+}
+
+/// Core chat functionality
+async fn run_chat(
+    topic: TopicId,
+    peers: Vec<NodeAddr>,
+    secret_key_opt: Option<String>,
+    relay: Option<RelayUrl>,
+    no_relay: bool,
+    name: Option<String>,
+    bind_port: u16,
+    api_mode: bool,
+) -> Result<String> {
+    println!(
+        "DEBUG: run_chat called with topic: {}, api_mode: {}",
+        topic, api_mode
+    );
+    // parse or generate our secret key
+    let secret_key = match secret_key_opt {
+        None => SecretKey::generate(&mut rand::rngs::OsRng),
+        Some(key) => key.parse()?,
+    };
+    println!(
+        "> our secret key: {}",
+        data_encoding::HEXLOWER.encode(&secret_key.to_bytes())
+    );
+
+    // configure our relay map
+    let relay_mode = match (no_relay, relay) {
+        (false, None) => RelayMode::Default,
+        (false, Some(url)) => RelayMode::Custom(url.into()),
+        (true, None) => RelayMode::Disabled,
+        (true, Some(_)) => {
+            whatever!("You cannot set --no-relay and --relay at the same time")
+        }
+    };
+    println!("> using relay servers: {}", fmt_relay_mode(&relay_mode));
+
+    // build our magic endpoint
+    let endpoint = Endpoint::builder()
+        .secret_key(secret_key)
+        .relay_mode(relay_mode)
+        .bind_addr_v4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, bind_port))
+        .bind()
+        .await?;
+    println!("> our node id: {}", endpoint.node_id());
+
+    // create the gossip protocol
+    let gossip = Gossip::builder().spawn(endpoint.clone());
+
+    // print a ticket that includes our own node id and endpoint addresses
+    let ticket = {
+        let me = endpoint.node_addr().initialized().await;
+        let peers = peers.iter().cloned().chain([me]).collect();
+        Ticket { topic, peers }
+    };
+    println!("> ticket to join us: {ticket}");
+
+    // 打印二维码显示 ticket 值
+    print_qr_code(&ticket.to_string());
+
+    // setup router
+    let router = iroh::protocol::Router::builder(endpoint.clone())
+        .accept(GOSSIP_ALPN, gossip.clone())
+        .spawn();
+
+    // join the gossip topic by connecting to known peers, if any
+    let peer_ids: Vec<PublicKey> = peers.iter().map(|p| p.node_id).collect();
+    let is_empty = peers.is_empty();
+
+    if is_empty {
+        if api_mode {
+            println!("DEBUG: API mode - skipping peer wait");
+        } else {
+            println!("> waiting for peers to join us...");
+        }
+    } else {
+        println!("> trying to connect to {} peers...", peers.len());
+        // add the peer addrs from the ticket to our endpoint's addressbook so that they can be dialed
+        for peer in peers.into_iter() {
+            endpoint.add_node_addr(peer)?;
+        }
+    };
+
+    let (sender, receiver) = if api_mode && is_empty {
+        println!("DEBUG: API mode - creating sender/receiver without waiting");
+        // In API mode with no peers, just create the channel without waiting
+        gossip.subscribe(topic, peer_ids).await?.split()
+    } else {
+        println!("DEBUG: About to call subscribe_and_join");
+        let (s, r) = gossip.subscribe_and_join(topic, peer_ids).await?.split();
+        println!("> connected!");
+        (s, r)
+    };
+
+    // 保存到全局变量
+    println!("DEBUG: About to save to global variables");
+    *IROH_ENDPOINT.lock().await = Some(Arc::new(endpoint.clone()));
+    println!("DEBUG: Saved endpoint to global variable");
+
+    *IROH_GOSSIP.lock().await = Some(Arc::new(gossip.clone()));
+    println!("DEBUG: Saved gossip to global variable");
+
+    *IROH_ROUTER.lock().await = Some(router.clone());
+    println!("DEBUG: Saved router to global variable");
+
+    *RUNNING.lock().await = true;
+    println!("DEBUG: Set running to true");
+
+    *CURRENT_TOPIC.lock().await = Some(topic);
+    println!("DEBUG: Saved topic to global variable");
+
+    // 保存 ticket
+    let ticket_str = ticket.to_string();
+    println!("DEBUG: Saved ticket to global variable: {}", ticket_str);
+    *CURRENT_TICKET.lock().await = Some(ticket_str);
+
+    println!("DEBUG: All global variables saved");
+
+    // broadcast our name, if set
+    if let Some(name) = name {
+        let message = Message::AboutMe { name };
+        let encoded_message = SignedMessage::sign_and_encode(endpoint.secret_key(), &message)?;
+        sender.broadcast(encoded_message).await?;
+    }
+
+    // subscribe and print loop
+    task::spawn(subscribe_loop(receiver));
+
+    // spawn an input thread that reads stdin (only in non-API mode)
+    if !api_mode {
+        let (line_tx, mut line_rx) = tokio::sync::mpsc::channel(1);
+        std::thread::spawn(move || input_loop(line_tx));
+
+        // broadcast each line we type
+        println!("> type a message and hit enter to broadcast...");
+        while let Some(text) = line_rx.recv().await {
+            // 检查是否仍在运行
+            let is_running = *RUNNING.lock().await;
+
+            if !is_running {
+                break;
+            }
+
+            let node_id = endpoint.node_id().to_string();
+            let message = Message::Message {
+                text: text.clone(),
+                node_id: Some(node_id),
+            };
+            let encoded_message = SignedMessage::sign_and_encode(endpoint.secret_key(), &message)?;
+            sender.broadcast(encoded_message).await?;
+            println!("> sent: {text}");
+        }
+    } else {
+        // In API mode, just keep the connection alive
+        println!("DEBUG: API mode - keeping connection alive");
+        // Keep the sender alive by holding it
+        std::future::pending::<()>().await;
+    }
+
+    // shutdown
+    close().await;
+
+    Ok(endpoint.node_id().to_string())
+}
+
+async fn subscribe_loop(mut receiver: GossipReceiver) -> Result<()> {
+    // init a peerid -> name hashmap
+    let mut names = HashMap::new();
+    while let Some(event) = receiver.try_next().await? {
+        if let Event::Received(msg) = event {
+            let (from, message) = SignedMessage::verify_and_decode(&msg.content)?;
+            match message {
+                Message::AboutMe { name } => {
+                    names.insert(from, name.clone());
+                    println!("> {} is now known as {}", from.fmt_short(), name);
+                }
+                Message::Message { text, node_id } => {
+                    let name = names
+                        .get(&from)
+                        .map_or_else(|| from.fmt_short(), String::to_string);
+                    if let Some(id) = node_id {
+                        println!("{name} ({id}): {text}");
+                    } else {
+                        println!("{name}: {text}");
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn input_loop(line_tx: tokio::sync::mpsc::Sender<String>) -> Result<()> {
+    let mut buffer = String::new();
+    let stdin = std::io::stdin(); // We get `Stdin` here.
+    loop {
+        stdin.read_line(&mut buffer).e()?;
+        line_tx.blocking_send(buffer.clone()).e()?;
+        buffer.clear();
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SignedMessage {
+    from: PublicKey,
+    data: Bytes,
+    signature: Signature,
+}
+
+impl SignedMessage {
+    pub fn verify_and_decode(bytes: &[u8]) -> Result<(PublicKey, Message)> {
+        let signed_message: Self = postcard::from_bytes(bytes).e()?;
+        let key: PublicKey = signed_message.from;
+        key.verify(&signed_message.data, &signed_message.signature)
+            .e()?;
+        let message: Message = postcard::from_bytes(&signed_message.data).e()?;
+        Ok((signed_message.from, message))
+    }
+
+    pub fn sign_and_encode(secret_key: &SecretKey, message: &Message) -> Result<Bytes> {
+        let data: Bytes = postcard::to_stdvec(&message).e()?.into();
+        let signature = secret_key.sign(&data);
+        let from: PublicKey = secret_key.public();
+        let signed_message = Self {
+            from,
+            data,
+            signature,
+        };
+        let encoded = postcard::to_stdvec(&signed_message).e()?;
+        Ok(encoded.into())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Message {
+    AboutMe {
+        name: String,
+    },
+    Message {
+        text: String,
+        node_id: Option<String>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Ticket {
+    pub topic: TopicId,
+    pub peers: Vec<NodeAddr>,
+}
+
+impl Ticket {
+    /// Deserializes from bytes.
+    fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        postcard::from_bytes(bytes).e()
+    }
+    /// Serializes to bytes.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        postcard::to_stdvec(self).expect("postcard::to_stdvec is infallible")
+    }
+}
+
+/// Serializes to base32.
+impl fmt::Display for Ticket {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut text = data_encoding::BASE32_NOPAD.encode(&self.to_bytes()[..]);
+        text.make_ascii_lowercase();
+        write!(f, "{text}")
+    }
+}
+
+/// Deserializes from base32.
+impl FromStr for Ticket {
+    type Err = n0_snafu::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let bytes = data_encoding::BASE32_NOPAD
+            .decode(s.to_ascii_uppercase().as_bytes())
+            .e()?;
+        Self::from_bytes(&bytes)
+    }
+}
+
+/// 关闭IROH连接和相关资源
+pub async fn close() {
+    // 获取运行状态
+    let is_running = *RUNNING.lock().await;
+    if !is_running {
+        return;
+    }
+
+    println!("> closing iroh connections...");
+
+    // 设置运行状态为false
+    *RUNNING.lock().await = false;
+
+    // 关闭router
+    let mut router = IROH_ROUTER.lock().await;
+    if let Some(router_instance) = router.take() {
+        if let Err(e) = router_instance.shutdown().await {
+            eprintln!("> error shutting down router: {:?}", e);
+        }
+    }
+
+    // 清理其他资源
+    *IROH_ENDPOINT.lock().await = None;
+    *IROH_GOSSIP.lock().await = None;
+    *CURRENT_TOPIC.lock().await = None;
+    *CURRENT_TICKET.lock().await = None;
+
+    println!("> all connections closed");
+}
+
+/// 检查IROH连接是否正在运行
+pub async fn is_running() -> bool {
+    *RUNNING.lock().await
+}
+
+/// 发送消息到当前话题
+pub async fn send_message(text: String, target_node_id: Option<String>) -> Result<()> {
+    // 检查是否正在运行
+    let is_running = *RUNNING.lock().await;
+    if !is_running {
+        return Err(n0_snafu::Error::anyhow(anyhow::anyhow!(
+            "IROH is not running"
+        )));
+    }
+
+    // 获取全局gossip实例
+    let gossip_guard = IROH_GOSSIP.lock().await;
+    let gossip = match gossip_guard.as_ref() {
+        Some(gossip) => gossip.clone(),
+        None => {
+            return Err(n0_snafu::Error::anyhow(anyhow::anyhow!(
+                "Gossip not initialized"
+            )));
+        }
+    };
+
+    // 获取当前话题
+    let topic_guard = CURRENT_TOPIC.lock().await;
+    let topic = match topic_guard.as_ref() {
+        Some(topic) => *topic,
+        None => return Err(n0_snafu::Error::anyhow(anyhow::anyhow!("No current topic"))),
+    };
+
+    // 获取endpoint以获取node_id和secret_key
+    let endpoint_guard = IROH_ENDPOINT.lock().await;
+    let endpoint = match endpoint_guard.as_ref() {
+        Some(endpoint) => endpoint.clone(),
+        None => {
+            return Err(n0_snafu::Error::anyhow(anyhow::anyhow!(
+                "Endpoint not initialized"
+            )));
+        }
+    };
+
+    // 订阅话题以获取发送者
+    let (sender, _receiver) = gossip.subscribe(topic, vec![]).await?.split();
+
+    // 创建消息
+    let message = Message::Message {
+        text,
+        node_id: target_node_id,
+    };
+
+    // 签名并编码消息
+    let encoded_message = SignedMessage::sign_and_encode(endpoint.secret_key(), &message)?;
+
+    // 广播消息
+    sender.broadcast(encoded_message).await?;
+
+    Ok(())
+}
+
+/// 获取IROH节点信息
+pub async fn get_node_info() -> Result<IrohInfo> {
+    println!("DEBUG: get_node_info called");
+
+    let node_id_guard = IROH_ENDPOINT.lock().await;
+    let node_id = match node_id_guard.as_ref() {
+        Some(endpoint) => {
+            let id = endpoint.node_id().to_string();
+            println!("DEBUG: Got node_id: {}", id);
+            Some(id)
+        }
+        None => {
+            println!("DEBUG: endpoint_guard is None");
+            None
+        }
+    };
+
+    let topic_guard = CURRENT_TOPIC.lock().await;
+    let topic = match topic_guard.as_ref() {
+        Some(t) => {
+            let topic_str = t.to_string();
+            println!("DEBUG: Got topic: {}", topic_str);
+            Some(topic_str)
+        }
+        None => {
+            println!("DEBUG: topic_guard is None");
+            None
+        }
+    };
+
+    let ticket_guard = CURRENT_TICKET.lock().await;
+    let ticket = ticket_guard.clone();
+    println!("DEBUG: Got ticket: {:?}", ticket);
+
+    Ok(IrohInfo {
+        node_id,
+        topic,
+        ticket,
+    })
+}
+
+// helpers
+
+fn fmt_relay_mode(relay_mode: &RelayMode) -> String {
+    match relay_mode {
+        RelayMode::Disabled => "None".to_string(),
+        RelayMode::Default => "Default Relay (production) servers".to_string(),
+        RelayMode::Staging => "Default Relay (staging) servers".to_string(),
+        RelayMode::Custom(map) => map
+            .urls()
+            .map(|url| url.to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
+    }
+}
+
+/// 打印二维码显示 ticket 值
+fn print_qr_code(ticket: &str) {
+    use qrcode::QrCode;
+    use std::println;
+
+    match QrCode::new(ticket.as_bytes()) {
+        Ok(qr_code) => {
+            let qr_string = qr_code
+                .render::<char>()
+                .quiet_zone(true)
+                .module_dimensions(2, 1)
+                .build();
+            println!("> ticket QR code:");
+            println!("\n{}\n", qr_string);
+            println!("> Scan the QR code above to join this chat room");
+        }
+        Err(e) => {
+            eprintln!("Failed to generate QR code: {}", e);
+        }
+    }
+}
+</file>
+
+<file path="src/main.rs">
+use clap::Parser;
+use iroh_app::{Args, Command};
+use n0_snafu::Result;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let args = Args::parse();
+
+    // parse the cli command and call the appropriate function
+    match &args.command {
+        Command::Open { topic } => {
+            iroh_app::open(
+                *topic,
+                args.secret_key,
+                args.relay,
+                args.no_relay,
+                args.name,
+                args.bind_port,
+            )
+            .await?;
+        }
+        Command::Join { ticket } => {
+            iroh_app::join(
+                ticket.clone(),
+                args.secret_key,
+                args.relay,
+                args.no_relay,
+                args.name,
+                args.bind_port,
+            )
+            .await?;
+        }
+    }
+
+    Ok(())
+}
+</file>
+
+<file path="Cargo.toml">
+[package]
+name = "iroh-app"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "iroh-app"
+path = "src/main.rs"
+
+[lib]
+name = "iroh_app"
+path = "src/lib.rs"
+
+[dependencies]
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+anyhow = { workspace = true }
+bytes = "1.10.1"
+clap = { version = "4.5.43", features = ["derive"] }
+data-encoding = "2.9.0"
+ed25519-dalek = "2.2.0"
+futures-lite = "2.6.1"
+iroh = "0.91.1"
+iroh-gossip = "0.91.0"
+n0-future = "0.2.0"
+n0-snafu = "0.2.1"
+postcard = "1.1.3"
+rand = { version = "0.8", features = ["std_rng"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+snafu = "0.8.6"
+tokio = "1.47.1"
+tracing = { workspace = true }
+lazy_static = "1.4"
+qrcode = "0.14"
+</file>
+
+</files>

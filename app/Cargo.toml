@@ -1,27 +1,30 @@
 [package]
 name = "app"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
-[[bin]]
-name = "riterm"
-path = "src-tauri/src/main.rs"
+[lib]
+name = "riterm_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.0", features = [] }
+tauri-build = { version = "2.0.0-alpha.2", features = [] }
 
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
-tauri = { workspace = true }
+tauri = { version = "2.0.0-alpha.4", features = [] }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 iroh = { workspace = true }
+iroh-gossip = { workspace = true }
 futures = { workspace = true }
+data-encoding = "2.6"
+rand = { workspace = true }
+url = "2.5"
 
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
-

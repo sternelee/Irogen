@@ -41,6 +41,13 @@ pub struct NetworkConfig {
     pub relay_url: Option<String>,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct DirectedMessageRequest {
+    pub session_id: String,
+    pub target_node_id: String,
+    pub message: String,
+}
+
 #[tauri::command]
 async fn initialize_network(state: State<'_, AppState>) -> Result<String, String> {
     initialize_network_with_relay(None, state).await
@@ -165,6 +172,45 @@ async fn send_terminal_input(
 }
 
 #[tauri::command]
+async fn send_directed_message(
+    request: DirectedMessageRequest,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    // Clone the session sender to avoid holding the lock across await
+    let session_sender = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions
+            .get(&request.session_id)
+            .map(|s| s.sender.clone())
+            .ok_or("Session not found")?
+    };
+
+    // Parse target node ID
+    let target_node_id = request
+        .target_node_id
+        .parse()
+        .map_err(|e| format!("Invalid target node ID: {}", e))?;
+
+    // Send directed message
+    let network = {
+        let network_guard = state.network.lock().unwrap();
+        match network_guard.as_ref() {
+            Some(n) => n.clone(),
+            None => return Err("Network not initialized".to_string()),
+        }
+    };
+
+    if let Err(e) = network
+        .send_directed_message(&session_sender, target_node_id, request.message)
+        .await
+    {
+        return Err(format!("Failed to send directed message: {}", e));
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 async fn execute_remote_command(
     command: String,
     session_id: String,
@@ -235,6 +281,7 @@ pub fn run() {
             initialize_network_with_relay,
             connect_to_peer,
             send_terminal_input,
+            send_directed_message,
             execute_remote_command,
             disconnect_session,
             get_active_sessions,
@@ -244,3 +291,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

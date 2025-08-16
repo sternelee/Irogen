@@ -1,6 +1,6 @@
 use anyhow::Result;
 use futures::StreamExt;
-use iroh::{protocol::Router, Endpoint, NodeAddr, NodeId};
+use iroh::{Endpoint, NodeAddr, NodeId, protocol::Router};
 use iroh_gossip::{
     api::{Event, GossipReceiver, GossipSender},
     net::Gossip,
@@ -9,7 +9,7 @@ use iroh_gossip::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{RwLock, broadcast, mpsc};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
@@ -57,6 +57,13 @@ pub enum TerminalMessageBody {
     },
     /// Session ended
     SessionEnd { from: NodeId, timestamp: u64 },
+    /// Directed message to specific node
+    DirectedMessage {
+        from: NodeId,
+        to: NodeId,
+        data: String,
+        timestamp: u64,
+    },
 }
 
 impl TerminalMessage {
@@ -108,6 +115,7 @@ pub struct SharedSession {
     pub participants: Vec<String>,
     pub is_host: bool,
     pub event_sender: broadcast::Sender<TerminalEvent>,
+    pub node_id: NodeId, // Store the node ID for this session
 }
 
 pub struct P2PNetwork {
@@ -137,7 +145,7 @@ impl P2PNetwork {
         let endpoint = if let Some(relay) = relay_url {
             info!("Using custom relay server: {}", relay);
             // Parse the relay URL and use it for discovery
-            let relay_url: Url = relay.parse()?;
+            let _relay_url: Url = relay.parse()?;
             endpoint_builder
                 .discovery_n0() // Use default discovery for now, custom relay setup is more complex
                 .bind()
@@ -186,6 +194,7 @@ impl P2PNetwork {
             participants: vec![self.endpoint.node_id().to_string()],
             is_host: true,
             event_sender: event_sender.clone(),
+            node_id: self.endpoint.node_id(),
         };
 
         self.sessions
@@ -235,6 +244,7 @@ impl P2PNetwork {
             participants: vec![],
             is_host: false,
             event_sender: event_sender.clone(),
+            node_id: self.endpoint.node_id(),
         };
 
         self.sessions
@@ -281,6 +291,27 @@ impl P2PNetwork {
 
         let message = TerminalMessage::new(TerminalMessageBody::Input {
             from: self.endpoint.node_id(),
+            data,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        });
+
+        sender.broadcast(message.to_vec().into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_directed_message(
+        &self,
+        sender: &GossipSender,
+        to: NodeId,
+        data: String,
+    ) -> Result<()> {
+        debug!("Sending directed message to node: {}", to.fmt_short());
+
+        let message = TerminalMessage::new(TerminalMessageBody::DirectedMessage {
+            from: self.endpoint.node_id(),
+            to,
             data,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
@@ -344,18 +375,22 @@ impl P2PNetwork {
                         participants: v.participants.clone(),
                         is_host: v.is_host,
                         event_sender: v.event_sender.clone(),
+                        node_id: v.node_id,
                     },
                 );
             }
             Arc::new(RwLock::new(new_sessions))
         };
 
+        let endpoint = self.endpoint.clone();
+
         tokio::spawn(async move {
             while let Some(event) = receiver.next().await {
                 if let Ok(Event::Received(msg)) = event {
                     if let Ok(message) = TerminalMessage::from_bytes(&msg.content) {
                         if let Err(e) =
-                            Self::handle_gossip_message(&sessions, &session_id, message).await
+                            Self::handle_gossip_message(&sessions, &session_id, message, &endpoint)
+                                .await
                         {
                             error!("Failed to handle gossip message: {}", e);
                         }
@@ -371,9 +406,12 @@ impl P2PNetwork {
         sessions: &Arc<RwLock<HashMap<String, SharedSession>>>,
         session_id: &str,
         message: TerminalMessage,
+        endpoint: &Endpoint,
     ) -> Result<()> {
         let sessions_guard = sessions.read().await;
         if let Some(session) = sessions_guard.get(session_id) {
+            let my_node_id = endpoint.node_id();
+
             match message.body {
                 TerminalMessageBody::Output {
                     from: _,
@@ -430,6 +468,34 @@ impl P2PNetwork {
                     };
                     if let Err(e) = session.event_sender.send(event) {
                         warn!("Failed to send end event to subscribers: {}", e);
+                    }
+                }
+                TerminalMessageBody::DirectedMessage {
+                    from,
+                    to,
+                    data,
+                    timestamp,
+                } => {
+                    // Check if this message is intended for this node
+                    if to == my_node_id {
+                        println!(
+                            "Received directed message from {}: {}",
+                            from.fmt_short(),
+                            data
+                        );
+                        let event = TerminalEvent {
+                            timestamp: timestamp as f64,
+                            event_type: crate::terminal_events::EventType::Output,
+                            data: format!("[DM from {}] {}", from.fmt_short(), data),
+                        };
+                        if let Err(e) = session.event_sender.send(event) {
+                            warn!(
+                                "Failed to send directed message event to subscribers: {}",
+                                e
+                            );
+                        }
+                    } else {
+                        println!("Ignoring directed message not intended for this node");
                     }
                 }
                 TerminalMessageBody::SessionInfo { from, header: _ } => {
@@ -499,3 +565,4 @@ impl P2PNetwork {
         self.router.shutdown().await.map_err(Into::into)
     }
 }
+

@@ -1,0 +1,1037 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+src/
+  iroh_wrapper.rs
+  lib.rs
+  main.rs
+  rig_routes.rs
+Cargo.toml
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/iroh_wrapper.rs">
+use anyhow::Result;
+use iroh_app;
+use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tokio::{sync::Mutex, task};
+
+#[derive(Clone)]
+pub struct IrohNodeWrapper {
+    is_running: Arc<AtomicBool>,
+    handle: Arc<Mutex<Option<task::JoinHandle<()>>>>,
+}
+
+impl Default for IrohNodeWrapper {
+    fn default() -> Self {
+        Self {
+            is_running: Arc::new(AtomicBool::new(false)),
+            handle: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IrohInfo {
+    pub node_id: Option<String>,
+    pub topic: Option<String>,
+    pub ticket: Option<String>,
+}
+
+impl IrohNodeWrapper {
+    pub async fn open_node(&self) -> Result<(), String> {
+        let topic = None;
+        let secret_key = None;
+        let relay = None;
+        let no_relay = false;
+        let name = None;
+        let bind_port = 0;
+
+        // 在后台任务中运行 iroh
+        let is_running_clone = self.is_running.clone();
+        let handle_clone = self.handle.clone();
+
+        // 立即设置运行状态为 true，因为我们正在启动
+        is_running_clone.store(true, Ordering::SeqCst);
+        println!("Iroh node status set to running");
+
+        // 在后台任务中运行 iroh
+        let handle = task::spawn(async move {
+            println!("DEBUG: Starting iroh in spawn task");
+            let result = iroh_app::open(topic, secret_key, relay, no_relay, name, bind_port).await;
+
+            match result {
+                Ok((topic_id, node_id, _ticket)) => {
+                    println!(
+                        "Node info received: node_id={}, topic={}, ticket=...",
+                        node_id, topic_id
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Iroh node error: {:?}", e);
+                }
+            }
+
+            // 如果 iroh 退出，重置状态
+            is_running_clone.store(false, Ordering::SeqCst);
+            println!("Iroh node exited, status updated to stopped");
+        });
+
+        // 保存任务句柄
+        *handle_clone.lock().await = Some(handle);
+
+        Ok(())
+    }
+
+    pub async fn join_node(&self, ticket: String) -> Result<(), String> {
+        let secret_key = None;
+        let relay = None;
+        let no_relay = false;
+        let name = None;
+        let bind_port = 0;
+
+        // 在后台任务中运行 iroh
+        let is_running_clone = self.is_running.clone();
+        let handle_clone = self.handle.clone();
+
+        // 立即设置运行状态为 true，因为我们正在启动
+        is_running_clone.store(true, Ordering::SeqCst);
+        println!("Iroh node status set to running");
+
+        // 在后台任务中运行 iroh
+        let handle = task::spawn(async move {
+            println!("DEBUG: Starting iroh join in spawn task");
+            let result = iroh_app::join(ticket, secret_key, relay, no_relay, name, bind_port).await;
+
+            // 如果 iroh 退出，重置状态
+            is_running_clone.store(false, Ordering::SeqCst);
+            println!("Iroh node exited, status updated to stopped");
+
+            if let Err(e) = result {
+                eprintln!("Iroh node error: {:?}", e);
+            }
+        });
+
+        // 保存任务句柄
+        *handle_clone.lock().await = Some(handle);
+
+        Ok(())
+    }
+
+    pub async fn close_node(&self) {
+        // 先关闭 iroh 节点
+        iroh_app::close().await;
+
+        // 等待后台任务完成
+        let mut handle = self.handle.lock().await;
+        if let Some(handle) = handle.take() {
+            // 等待任务完成，但设置一个超时时间以避免无限等待
+            match tokio::time::timeout(std::time::Duration::from_secs(5), handle).await {
+                Ok(Ok(())) => {
+                    println!("Iroh background task completed successfully");
+                }
+                Ok(Err(e)) => {
+                    eprintln!("Iroh background task failed: {:?}", e);
+                }
+                Err(_) => {
+                    eprintln!("Iroh background task did not complete within timeout");
+                }
+            }
+        }
+
+        // 重置运行状态
+        self.is_running.store(false, Ordering::SeqCst);
+        println!("Iroh node status updated to stopped");
+    }
+
+    pub fn is_node_running(&self) -> bool {
+        self.is_running.load(Ordering::SeqCst)
+    }
+
+    pub async fn get_node_info(&self) -> Result<IrohInfo, String> {
+        if !self.is_node_running() {
+            return Ok(IrohInfo {
+                node_id: None,
+                topic: None,
+                ticket: None,
+            });
+        }
+
+        // 调用 iroh-app::get_node_info
+        println!("DEBUG: Calling iroh_app::get_node_info()");
+        match iroh_app::get_node_info().await {
+            Ok(info) => {
+                println!("DEBUG: Got node info: {:?}", info);
+                Ok(IrohInfo {
+                    node_id: info.node_id,
+                    topic: info.topic,
+                    ticket: info.ticket,
+                })
+            }
+            Err(e) => {
+                eprintln!("Error getting node info: {:?}", e);
+                Ok(IrohInfo {
+                    node_id: None,
+                    topic: None,
+                    ticket: None,
+                })
+            }
+        }
+    }
+}
+</file>
+
+<file path="src/lib.rs">
+pub mod iroh_wrapper;
+pub mod rig_routes;
+
+use std::sync::Arc;
+
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::routing::{delete, get, post};
+use axum::{Json, Router};
+use rig_app::{AgentManager, ToolManager};
+
+use crate::iroh_wrapper::{IrohInfo, IrohNodeWrapper};
+use serde::{Deserialize, Serialize};
+
+// Import the send_message function from iroh-app
+use iroh_app::send_message;
+
+// Define the application state
+#[derive(Clone)]
+pub struct AppState {
+    pub agent_manager: Arc<AgentManager>,
+    pub tool_manager: Arc<ToolManager>,
+    pub iroh_node: Arc<IrohNodeWrapper>,
+}
+
+pub fn create_axum_app(
+    agent_manager: Arc<AgentManager>,
+    tool_manager: Arc<ToolManager>,
+    iroh_node: Arc<IrohNodeWrapper>,
+) -> Router {
+    let state = AppState {
+        agent_manager,
+        tool_manager,
+        iroh_node,
+    };
+
+    Router::new()
+        // Agent management routes
+        .route("/api/agents", post(rig_routes::create_agent_handler))
+        .route("/api/agents", get(rig_routes::list_agents_handler))
+        .route("/api/agents/{id}", get(rig_routes::get_agent_handler))
+        .route("/api/agents/{id}", delete(rig_routes::delete_agent_handler))
+        // MCP service management routes
+        .route(
+            "/api/mcp/services",
+            post(rig_routes::create_mcp_service_handler),
+        )
+        .route(
+            "/api/mcp/services",
+            get(rig_routes::list_mcp_services_handler),
+        )
+        .route(
+            "/api/mcp/services/{id}",
+            get(rig_routes::get_mcp_service_handler),
+        )
+        .route(
+            "/api/mcp/services/{id}",
+            delete(rig_routes::delete_mcp_service_handler),
+        )
+        .route("/api/tools", get(rig_routes::list_mcp_tools_handler))
+        .route(
+            "/api/tools/{tool_name}/run",
+            post(rig_routes::execute_mcp_tool_handler),
+        )
+        // Chat functionality routes
+        .route("/api/rig/prompt", post(rig_routes::prompt_handler))
+        .route(
+            "/api/agents/{agent_name}/chat",
+            post(rig_routes::chat_handler),
+        )
+        .route(
+            "/api/rig/stream-chat",
+            post(rig_routes::stream_chat_handler),
+        )
+        // Iroh routes
+        .route("/api/iroh/status", get(iroh_status))
+        .route("/api/iroh/join", post(join_iroh_node))
+        .route("/api/iroh/close", post(close_iroh_node))
+        .route("/api/iroh/send", post(send_message_handler))
+        .with_state(Arc::new(state))
+}
+
+// Handler for /api/iroh/send
+pub async fn send_message_handler(
+    State(_state): State<Arc<AppState>>,
+    Json(request): Json<SendMessageRequest>,
+) -> Result<Json<IrohOperationResponse>, StatusCode> {
+    let text = request.text;
+    let target_node_id = request.target_node_id;
+
+    // Call the send_message function from iroh-app
+    match send_message(text, target_node_id).await {
+        Ok(_) => Ok(Json(IrohOperationResponse {
+            success: true,
+            message: "Message sent successfully".to_string(),
+        })),
+        Err(e) => Ok(Json(IrohOperationResponse {
+            success: false,
+            message: format!("Failed to send message: {}", e),
+        })),
+    }
+}
+
+// Request body for /api/iroh/send
+#[derive(Debug, Deserialize)]
+pub struct SendMessageRequest {
+    text: String,
+    target_node_id: Option<String>,
+}
+
+// Handler for /api/iroh/status
+#[axum::debug_handler]
+pub async fn iroh_status(
+    State(_state): State<Arc<AppState>>,
+) -> Result<Json<IrohStatusResponse>, StatusCode> {
+    let is_running = _state.iroh_node.is_node_running();
+
+    let node_info = if is_running {
+        match _state.iroh_node.get_node_info().await {
+            Ok(info) => Some(info),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    Ok(Json(IrohStatusResponse {
+        is_running,
+        node_info,
+    }))
+}
+
+// Request body for /api/iroh/join
+#[derive(Debug, Deserialize)]
+pub struct JoinTicketRequest {
+    ticket: String,
+}
+
+// Handler for /api/iroh/join
+pub async fn join_iroh_node(
+    State(_state): State<Arc<AppState>>,
+    Json(request): Json<JoinTicketRequest>,
+) -> Result<Json<IrohOperationResponse>, StatusCode> {
+    let ticket = request.ticket;
+    match _state.iroh_node.join_node(ticket).await {
+        Ok(_) => Ok(Json(IrohOperationResponse {
+            success: true,
+            message: "Iroh node joined successfully".to_string(),
+        })),
+        Err(e) => Ok(Json(IrohOperationResponse {
+            success: false,
+            message: format!("Failed to join Iroh node: {}", e),
+        })),
+    }
+}
+
+// Handler for /api/iroh/close
+pub async fn close_iroh_node(
+    State(_state): State<Arc<AppState>>,
+) -> Result<Json<IrohOperationResponse>, StatusCode> {
+    _state.iroh_node.close_node().await;
+    Ok(Json(IrohOperationResponse {
+        success: true,
+        message: "Iroh node closed successfully".to_string(),
+    }))
+}
+
+// Response for Iroh status
+#[derive(Serialize)]
+pub struct IrohStatusResponse {
+    pub is_running: bool,
+    pub node_info: Option<IrohInfo>,
+}
+
+// Response for Iroh operations (join, close)
+#[derive(Serialize)]
+pub struct IrohOperationResponse {
+    success: bool,
+    message: String,
+}
+</file>
+
+<file path="src/main.rs">
+use axum_app::{create_axum_app, iroh_wrapper::IrohNodeWrapper};
+use rig_app::{AgentManager, ToolManager};
+use std::sync::Arc;
+use tokio::signal;
+use tower_http::cors::{Any, CorsLayer};
+
+#[tokio::main]
+async fn main() {
+    // Initialize tracing
+
+    // Create AgentManager and ToolManager instances
+    let agent_manager =
+        Arc::new(AgentManager::new("agents.json").expect("Failed to create AgentManager"));
+    let tool_manager =
+        Arc::new(ToolManager::new("mcp.json").expect("Failed to create ToolManager"));
+
+    // Create IrohNodeWrapper instance
+    let iroh_node = Arc::new(IrohNodeWrapper::default());
+
+    // Start Iroh node in background
+    println!("Attempting to open Iroh node...");
+    let iroh_node_clone = iroh_node.clone();
+    tokio::spawn(async move {
+        match iroh_node_clone.open_node().await {
+            Ok(_) => println!("Iroh node opened successfully."),
+            Err(e) => eprintln!("Failed to open Iroh node: {}", e),
+        }
+    });
+
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    // Build our application with the router
+    let app = create_axum_app(agent_manager, tool_manager, iroh_node).layer(cors);
+
+    // Run our application
+    println!("Starting Axum server on 0.0.0.0:1421...");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:1421").await.unwrap();
+    println!("Server listening on {}", listener.local_addr().unwrap());
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .unwrap();
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    println!("signal received, starting graceful shutdown");
+    // Close the Iroh node gracefully
+    // Note: We can't access iroh_node here, so we'll create a temporary instance
+    IrohNodeWrapper::default().close_node().await;
+    println!("Iroh node closed during shutdown.");
+}
+</file>
+
+<file path="src/rig_routes.rs">
+use axum::response::sse::{Event, KeepAlive};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::{Json, Sse},
+};
+use futures::stream::Stream;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::convert::Infallible;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::task;
+use tokio_stream::StreamExt as _;
+
+// Request/Response structs for agent management
+#[derive(Deserialize)]
+pub struct CreateAgentRequest {
+    pub name: String,
+    pub provider: String,
+    pub model: String,
+    pub preamble: String,
+    pub base_url: Option<String>,
+    pub tools: Option<Vec<String>>,
+}
+
+#[derive(Serialize)]
+pub struct CreateAgentResponse {
+    pub id: i64,
+    pub message: String,
+}
+
+#[derive(Deserialize)]
+pub struct ChatRequest {
+    pub agent_id: i64,
+    pub prompt: String,
+    pub history: Vec<rig_app::ChatMessage>,
+}
+
+#[derive(Serialize)]
+pub struct ChatResponse {
+    pub message: String,
+}
+
+#[derive(Deserialize)]
+pub struct PromptRequest {
+    pub agent_id: i64,
+    pub prompt: String,
+}
+
+#[derive(Serialize)]
+pub struct PromptResponse {
+    pub message: String,
+}
+
+#[derive(Serialize)]
+pub struct AgentListResponse {
+    pub agents: Vec<rig_app::AgentConfig>,
+}
+
+#[derive(Serialize)]
+pub struct DeleteAgentResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Deserialize)]
+pub struct StreamChatRequest {
+    pub agent_id: i64,
+    pub prompt: String,
+    pub history: Vec<rig_app::ChatMessage>,
+}
+
+#[derive(Serialize)]
+pub struct StreamChunk {
+    pub content: String,
+    pub done: bool,
+}
+
+// MCP Service management request/response structs
+#[derive(Deserialize)]
+pub struct CreateMCPServiceRequest {
+    pub name: String,
+    pub protocol: String,
+    pub command: Option<String>,
+    pub args: Option<Vec<String>>,
+    pub url: Option<String>,
+    pub headers: Option<HashMap<String, String>>,
+    pub env_vars: Option<HashMap<String, String>>,
+    pub enabled: bool,
+}
+
+#[derive(Serialize)]
+pub struct CreateMCPServiceResponse {
+    pub id: i64,
+    pub message: String,
+}
+
+#[derive(Serialize)]
+pub struct MCPServiceListResponse {
+    pub services: Vec<rig_app::MCPServiceConfig>,
+}
+
+#[derive(Serialize)]
+pub struct MCPToolListResponse {
+    pub tools: Vec<rig_app::MCPToolDefinition>,
+}
+
+#[derive(Serialize)]
+pub struct DeleteMCPServiceResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Deserialize)]
+pub struct ExecuteMCPToolRequest {
+    pub service_id: i64,
+    pub tool_name: String,
+    pub arguments: serde_json::Value,
+}
+
+#[derive(Serialize)]
+pub struct ExecuteMCPToolResponse {
+    pub success: bool,
+    pub result: Option<serde_json::Value>,
+    pub error: Option<String>,
+}
+
+// Agent management routes
+pub async fn create_agent_handler(
+    State(state): State<Arc<crate::AppState>>,
+    Json(payload): Json<CreateAgentRequest>,
+) -> Result<Json<CreateAgentResponse>, (StatusCode, String)> {
+    let agent_manager = state.agent_manager.clone();
+
+    task::spawn_blocking(move || {
+        match agent_manager.create_agent(
+            &payload.name,
+            &payload.provider,
+            &payload.model,
+            &payload.preamble,
+            payload.base_url.as_deref(),
+            payload.tools.as_deref(),
+        ) {
+            Ok(id) => Ok(Json(CreateAgentResponse {
+                id,
+                message: format!("Agent '{}' created successfully", payload.name),
+            })),
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to create agent: {}", e),
+            )),
+        }
+    })
+    .await
+    .unwrap()
+}
+
+pub async fn list_agents_handler(
+    State(state): State<Arc<crate::AppState>>,
+) -> Result<Json<AgentListResponse>, (StatusCode, String)> {
+    let agent_manager = state.agent_manager.clone();
+
+    task::spawn_blocking(move || match agent_manager.list_agents() {
+        Ok(agents) => Ok(Json(AgentListResponse { agents })),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to list agents: {}", e),
+        )),
+    })
+    .await
+    .unwrap()
+}
+
+pub async fn get_agent_handler(
+    State(state): State<Arc<crate::AppState>>,
+    Path(agent_id): Path<i64>,
+) -> Result<Json<rig_app::AgentConfig>, (StatusCode, String)> {
+    let agent_manager = state.agent_manager.clone();
+
+    task::spawn_blocking(move || match agent_manager.get_agent(agent_id) {
+        Ok(Some(agent)) => Ok(Json(agent)),
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            format!("Agent with id {} not found", agent_id),
+        )),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get agent: {}", e),
+        )),
+    })
+    .await
+    .unwrap()
+}
+
+pub async fn delete_agent_handler(
+    State(state): State<Arc<crate::AppState>>,
+    Path(agent_id): Path<i64>,
+) -> Result<Json<DeleteAgentResponse>, (StatusCode, String)> {
+    let agent_manager = state.agent_manager.clone();
+
+    task::spawn_blocking(move || match agent_manager.delete_agent(agent_id) {
+        Ok(true) => Ok(Json(DeleteAgentResponse {
+            success: true,
+            message: format!("Agent with id {} deleted successfully", agent_id),
+        })),
+        Ok(false) => Err((
+            StatusCode::NOT_FOUND,
+            format!("Agent with id {} not found", agent_id),
+        )),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete agent: {}", e),
+        )),
+    })
+    .await
+    .unwrap()
+}
+
+// Chat functionality routes
+pub async fn prompt_handler(
+    State(state): State<Arc<crate::AppState>>,
+    Json(payload): Json<PromptRequest>,
+) -> Result<Json<PromptResponse>, (StatusCode, String)> {
+    let agent_manager = state.agent_manager.clone();
+    let tool_manager = state.tool_manager.clone();
+    let prompt_request = payload;
+
+    task::spawn_blocking(move || {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            match rig_app::prompt(
+                &agent_manager,
+                &tool_manager,
+                prompt_request.agent_id,
+                &prompt_request.prompt,
+            )
+            .await
+            {
+                Ok(response) => Ok(Json(PromptResponse { message: response })),
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to execute prompt: {}", e),
+                )),
+            }
+        })
+    })
+    .await
+    .unwrap()
+}
+
+pub async fn chat_handler(
+    State(state): State<Arc<crate::AppState>>,
+    Json(payload): Json<ChatRequest>,
+) -> Result<Json<ChatResponse>, (StatusCode, String)> {
+    let agent_manager = state.agent_manager.clone();
+    let tool_manager = state.tool_manager.clone();
+    let chat_request = payload;
+
+    task::spawn_blocking(move || {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            match rig_app::chat(
+                &agent_manager,
+                &tool_manager,
+                chat_request.agent_id,
+                &chat_request.prompt,
+                chat_request.history,
+            )
+            .await
+            {
+                Ok(response) => Ok(Json(ChatResponse { message: response })),
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to execute chat: {}", e),
+                )),
+            }
+        })
+    })
+    .await
+    .unwrap()
+}
+
+pub async fn stream_chat_handler(
+    State(state): State<Arc<crate::AppState>>,
+    Json(payload): Json<StreamChatRequest>,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
+    let agent_manager = state.agent_manager.clone();
+    let tool_manager = state.tool_manager.clone();
+    let prompt = payload.prompt.clone();
+    let history = payload.history.clone();
+    let agent_id = payload.agent_id;
+
+    let initial_result = task::spawn_blocking(move || {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            rig_app::stream_chat(&agent_manager, &tool_manager, agent_id, &prompt, history).await
+        })
+    })
+    .await
+    .unwrap(); // This await unwraps the JoinHandle. The inner is a Result.
+
+    match initial_result {
+        Ok(mut stream) => {
+            let response_stream = async_stream::stream! {
+                while let Some(chunk_result) = stream.next().await {
+                    match chunk_result {
+                        Ok(content) => {
+                            let chunk_data = StreamChunk {
+                                content,
+                                done: false,
+                            };
+
+                            match serde_json::to_string(&chunk_data) {
+                                Ok(json_data) => {
+                                    yield Ok(Event::default().data(json_data));
+                                }
+                                Err(e) => {
+                                    let error_chunk = StreamChunk {
+                                        content: format!("Serialization error: {}", e),
+                                        done: true,
+                                    };
+                                    if let Ok(error_json) = serde_json::to_string(&error_chunk) {
+                                        yield Ok(Event::default().data(error_json));
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            let error_chunk = StreamChunk {
+                                content: format!("Stream error: {}", e),
+                                done: true,
+                            };
+                            if let Ok(error_json) = serde_json::to_string(&error_chunk) {
+                                yield Ok(Event::default().data(error_json));
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                // Send final "done" message
+                let done_chunk = StreamChunk {
+                    content: String::new(),
+                    done: true,
+                };
+                if let Ok(done_json) = serde_json::to_string(&done_chunk) {
+                    yield Ok(Event::default().data(done_json));
+                }
+            };
+
+            Ok(Sse::new(response_stream).keep_alive(
+                KeepAlive::new()
+                    .interval(Duration::from_secs(1))
+                    .text("keep-alive-text"),
+            ))
+        }
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to start stream chat: {}", e),
+        )),
+    }
+}
+
+// MCP Service management routes
+#[axum::debug_handler]
+pub async fn create_mcp_service_handler(
+    State(state): State<Arc<crate::AppState>>,
+    Json(payload): Json<CreateMCPServiceRequest>,
+) -> Result<Json<CreateMCPServiceResponse>, (StatusCode, String)> {
+    let tool_manager = state.tool_manager.clone();
+    let payload = payload;
+
+    task::spawn_blocking(move || {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            // Parse protocol string to enum
+            let protocol = match payload.protocol.as_str() {
+                "stdio" => rig_app::MCPProtocol::Stdio,
+                "sse" => rig_app::MCPProtocol::Sse,
+                "http" => rig_app::MCPProtocol::Http,
+                _ => {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        format!("Invalid protocol: {}", payload.protocol),
+                    ))
+                }
+            };
+
+            let service_config = rig_app::MCPServiceConfig {
+                id: 0, // Will be assigned by register_mcp_service
+                name: payload.name,
+                protocol,
+                command: payload.command,
+                args: payload.args,
+                url: payload.url,
+                headers: payload.headers,
+                env_vars: payload.env_vars,
+                enabled: payload.enabled,
+                created_at: chrono::Utc::now().to_rfc3339(),
+            };
+
+            match tool_manager.register_mcp_service(&service_config).await {
+                Ok(id) => Ok(Json(CreateMCPServiceResponse {
+                    id,
+                    message: format!("MCP service '{}' created successfully", service_config.name),
+                })),
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to create MCP service: {}", e),
+                )),
+            }
+        })
+    })
+    .await
+    .unwrap()
+}
+
+pub async fn list_mcp_services_handler(
+    State(state): State<Arc<crate::AppState>>,
+) -> Result<Json<MCPServiceListResponse>, (StatusCode, String)> {
+    let tool_manager = state.tool_manager.clone();
+
+    task::spawn_blocking(move || match tool_manager.list_mcp_services() {
+        Ok(services) => Ok(Json(MCPServiceListResponse { services })),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to list MCP services: {}", e),
+        )),
+    })
+    .await
+    .unwrap()
+}
+
+pub async fn get_mcp_service_handler(
+    State(state): State<Arc<crate::AppState>>,
+    Path(service_id): Path<i64>,
+) -> Result<Json<rig_app::MCPServiceConfig>, (StatusCode, String)> {
+    let tool_manager = state.tool_manager.clone();
+
+    task::spawn_blocking(move || match tool_manager.get_mcp_service(service_id) {
+        Ok(Some(service)) => Ok(Json(service)),
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            format!("MCP service with id {} not found", service_id),
+        )),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get MCP service: {}", e),
+        )),
+    })
+    .await
+    .unwrap()
+}
+
+pub async fn delete_mcp_service_handler(
+    State(state): State<Arc<crate::AppState>>,
+    Path(service_id): Path<i64>,
+) -> Result<Json<DeleteMCPServiceResponse>, (StatusCode, String)> {
+    let tool_manager = state.tool_manager.clone();
+
+    task::spawn_blocking(move || match tool_manager.delete_mcp_service(service_id) {
+        Ok(true) => Ok(Json(DeleteMCPServiceResponse {
+            success: true,
+            message: format!("MCP service with id {} deleted successfully", service_id),
+        })),
+        Ok(false) => Err((
+            StatusCode::NOT_FOUND,
+            format!("MCP service with id {} not found", service_id),
+        )),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete MCP service: {}", e),
+        )),
+    })
+    .await
+    .unwrap()
+}
+
+pub async fn list_mcp_tools_handler(
+    State(state): State<Arc<crate::AppState>>,
+) -> Result<Json<MCPToolListResponse>, (StatusCode, String)> {
+    let tool_manager = state.tool_manager.clone();
+
+    task::spawn_blocking(move || match tool_manager.list_mcp_tools(None) {
+        Ok(tools) => Ok(Json(MCPToolListResponse { tools })),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to list MCP tools: {}", e),
+        )),
+    })
+    .await
+    .unwrap()
+}
+
+pub async fn execute_mcp_tool_handler(
+    State(state): State<Arc<crate::AppState>>,
+    Json(payload): Json<ExecuteMCPToolRequest>,
+) -> Result<Json<ExecuteMCPToolResponse>, (StatusCode, String)> {
+    let tool_manager = state.tool_manager.clone();
+    let payload = payload;
+
+    task::spawn_blocking(move || {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            match tool_manager
+                .execute_mcp_tool(payload.service_id, &payload.tool_name, payload.arguments)
+                .await
+            {
+                Ok(response) => Ok(Json(ExecuteMCPToolResponse {
+                    success: response.success,
+                    result: response.result,
+                    error: response.error,
+                })),
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to execute MCP tool: {}", e),
+                )),
+            }
+        })
+    })
+    .await
+    .unwrap()
+}
+</file>
+
+<file path="Cargo.toml">
+[package]
+name = "axum-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { workspace = true, features = ["macros", "tokio", "http1"] }
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tower-http = { version = "0.6", features = ["cors"] }
+tokio-stream = "0.1"
+futures = "0.3"
+async-stream = "0.3"
+rig-core = "0.17.1"
+chrono = { workspace = true }
+rig-app = { path = "../rig-app" }
+iroh = "0.91.1"
+anyhow = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+
+iroh-app = { path = "../iroh-app" }
+</file>
+
+</files>

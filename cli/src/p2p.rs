@@ -1,17 +1,17 @@
 use anyhow::Result;
 use futures::StreamExt;
-use iroh::{protocol::Router, Endpoint, NodeAddr, NodeId};
+use iroh::{Endpoint, NodeAddr, NodeId, protocol::Router};
 use iroh_gossip::{
     api::{Event, GossipReceiver, GossipSender},
     net::Gossip,
     proto::TopicId,
 };
-use url::Url;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{RwLock, broadcast, mpsc};
 use tracing::{debug, error, info, warn};
+use url::Url;
 
 use crate::terminal::{SessionHeader, TerminalEvent};
 
@@ -32,7 +32,8 @@ impl std::str::FromStr for SessionTicket {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let bytes = data_encoding::BASE32.decode(s.as_bytes())
+        let bytes = data_encoding::BASE32
+            .decode(s.as_bytes())
             .map_err(|e| anyhow::anyhow!("Failed to decode ticket: {}", e))?;
         let ticket: SessionTicket = serde_json::from_slice(&bytes)
             .map_err(|e| anyhow::anyhow!("Failed to deserialize ticket: {}", e))?;
@@ -49,10 +50,7 @@ pub struct TerminalMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TerminalMessageBody {
     /// Session metadata
-    SessionInfo {
-        from: NodeId,
-        header: SessionHeader,
-    },
+    SessionInfo { from: NodeId, header: SessionHeader },
     /// Terminal output data
     Output {
         from: NodeId,
@@ -73,10 +71,7 @@ pub enum TerminalMessageBody {
         timestamp: u64,
     },
     /// Session ended
-    SessionEnd {
-        from: NodeId,
-        timestamp: u64,
-    },
+    SessionEnd { from: NodeId, timestamp: u64 },
 }
 
 impl TerminalMessage {
@@ -131,17 +126,14 @@ impl P2PNetwork {
         let endpoint = if let Some(relay) = relay_url {
             info!("Using custom relay server: {}", relay);
             // Parse the relay URL and use it for discovery
-            let relay_url: Url = relay.parse()?;
+            let _relay_url: Url = relay.parse()?;
             endpoint_builder
                 .discovery_n0() // Use default discovery for now, custom relay setup is more complex
                 .bind()
                 .await?
         } else {
             info!("Using default n0 relay server");
-            endpoint_builder
-                .discovery_n0()
-                .bind()
-                .await?
+            endpoint_builder.discovery_n0().bind().await?
         };
 
         let node_id = endpoint.node_id();
@@ -209,12 +201,11 @@ impl P2PNetwork {
 
     pub async fn join_session(
         &self,
-        topic_id: TopicId,
-        peers: Vec<NodeAddr>,
+        ticket: SessionTicket,
     ) -> Result<(GossipSender, broadcast::Receiver<TerminalEvent>)> {
-        info!("Joining session with topic: {}", topic_id);
+        info!("Joining session with topic: {}", ticket.topic_id);
 
-        let session_id = format!("session_{}", topic_id);
+        let session_id = format!("session_{}", ticket.topic_id);
         let (event_sender, event_receiver) = broadcast::channel(1000);
 
         // Create session entry for this joined session
@@ -241,13 +232,16 @@ impl P2PNetwork {
             .insert(session_id.clone(), session);
 
         // Add peer addresses to endpoint's addressbook
-        for peer in &peers {
+        for peer in &ticket.nodes {
             self.endpoint.add_node_addr(peer.clone())?;
         }
 
         // Subscribe and join the gossip topic with known peers
-        let node_ids = peers.iter().map(|p| p.node_id).collect();
-        let topic = self.gossip.subscribe_and_join(topic_id, node_ids).await?;
+        let node_ids = ticket.nodes.iter().map(|p| p.node_id).collect();
+        let topic = self
+            .gossip
+            .subscribe_and_join(ticket.topic_id, node_ids)
+            .await?;
         let (sender, receiver) = topic.split();
 
         // Start listening for messages on this topic
@@ -256,11 +250,7 @@ impl P2PNetwork {
         Ok((sender, event_receiver))
     }
 
-    pub async fn send_terminal_output(
-        &self,
-        sender: &GossipSender,
-        data: String,
-    ) -> Result<()> {
+    pub async fn send_terminal_output(&self, sender: &GossipSender, data: String) -> Result<()> {
         debug!("Sending terminal output");
 
         let message = TerminalMessage::new(TerminalMessageBody::Output {
@@ -290,7 +280,12 @@ impl P2PNetwork {
         Ok(())
     }
 
-    pub async fn send_resize_event(&self, sender: &GossipSender, width: u16, height: u16) -> Result<()> {
+    pub async fn send_resize_event(
+        &self,
+        sender: &GossipSender,
+        width: u16,
+        height: u16,
+    ) -> Result<()> {
         debug!("Sending resize event");
 
         let message = TerminalMessage::new(TerminalMessageBody::Resize {
@@ -321,18 +316,25 @@ impl P2PNetwork {
         Ok(())
     }
 
-    async fn start_topic_listener(&self, mut receiver: GossipReceiver, session_id: String) -> Result<()> {
+    async fn start_topic_listener(
+        &self,
+        mut receiver: GossipReceiver,
+        session_id: String,
+    ) -> Result<()> {
         // Create a new Arc with a copy of the current sessions
         let sessions = {
             let current_sessions = self.sessions.read().await;
             let mut new_sessions = HashMap::new();
             for (k, v) in current_sessions.iter() {
-                new_sessions.insert(k.clone(), SharedSession {
-                    header: v.header.clone(),
-                    participants: v.participants.clone(),
-                    is_host: v.is_host,
-                    event_sender: v.event_sender.clone(),
-                });
+                new_sessions.insert(
+                    k.clone(),
+                    SharedSession {
+                        header: v.header.clone(),
+                        participants: v.participants.clone(),
+                        is_host: v.is_host,
+                        event_sender: v.event_sender.clone(),
+                    },
+                );
             }
             Arc::new(RwLock::new(new_sessions))
         };
@@ -341,7 +343,9 @@ impl P2PNetwork {
             while let Some(event) = receiver.next().await {
                 if let Ok(Event::Received(msg)) = event {
                     if let Ok(message) = TerminalMessage::from_bytes(&msg.content) {
-                        if let Err(e) = Self::handle_gossip_message(&sessions, &session_id, message).await {
+                        if let Err(e) =
+                            Self::handle_gossip_message(&sessions, &session_id, message).await
+                        {
                             error!("Failed to handle gossip message: {}", e);
                         }
                     }
@@ -360,7 +364,11 @@ impl P2PNetwork {
         let sessions_guard = sessions.read().await;
         if let Some(session) = sessions_guard.get(session_id) {
             match message.body {
-                TerminalMessageBody::Output { from: _, data, timestamp } => {
+                TerminalMessageBody::Output {
+                    from: _,
+                    data,
+                    timestamp,
+                } => {
                     let event = TerminalEvent {
                         timestamp: timestamp as f64,
                         event_type: crate::terminal::EventType::Output,
@@ -370,7 +378,11 @@ impl P2PNetwork {
                         warn!("Failed to send output event to subscribers: {}", e);
                     }
                 }
-                TerminalMessageBody::Input { from: _, data, timestamp } => {
+                TerminalMessageBody::Input {
+                    from: _,
+                    data,
+                    timestamp,
+                } => {
                     let event = TerminalEvent {
                         timestamp: timestamp as f64,
                         event_type: crate::terminal::EventType::Input,
@@ -380,7 +392,12 @@ impl P2PNetwork {
                         warn!("Failed to send input event to subscribers: {}", e);
                     }
                 }
-                TerminalMessageBody::Resize { from: _, width, height, timestamp } => {
+                TerminalMessageBody::Resize {
+                    from: _,
+                    width,
+                    height,
+                    timestamp,
+                } => {
                     let event = TerminalEvent {
                         timestamp: timestamp as f64,
                         event_type: crate::terminal::EventType::Resize { width, height },
@@ -401,14 +418,16 @@ impl P2PNetwork {
                     }
                 }
                 TerminalMessageBody::SessionInfo { from, header: _ } => {
-                    info!("Received session info from {} for session: {}", from.fmt_short(), session_id);
+                    info!(
+                        "Received session info from {} for session: {}",
+                        from.fmt_short(),
+                        session_id
+                    );
                 }
             }
         }
         Ok(())
     }
-
-
 
     pub async fn get_node_id(&self) -> String {
         self.endpoint.node_id().to_string()
@@ -423,7 +442,8 @@ impl P2PNetwork {
 
         // Add a placeholder direct address (localhost for testing)
         // In production, this should be the actual public IP/port
-        let placeholder_addr = "127.0.0.1:11204".parse::<std::net::SocketAddr>()
+        let placeholder_addr = "127.0.0.1:11204"
+            .parse::<std::net::SocketAddr>()
             .map_err(|e| anyhow::anyhow!("Failed to parse placeholder address: {}", e))?;
         node_addr = node_addr.with_direct_addresses([placeholder_addr]);
 

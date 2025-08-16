@@ -10,18 +10,21 @@ use crossterm::{
 use std::io::{self, Write};
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 use uuid::Uuid;
 
 use crate::p2p::P2PNetwork;
-use crate::shell::{ShellConfig, ShellDetector, ShellType};
+use crate::shell::{ShellConfig, ShellDetector};
 use crate::terminal::{SessionHeader, TerminalEvent, TerminalPlayer, TerminalRecorder};
 
 #[derive(Parser)]
 #[command(name = "iroh-code-remote")]
 #[command(about = "A terminal session sharing tool powered by iroh p2p network")]
 pub struct Cli {
-    #[arg(long, help = "Custom relay server URL (e.g., https://relay.example.com)")]
+    #[arg(
+        long,
+        help = "Custom relay server URL (e.g., https://relay.example.com)"
+    )]
     pub relay: Option<String>,
 
     #[command(subcommand)]
@@ -195,6 +198,9 @@ impl CliApp {
         let ticket = self.network.create_session_ticket(topic_id).await?;
         println!("🎫 Session Ticket: {}", ticket);
 
+        // Display QR code for the ticket
+        self.display_qr_code(&ticket.to_string());
+
         let (recorder, mut event_receiver) = TerminalRecorder::new(session_id.clone());
 
         // Forward terminal recorder events to network
@@ -272,7 +278,7 @@ impl CliApp {
 
         let (sender, mut event_receiver) = self
             .network
-            .join_session(ticket.topic_id, ticket.nodes)
+            .join_session(ticket)
             .await
             .context("Failed to join session")?;
 
@@ -514,9 +520,12 @@ impl CliApp {
         let ticket = self.network.create_session_ticket(topic_id).await?;
 
         println!("✅ Session ticket created: {}", ticket);
+        // Display QR code for the ticket
+        self.display_qr_code(&ticket.to_string());
 
         if let Some(output_path) = output {
-            tokio::fs::write(&output_path, ticket.to_string()).await
+            tokio::fs::write(&output_path, ticket.to_string())
+                .await
                 .with_context(|| format!("Failed to write ticket to file: {}", output_path))?;
             println!("💾 Ticket saved to: {}", output_path);
         }
@@ -534,11 +543,14 @@ impl CliApp {
             .parse::<crate::p2p::SessionTicket>()
             .context("Failed to parse session ticket")?;
 
-        println!("📡 Successfully parsed ticket for topic: {}", ticket.topic_id);
+        println!(
+            "📡 Successfully parsed ticket for topic: {}",
+            ticket.topic_id
+        );
 
         let (sender, mut event_receiver) = self
             .network
-            .join_session(ticket.topic_id, ticket.nodes)
+            .join_session(ticket)
             .await
             .context("Failed to join session")?;
 
@@ -634,6 +646,25 @@ impl CliApp {
         Ok(())
     }
 
+    fn display_qr_code(&self, ticket: &str) {
+        use qrcode::QrCode;
+
+        match QrCode::new(ticket.as_bytes()) {
+            Ok(qr_code) => {
+                let qr_string = qr_code
+                    .render::<char>()
+                    .quiet_zone(true)
+                    .module_dimensions(2, 1)
+                    .build();
+                println!("🎫 Scan the QR code below to join this session:");
+                println!("\n{}\n", qr_string);
+            }
+            Err(e) => {
+                eprintln!("Failed to generate QR code: {}", e);
+            }
+        }
+    }
+
     pub fn print_banner() {
         execute!(
             io::stdout(),
@@ -650,3 +681,4 @@ impl CliApp {
         .ok();
     }
 }
+
