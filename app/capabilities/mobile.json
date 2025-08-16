@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/capabilities.json",
+  "identifier": "mobile-capability",
+  "windows": [
+    "main"
+  ],
+  "platforms": [
+    "iOS",
+    "android"
+  ],
+  "permissions": [
+    "barcode-scanner:allow-scan",
+    "barcode-scanner:allow-cancel"
+  ]
+}

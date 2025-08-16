@@ -1,1 +1,1 @@
-{"main":{"identifier":"main","description":"Main application capabilities","local":true,"windows":["main"],"permissions":["core:event:allow-listen","core:event:default"]}}
+{"main":{"identifier":"main","description":"Main application capabilities","local":true,"windows":["main"],"permissions":["core:event:allow-listen","core:event:default"]},"mobile-capability":{"identifier":"mobile-capability","description":"","local":true,"windows":["main"],"permissions":["barcode-scanner:allow-scan","barcode-scanner:allow-cancel"],"platforms":["iOS","android"]}}
