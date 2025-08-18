@@ -151,6 +151,7 @@ async fn send_terminal_input(
     input: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    println!("send_terminal_input called with session_id: {}, input: {:?}", session_id, input); // Add this for immediate visibility
     let sessions = state.sessions.lock().unwrap();
     let session = sessions.get(&session_id).ok_or("Session not found")?;
 
@@ -160,9 +161,10 @@ async fn send_terminal_input(
             .unwrap()
             .as_secs_f64(),
         event_type: EventType::Input,
-        data: input,
+        data: input.clone(), // Clone for logging
     };
 
+    println!("Sending event: {:?}", event); // Add this for immediate visibility
     session
         .event_sender
         .send(event)

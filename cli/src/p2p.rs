@@ -266,17 +266,21 @@ impl P2PNetwork {
     }
 
     pub async fn send_input(&self, sender: &GossipSender, data: String) -> Result<()> {
-        debug!("Sending input data");
+        debug!("Sending input data: {:?}", data);
+        println!("Sending input data: {:?}", data); // Add this for immediate visibility
 
         let message = TerminalMessage::new(TerminalMessageBody::Input {
             from: self.endpoint.node_id(),
-            data,
+            data: data.clone(), // Clone for logging
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         });
 
+        debug!("Broadcasting input message: {:?}", message);
         sender.broadcast(message.to_vec().into()).await?;
+        debug!("Input message broadcasted successfully");
+        println!("Input message broadcasted successfully"); // Add this for immediate visibility
         Ok(())
     }
 
@@ -379,17 +383,27 @@ impl P2PNetwork {
                     }
                 }
                 TerminalMessageBody::Input {
-                    from: _,
+                    from,
                     data,
                     timestamp,
                 } => {
+                    debug!("Received input event from {}: {}", from.fmt_short(), data);
                     let event = TerminalEvent {
                         timestamp: timestamp as f64,
                         event_type: crate::terminal::EventType::Input,
                         data,
                     };
-                    if let Err(e) = session.event_sender.send(event) {
-                        warn!("Failed to send input event to subscribers: {}", e);
+                    // Check if there are active receivers before sending
+                    let receiver_count = session.event_sender.receiver_count();
+                    debug!("Input event receiver count: {}", receiver_count);
+                    if receiver_count > 0 {
+                        if let Err(e) = session.event_sender.send(event) {
+                            warn!("Failed to send input event to subscribers: {}", e);
+                        } else {
+                            debug!("Successfully sent input event to subscribers");
+                        }
+                    } else {
+                        debug!("No active receivers for input event, skipping");
                     }
                 }
                 TerminalMessageBody::Resize {

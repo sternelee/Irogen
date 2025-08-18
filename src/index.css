@@ -380,30 +380,30 @@ body {
     padding: 24px;
     max-width: 100%;
   }
-  
+
   .connection-form h1 {
     font-size: 20px;
   }
-  
+
   .form-group input,
   .ticket-input {
     padding: 12px 14px;
     font-size: 16px; /* Prevents zoom on iOS */
   }
-  
+
   .connect-btn {
     padding: 14px 20px;
     font-size: 16px;
   }
-  
+
   .scan-btn {
     padding: 0 10px;
   }
-  
+
   .titlebar-title {
     font-size: 0.8rem;
   }
-  
+
   .tab-title {
     max-width: 100px;
     font-size: 0.8rem;
@@ -414,23 +414,22 @@ body {
   .connection-form {
     padding: 20px;
   }
-  
+
   .tabs-container {
     padding-left: 4rem;
   }
-  
+
   .tab {
     padding: 0 0.75rem;
   }
-  
+
   .tab-title {
     max-width: 80px;
   }
-  
+
   .new-tab-btn {
     width: 1.8rem;
     height: 1.8rem;
     font-size: 1.2rem;
   }
 }
-

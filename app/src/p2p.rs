@@ -432,17 +432,32 @@ impl P2PNetwork {
                     }
                 }
                 TerminalMessageBody::Input {
-                    from: _,
+                    from,
                     data,
                     timestamp,
                 } => {
+                    debug!("Received input event from {}: {}", from.fmt_short(), data);
+                    println!("Received input event from {}: {}", from.fmt_short(), data); // Add this for immediate visibility
                     let event = TerminalEvent {
                         timestamp: timestamp as f64,
                         event_type: crate::terminal_events::EventType::Input,
-                        data,
+                        data: data.clone(), // Clone for logging
                     };
-                    if let Err(e) = session.event_sender.send(event) {
-                        warn!("Failed to send input event to subscribers: {}", e);
+                    // Check if there are active receivers before sending
+                    let receiver_count = session.event_sender.receiver_count();
+                    debug!("Input event receiver count: {}", receiver_count);
+                    println!("Input event receiver count: {}", receiver_count); // Add this for immediate visibility
+                    if receiver_count > 0 {
+                        if let Err(e) = session.event_sender.send(event) {
+                            warn!("Failed to send input event to subscribers: {}", e);
+                            println!("Failed to send input event to subscribers: {}", e); // Add this for immediate visibility
+                        } else {
+                            debug!("Successfully sent input event to subscribers");
+                            println!("Successfully sent input event to subscribers"); // Add this for immediate visibility
+                        }
+                    } else {
+                        debug!("No active receivers for input event, skipping");
+                        println!("No active receivers for input event, skipping"); // Add this for immediate visibility
                     }
                 }
                 TerminalMessageBody::Resize {

@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.riterm.app",
   "build": {
+    "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },

@@ -325,10 +325,22 @@ impl CliApp {
 
         terminal::enable_raw_mode()?;
 
-        tokio::spawn(async move {
+        // Create a channel for sending input to the PTY
+        let (_pty_input_sender, _pty_input_receiver) = mpsc::unbounded_channel::<String>();
+
+        // Spawn task to handle events from the network
+        let _event_task = tokio::spawn(async move {
             while let Ok(event) = event_receiver.recv().await {
                 match event.event_type {
                     crate::terminal::EventType::Output => {
+                        print!("{}", event.data);
+                        io::stdout().flush().ok();
+                    }
+                    crate::terminal::EventType::Input => {
+                        // Forward input to PTY
+                        // Note: In this version, we're not actually using the channel since we don't have a PTY to send to
+                        debug!("Received input event: {}", event.data);
+                        // Print the input to stdout so we can see it
                         print!("{}", event.data);
                         io::stdout().flush().ok();
                     }
@@ -360,7 +372,6 @@ impl CliApp {
                         )
                         .ok();
                     }
-                    _ => {}
                 }
             }
         });
@@ -597,10 +608,22 @@ impl CliApp {
 
         terminal::enable_raw_mode()?;
 
-        tokio::spawn(async move {
+        // Create a channel for sending input to the PTY
+        let (_pty_input_sender, _pty_input_receiver) = mpsc::unbounded_channel::<String>();
+
+        // Spawn task to handle events from the network
+        let _event_task = tokio::spawn(async move {
             while let Ok(event) = event_receiver.recv().await {
                 match event.event_type {
                     crate::terminal::EventType::Output => {
+                        print!("{}", event.data);
+                        io::stdout().flush().ok();
+                    }
+                    crate::terminal::EventType::Input => {
+                        // Forward input to PTY
+                        // Note: In this version, we're not actually using the channel since we don't have a PTY to send to
+                        debug!("Received input event: {}", event.data);
+                        // Print the input to stdout so we can see it
                         print!("{}", event.data);
                         io::stdout().flush().ok();
                     }
@@ -632,7 +655,6 @@ impl CliApp {
                         )
                         .ok();
                     }
-                    _ => {}
                 }
             }
         });
@@ -681,4 +703,3 @@ impl CliApp {
         .ok();
     }
 }
-

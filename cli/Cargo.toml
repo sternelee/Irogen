@@ -22,3 +22,4 @@ rand = { workspace = true }
 data-encoding = "2.6"
 url = "2.5"
 qrcode = "0.14"
+tracing-appender.workspace = true
