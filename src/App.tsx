@@ -87,7 +87,6 @@ function App() {
 
         // Handle Enter key specifically
         if (ev.keyCode === 13) {
-          console.log('Enter key pressed');
           terminalInstance.current?.write('\r\n');
         }
         // Handle Backspace key

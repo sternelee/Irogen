@@ -10,7 +10,7 @@ use crossterm::{
 use std::io::{self, Write};
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
-use tracing::{debug, error};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::p2p::P2PNetwork;
@@ -218,10 +218,7 @@ impl CliApp {
                         }
                     }
                     crate::terminal::EventType::Input => {
-                        if let Err(e) = network_clone
-                            .send_input(&sender_clone, event.data)
-                            .await
-                        {
+                        if let Err(e) = network_clone.send_input(&sender_clone, event.data).await {
                             error!("Failed to send terminal input: {}", e);
                         }
                     }
@@ -307,11 +304,17 @@ impl CliApp {
             ));
         };
 
+        // First diagnose the connection to help troubleshoot
+        if let Err(e) = self.network.diagnose_connection(&ticket).await {
+            warn!("Connection diagnosis failed: {}", e);
+        }
+
+        println!("Attempting to join session (with retries)...");
         let (sender, mut event_receiver) = self
             .network
-            .join_session(ticket)
+            .join_session_with_retry(ticket, 3)
             .await
-            .context("Failed to join session")?;
+            .context("Failed to join session after multiple attempts")?;
 
         let network_clone = self.network.clone();
         let sender_clone = sender.clone();
@@ -587,11 +590,17 @@ impl CliApp {
             ticket.topic_id
         );
 
+        // First diagnose the connection to help troubleshoot
+        if let Err(e) = self.network.diagnose_connection(&ticket).await {
+            warn!("Connection diagnosis failed: {}", e);
+        }
+
+        println!("Attempting to join session (with retries)...");
         let (sender, mut event_receiver) = self
             .network
-            .join_session(ticket)
+            .join_session_with_retry(ticket, 3)
             .await
-            .context("Failed to join session")?;
+            .context("Failed to join session after multiple attempts")?;
 
         let network_clone = self.network.clone();
         let sender_clone = sender.clone();

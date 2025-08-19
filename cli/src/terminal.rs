@@ -510,7 +510,7 @@ impl TerminalRecorder {
                                 break;
                             }
                             writer.flush().ok();
-                            
+
                             // Record and share the input event
                             if let Err(e) = recorder_input_clone2.record_input(&data) {
                                 error!("Failed to record local input: {}", e);

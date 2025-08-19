@@ -83,11 +83,34 @@ impl TerminalMessage {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        serde_json::from_slice(bytes).map_err(Into::into)
+        match serde_json::from_slice(bytes) {
+            Ok(message) => Ok(message),
+            Err(e) => {
+                // Try to log a snippet of the malformed data for debugging
+                let preview = if bytes.len() > 0 {
+                    let preview_len = std::cmp::min(bytes.len(), 50);
+                    format!("{:?}", &bytes[..preview_len])
+                } else {
+                    "empty".to_string()
+                };
+
+                error!(
+                    "Failed to deserialize message: {} (data preview: {})",
+                    e, preview
+                );
+                Err(anyhow::anyhow!("Deserialization error: {}", e))
+            }
+        }
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
-        serde_json::to_vec(self).expect("serde_json::to_vec is infallible")
+        match serde_json::to_vec(self) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                error!("Failed to serialize message: {}", e);
+                Vec::new() // Return empty vec on error, which will be handled gracefully
+            }
+        }
     }
 }
 
@@ -253,37 +276,119 @@ impl P2PNetwork {
         Ok((sender, event_receiver))
     }
 
+    pub async fn join_session_with_retry(
+        &self,
+        ticket: SessionTicket,
+        max_retries: u32,
+    ) -> Result<(GossipSender, broadcast::Receiver<TerminalEvent>)> {
+        info!(
+            "Joining session with topic: {} (with retry)",
+            ticket.topic_id
+        );
+
+        let mut last_error = None;
+
+        for attempt in 1..=max_retries {
+            info!("Connection attempt {} of {}", attempt, max_retries);
+
+            match self.join_session(ticket.clone()).await {
+                Ok(result) => {
+                    info!("✅ Successfully joined session on attempt {}", attempt);
+                    return Ok(result);
+                }
+                Err(e) => {
+                    info!("Attempt {} failed: {}", attempt, e);
+                    last_error = Some(e);
+
+                    if attempt < max_retries {
+                        info!("Waiting before next attempt...");
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    }
+                }
+            }
+        }
+
+        Err(last_error
+            .unwrap_or_else(|| anyhow::anyhow!("Failed to join session after multiple attempts")))
+    }
+
     pub async fn send_terminal_output(&self, sender: &GossipSender, data: String) -> Result<()> {
-        debug!("Sending terminal output");
+        debug!("Sending terminal output length={}", data.len());
+
+        // Sanitize ANSI escape sequences to prevent transmission issues
+        let sanitized_data = data.replace('\u{1b}', "\\e");
 
         let message = TerminalMessage::new(TerminalMessageBody::Output {
             from: self.endpoint.node_id(),
-            data,
+            data: sanitized_data,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         });
 
-        sender.broadcast(message.to_vec().into()).await?;
+        debug!("Broadcasting sanitized output message");
+
+        // Add retry logic for more reliable transmission
+        let max_retries = 3;
+        for attempt in 1..=max_retries {
+            match sender.broadcast(message.to_vec().into()).await {
+                Ok(_) => {
+                    debug!(
+                        "Output message broadcasted successfully on attempt {}",
+                        attempt
+                    );
+                    return Ok(());
+                }
+                Err(e) => {
+                    if attempt == max_retries {
+                        return Err(e.into());
+                    }
+                    warn!("Failed to broadcast output on attempt {}: {}", attempt, e);
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                }
+            }
+        }
+
         Ok(())
     }
 
     pub async fn send_input(&self, sender: &GossipSender, data: String) -> Result<()> {
-        debug!("Sending input data: {:?}", data);
-        println!("Sending input data: {:?}", data); // Add this for immediate visibility
+        debug!("Sending input data: {:?}", data.len());
+
+        // Sanitize any control sequences in the input
+        let sanitized_data = data.replace('\u{1b}', "\\e");
 
         let message = TerminalMessage::new(TerminalMessageBody::Input {
             from: self.endpoint.node_id(),
-            data: data.clone(), // Clone for logging
+            data: sanitized_data,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         });
 
-        debug!("Broadcasting input message: {:?}", message);
-        sender.broadcast(message.to_vec().into()).await?;
-        debug!("Input message broadcasted successfully");
-        println!("Input message broadcasted successfully"); // Add this for immediate visibility
+        debug!("Broadcasting sanitized input message");
+
+        // Add retry logic for more reliable transmission
+        let max_retries = 3;
+        for attempt in 1..=max_retries {
+            match sender.broadcast(message.to_vec().into()).await {
+                Ok(_) => {
+                    debug!(
+                        "Input message broadcasted successfully on attempt {}",
+                        attempt
+                    );
+                    return Ok(());
+                }
+                Err(e) => {
+                    if attempt == max_retries {
+                        return Err(e.into());
+                    }
+                    warn!("Failed to broadcast input on attempt {}: {}", attempt, e);
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -348,17 +453,57 @@ impl P2PNetwork {
         };
 
         tokio::spawn(async move {
+            debug!(
+                "Starting gossip message listener for session: {}",
+                session_id
+            );
+
             while let Some(event) = receiver.next().await {
-                if let Ok(Event::Received(msg)) = event {
-                    if let Ok(message) = TerminalMessage::from_bytes(&msg.content) {
-                        if let Err(e) =
-                            Self::handle_gossip_message(&sessions, &session_id, message).await
-                        {
-                            error!("Failed to handle gossip message: {}", e);
+                match event {
+                    Ok(Event::Received(msg)) => {
+                        debug!("Received gossip message: {} bytes", msg.content.len());
+
+                        match TerminalMessage::from_bytes(&msg.content) {
+                            Ok(message) => {
+                                if let Err(e) =
+                                    Self::handle_gossip_message(&sessions, &session_id, message)
+                                        .await
+                                {
+                                    error!("Failed to handle gossip message: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to deserialize gossip message: {}", e);
+                                // Try to log a sample of the message for debugging
+                                if msg.content.len() > 0 {
+                                    let sample_len = std::cmp::min(msg.content.len(), 100);
+                                    let sample = &msg.content[..sample_len];
+                                    error!(
+                                        "Message sample (first {} bytes): {:?}",
+                                        sample_len, sample
+                                    );
+                                }
+                            }
                         }
+                    }
+                    Ok(Event::NeighborUp(node_id)) => {
+                        info!("Peer connected: {}", node_id.fmt_short());
+                    }
+                    Ok(Event::NeighborDown(node_id)) => {
+                        info!("Peer disconnected: {}", node_id.fmt_short());
+                    }
+                    Ok(Event::Lagged) => {
+                        warn!("Gossip topic is lagged (events may have been missed)");
+                    }
+                    Err(e) => {
+                        error!("Error in gossip receiver for session {}: {}", session_id, e);
+                        // Try to reconnect or recover if possible
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                     }
                 }
             }
+
+            warn!("Gossip listener for session {} has ended", session_id);
         });
 
         Ok(())
@@ -392,7 +537,6 @@ impl P2PNetwork {
                     timestamp,
                 } => {
                     debug!("Received input event from {}: {}", from.fmt_short(), data);
-                    println!("Received input event from {}: {}", from.fmt_short(), data); // Add immediate visibility
                     let event = TerminalEvent {
                         timestamp: timestamp as f64,
                         event_type: crate::terminal::EventType::Input,
@@ -406,10 +550,8 @@ impl P2PNetwork {
                             if let Some(input_sender) = &session.input_sender {
                                 if let Err(e) = input_sender.send(data.clone()) {
                                     warn!("Failed to send input to terminal: {}", e);
-                                    println!("Failed to send input to terminal: {}", e); // Add immediate visibility
                                 } else {
                                     debug!("Successfully sent input to terminal");
-                                    println!("Successfully sent input to terminal: {}", data); // Add immediate visibility
                                 }
                             }
                         }
@@ -418,21 +560,14 @@ impl P2PNetwork {
                     // Broadcast input event to all subscribers
                     let receiver_count = session.event_sender.receiver_count();
                     debug!("Input event receiver count: {}", receiver_count);
-                    println!("Input event receiver count: {}", receiver_count); // Add immediate visibility
                     if receiver_count > 0 {
                         if let Err(e) = session.event_sender.send(event) {
                             warn!("Failed to send input event to subscribers: {}", e);
-                            println!("Failed to send input event to subscribers: {}", e); // Add immediate visibility
                         } else {
                             debug!("Successfully sent input event to subscribers");
-                            println!("Successfully sent input event to subscribers"); // Add immediate visibility
                         }
                     } else {
                         debug!("No active receivers for input event, skipping");
-                        println!("No active receivers for input event, skipping"); // Add immediate visibility
-
-                        // Even if there are no receivers, let's still print the input for debugging
-                        println!("Input data was: {}", data);
                     }
                 }
                 TerminalMessageBody::Resize {
@@ -477,8 +612,9 @@ impl P2PNetwork {
     }
 
     pub async fn get_node_addr(&self) -> Result<NodeAddr> {
-        // Wait a bit for the network to initialize
-        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+        // Wait longer for the network to fully initialize
+        info!("Waiting for network initialization...");
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
         let node_id = self.endpoint.node_id();
         let mut node_addr = NodeAddr::new(node_id);
@@ -526,4 +662,52 @@ impl P2PNetwork {
             false
         }
     }
+
+    pub async fn diagnose_connection(&self, ticket: &SessionTicket) -> Result<()> {
+        info!(
+            "Diagnosing connection to session with topic: {}",
+            ticket.topic_id
+        );
+
+        for (i, node) in ticket.nodes.iter().enumerate() {
+            info!(
+                "Testing connection to node {}/{}: {}",
+                i + 1,
+                ticket.nodes.len(),
+                node.node_id
+            );
+
+            // Test connection to each direct address
+            if node.direct_addresses.is_empty() {
+                info!("Node has no direct addresses specified");
+            }
+
+            for (j, addr) in node.direct_addresses.iter().enumerate() {
+                info!(
+                    "Testing direct address {}/{}: {}",
+                    j + 1,
+                    node.direct_addresses.len(),
+                    addr
+                );
+
+                // Try to connect to the address
+                let result = tokio::net::TcpStream::connect(addr).await;
+                match result {
+                    Ok(_) => info!("✅ Successfully connected to {}", addr),
+                    Err(e) => info!("❌ Failed to connect to {}: {}", addr, e),
+                }
+            }
+
+            // Test connection through endpoint
+            info!("Adding node {} to endpoint", node.node_id);
+            if let Err(e) = self.endpoint.add_node_addr(node.clone()) {
+                info!("Failed to add node to endpoint: {}", e);
+            } else {
+                info!("✅ Successfully added node to endpoint");
+            }
+        }
+
+        Ok(())
+    }
 }
+
