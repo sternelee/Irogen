@@ -398,7 +398,7 @@ impl P2PNetwork {
                         event_type: crate::terminal::EventType::Input,
                         data: data.clone(), // Clone for logging
                     };
-                    
+
                     // For host sessions, forward input to the input sender if available
                     let sessions_guard = sessions.read().await;
                     if let Some(session) = sessions_guard.get(session_id) {
@@ -414,7 +414,7 @@ impl P2PNetwork {
                             }
                         }
                     }
-                    
+
                     // Broadcast input event to all subscribers
                     let receiver_count = session.event_sender.receiver_count();
                     debug!("Input event receiver count: {}", receiver_count);
@@ -430,7 +430,7 @@ impl P2PNetwork {
                     } else {
                         debug!("No active receivers for input event, skipping");
                         println!("No active receivers for input event, skipping"); // Add immediate visibility
-                        
+
                         // Even if there are no receivers, let's still print the input for debugging
                         println!("Input data was: {}", data);
                     }

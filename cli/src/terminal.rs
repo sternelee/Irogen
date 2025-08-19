@@ -71,24 +71,6 @@ impl TerminalRecorder {
         self.start_time.elapsed().unwrap_or_default().as_secs_f64()
     }
 
-    pub fn record_output(&self, data: &[u8]) -> Result<()> {
-        let data_str = String::from_utf8_lossy(data).to_string();
-        let event = TerminalEvent {
-            timestamp: self.get_relative_timestamp(),
-            event_type: EventType::Output,
-            data: data_str,
-        };
-
-        if let Ok(mut events) = self.events.lock() {
-            events.push(event.clone());
-        }
-
-        self.event_sender
-            .send(event)
-            .context("Failed to send output event")?;
-        Ok(())
-    }
-
     pub fn record_input(&self, data: &[u8]) -> Result<()> {
         let data_str = String::from_utf8_lossy(data).to_string();
         let event = TerminalEvent {
@@ -104,6 +86,24 @@ impl TerminalRecorder {
         self.event_sender
             .send(event)
             .context("Failed to send input event")?;
+        Ok(())
+    }
+
+    pub fn record_output(&self, data: &[u8]) -> Result<()> {
+        let data_str = String::from_utf8_lossy(data).to_string();
+        let event = TerminalEvent {
+            timestamp: self.get_relative_timestamp(),
+            event_type: EventType::Output,
+            data: data_str,
+        };
+
+        if let Ok(mut events) = self.events.lock() {
+            events.push(event.clone());
+        }
+
+        self.event_sender
+            .send(event)
+            .context("Failed to send output event")?;
         Ok(())
     }
 
@@ -159,6 +159,7 @@ impl TerminalRecorder {
         shell_config: &ShellConfig,
         width: u16,
         height: u16,
+        mut pty_input_receiver: Option<mpsc::UnboundedReceiver<String>>,
     ) -> Result<()> {
         let (command, args) = shell_config.get_full_command();
         info!(
@@ -267,7 +268,8 @@ impl TerminalRecorder {
         });
 
         // Handle stdin -> PTY + iroh sharing
-        let recorder_input_clone = self.clone();
+        let recorder_input_clone1 = self.clone();
+        let (local_input_sender, mut local_input_receiver) = mpsc::unbounded_channel::<Vec<u8>>();
         let input_task = tokio::spawn(async move {
             let mut stdin = tokio::io::stdin();
             let mut buffer = [0u8; 1024];
@@ -278,21 +280,67 @@ impl TerminalRecorder {
                     Ok(n) => {
                         let data = &buffer[..n];
 
-                        // Write to PTY
-                        if let Err(e) = writer.write(data) {
-                            error!("Failed to write to PTY: {}", e);
+                        // Send to local input channel
+                        if let Err(e) = local_input_sender.send(data.to_vec()) {
+                            error!("Failed to send local input: {}", e);
                             break;
-                        }
-                        writer.flush().ok();
-
-                        // Record and share the input event
-                        if let Err(e) = recorder_input_clone.record_input(data) {
-                            error!("Failed to record input: {}", e);
                         }
                     }
                     Err(e) => {
                         error!("Failed to read from stdin: {}", e);
                         break;
+                    }
+                }
+            }
+        });
+
+        // Handle all input (local + remote) -> PTY + iroh sharing
+        let recorder_input_clone2 = self.clone();
+        let input_writer_task = tokio::spawn(async move {
+            let mut local_buffer = [0u8; 1024];
+            loop {
+                tokio::select! {
+                    // Local input
+                    local_result = local_input_receiver.recv() => {
+                        if let Some(data) = local_result {
+                            if let Err(e) = writer.write(&data) {
+                                error!("Failed to write local input to PTY: {}", e);
+                                break;
+                            }
+                            writer.flush().ok();
+
+                            // Record and share the input event
+                            if let Err(e) = recorder_input_clone2.record_input(&data) {
+                                error!("Failed to record local input: {}", e);
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    // Remote input
+                    remote_data = async {
+                        if let Some(ref mut receiver) = pty_input_receiver {
+                            receiver.recv().await
+                        } else {
+                            std::future::pending().await
+                        }
+                    } => {
+                        if let Some(input_data) = remote_data {
+                            debug!("Received remote input: {}", input_data);
+                            if let Err(e) = writer.write(input_data.as_bytes()) {
+                                error!("Failed to write remote input to PTY: {}", e);
+                                break;
+                            }
+                            if let Err(e) = writer.flush() {
+                                error!("Failed to flush remote input to PTY: {}", e);
+                                break;
+                            }
+
+                            // Record the input event
+                            if let Err(e) = recorder_input_clone2.record_input(input_data.as_bytes()) {
+                                error!("Failed to record remote input: {}", e);
+                            }
+                        }
                     }
                 }
             }
@@ -309,6 +357,7 @@ impl TerminalRecorder {
         tokio::select! {
             _ = output_task => {},
             _ = input_task => {},
+            _ = input_writer_task => {},
             _ = child_task => {},
         }
 
@@ -323,6 +372,7 @@ impl TerminalRecorder {
         shell_config: &ShellConfig,
         width: u16,
         height: u16,
+        mut pty_input_receiver: Option<mpsc::UnboundedReceiver<String>>,
     ) -> Result<()> {
         let (command, args) = shell_config.get_full_command();
         info!(
@@ -367,6 +417,10 @@ impl TerminalRecorder {
             data: format!("{} {}", command, args.join(" ")),
         };
         event_sender.send(start_event)?;
+
+        // Clone data for tasks
+        let recorder_clone = self.clone();
+        let event_sender_clone = event_sender.clone();
 
         tokio::spawn(async move {
             let mut buffer = [0u8; 8192];
@@ -415,6 +469,9 @@ impl TerminalRecorder {
             event_sender.send(end_event).ok();
         });
 
+        // Handle input (local + remote) -> PTY + iroh sharing
+        let recorder_input_clone = self.clone();
+        let (local_input_sender, mut local_input_receiver) = mpsc::unbounded_channel::<Vec<u8>>();
         tokio::spawn(async move {
             let mut stdin = tokio::io::stdin();
             let mut buffer = [0u8; 1024];
@@ -424,14 +481,69 @@ impl TerminalRecorder {
                     Ok(0) => break,
                     Ok(n) => {
                         let data = &buffer[..n];
-                        if let Err(e) = writer.write(data) {
-                            error!("Failed to write to PTY: {}", e);
+
+                        // Send to local input channel
+                        if let Err(e) = local_input_sender.send(data.to_vec()) {
+                            error!("Failed to send local input: {}", e);
                             break;
                         }
                     }
                     Err(e) => {
                         error!("Failed to read from stdin: {}", e);
                         break;
+                    }
+                }
+            }
+        });
+
+        // Handle all input (local + remote) -> PTY + iroh sharing
+        let recorder_input_clone2 = self.clone();
+        tokio::spawn(async move {
+            let mut local_buffer = [0u8; 1024];
+            loop {
+                tokio::select! {
+                    // Local input
+                    local_result = local_input_receiver.recv() => {
+                        if let Some(data) = local_result {
+                            if let Err(e) = writer.write(&data) {
+                                error!("Failed to write local input to PTY: {}", e);
+                                break;
+                            }
+                            writer.flush().ok();
+                            
+                            // Record and share the input event
+                            if let Err(e) = recorder_input_clone2.record_input(&data) {
+                                error!("Failed to record local input: {}", e);
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    // Remote input
+                    remote_data = async {
+                        if let Some(ref mut receiver) = pty_input_receiver {
+                            receiver.recv().await
+                        } else {
+                            std::future::pending().await
+                        }
+                    } => {
+                        if let Some(input_data) = remote_data {
+                            debug!("Received remote input: {}", input_data);
+                            if let Err(e) = writer.write(input_data.as_bytes()) {
+                                error!("Failed to write remote input to PTY: {}", e);
+                                break;
+                            }
+                            if let Err(e) = writer.flush() {
+                                error!("Failed to flush remote input to PTY: {}", e);
+                                break;
+                            }
+
+                            // Record the input event but don't send it back to network
+                            // to avoid infinite loop
+                            if let Err(e) = recorder_input_clone2.record_input(input_data.as_bytes()) {
+                                error!("Failed to record remote input: {}", e);
+                            }
+                        }
                     }
                 }
             }

@@ -217,6 +217,14 @@ impl CliApp {
                             error!("Failed to send terminal output: {}", e);
                         }
                     }
+                    crate::terminal::EventType::Input => {
+                        if let Err(e) = network_clone
+                            .send_input(&sender_clone, event.data)
+                            .await
+                        {
+                            error!("Failed to send terminal input: {}", e);
+                        }
+                    }
                     crate::terminal::EventType::Resize { width, height } => {
                         if let Err(e) = network_clone
                             .send_resize_event(&sender_clone, width, height)
@@ -231,14 +239,16 @@ impl CliApp {
             debug!("Terminal event forwarding task ended");
         });
 
-        // Handle input from network and forward to terminal recorder
-        let recorder_clone = recorder.clone();
+        // Create a channel for sending remote input to the PTY
+        let (pty_input_sender, pty_input_receiver) = mpsc::unbounded_channel::<String>();
+
+        // Handle input from network and forward to PTY
         tokio::spawn(async move {
             let mut input_receiver = input_receiver;
             while let Some(input_data) = input_receiver.recv().await {
                 debug!("Received network input: {}", input_data);
-                if let Err(e) = recorder_clone.handle_remote_input(&input_data, &mut std::io::stdout()) {
-                    error!("Failed to handle remote input: {}", e);
+                if let Err(e) = pty_input_sender.send(input_data) {
+                    error!("Failed to send input to PTY channel: {}", e);
                 }
             }
         });
@@ -248,11 +258,21 @@ impl CliApp {
         if passthrough {
             println!("✅ Starting passthrough terminal session. Press Ctrl+C to exit.");
             recorder
-                .start_passthrough_session_with_config(&shell_config, width, height)
+                .start_passthrough_session_with_config(
+                    &shell_config,
+                    width,
+                    height,
+                    Some(pty_input_receiver),
+                )
                 .await?;
         } else {
             println!("✅ Starting terminal session. Press Ctrl+C to exit.");
-            recorder.start_session_with_config(&shell_config, width, height)?;
+            recorder.start_session_with_config(
+                &shell_config,
+                width,
+                height,
+                Some(pty_input_receiver),
+            )?;
             tokio::signal::ctrl_c().await?;
         }
 

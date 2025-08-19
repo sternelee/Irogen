@@ -580,4 +580,3 @@ impl P2PNetwork {
         self.router.shutdown().await.map_err(Into::into)
     }
 }
-

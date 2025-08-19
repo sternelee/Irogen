@@ -155,6 +155,7 @@ function App() {
       sessionIdRef.current = actualSessionId;
       isConnectedRef.current = true;
 
+      console.log('Connected to session:', actualSessionId);
       // Listen for terminal events
       const unlisten = await listen<any>(`terminal-event-${actualSessionId}`, (event) => {
         const termEvent = event.payload;

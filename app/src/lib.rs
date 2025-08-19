@@ -151,7 +151,10 @@ async fn send_terminal_input(
     input: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    println!("send_terminal_input called with session_id: {}, input: {:?}", session_id, input); // Add this for immediate visibility
+    println!(
+        "send_terminal_input called with session_id: {}, input: {:?}",
+        session_id, input
+    ); // Add this for immediate visibility
     let sessions = state.sessions.lock().unwrap();
     let session = sessions.get(&session_id).ok_or("Session not found")?;
 
@@ -293,4 +296,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
