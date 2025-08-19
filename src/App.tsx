@@ -46,6 +46,21 @@ function App() {
       // Fit terminal to container
       fitAddon.current.fit();
 
+      // Display welcome message
+      terminalInstance.current.writeln('\r\n\x1b[1;32m✨ Welcome to iroh-code-remote Terminal!\x1b[0m');
+      terminalInstance.current.writeln('\r\n\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+      terminalInstance.current.writeln('\r\n🚀 Ready to connect to remote sessions');
+      terminalInstance.current.writeln('\r\n💡 Available commands:');
+      terminalInstance.current.writeln('   \x1b[1mhelp\x1b[0m     - Show available commands');
+      terminalInstance.current.writeln('   \x1b[1mls\x1b[0m       - List files in current directory');
+      terminalInstance.current.writeln('   \x1b[1mpwd\x1b[0m      - Show current directory');
+      terminalInstance.current.writeln('   \x1b[1mclear\x1b[0m    - Clear terminal screen');
+      terminalInstance.current.writeln('\r\n\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+      terminalInstance.current.writeln('\r\n');
+
+      // Show initial prompt
+      terminalInstance.current.write('$ ');
+
       // Focus the terminal
       terminalInstance.current.focus();
 
@@ -60,9 +75,14 @@ function App() {
       let inputBuffer = '';
       // Handle terminal input
       const disposeOnData = terminalInstance.current.onData((data) => {
-        console.log('Terminal input received:', data);
-        terminalInstance.current?.write(data);
-        if (data.includes('\r') || data.includes('\n')) {
+        console.log('Terminal input received:', data, data.charCodeAt(0));
+        if (data.charCodeAt(0) === 124) {
+          inputBuffer = inputBuffer.slice(0, -1);
+        } else {
+          inputBuffer += data;
+        }
+        if (data === '\r' || data === '\n') {
+          // Handle Enter key
           if (isConnectedRef.current && sessionIdRef.current) {
             console.log('Sending input to CLI:', inputBuffer);
             // Send input to CLI
@@ -73,8 +93,15 @@ function App() {
               console.error('Failed to send input:', error);
               terminalInstance.current?.writeln(`\r\n❌ Failed to send input: ${error}`);
             });
-            inputBuffer = ""
+            inputBuffer = "";
+          } else {
+            // Show $ prompt for local commands
+            terminalInstance.current?.writeln('\r\n');
+            terminalInstance.current?.write('$ ');
           }
+        } else if (data.length === 1) {
+          // Handle regular character input
+          terminalInstance.current?.write(data);
         }
       });
 
@@ -84,9 +111,6 @@ function App() {
         const printable = !ev.altKey && !ev.ctrlKey && !ev.metaKey;
 
         console.log('Key event:', ev.key, 'Printable:', printable);
-        if (ev.key === 'Backspace') {
-          inputBuffer = inputBuffer.slice(0, -1);
-        }
 
         // Handle Enter key specifically
         if (ev.keyCode === 13) {
@@ -177,7 +201,16 @@ function App() {
       setStatus('Connected');
       if (terminalInstance.current) {
         terminalInstance.current.clear();
-        terminalInstance.current.writeln('✅ Connection established.');
+        terminalInstance.current.writeln('\r\n\x1b[1;32m✅ Connection established!\x1b[0m');
+        terminalInstance.current.writeln('\r\n\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+        terminalInstance.current.writeln('\r\n📡 Session Information:');
+        terminalInstance.current.writeln(`   Session ID: \x1b[1m${actualSessionId.substring(0, 16)}...\x1b[0m`);
+        terminalInstance.current.writeln(`   Ticket: \x1b[1m${sessionTicket.substring(0, 16)}...\x1b[0m`);
+        terminalInstance.current.writeln(`   Status: \x1b[1;32mConnected\x1b[0m`);
+        terminalInstance.current.writeln('\r\n💡 You are now connected to the remote session.');
+        terminalInstance.current.writeln('   Type commands and press Enter to execute them.');
+        terminalInstance.current.writeln('\r\n\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+        terminalInstance.current.writeln('\r\n');
         terminalInstance.current.focus();
       }
     } catch (error) {
@@ -210,7 +243,12 @@ function App() {
     setStatus('Disconnected');
 
     if (terminalInstance.current) {
-      terminalInstance.current.writeln('\r\n👋 Disconnected from session.');
+      terminalInstance.current.writeln('\r\n\x1b[1;33m👋 Disconnected from session\x1b[0m');
+      terminalInstance.current.writeln('\r\n\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+      terminalInstance.current.writeln('\r\n💡 Session ended. You can connect to a new session.');
+      terminalInstance.current.writeln('\r\n\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+      terminalInstance.current.writeln('\r\n');
+      terminalInstance.current.write('$ ');
     }
   };
 

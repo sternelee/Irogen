@@ -315,6 +315,12 @@ impl P2PNetwork {
     pub async fn send_terminal_output(&self, sender: &GossipSender, data: String) -> Result<()> {
         debug!("Sending terminal output length={}", data.len());
 
+        // Check if data is empty
+        if data.is_empty() {
+            debug!("Skipping empty output data");
+            return Ok(());
+        }
+
         // Sanitize ANSI escape sequences to prevent transmission issues
         let sanitized_data = data.replace('\u{1b}', "\\e");
 
@@ -341,6 +347,7 @@ impl P2PNetwork {
                 }
                 Err(e) => {
                     if attempt == max_retries {
+                        error!("Failed to broadcast output after {} attempts: {}", max_retries, e);
                         return Err(e.into());
                     }
                     warn!("Failed to broadcast output on attempt {}: {}", attempt, e);
@@ -353,7 +360,13 @@ impl P2PNetwork {
     }
 
     pub async fn send_input(&self, sender: &GossipSender, data: String) -> Result<()> {
-        debug!("Sending input data: {:?}", data.len());
+        debug!("Sending input data: {:?} (len={})", data, data.len());
+
+        // Check if data is empty
+        if data.is_empty() {
+            debug!("Skipping empty input data");
+            return Ok(());
+        }
 
         // Sanitize any control sequences in the input
         let sanitized_data = data.replace('\u{1b}', "\\e");
@@ -381,6 +394,7 @@ impl P2PNetwork {
                 }
                 Err(e) => {
                     if attempt == max_retries {
+                        error!("Failed to broadcast input after {} attempts: {}", max_retries, e);
                         return Err(e.into());
                     }
                     warn!("Failed to broadcast input on attempt {}: {}", attempt, e);
@@ -435,16 +449,18 @@ impl P2PNetwork {
     ) -> Result<()> {
         // Use the original sessions reference instead of creating a copy
         let sessions = self.sessions.clone();
+        let node_id = self.endpoint.node_id();
 
         tokio::spawn(async move {
-            debug!(
-                "Starting gossip message listener for session: {}",
-                session_id
+            info!(
+                "Starting gossip message listener for session: {} (node: {})",
+                session_id,
+                node_id.fmt_short()
             );
 
-            while let Some(event) = receiver.next().await {
-                match event {
-                    Ok(Event::Received(msg)) => {
+            loop {
+                match receiver.next().await {
+                    Some(Ok(Event::Received(msg))) => {
                         debug!("Received gossip message: {} bytes", msg.content.len());
 
                         match TerminalMessage::from_bytes(&msg.content) {
@@ -470,24 +486,28 @@ impl P2PNetwork {
                             }
                         }
                     }
-                    Ok(Event::NeighborUp(node_id)) => {
-                        info!("Peer connected: {}", node_id.fmt_short());
+                    Some(Ok(Event::NeighborUp(peer_id))) => {
+                        info!("Peer connected: {} to session {}", peer_id.fmt_short(), session_id);
                     }
-                    Ok(Event::NeighborDown(node_id)) => {
-                        info!("Peer disconnected: {}", node_id.fmt_short());
+                    Some(Ok(Event::NeighborDown(peer_id))) => {
+                        info!("Peer disconnected: {} from session {}", peer_id.fmt_short(), session_id);
                     }
-                    Ok(Event::Lagged) => {
-                        warn!("Gossip topic is lagged (events may have been missed)");
+                    Some(Ok(Event::Lagged)) => {
+                        warn!("Gossip topic is lagged for session {} (events may have been missed)", session_id);
                     }
-                    Err(e) => {
+                    Some(Err(e)) => {
                         error!("Error in gossip receiver for session {}: {}", session_id, e);
-                        // Try to reconnect or recover if possible
+                        // Try to continue instead of breaking
                         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                    }
+                    None => {
+                        warn!("Gossip receiver stream ended for session {}", session_id);
+                        break;
                     }
                 }
             }
 
-            warn!("Gossip listener for session {} has ended", session_id);
+            info!("Gossip listener for session {} has ended", session_id);
         });
 
         Ok(())

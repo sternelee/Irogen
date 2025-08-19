@@ -242,24 +242,38 @@ impl CliApp {
         // Handle input from network and forward to PTY
         let network_sessions = self.network.clone();
         let session_id_clone = session_id.clone();
-        tokio::spawn(async move {
+        let input_handler = tokio::spawn(async move {
             info!("Starting remote input handler for session: {}", session_id_clone);
             let mut input_receiver = input_receiver;
-            while let Some(input_data) = input_receiver.recv().await {
-                info!("Host received remote input from P2P network: {:?}", input_data);
-                if let Err(e) = pty_input_sender.send(input_data) {
-                    error!("Failed to send input to PTY channel: {}", e);
-                } else {
-                    debug!("Successfully forwarded remote input to PTY");
+            loop {
+                match input_receiver.recv().await {
+                    Some(input_data) => {
+                        info!("Host received remote input from P2P network: {:?}", input_data);
+                        if let Err(e) = pty_input_sender.send(input_data) {
+                            error!("Failed to send input to PTY channel: {}", e);
+                            // PTY channel closed, exit the loop
+                            break;
+                        } else {
+                            debug!("Successfully forwarded remote input to PTY");
+                        }
+                    }
+                    None => {
+                        info!("Remote input channel closed for session: {}", session_id_clone);
+                        break;
+                    }
                 }
             }
-            warn!("Remote input handler task ended for session: {}", session_id_clone);
+            info!("Remote input handler task ending for session: {}", session_id_clone);
         });
 
         self.handle_network_messages().await;
 
         if passthrough {
             println!("✅ Starting passthrough terminal session. Press Ctrl+C to exit.");
+            
+            // Keep input handler alive
+            let _input_handler = input_handler;
+            
             recorder
                 .start_passthrough_session_with_config(
                     &shell_config,
@@ -270,6 +284,10 @@ impl CliApp {
                 .await?;
         } else {
             println!("✅ Starting terminal session. Press Ctrl+C to exit.");
+            
+            // Keep input handler alive
+            let _input_handler = input_handler;
+            
             recorder.start_session_with_config(
                 &shell_config,
                 width,
