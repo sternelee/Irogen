@@ -8,11 +8,11 @@ import 'xterm/css/xterm.css';
 import './App.css';
 
 function App() {
-  const [isConnected, setIsConnected] = useState(false);
   const [sessionTicket, setSessionTicket] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [status, setStatus] = useState('Disconnected');
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const isConnectedRef = useRef(false);
+  const sessionIdRef = useRef<string | null>(null);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminalInstance = useRef<Terminal | null>(null);
@@ -57,21 +57,24 @@ function App() {
       };
       window.addEventListener('resize', handleResize);
 
+      let inputBuffer = '';
       // Handle terminal input
       const disposeOnData = terminalInstance.current.onData((data) => {
         console.log('Terminal input received:', data);
-        if (isConnected && sessionId) {
-          // Send input to CLI
-          invoke('send_terminal_input', {
-            sessionId: sessionId,
-            input: data,
-          }).catch((error) => {
-            console.error('Failed to send input:', error);
-            terminalInstance.current?.writeln(`\r\n❌ Failed to send input: ${error}`);
-          });
-        } else {
-          // Echo input locally when not connected
-          terminalInstance.current?.write(data);
+        inputBuffer += data;
+        terminalInstance.current?.write(data);
+        if (data.includes('\r') || data.includes('\n')) {
+          if (isConnectedRef.current && sessionIdRef.current) {
+            console.log('Sending input to CLI:', inputBuffer);
+            // Send input to CLI
+            invoke('send_terminal_input', {
+              sessionId: sessionIdRef.current,
+              input: inputBuffer,
+            }).catch((error) => {
+              console.error('Failed to send input:', error);
+              terminalInstance.current?.writeln(`\r\n❌ Failed to send input: ${error}`);
+            });
+          }
         }
       });
 
@@ -114,7 +117,7 @@ function App() {
         terminalInstance.current?.focus();
       }, 100);
     }
-  }, [isConnected]);
+  }, [isConnectedRef.current]);
 
   const initializeNetwork = async () => {
     try {
@@ -149,12 +152,13 @@ function App() {
         sessionTicket: sessionTicket.trim(),
       });
 
-      setSessionId(actualSessionId);
-      setIsConnected(true);
+      sessionIdRef.current = actualSessionId;
+      isConnectedRef.current = true;
 
       // Listen for terminal events
       const unlisten = await listen<any>(`terminal-event-${actualSessionId}`, (event) => {
         const termEvent = event.payload;
+        console.log('Terminal event received:', termEvent);
         if (terminalInstance.current) {
           if (termEvent.event_type === 'Output') {
             terminalInstance.current.write(termEvent.data);
@@ -185,9 +189,9 @@ function App() {
   };
 
   const handleDisconnect = async () => {
-    if (sessionId) {
+    if (sessionIdRef.current) {
       try {
-        await invoke('disconnect_session', { sessionId });
+        await invoke('disconnect_session', { sessionId: sessionIdRef.current });
       } catch (error) {
         console.error('Failed to disconnect:', error);
       }
@@ -198,8 +202,8 @@ function App() {
       unlistenRef.current = null;
     }
 
-    setIsConnected(false);
-    setSessionId(null);
+    isConnectedRef.current = false;
+    sessionIdRef.current = null;
     setStatus('Disconnected');
 
     if (terminalInstance.current) {
@@ -225,7 +229,7 @@ function App() {
         <div ref={terminalRef} className="terminal-container" />
       </div>
 
-      {!isConnected && (
+      {!isConnectedRef.current && (
         <div className="connection-panel">
           <div className="connection-form">
             <h2>Connect to a Session</h2>
@@ -252,7 +256,7 @@ function App() {
         </div>
       )}
 
-      {isConnected && (
+      {isConnectedRef.current && (
         <div className="controls">
           <button className="disconnect-btn" onClick={handleDisconnect}>
             Disconnect

@@ -188,7 +188,7 @@ impl CliApp {
         }
         println!();
 
-        let (topic_id, sender, _input_receiver) = self
+        let (topic_id, sender, input_receiver) = self
             .network
             .create_shared_session(header.clone())
             .await
@@ -231,7 +231,18 @@ impl CliApp {
             debug!("Terminal event forwarding task ended");
         });
 
-        self.handle_input_forwarding(_input_receiver).await;
+        // Handle input from network and forward to terminal recorder
+        let recorder_clone = recorder.clone();
+        tokio::spawn(async move {
+            let mut input_receiver = input_receiver;
+            while let Some(input_data) = input_receiver.recv().await {
+                debug!("Received network input: {}", input_data);
+                if let Err(e) = recorder_clone.handle_remote_input(&input_data, &mut std::io::stdout()) {
+                    error!("Failed to handle remote input: {}", e);
+                }
+            }
+        });
+
         self.handle_network_messages().await;
 
         if passthrough {
@@ -494,12 +505,9 @@ impl CliApp {
     }
 
     async fn handle_network_messages(&mut self) {
-        let _network = self.network.clone();
-        tokio::spawn(async move {
-            // Handle incoming network messages
-            // This would typically involve listening for messages from other nodes
-            // and processing them accordingly
-        });
+        // This function is intentionally left empty as network message handling
+        // is done in the P2PNetwork's start_topic_listener method
+        // We keep this function as a placeholder for future extensions
     }
 
     async fn create_ticket(&mut self, output: Option<String>) -> Result<()> {
