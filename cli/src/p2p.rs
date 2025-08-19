@@ -1,6 +1,9 @@
+use aead::{Aead, KeyInit};
 use anyhow::Result;
+use bincode;
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use futures::StreamExt;
-use iroh::{Endpoint, NodeAddr, NodeId, protocol::Router};
+use iroh::{Endpoint, NodeAddr, NodeId, Watcher, protocol::Router};
 use iroh_gossip::{
     api::{Event, GossipReceiver, GossipSender},
     net::Gossip,
@@ -15,15 +18,19 @@ use url::Url;
 
 use crate::terminal::{SessionHeader, TerminalEvent};
 
+pub type EncryptionKey = [u8; 32];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionTicket {
     pub topic_id: TopicId,
     pub nodes: Vec<NodeAddr>,
+    pub key: EncryptionKey,
 }
 
 impl std::fmt::Display for SessionTicket {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let encoded = data_encoding::BASE32.encode(&serde_json::to_vec(self).unwrap());
+        let bytes = bincode::serialize(self).map_err(|_| std::fmt::Error)?;
+        let encoded = data_encoding::BASE32.encode(&bytes);
         write!(f, "{}", encoded)
     }
 }
@@ -35,16 +42,10 @@ impl std::str::FromStr for SessionTicket {
         let bytes = data_encoding::BASE32
             .decode(s.as_bytes())
             .map_err(|e| anyhow::anyhow!("Failed to decode ticket: {}", e))?;
-        let ticket: SessionTicket = serde_json::from_slice(&bytes)
+        let ticket: SessionTicket = bincode::deserialize(&bytes)
             .map_err(|e| anyhow::anyhow!("Failed to deserialize ticket: {}", e))?;
         Ok(ticket)
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TerminalMessage {
-    pub body: TerminalMessageBody,
-    pub nonce: [u8; 16],
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,43 +75,47 @@ pub enum TerminalMessageBody {
     SessionEnd { from: NodeId, timestamp: u64 },
 }
 
-impl TerminalMessage {
-    pub fn new(body: TerminalMessageBody) -> Self {
-        Self {
-            body,
-            nonce: rand::random(),
-        }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncryptedTerminalMessage {
+    pub nonce: [u8; 12],
+    pub ciphertext: Vec<u8>,
+}
+
+impl EncryptedTerminalMessage {
+    pub fn new(body: TerminalMessageBody, key: &EncryptionKey) -> Result<Self> {
+        let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
+        let nonce_bytes: [u8; 12] = rand::random();
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let plaintext = bincode::serialize(&body)?;
+        let ciphertext = cipher
+            .encrypt(nonce, plaintext.as_ref())
+            .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
+
+        Ok(Self {
+            nonce: nonce_bytes,
+            ciphertext,
+        })
+    }
+
+    pub fn decrypt(&self, key: &EncryptionKey) -> Result<TerminalMessageBody> {
+        let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
+        let nonce = Nonce::from_slice(&self.nonce);
+
+        let plaintext = cipher
+            .decrypt(nonce, self.ciphertext.as_ref())
+            .map_err(|e| anyhow::anyhow!("Decryption failed: {}", e))?;
+
+        let body: TerminalMessageBody = bincode::deserialize(&plaintext)?;
+        Ok(body)
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        match serde_json::from_slice(bytes) {
-            Ok(message) => Ok(message),
-            Err(e) => {
-                // Try to log a snippet of the malformed data for debugging
-                let preview = if bytes.len() > 0 {
-                    let preview_len = std::cmp::min(bytes.len(), 50);
-                    format!("{:?}", &bytes[..preview_len])
-                } else {
-                    "empty".to_string()
-                };
-
-                error!(
-                    "Failed to deserialize message: {} (data preview: {})",
-                    e, preview
-                );
-                Err(anyhow::anyhow!("Deserialization error: {}", e))
-            }
-        }
+        bincode::deserialize(bytes).map_err(Into::into)
     }
 
-    pub fn to_vec(&self) -> Vec<u8> {
-        match serde_json::to_vec(self) {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                error!("Failed to serialize message: {}", e);
-                Vec::new() // Return empty vec on error, which will be handled gracefully
-            }
-        }
+    pub fn to_vec(&self) -> Result<Vec<u8>> {
+        bincode::serialize(self).map_err(Into::into)
     }
 }
 
@@ -121,6 +126,7 @@ pub struct SharedSession {
     pub is_host: bool,
     pub event_sender: broadcast::Sender<TerminalEvent>,
     pub input_sender: Option<mpsc::UnboundedSender<String>>,
+    pub key: EncryptionKey,
 }
 
 pub struct P2PNetwork {
@@ -181,15 +187,17 @@ impl P2PNetwork {
         Ok(network)
     }
 
+    #[tracing::instrument(skip(self, header), fields(session_id = %header.session_id))]
     pub async fn create_shared_session(
         &self,
         header: SessionHeader,
     ) -> Result<(TopicId, GossipSender, mpsc::UnboundedReceiver<String>)> {
         let session_id = header.session_id.clone();
-        info!("Creating shared session: {}", session_id);
+        info!("Creating shared session");
 
         // Create topic for this session using random bytes
         let topic_id = TopicId::from_bytes(rand::random());
+        let key: EncryptionKey = rand::random();
 
         let (event_sender, _event_receiver) = broadcast::channel(1000);
         let (input_sender, input_receiver) = mpsc::unbounded_channel();
@@ -200,6 +208,7 @@ impl P2PNetwork {
             is_host: true,
             event_sender: event_sender.clone(),
             input_sender: Some(input_sender),
+            key,
         };
 
         self.sessions
@@ -215,20 +224,22 @@ impl P2PNetwork {
         self.start_topic_listener(receiver, session_id).await?;
 
         // Send session info message
-        let message = TerminalMessage::new(TerminalMessageBody::SessionInfo {
+        let body = TerminalMessageBody::SessionInfo {
             from: self.endpoint.node_id(),
             header,
-        });
-        sender.broadcast(message.to_vec().into()).await?;
+        };
+        let message = EncryptedTerminalMessage::new(body, &key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
 
         Ok((topic_id, sender, input_receiver))
     }
 
+    #[tracing::instrument(skip(self, ticket), fields(topic_id = %ticket.topic_id))]
     pub async fn join_session(
         &self,
         ticket: SessionTicket,
     ) -> Result<(GossipSender, broadcast::Receiver<TerminalEvent>)> {
-        info!("Joining session with topic: {}", ticket.topic_id);
+        info!("Joining session");
 
         let session_id = format!("session_{}", ticket.topic_id);
         let (event_sender, event_receiver) = broadcast::channel(1000);
@@ -250,6 +261,7 @@ impl P2PNetwork {
             is_host: false,
             event_sender: event_sender.clone(),
             input_sender: None, // Joining sessions don't need to handle input this way
+            key: ticket.key,
         };
 
         self.sessions
@@ -312,97 +324,51 @@ impl P2PNetwork {
             .unwrap_or_else(|| anyhow::anyhow!("Failed to join session after multiple attempts")))
     }
 
-    pub async fn send_terminal_output(&self, sender: &GossipSender, data: String) -> Result<()> {
+    pub async fn send_terminal_output(
+        &self,
+        sender: &GossipSender,
+        data: String,
+        session_id: &str,
+    ) -> Result<()> {
         debug!("Sending terminal output length={}", data.len());
-
-        // Check if data is empty
         if data.is_empty() {
-            debug!("Skipping empty output data");
             return Ok(());
         }
 
-        // Sanitize ANSI escape sequences to prevent transmission issues
-        let sanitized_data = data.replace('\u{1b}', "\\e");
-
-        let message = TerminalMessage::new(TerminalMessageBody::Output {
+        let key = self.get_session_key(session_id).await?;
+        let body = TerminalMessageBody::Output {
             from: self.endpoint.node_id(),
-            data: sanitized_data,
+            data,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
-        });
-
-        debug!("Broadcasting sanitized output message");
-
-        // Add retry logic for more reliable transmission
-        let max_retries = 3;
-        for attempt in 1..=max_retries {
-            match sender.broadcast(message.to_vec().into()).await {
-                Ok(_) => {
-                    debug!(
-                        "Output message broadcasted successfully on attempt {}",
-                        attempt
-                    );
-                    return Ok(());
-                }
-                Err(e) => {
-                    if attempt == max_retries {
-                        error!("Failed to broadcast output after {} attempts: {}", max_retries, e);
-                        return Err(e.into());
-                    }
-                    warn!("Failed to broadcast output on attempt {}: {}", attempt, e);
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                }
-            }
-        }
-
+        };
+        let message = EncryptedTerminalMessage::new(body, &key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
         Ok(())
     }
 
-    pub async fn send_input(&self, sender: &GossipSender, data: String) -> Result<()> {
+    pub async fn send_input(
+        &self,
+        sender: &GossipSender,
+        data: String,
+        session_id: &str,
+    ) -> Result<()> {
         debug!("Sending input data: {:?} (len={})", data, data.len());
-
-        // Check if data is empty
         if data.is_empty() {
-            debug!("Skipping empty input data");
             return Ok(());
         }
 
-        // Sanitize any control sequences in the input
-        let sanitized_data = data.replace('\u{1b}', "\\e");
-
-        let message = TerminalMessage::new(TerminalMessageBody::Input {
+        let key = self.get_session_key(session_id).await?;
+        let body = TerminalMessageBody::Input {
             from: self.endpoint.node_id(),
-            data: sanitized_data,
+            data,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
-        });
-
-        debug!("Broadcasting sanitized input message");
-
-        // Add retry logic for more reliable transmission
-        let max_retries = 3;
-        for attempt in 1..=max_retries {
-            match sender.broadcast(message.to_vec().into()).await {
-                Ok(_) => {
-                    debug!(
-                        "Input message broadcasted successfully on attempt {}",
-                        attempt
-                    );
-                    return Ok(());
-                }
-                Err(e) => {
-                    if attempt == max_retries {
-                        error!("Failed to broadcast input after {} attempts: {}", max_retries, e);
-                        return Err(e.into());
-                    }
-                    warn!("Failed to broadcast input on attempt {}: {}", attempt, e);
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                }
-            }
-        }
-
+        };
+        let message = EncryptedTerminalMessage::new(body, &key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
         Ok(())
     }
 
@@ -411,37 +377,40 @@ impl P2PNetwork {
         sender: &GossipSender,
         width: u16,
         height: u16,
+        session_id: &str,
     ) -> Result<()> {
         debug!("Sending resize event");
-
-        let message = TerminalMessage::new(TerminalMessageBody::Resize {
+        let key = self.get_session_key(session_id).await?;
+        let body = TerminalMessageBody::Resize {
             from: self.endpoint.node_id(),
             width,
             height,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
-        });
-
-        sender.broadcast(message.to_vec().into()).await?;
+        };
+        let message = EncryptedTerminalMessage::new(body, &key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
         Ok(())
     }
 
     pub async fn end_session(&self, sender: &GossipSender, session_id: String) -> Result<()> {
         info!("Ending session: {}", session_id);
 
-        let message = TerminalMessage::new(TerminalMessageBody::SessionEnd {
+        let key = self.get_session_key(&session_id).await?;
+        let body = TerminalMessageBody::SessionEnd {
             from: self.endpoint.node_id(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
-        });
-
-        sender.broadcast(message.to_vec().into()).await?;
+        };
+        let message = EncryptedTerminalMessage::new(body, &key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
         self.sessions.write().await.remove(&session_id);
         Ok(())
     }
 
+    #[tracing::instrument(skip(self, receiver), fields(session_id = %session_id))]
     async fn start_topic_listener(
         &self,
         mut receiver: GossipReceiver,
@@ -449,51 +418,60 @@ impl P2PNetwork {
     ) -> Result<()> {
         // Use the original sessions reference instead of creating a copy
         let sessions = self.sessions.clone();
-        let node_id = self.endpoint.node_id();
+        let _node_id = self.endpoint.node_id();
 
         tokio::spawn(async move {
-            info!(
-                "Starting gossip message listener for session: {} (node: {})",
-                session_id,
-                node_id.fmt_short()
-            );
+            info!("Starting gossip message listener");
 
             loop {
                 match receiver.next().await {
                     Some(Ok(Event::Received(msg))) => {
                         debug!("Received gossip message: {} bytes", msg.content.len());
 
-                        match TerminalMessage::from_bytes(&msg.content) {
-                            Ok(message) => {
-                                if let Err(e) =
-                                    Self::handle_gossip_message(&sessions, &session_id, message)
-                                        .await
-                                {
-                                    error!("Failed to handle gossip message: {}", e);
+                        match EncryptedTerminalMessage::from_bytes(&msg.content) {
+                            Ok(encrypted_msg) => {
+                                let sessions_guard = sessions.read().await;
+                                if let Some(session) = sessions_guard.get(&session_id) {
+                                    match encrypted_msg.decrypt(&session.key) {
+                                        Ok(body) => {
+                                            if let Err(e) = Self::handle_gossip_message(
+                                                &sessions,
+                                                &session_id,
+                                                body,
+                                            )
+                                            .await
+                                            {
+                                                error!("Failed to handle gossip message: {}", e);
+                                            }
+                                        }
+                                        Err(e) => error!("Failed to decrypt message: {}", e),
+                                    }
+                                } else {
+                                    warn!("Session not found for incoming message");
                                 }
                             }
-                            Err(e) => {
-                                error!("Failed to deserialize gossip message: {}", e);
-                                // Try to log a sample of the message for debugging
-                                if msg.content.len() > 0 {
-                                    let sample_len = std::cmp::min(msg.content.len(), 100);
-                                    let sample = &msg.content[..sample_len];
-                                    error!(
-                                        "Message sample (first {} bytes): {:?}",
-                                        sample_len, sample
-                                    );
-                                }
-                            }
+                            Err(e) => error!("Failed to deserialize encrypted message: {}", e),
                         }
                     }
                     Some(Ok(Event::NeighborUp(peer_id))) => {
-                        info!("Peer connected: {} to session {}", peer_id.fmt_short(), session_id);
+                        info!(
+                            "Peer connected: {} to session {}",
+                            peer_id.fmt_short(),
+                            session_id
+                        );
                     }
                     Some(Ok(Event::NeighborDown(peer_id))) => {
-                        info!("Peer disconnected: {} from session {}", peer_id.fmt_short(), session_id);
+                        info!(
+                            "Peer disconnected: {} from session {}",
+                            peer_id.fmt_short(),
+                            session_id
+                        );
                     }
                     Some(Ok(Event::Lagged)) => {
-                        warn!("Gossip topic is lagged for session {} (events may have been missed)", session_id);
+                        warn!(
+                            "Gossip topic is lagged for session {} (events may have been missed)",
+                            session_id
+                        );
                     }
                     Some(Err(e)) => {
                         error!("Error in gossip receiver for session {}: {}", session_id, e);
@@ -513,26 +491,24 @@ impl P2PNetwork {
         Ok(())
     }
 
+    #[tracing::instrument(skip(sessions, body), fields(session_id = %session_id))]
     async fn handle_gossip_message(
         sessions: &Arc<RwLock<HashMap<String, SharedSession>>>,
         session_id: &str,
-        message: TerminalMessage,
+        body: TerminalMessageBody,
     ) -> Result<()> {
         let sessions_guard = sessions.read().await;
         if let Some(session) = sessions_guard.get(session_id) {
-            match message.body {
+            match body {
                 TerminalMessageBody::Output {
                     from: _,
                     data,
                     timestamp,
                 } => {
-                    // Deserialize the ANSI escape sequences back from the sanitized version
-                    let desanitized_data = data.replace("\\e", "\u{1b}");
-                    
                     let event = TerminalEvent {
                         timestamp: timestamp as f64,
                         event_type: crate::terminal::EventType::Output,
-                        data: desanitized_data,
+                        data,
                     };
                     if let Err(e) = session.event_sender.send(event) {
                         warn!("Failed to send output event to subscribers: {}", e);
@@ -544,43 +520,21 @@ impl P2PNetwork {
                     timestamp,
                 } => {
                     debug!("Received input event from {}: {:?}", from.fmt_short(), data);
-                    
-                    // Deserialize the ANSI escape sequences back from the sanitized version
-                    let desanitized_data = data.replace("\\e", "\u{1b}");
-                    
                     let event = TerminalEvent {
                         timestamp: timestamp as f64,
                         event_type: crate::terminal::EventType::Input,
-                        data: desanitized_data.clone(),
+                        data: data.clone(),
                     };
 
-                    // For host sessions, forward input to the input sender if available
                     if session.is_host {
                         if let Some(input_sender) = &session.input_sender {
-                            debug!("Host session - forwarding input to terminal");
-                            if let Err(e) = input_sender.send(desanitized_data.clone()) {
-                                warn!("Failed to send input to terminal: {}", e);
-                            } else {
-                                debug!("Successfully sent input to terminal");
+                            if input_sender.send(data).is_err() {
+                                warn!("Failed to send input to terminal");
                             }
-                        } else {
-                            warn!("Host session but no input_sender available");
                         }
-                    } else {
-                        debug!("Not a host session, skipping terminal input forwarding");
                     }
-
-                    // Broadcast input event to all subscribers
-                    let receiver_count = session.event_sender.receiver_count();
-                    debug!("Input event receiver count: {}", receiver_count);
-                    if receiver_count > 0 {
-                        if let Err(e) = session.event_sender.send(event) {
-                            warn!("Failed to send input event to subscribers: {}", e);
-                        } else {
-                            debug!("Successfully sent input event to subscribers");
-                        }
-                    } else {
-                        debug!("No active receivers for input event, skipping");
+                    if session.event_sender.send(event).is_err() {
+                        warn!("Failed to broadcast input event");
                     }
                 }
                 TerminalMessageBody::Resize {
@@ -625,21 +579,15 @@ impl P2PNetwork {
     }
 
     pub async fn get_node_addr(&self) -> Result<NodeAddr> {
-        // Wait longer for the network to fully initialize
-        info!("Waiting for network initialization...");
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-
-        let node_id = self.endpoint.node_id();
-        let mut node_addr = NodeAddr::new(node_id);
-
-        // Add a placeholder direct address (localhost for testing)
-        // In production, this should be the actual public IP/port
-        let placeholder_addr = "127.0.0.1:11204"
-            .parse::<std::net::SocketAddr>()
-            .map_err(|e| anyhow::anyhow!("Failed to parse placeholder address: {}", e))?;
-        node_addr = node_addr.with_direct_addresses([placeholder_addr]);
-
-        info!("Generated node address: {:?}", node_addr);
+        info!("Getting node address...");
+        let watcher = self.endpoint.node_addr();
+        let mut stream = watcher.stream();
+        let node_addr = stream
+            .next()
+            .await
+            .flatten()
+            .ok_or_else(|| anyhow::anyhow!("Node address not available from watcher"))?;
+        info!("Got node address: {:?}", node_addr);
         Ok(node_addr)
     }
 
@@ -653,11 +601,25 @@ impl P2PNetwork {
         Ok(())
     }
 
-    pub async fn create_session_ticket(&self, topic_id: TopicId) -> Result<SessionTicket> {
+    pub async fn create_session_ticket(
+        &self,
+        topic_id: TopicId,
+        session_id: &str,
+    ) -> Result<SessionTicket> {
         // Get the actual node address with network information
         let me = self.get_node_addr().await?;
         let nodes = vec![me];
-        Ok(SessionTicket { topic_id, nodes })
+
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
+
+        Ok(SessionTicket {
+            topic_id,
+            nodes,
+            key: session.key,
+        })
     }
 
     pub async fn shutdown(&self) -> Result<()> {
@@ -674,6 +636,14 @@ impl P2PNetwork {
         } else {
             false
         }
+    }
+
+    async fn get_session_key(&self, session_id: &str) -> Result<EncryptionKey> {
+        let sessions = self.sessions.read().await;
+        sessions
+            .get(session_id)
+            .map(|s| s.key)
+            .ok_or_else(|| anyhow::anyhow!("Session not found"))
     }
 
     pub async fn diagnose_connection(&self, ticket: &SessionTicket) -> Result<()> {
@@ -723,4 +693,3 @@ impl P2PNetwork {
         Ok(())
     }
 }
-

@@ -24,6 +24,9 @@ futures = { workspace = true }
 data-encoding = "2.6"
 rand = { workspace = true }
 url = "2.5"
+bincode = { workspace = true }
+chacha20poly1305 = { workspace = true }
+aead = { workspace = true }
 
 [features]
 default = ["custom-protocol"]

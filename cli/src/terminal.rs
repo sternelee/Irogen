@@ -3,10 +3,9 @@ use crossterm;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::io::AsyncReadExt;
-use tokio::sync::{Mutex, broadcast, mpsc};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 
 use crate::shell::ShellConfig;
@@ -238,11 +237,15 @@ impl TerminalRecorder {
                         let data = &buffer[..n];
 
                         // Write directly to stdout for immediate display
-                        if let Err(e) = std::io::stdout().write_all(data) {
+                        let mut stdout = tokio::io::stdout();
+                        if let Err(e) = stdout.write_all(data).await {
                             error!("Failed to write to stdout: {}", e);
                             break;
                         }
-                        std::io::stdout().flush().ok();
+                        if let Err(e) = stdout.flush().await {
+                            error!("Failed to flush stdout: {}", e);
+                            break;
+                        }
 
                         // Record and share the output event
                         if let Err(e) = recorder_clone.record_output(data) {
@@ -268,7 +271,6 @@ impl TerminalRecorder {
         });
 
         // Handle stdin -> PTY + iroh sharing
-        let recorder_input_clone1 = self.clone();
         let (local_input_sender, mut local_input_receiver) = mpsc::unbounded_channel::<Vec<u8>>();
         let input_task = tokio::spawn(async move {
             let mut stdin = tokio::io::stdin();
@@ -297,7 +299,6 @@ impl TerminalRecorder {
         // Handle all input (local + remote) -> PTY + iroh sharing
         let recorder_input_clone2 = self.clone();
         let input_writer_task = tokio::spawn(async move {
-            let mut local_buffer = [0u8; 1024];
             loop {
                 tokio::select! {
                     // Local input
@@ -419,10 +420,6 @@ impl TerminalRecorder {
         };
         event_sender.send(start_event)?;
 
-        // Clone data for tasks
-        let recorder_clone = self.clone();
-        let event_sender_clone = event_sender.clone();
-
         tokio::spawn(async move {
             let mut buffer = [0u8; 8192];
             loop {
@@ -433,11 +430,15 @@ impl TerminalRecorder {
                     }
                     Ok(n) => {
                         let data = &buffer[..n];
-                        if let Err(e) = std::io::stdout().write_all(data) {
+                        let mut stdout = tokio::io::stdout();
+                        if let Err(e) = stdout.write_all(data).await {
                             error!("Failed to write to stdout: {}", e);
                             break;
                         }
-                        std::io::stdout().flush().ok();
+                        if let Err(e) = stdout.flush().await {
+                            error!("Failed to flush stdout: {}", e);
+                            break;
+                        }
 
                         let output_event = TerminalEvent {
                             timestamp: SystemTime::now()
@@ -471,7 +472,6 @@ impl TerminalRecorder {
         });
 
         // Handle input (local + remote) -> PTY + iroh sharing
-        let recorder_input_clone = self.clone();
         let (local_input_sender, mut local_input_receiver) = mpsc::unbounded_channel::<Vec<u8>>();
         tokio::spawn(async move {
             let mut stdin = tokio::io::stdin();
@@ -500,7 +500,6 @@ impl TerminalRecorder {
         // Handle all input (local + remote) -> PTY + iroh sharing
         let recorder_input_clone2 = self.clone();
         tokio::spawn(async move {
-            let mut local_buffer = [0u8; 1024];
             loop {
                 tokio::select! {
                     // Local input

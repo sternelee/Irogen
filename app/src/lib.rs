@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use std::sync::Mutex;
 use tauri::{Emitter, State};
-use tokio::sync::mpsc;
+use tokio::sync::{RwLock, mpsc};
 
 mod p2p;
 mod terminal_events;
@@ -19,8 +18,8 @@ fn is_valid_session_ticket(ticket: &str) -> bool {
 
 #[derive(Default)]
 pub struct AppState {
-    sessions: Mutex<HashMap<String, TerminalSession>>,
-    network: Mutex<Option<P2PNetwork>>,
+    sessions: RwLock<HashMap<String, TerminalSession>>,
+    network: RwLock<Option<P2PNetwork>>,
 }
 
 #[derive(Clone)]
@@ -64,7 +63,7 @@ async fn initialize_network_with_relay(
 
     let node_id = network.get_node_id().await;
 
-    let mut network_guard = state.network.lock().unwrap();
+    let mut network_guard = state.network.write().await;
     *network_guard = Some(network);
 
     Ok(node_id)
@@ -87,7 +86,7 @@ async fn connect_to_peer(
         .map_err(|e| format!("Invalid session ticket format: {}", e))?;
 
     let network = {
-        let network_guard = state.network.lock().unwrap();
+        let network_guard = state.network.read().await;
         match network_guard.as_ref() {
             Some(n) => n.clone(),
             None => {
@@ -113,16 +112,16 @@ async fn connect_to_peer(
     };
 
     {
-        let mut sessions = state.sessions.lock().unwrap();
+        let mut sessions = state.sessions.write().await;
         sessions.insert(session_id.clone(), terminal_session);
     }
 
     // Handle incoming terminal events
     let app_handle_clone = app_handle.clone();
-    let session_id_clone = session_id.clone();
+    let session_id_clone_events = session_id.clone();
     tokio::spawn(async move {
         while let Ok(event) = event_receiver.recv().await {
-            let event_name = format!("terminal-event-{}", session_id_clone);
+            let event_name = format!("terminal-event-{}", session_id_clone_events);
             println!("Broadcasting event to: {}", event_name);
             println!("Event data: {:?}", event);
             let _ = app_handle_clone.emit(&event_name, &event);
@@ -132,10 +131,14 @@ async fn connect_to_peer(
     // Handle outgoing input events
     let network_clone = network.clone();
     let sender_clone = sender.clone();
+    let session_id_clone_input = session_id.clone();
     tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
             if let EventType::Input = event.event_type {
-                if let Err(e) = network_clone.send_input(&sender_clone, event.data).await {
+                if let Err(e) = network_clone
+                    .send_input(&session_id_clone_input, &sender_clone, event.data)
+                    .await
+                {
                     eprintln!("Failed to send input: {}", e);
                 }
             }
@@ -155,7 +158,7 @@ async fn send_terminal_input(
         "send_terminal_input called with session_id: {}, input: {:?}",
         session_id, input
     ); // Add this for immediate visibility
-    let sessions = state.sessions.lock().unwrap();
+    let sessions = state.sessions.read().await;
     let session = sessions.get(&session_id).ok_or("Session not found")?;
 
     let event = TerminalEvent {
@@ -183,7 +186,7 @@ async fn send_directed_message(
 ) -> Result<(), String> {
     // Clone the session sender to avoid holding the lock across await
     let session_sender = {
-        let sessions = state.sessions.lock().unwrap();
+        let sessions = state.sessions.read().await;
         sessions
             .get(&request.session_id)
             .map(|s| s.sender.clone())
@@ -198,7 +201,7 @@ async fn send_directed_message(
 
     // Send directed message
     let network = {
-        let network_guard = state.network.lock().unwrap();
+        let network_guard = state.network.read().await;
         match network_guard.as_ref() {
             Some(n) => n.clone(),
             None => return Err("Network not initialized".to_string()),
@@ -206,7 +209,12 @@ async fn send_directed_message(
     };
 
     if let Err(e) = network
-        .send_directed_message(&session_sender, target_node_id, request.message)
+        .send_directed_message(
+            &request.session_id,
+            &session_sender,
+            target_node_id,
+            request.message,
+        )
         .await
     {
         return Err(format!("Failed to send directed message: {}", e));
@@ -221,7 +229,7 @@ async fn execute_remote_command(
     session_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let sessions = state.sessions.lock().unwrap();
+    let sessions = state.sessions.read().await;
     let session = sessions.get(&session_id).ok_or("Session not found")?;
 
     let event = TerminalEvent {
@@ -243,7 +251,25 @@ async fn execute_remote_command(
 
 #[tauri::command]
 async fn disconnect_session(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    let mut sessions = state.sessions.lock().unwrap();
+    let session = {
+        let sessions = state.sessions.read().await;
+        sessions.get(&session_id).cloned()
+    };
+
+    if let Some(session) = session {
+        let network = {
+            let network_guard = state.network.read().await;
+            network_guard.as_ref().cloned()
+        };
+
+        if let Some(network) = network {
+            if let Err(e) = network.end_session(&session_id, &session.sender).await {
+                eprintln!("Failed to end P2P session gracefully: {}", e);
+            }
+        }
+    }
+
+    let mut sessions = state.sessions.write().await;
     sessions.remove(&session_id);
 
     Ok(())
@@ -251,14 +277,14 @@ async fn disconnect_session(session_id: String, state: State<'_, AppState>) -> R
 
 #[tauri::command]
 async fn get_active_sessions(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let sessions = state.sessions.lock().unwrap();
+    let sessions = state.sessions.read().await;
     Ok(sessions.keys().cloned().collect())
 }
 
 #[tauri::command]
 async fn get_node_info(state: State<'_, AppState>) -> Result<String, String> {
     let network = {
-        let network_guard = state.network.lock().unwrap();
+        let network_guard = state.network.read().await;
         match network_guard.as_ref() {
             Some(n) => n.clone(),
             None => return Err("Network not initialized".to_string()),

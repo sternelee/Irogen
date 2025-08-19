@@ -1,6 +1,6 @@
 use anyhow::Result;
 use futures::StreamExt;
-use iroh::{Endpoint, NodeAddr, NodeId, protocol::Router};
+use iroh::{Endpoint, NodeAddr, NodeId, Watcher, protocol::Router};
 use iroh_gossip::{
     api::{Event, GossipReceiver, GossipSender},
     net::Gossip,
@@ -15,6 +15,9 @@ use url::Url;
 
 use crate::terminal_events::TerminalEvent;
 
+use aead::{Aead, KeyInit};
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, aead::OsRng};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionHeader {
     pub version: u8,
@@ -26,11 +29,7 @@ pub struct SessionHeader {
     pub session_id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TerminalMessage {
-    pub body: TerminalMessageBody,
-    pub nonce: [u8; 16],
-}
+pub type EncryptionKey = [u8; 32];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TerminalMessageBody {
@@ -66,20 +65,47 @@ pub enum TerminalMessageBody {
     },
 }
 
-impl TerminalMessage {
-    pub fn new(body: TerminalMessageBody) -> Self {
-        Self {
-            body,
-            nonce: rand::random(),
-        }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncryptedTerminalMessage {
+    pub nonce: [u8; 12],
+    pub ciphertext: Vec<u8>,
+}
+
+impl EncryptedTerminalMessage {
+    pub fn new(body: TerminalMessageBody, key: &EncryptionKey) -> Result<Self> {
+        let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
+        let nonce_bytes: [u8; 12] = rand::random();
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let plaintext = bincode::serialize(&body)?;
+        let ciphertext = cipher
+            .encrypt(nonce, plaintext.as_ref())
+            .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
+
+        Ok(Self {
+            nonce: nonce_bytes,
+            ciphertext,
+        })
+    }
+
+    pub fn decrypt(&self, key: &EncryptionKey) -> Result<TerminalMessageBody> {
+        let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
+        let nonce = Nonce::from_slice(&self.nonce);
+
+        let plaintext = cipher
+            .decrypt(nonce, self.ciphertext.as_ref())
+            .map_err(|e| anyhow::anyhow!("Decryption failed: {}", e))?;
+
+        let body: TerminalMessageBody = bincode::deserialize(&plaintext)?;
+        Ok(body)
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        serde_json::from_slice(bytes).map_err(Into::into)
+        bincode::deserialize(bytes).map_err(Into::into)
     }
 
-    pub fn to_vec(&self) -> Vec<u8> {
-        serde_json::to_vec(self).expect("serde_json::to_vec is infallible")
+    pub fn to_vec(&self) -> Result<Vec<u8>> {
+        bincode::serialize(self).map_err(Into::into)
     }
 }
 
@@ -87,11 +113,13 @@ impl TerminalMessage {
 pub struct SessionTicket {
     pub topic_id: TopicId,
     pub nodes: Vec<NodeAddr>,
+    pub key: EncryptionKey,
 }
 
 impl std::fmt::Display for SessionTicket {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let encoded = data_encoding::BASE32.encode(&serde_json::to_vec(self).unwrap());
+        let bytes = bincode::serialize(self).map_err(|_| std::fmt::Error)?;
+        let encoded = data_encoding::BASE32.encode(&bytes);
         write!(f, "{}", encoded)
     }
 }
@@ -103,7 +131,7 @@ impl std::str::FromStr for SessionTicket {
         let bytes = data_encoding::BASE32
             .decode(s.as_bytes())
             .map_err(|e| anyhow::anyhow!("Failed to decode ticket: {}", e))?;
-        let ticket: SessionTicket = serde_json::from_slice(&bytes)
+        let ticket: SessionTicket = bincode::deserialize(&bytes)
             .map_err(|e| anyhow::anyhow!("Failed to deserialize ticket: {}", e))?;
         Ok(ticket)
     }
@@ -116,13 +144,14 @@ pub struct SharedSession {
     pub is_host: bool,
     pub event_sender: broadcast::Sender<TerminalEvent>,
     pub node_id: NodeId, // Store the node ID for this session
+    pub key: EncryptionKey,
 }
 
 pub struct P2PNetwork {
     endpoint: Endpoint,
     gossip: Gossip,
     router: Router,
-    sessions: RwLock<HashMap<String, SharedSession>>,
+    sessions: Arc<RwLock<HashMap<String, SharedSession>>>,
 }
 
 impl Clone for P2PNetwork {
@@ -131,7 +160,7 @@ impl Clone for P2PNetwork {
             endpoint: self.endpoint.clone(),
             gossip: self.gossip.clone(),
             router: self.router.clone(),
-            sessions: RwLock::new(HashMap::new()),
+            sessions: Arc::clone(&self.sessions),
         }
     }
 }
@@ -170,7 +199,7 @@ impl P2PNetwork {
             endpoint,
             gossip,
             router,
-            sessions: RwLock::new(HashMap::new()),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
         };
 
         Ok(network)
@@ -185,6 +214,7 @@ impl P2PNetwork {
 
         // Create topic for this session using random bytes
         let topic_id = TopicId::from_bytes(rand::random());
+        let key: EncryptionKey = ChaCha20Poly1305::generate_key(&mut OsRng).into();
 
         let (event_sender, _event_receiver) = broadcast::channel(1000);
         let (_input_sender, input_receiver) = mpsc::unbounded_channel();
@@ -195,6 +225,7 @@ impl P2PNetwork {
             is_host: true,
             event_sender: event_sender.clone(),
             node_id: self.endpoint.node_id(),
+            key,
         };
 
         self.sessions
@@ -210,11 +241,12 @@ impl P2PNetwork {
         self.start_topic_listener(receiver, session_id).await?;
 
         // Send session info message
-        let message = TerminalMessage::new(TerminalMessageBody::SessionInfo {
+        let body = TerminalMessageBody::SessionInfo {
             from: self.endpoint.node_id(),
             header,
-        });
-        sender.broadcast(message.to_vec().into()).await?;
+        };
+        let message = EncryptedTerminalMessage::new(body, &key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
 
         Ok((topic_id, sender, input_receiver))
     }
@@ -245,6 +277,7 @@ impl P2PNetwork {
             is_host: false,
             event_sender: event_sender.clone(),
             node_id: self.endpoint.node_id(),
+            key: ticket.key,
         };
 
         self.sessions
@@ -271,90 +304,123 @@ impl P2PNetwork {
         Ok((sender, event_receiver))
     }
 
-    pub async fn send_terminal_output(&self, sender: &GossipSender, data: String) -> Result<()> {
+    pub async fn send_terminal_output(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        data: String,
+    ) -> Result<()> {
         debug!("Sending terminal output");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for output"))?;
 
-        let message = TerminalMessage::new(TerminalMessageBody::Output {
+        let body = TerminalMessageBody::Output {
             from: self.endpoint.node_id(),
             data,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
-        });
-
-        sender.broadcast(message.to_vec().into()).await?;
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
         Ok(())
     }
 
-    pub async fn send_input(&self, sender: &GossipSender, data: String) -> Result<()> {
+    pub async fn send_input(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        data: String,
+    ) -> Result<()> {
         debug!("Sending input data");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for input"))?;
 
-        let message = TerminalMessage::new(TerminalMessageBody::Input {
+        let body = TerminalMessageBody::Input {
             from: self.endpoint.node_id(),
             data,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
-        });
-
-        sender.broadcast(message.to_vec().into()).await?;
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
         Ok(())
     }
 
     pub async fn send_directed_message(
         &self,
+        session_id: &str,
         sender: &GossipSender,
         to: NodeId,
         data: String,
     ) -> Result<()> {
         debug!("Sending directed message to node: {}", to.fmt_short());
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for directed message"))?;
 
-        let message = TerminalMessage::new(TerminalMessageBody::DirectedMessage {
+        let body = TerminalMessageBody::DirectedMessage {
             from: self.endpoint.node_id(),
             to,
             data,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
-        });
-
-        sender.broadcast(message.to_vec().into()).await?;
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
         Ok(())
     }
 
     pub async fn send_resize_event(
         &self,
+        session_id: &str,
         sender: &GossipSender,
         width: u16,
         height: u16,
     ) -> Result<()> {
         debug!("Sending resize event");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for resize"))?;
 
-        let message = TerminalMessage::new(TerminalMessageBody::Resize {
+        let body = TerminalMessageBody::Resize {
             from: self.endpoint.node_id(),
             width,
             height,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
-        });
-
-        sender.broadcast(message.to_vec().into()).await?;
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
         Ok(())
     }
 
-    pub async fn end_session(&self, sender: &GossipSender, session_id: String) -> Result<()> {
+    pub async fn end_session(&self, session_id: &str, sender: &GossipSender) -> Result<()> {
         info!("Ending session: {}", session_id);
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for ending"))?;
 
-        let message = TerminalMessage::new(TerminalMessageBody::SessionEnd {
+        let body = TerminalMessageBody::SessionEnd {
             from: self.endpoint.node_id(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
-        });
-
-        sender.broadcast(message.to_vec().into()).await?;
-        self.sessions.write().await.remove(&session_id);
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        drop(sessions); // Release read lock
+        self.sessions.write().await.remove(session_id);
         Ok(())
     }
 
@@ -363,37 +429,17 @@ impl P2PNetwork {
         mut receiver: GossipReceiver,
         session_id: String,
     ) -> Result<()> {
-        // Create a new Arc with a copy of the current sessions
-        let sessions = {
-            let current_sessions = self.sessions.read().await;
-            let mut new_sessions = HashMap::new();
-            for (k, v) in current_sessions.iter() {
-                new_sessions.insert(
-                    k.clone(),
-                    SharedSession {
-                        header: v.header.clone(),
-                        participants: v.participants.clone(),
-                        is_host: v.is_host,
-                        event_sender: v.event_sender.clone(),
-                        node_id: v.node_id,
-                    },
-                );
-            }
-            Arc::new(RwLock::new(new_sessions))
-        };
-
+        let sessions = Arc::clone(&self.sessions);
         let endpoint = self.endpoint.clone();
 
         tokio::spawn(async move {
             while let Some(event) = receiver.next().await {
                 if let Ok(Event::Received(msg)) = event {
-                    if let Ok(message) = TerminalMessage::from_bytes(&msg.content) {
-                        if let Err(e) =
-                            Self::handle_gossip_message(&sessions, &session_id, message, &endpoint)
-                                .await
-                        {
-                            error!("Failed to handle gossip message: {}", e);
-                        }
+                    if let Err(e) =
+                        Self::handle_gossip_message(&sessions, &session_id, &msg.content, &endpoint)
+                            .await
+                    {
+                        error!("Failed to handle gossip message: {}", e);
                     }
                 }
             }
@@ -405,127 +451,105 @@ impl P2PNetwork {
     async fn handle_gossip_message(
         sessions: &Arc<RwLock<HashMap<String, SharedSession>>>,
         session_id: &str,
-        message: TerminalMessage,
+        bytes: &[u8],
         endpoint: &Endpoint,
     ) -> Result<()> {
-        let sessions_guard = sessions.read().await;
-        if let Some(session) = sessions_guard.get(session_id) {
-            let my_node_id = endpoint.node_id();
+        let key = {
+            let sessions_read = sessions.read().await;
+            sessions_read.get(session_id).map(|s| s.key)
+        };
 
-            match message.body {
-                TerminalMessageBody::Output {
-                    from: _,
-                    data,
-                    timestamp,
-                } => {
-                    println!("Received terminal output: {} length={}", data, data.len());
-                    let event = TerminalEvent {
-                        timestamp: timestamp as f64,
-                        event_type: crate::terminal_events::EventType::Output,
+        if let Some(key) = key {
+            let encrypted_message = EncryptedTerminalMessage::from_bytes(bytes)?;
+            let decrypted_body = encrypted_message.decrypt(&key)?;
+            let sessions_guard = sessions.read().await;
+            if let Some(session) = sessions_guard.get(session_id) {
+                let my_node_id = endpoint.node_id();
+
+                match decrypted_body {
+                    TerminalMessageBody::Output {
+                        from: _,
                         data,
-                    };
-                    println!("Sending output event to session: {} event={:?}", session_id, event);
-                    let receiver_count = session.event_sender.receiver_count();
-                    println!("Output event receiver count: {}", receiver_count);
-                    if receiver_count > 0 {
-                        if let Err(e) = session.event_sender.send(event) {
-                            warn!("Failed to send output event to subscribers: {}", e);
-                            println!("Failed to send output event to subscribers: {}", e);
-                        } else {
-                            println!("Successfully sent output event to subscribers");
-                        }
-                    } else {
-                        println!("No active receivers for output event, skipping");
-                    }
-                }
-                TerminalMessageBody::Input {
-                    from,
-                    data,
-                    timestamp,
-                } => {
-                    debug!("Received input event from {}: {}", from.fmt_short(), data);
-                    println!("Received input event from {}: {}", from.fmt_short(), data); // Add this for immediate visibility
-                    let event = TerminalEvent {
-                        timestamp: timestamp as f64,
-                        event_type: crate::terminal_events::EventType::Input,
-                        data: data.clone(), // Clone for logging
-                    };
-                    // Check if there are active receivers before sending
-                    let receiver_count = session.event_sender.receiver_count();
-                    debug!("Input event receiver count: {}", receiver_count);
-                    println!("Input event receiver count: {}", receiver_count); // Add this for immediate visibility
-                    if receiver_count > 0 {
-                        if let Err(e) = session.event_sender.send(event) {
-                            warn!("Failed to send input event to subscribers: {}", e);
-                            println!("Failed to send input event to subscribers: {}", e); // Add this for immediate visibility
-                        } else {
-                            debug!("Successfully sent input event to subscribers");
-                            println!("Successfully sent input event to subscribers"); // Add this for immediate visibility
-                        }
-                    } else {
-                        debug!("No active receivers for input event, skipping");
-                        println!("No active receivers for input event, skipping"); // Add this for immediate visibility
-                    }
-                }
-                TerminalMessageBody::Resize {
-                    from: _,
-                    width,
-                    height,
-                    timestamp,
-                } => {
-                    let event = TerminalEvent {
-                        timestamp: timestamp as f64,
-                        event_type: crate::terminal_events::EventType::Resize { width, height },
-                        data: format!("{}x{}", width, height),
-                    };
-                    if let Err(e) = session.event_sender.send(event) {
-                        warn!("Failed to send resize event to subscribers: {}", e);
-                    }
-                }
-                TerminalMessageBody::SessionEnd { from: _, timestamp } => {
-                    let event = TerminalEvent {
-                        timestamp: timestamp as f64,
-                        event_type: crate::terminal_events::EventType::End,
-                        data: "Session ended".to_string(),
-                    };
-                    if let Err(e) = session.event_sender.send(event) {
-                        warn!("Failed to send end event to subscribers: {}", e);
-                    }
-                }
-                TerminalMessageBody::DirectedMessage {
-                    from,
-                    to,
-                    data,
-                    timestamp,
-                } => {
-                    // Check if this message is intended for this node
-                    if to == my_node_id {
-                        println!(
-                            "Received directed message from {}: {}",
-                            from.fmt_short(),
-                            data
-                        );
+                        timestamp,
+                    } => {
                         let event = TerminalEvent {
                             timestamp: timestamp as f64,
                             event_type: crate::terminal_events::EventType::Output,
-                            data: format!("[DM from {}] {}", from.fmt_short(), data),
+                            data,
                         };
-                        if let Err(e) = session.event_sender.send(event) {
-                            warn!(
-                                "Failed to send directed message event to subscribers: {}",
-                                e
-                            );
+                        if session.event_sender.send(event).is_err() {
+                            warn!("No active receivers for output event, skipping");
                         }
-                    } else {
-                        println!("Ignoring directed message not intended for this node");
                     }
-                }
-                TerminalMessageBody::SessionInfo { from, header: _ } => {
-                    info!(
-                        "Received session info from {} for session: {}",
-                        from.fmt_short(),
-                        session_id
-                    );
+                    TerminalMessageBody::Input {
+                        from: _,
+                        data,
+                        timestamp,
+                    } => {
+                        let event = TerminalEvent {
+                            timestamp: timestamp as f64,
+                            event_type: crate::terminal_events::EventType::Input,
+                            data,
+                        };
+                        if session.event_sender.send(event).is_err() {
+                            warn!("No active receivers for input event, skipping");
+                        }
+                    }
+                    TerminalMessageBody::Resize {
+                        from: _,
+                        width,
+                        height,
+                        timestamp,
+                    } => {
+                        let event = TerminalEvent {
+                            timestamp: timestamp as f64,
+                            event_type: crate::terminal_events::EventType::Resize { width, height },
+                            data: format!("{}x{}", width, height),
+                        };
+                        if session.event_sender.send(event).is_err() {
+                            warn!("No active receivers for resize event, skipping");
+                        }
+                    }
+                    TerminalMessageBody::SessionEnd { from: _, timestamp } => {
+                        let event = TerminalEvent {
+                            timestamp: timestamp as f64,
+                            event_type: crate::terminal_events::EventType::End,
+                            data: "Session ended".to_string(),
+                        };
+                        if session.event_sender.send(event).is_err() {
+                            warn!("No active receivers for end event, skipping");
+                        }
+                    }
+                    TerminalMessageBody::DirectedMessage {
+                        from,
+                        to,
+                        data,
+                        timestamp,
+                    } => {
+                        if to == my_node_id {
+                            let event = TerminalEvent {
+                                timestamp: timestamp as f64,
+                                event_type: crate::terminal_events::EventType::Output,
+                                data: format!("[DM from {}] {}", from.fmt_short(), data),
+                            };
+                            if session.event_sender.send(event).is_err() {
+                                warn!("No active receivers for directed message, skipping");
+                            }
+                        }
+                    }
+                    TerminalMessageBody::SessionInfo { from, header } => {
+                        info!(
+                            "Received session info from {} for session: {}",
+                            from.fmt_short(),
+                            session_id
+                        );
+                        drop(sessions_guard); // Release read lock
+                        let mut sessions_write = sessions.write().await;
+                        if let Some(session) = sessions_write.get_mut(session_id) {
+                            session.participants.push(from.to_string());
+                            session.header = header;
+                        }
+                    }
                 }
             }
         }
@@ -537,20 +561,13 @@ impl P2PNetwork {
     }
 
     pub async fn get_node_addr(&self) -> Result<NodeAddr> {
-        // Wait a bit for the network to initialize
-        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
-
-        let node_id = self.endpoint.node_id();
-        let mut node_addr = NodeAddr::new(node_id);
-
-        // Add a placeholder direct address (localhost for testing)
-        // In production, this should be the actual public IP/port
-        let placeholder_addr = "127.0.0.1:11204"
-            .parse::<std::net::SocketAddr>()
-            .map_err(|e| anyhow::anyhow!("Failed to parse placeholder address: {}", e))?;
-        node_addr = node_addr.with_direct_addresses([placeholder_addr]);
-
-        info!("Generated node address: {:?}", node_addr);
+        let watcher = self.endpoint.node_addr();
+        let mut stream = watcher.stream();
+        let node_addr = stream
+            .next()
+            .await
+            .flatten()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get node address"))?;
         Ok(node_addr)
     }
 
@@ -564,11 +581,25 @@ impl P2PNetwork {
         Ok(())
     }
 
-    pub async fn create_session_ticket(&self, topic_id: TopicId) -> Result<SessionTicket> {
+    pub async fn create_session_ticket(
+        &self,
+        topic_id: TopicId,
+        session_id: &str,
+    ) -> Result<SessionTicket> {
         // Get the actual node address with network information
         let me = self.get_node_addr().await?;
         let nodes = vec![me];
-        Ok(SessionTicket { topic_id, nodes })
+
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
+
+        Ok(SessionTicket {
+            topic_id,
+            nodes,
+            key: session.key,
+        })
     }
 
     pub async fn get_active_sessions(&self) -> Vec<String> {
