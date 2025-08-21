@@ -618,4 +618,3 @@ impl CliApp {
         .ok();
     }
 }
-

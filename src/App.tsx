@@ -241,7 +241,7 @@ function App() {
   );
 
   return (
-    <div class="w-full h-screen bg-base-100 font-mono" data-theme="riterm-dark">
+    <div class="w-full h-screen font-mono" data-theme="riterm-dark">
       {/* P2P Background */}
       <P2PBackground />
 
@@ -249,7 +249,7 @@ function App() {
       <div class="relative z-20 w-full h-screen flex flex-col">
         {/* Status Bar */}
         {isConnected() && (
-          <div class="flex items-center justify-between px-4 py-2 bg-base-200 border-b border-current border-opacity-20 text-sm">
+          <div class="flex items-center justify-between px-4 py-2 border-b border-current border-opacity-20 text-sm">
             <div class="flex items-center gap-3">
               <span class="font-medium">{currentTime()}</span>
               <div class="text-primary">⚡ RiTerm</div>

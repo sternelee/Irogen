@@ -1,7 +1,12 @@
-import { createSignal, Show, For } from 'solid-js';
-import { settingsStore, t } from '../stores/settingsStore';
-import { ModernCard, ModernButton, ModernInput, TypingAnimation } from './ui/CyberEffects';
-import { HistoryEntry } from '../hooks/useConnectionHistory';
+import { createSignal, Show, For } from "solid-js";
+import { settingsStore, t } from "../stores/settingsStore";
+import {
+  ModernCard,
+  ModernButton,
+  ModernInput,
+  TypingAnimation,
+} from "./ui/CyberEffects";
+import { HistoryEntry } from "../hooks/useConnectionHistory";
 
 interface HomeViewProps {
   sessionTicket: string;
@@ -17,19 +22,21 @@ interface HomeViewProps {
 }
 
 export function HomeView(props: HomeViewProps) {
-  const [viewMode, setViewMode] = createSignal<'login' | 'guest' | 'main'>('login');
-  const [username, setUsername] = createSignal('');
-  const [password, setPassword] = createSignal('');
+  const [viewMode, setViewMode] = createSignal<"login" | "guest" | "main">(
+    "login",
+  );
+  const [username, setUsername] = createSignal("");
+  const [password, setPassword] = createSignal("");
   const [showQuickConnect, setShowQuickConnect] = createSignal(false);
 
   const handleLogin = () => {
     props.onLogin(username(), password());
-    setViewMode('main');
+    setViewMode("main");
   };
 
   const handleGuestMode = () => {
     props.onSkipLogin();
-    setViewMode('main');
+    setViewMode("main");
   };
 
   const handleQuickConnect = (ticket: string) => {
@@ -37,18 +44,16 @@ export function HomeView(props: HomeViewProps) {
   };
 
   const renderLoginScreen = () => (
-    <div class="hero min-h-screen bg-base-200">
+    <div class="hero min-h-screen">
       <div class="hero-content flex-col lg:flex-row-reverse">
         <div class="text-center lg:text-left">
           <div class="text-6xl text-primary mb-4">⚡</div>
           <h1 class="text-5xl font-bold">
             <TypingAnimation text="RiTerm" speed={100} />
           </h1>
-          <p class="py-6 font-mono">
-            {t('app.title')}
-          </p>
+          <p class="py-6 font-mono">{t("app.title")}</p>
         </div>
-        
+
         <div class="card bg-base-100 w-full max-w-sm shrink-0 shadow-2xl">
           <div class="card-body">
             <div class="form-control">
@@ -63,7 +68,7 @@ export function HomeView(props: HomeViewProps) {
                 onInput={(e) => setUsername(e.currentTarget.value)}
               />
             </div>
-            
+
             <div class="form-control">
               <label class="label">
                 <span class="label-text">Password</span>
@@ -76,33 +81,30 @@ export function HomeView(props: HomeViewProps) {
                 onInput={(e) => setPassword(e.currentTarget.value)}
               />
             </div>
-            
+
             <div class="form-control mt-6">
-              <button 
+              <button
                 class="btn btn-primary"
                 onClick={handleLogin}
                 disabled={!username().trim() || !password().trim()}
               >
-                {t('connection.connect')}
+                {t("connection.connect")}
               </button>
             </div>
-            
+
             <div class="divider">OR</div>
-            
-            <button 
-              class="btn btn-ghost"
-              onClick={handleGuestMode}
-            >
+
+            <button class="btn btn-ghost" onClick={handleGuestMode}>
               Continue as Guest 👻
             </button>
-            
-            <button 
+
+            <button
               class="btn btn-outline btn-sm"
               onClick={() => setShowQuickConnect(!showQuickConnect())}
             >
               Quick Connect 🎯
             </button>
-            
+
             <Show when={showQuickConnect()}>
               <div class="card bg-base-200 mt-4">
                 <div class="card-body card-compact">
@@ -110,10 +112,12 @@ export function HomeView(props: HomeViewProps) {
                   <div class="form-control">
                     <input
                       type="text"
-                      placeholder={t('connection.ticket.placeholder')}
+                      placeholder={t("connection.ticket.placeholder")}
                       class="input input-bordered input-sm"
                       value={props.sessionTicket}
-                      onInput={(e) => props.onTicketInput(e.currentTarget.value)}
+                      onInput={(e) =>
+                        props.onTicketInput(e.currentTarget.value)
+                      }
                     />
                   </div>
                   <div class="card-actions justify-end">
@@ -122,10 +126,10 @@ export function HomeView(props: HomeViewProps) {
                       onClick={() => handleQuickConnect(props.sessionTicket)}
                       disabled={!props.sessionTicket.trim() || props.connecting}
                     >
-                      {props.connecting ? 'Connecting...' : 'Connect Now'}
+                      {props.connecting ? "Connecting..." : "Connect Now"}
                     </button>
                   </div>
-                  
+
                   {props.connectionError && (
                     <div class="alert alert-error text-xs">
                       <span>❌ {props.connectionError}</span>
@@ -168,7 +172,7 @@ export function HomeView(props: HomeViewProps) {
             <div class="card bg-base-100 shadow-xl mb-8">
               <div class="card-body">
                 <h2 class="card-title justify-center text-2xl">
-                  {t('connection.title')} 🖥️
+                  {t("connection.title")} 🖥️
                 </h2>
                 <p class="text-sm opacity-70 mb-6">
                   Enter session ticket to connect to remote terminal
@@ -177,28 +181,40 @@ export function HomeView(props: HomeViewProps) {
                 <div class="form-control w-full">
                   <input
                     type="text"
-                    placeholder={t('connection.ticket.placeholder')}
+                    placeholder={t("connection.ticket.placeholder")}
                     class="input input-bordered w-full"
                     value={props.sessionTicket}
                     onInput={(e) => props.onTicketInput(e.currentTarget.value)}
                   />
                 </div>
-                
+
                 <div class="card-actions justify-center mt-4">
                   <button
                     class={`btn btn-primary btn-lg ${
-                      props.connecting ? 'loading' : ''
+                      props.connecting ? "loading" : ""
                     }`}
                     onClick={() => props.onConnect()}
                     disabled={!props.sessionTicket.trim() || props.connecting}
                   >
-                    {props.connecting ? 'Connecting...' : 'Connect 🚀'}
+                    {props.connecting ? "Connecting..." : "Connect 🚀"}
                   </button>
                 </div>
 
                 {props.connectionError && (
                   <div class="alert alert-error mt-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="stroke-current shrink-0 h-6 w-6"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
                     <span>{props.connectionError}</span>
                   </div>
                 )}
@@ -223,10 +239,15 @@ export function HomeView(props: HomeViewProps) {
                             </div>
                           </div>
                           <div class="flex items-center space-x-2">
-                            <div class={`badge badge-sm ${
-                              entry.status === 'Connected' ? 'badge-success' :
-                              entry.status === 'Failed' ? 'badge-error' : 'badge-warning'
-                            }`}>
+                            <div
+                              class={`badge badge-sm ${
+                                entry.status === "Completed"
+                                  ? "badge-success"
+                                  : entry.status === "Failed"
+                                    ? "badge-error"
+                                    : "badge-warning"
+                              }`}
+                            >
                               {entry.status}
                             </div>
                             <button
@@ -253,11 +274,12 @@ export function HomeView(props: HomeViewProps) {
                     P2P Network
                   </h2>
                   <p class="text-sm opacity-80">
-                    Direct peer-to-peer terminal connections without central servers
+                    Direct peer-to-peer terminal connections without central
+                    servers
                   </p>
                 </div>
               </div>
-              
+
               <div class="card bg-base-100 shadow-xl">
                 <div class="card-body">
                   <h2 class="card-title">
@@ -265,7 +287,8 @@ export function HomeView(props: HomeViewProps) {
                     Secure Shell
                   </h2>
                   <p class="text-sm opacity-80">
-                    End-to-end encrypted terminal sessions with full shell support
+                    End-to-end encrypted terminal sessions with full shell
+                    support
                   </p>
                 </div>
               </div>
@@ -287,9 +310,10 @@ export function HomeView(props: HomeViewProps) {
 
   return (
     <div class="font-mono">
-      <Show when={viewMode() === 'login'} fallback={renderMainScreen()}>
+      <Show when={viewMode() === "login"} fallback={renderMainScreen()}>
         {renderLoginScreen()}
       </Show>
     </div>
   );
 }
+
