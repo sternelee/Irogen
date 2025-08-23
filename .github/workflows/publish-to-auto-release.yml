@@ -5,13 +5,51 @@ on:
     tags:
       - "v*"
 
-# This is the example from the readme.
-# On each push to the `release` branch it will create or update a GitHub release, build your app, and upload the artifacts to the release.
+# This workflow builds both CLI and Tauri app, then creates a GitHub release with both artifacts
 
 jobs:
+  build-cli:
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - platform: "ubuntu-latest"
+            target: "x86_64-unknown-linux-gnu"
+          - platform: "macos-latest"
+            target: "x86_64-apple-darwin"
+          - platform: "macos-latest"
+            target: "aarch64-apple-darwin"
+          - platform: "windows-latest"
+            target: "x86_64-pc-windows-msvc"
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build CLI
+        run: cargo build -p cli --release --target ${{ matrix.target }}
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/cli
+            target/${{ matrix.target }}/release/cli.exe
+
   publish-tauri:
     permissions:
       contents: write
+    needs: build-cli
     strategy:
       fail-fast: false
       matrix:
@@ -58,6 +96,12 @@ jobs:
       - name: install frontend dependencies
         run: pnpm install # change this to npm, pnpm or bun depending on which one you use.
 
+      - name: Download CLI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cli-*
+          path: cli-artifacts
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -68,3 +112,12 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Upload CLI to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: cli-artifacts/**/*
+          tag: ${{ github.ref }}
+          file_glob: true
+          overwrite: true
