@@ -1,7 +1,12 @@
 mod cli;
+mod commands;
+mod config;
 mod p2p;
+mod playback;
+mod session;
 mod shell;
 mod terminal;
+mod ui;
 
 use anyhow::Result;
 use clap::Parser;
@@ -38,9 +43,15 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     let relay = cli.relay.clone();
-    let mut app = CliApp::new(relay).await?;
+    let app = CliApp::new(relay).await?;
 
-    app.run(cli).await?;
+    let result = app.run(cli).await;
+    
+    // Ensure proper cleanup
+    if let Err(e) = result {
+        eprintln!("Application error: {}", e);
+        std::process::exit(1);
+    }
 
     Ok(())
 }
