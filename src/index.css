@@ -1,12 +1,34 @@
 @import "tailwindcss";
 @plugin "daisyui";
 
+[data-theme="terminal"] {
+  --primary: #57f900;
+  --secondary: #00a800;
+  --accent: #00d8ff;
+  --neutral: #191d24;
+  --base-100: #000000;
+  --base-200: #0a0c0f;
+  --base-300: #14181d;
+  --base-content: #57f900;
+  --info: #00d8ff;
+  --success: #57f900;
+  --warning: #ffff00;
+  --error: #ff0000;
+
+  --rounded-box: 0.25rem;
+  --rounded-btn: 0.125rem;
+  --rounded-badge: 0.125rem;
+}
+
 @layer base {
   html,
   body {
     height: 100%;
     width: 100%;
     overflow: hidden;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   body {
@@ -19,10 +41,30 @@
     -moz-osx-font-smoothing: grayscale;
     background: transparent;
     letter-spacing: 0.5px;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
   }
 
   #root {
     height: 100%;
+  }
+
+  /* Mobile optimizations */
+  .mobile button,
+  .mobile a,
+  .mobile [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Hardware acceleration for animations */
+  .animate-slide-up,
+  .animate-slide-down,
+  .animate-fade-in,
+  .animate-scale-in {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
   }
 }
 
@@ -33,6 +75,52 @@
   .terminal-container .xterm-screen {
     width: 100% !important;
     height: 100% !important;
+  }
+
+  /* Fix terminal display issues */
+  .terminal-container {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .terminal-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Ensure terminal content is visible */
+  .xterm {
+    font-variant-ligatures: none;
+    position: relative;
+  }
+
+  .xterm .xterm-viewport {
+    background-color: transparent;
+    overflow-y: scroll;
+  }
+
+  .xterm .xterm-screen {
+    position: relative;
+  }
+
+  /* Fix cursor visibility */
+  .xterm .xterm-cursor-layer .xterm-cursor {
+    position: absolute;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Fix text rendering */
+  .xterm .xterm-rows {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+
+  /* Prevent text selection issues */
+  .xterm .xterm-selection {
+    z-index: 2;
   }
 
   /* 网络信号指示器 */
@@ -89,5 +177,170 @@
       stroke, opacity, box-shadow, transform, filter, backdrop-filter;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 200ms;
+  }
+}
+
+/* Performance optimizations */
+@layer utilities {
+  /* Reduce animations for performance */
+  .reduce-animations *,
+  .reduce-animations *::before,
+  .reduce-animations *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* High contrast mode */
+  .high-contrast {
+    filter: contrast(150%);
+  }
+
+  /* Power save mode */
+  .power-save-mode {
+    animation-play-state: paused;
+  }
+
+  .power-save-mode * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /* Mobile optimizations */
+  .mobile-optimized .card {
+    border-radius: 1rem;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  }
+
+  .mobile-optimized .btn {
+    min-height: 44px;
+    border-radius: 0.75rem;
+  }
+
+  .mobile-optimized .input {
+    min-height: 44px;
+    border-radius: 0.75rem;
+  }
+
+  /* Terminal optimizations */
+  .terminal-container {
+    contain: layout style paint;
+    will-change: transform;
+  }
+
+  /* Enhanced terminal specific styles */
+  .terminal-wrapper {
+    position: relative;
+  }
+
+  .terminal-wrapper .xterm {
+    height: 100% !important;
+    width: 100% !important;
+  }
+
+  .terminal-wrapper .xterm-viewport {
+    background: transparent !important;
+  }
+
+  .terminal-wrapper .xterm-screen {
+    height: 100% !important;
+  }
+
+  /* Prevent multiple cursors */
+  #enhanced-terminal-container .xterm-cursor-layer .xterm-cursor {
+    display: block !important;
+  }
+
+  #enhanced-terminal-container
+    .xterm-cursor-layer
+    .xterm-cursor
+    + .xterm-cursor {
+    display: none !important;
+  }
+
+  /* Safe area insets for mobile devices */
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Responsive breakpoint classes */
+  .opt-minimize-animations {
+    animation-duration: 0.2s !important;
+  }
+
+  .opt-compact-ui .card {
+    padding: 0.75rem;
+  }
+
+  .opt-single-column-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .opt-large-touch-targets button,
+  .opt-large-touch-targets .btn {
+    min-height: 48px;
+    min-width: 48px;
+  }
+}
+
+/* Custom animations */
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-contrast: high) {
+  .card {
+    border: 2px solid currentColor;
+  }
+
+  .btn {
+    border: 2px solid currentColor;
   }
 }

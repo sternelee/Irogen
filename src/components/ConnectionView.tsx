@@ -1,6 +1,6 @@
-import { For } from 'solid-js';
-import { HistoryEntry } from '../hooks/useConnectionHistory';
-import { HistoryCard } from './HistoryCard';
+import { For } from "solid-js";
+import { HistoryEntry } from "../hooks/useConnectionHistory";
+import { HistoryCard } from "./HistoryCard";
 
 interface ConnectionViewProps {
   sessionTicket: string;
@@ -13,7 +13,7 @@ interface ConnectionViewProps {
 
 export function ConnectionView(props: ConnectionViewProps) {
   const handleTicketKeyPress = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' && !props.connecting && props.sessionTicket.trim()) {
+    if (e.key === "Enter" && !props.connecting && props.sessionTicket.trim()) {
       props.handleConnect();
     }
   };
@@ -28,7 +28,9 @@ export function ConnectionView(props: ConnectionViewProps) {
       <div class="flex-1 flex items-center justify-center">
         <div class="card w-full max-w-md bg-base-100 shadow-xl">
           <div class="card-body">
-            <h1 class="card-title text-center text-2xl mb-2">Connect to Remote Session</h1>
+            <h1 class="card-title text-center text-2xl mb-2">
+              Connect to Remote Session
+            </h1>
             <p class="text-center text-base-content/70 mb-6">
               Enter a session ticket to start a secure P2P terminal session.
             </p>
@@ -37,7 +39,9 @@ export function ConnectionView(props: ConnectionViewProps) {
               <div class="alert alert-error mb-4">
                 <div>
                   <strong>Connection Failed:</strong>
-                  <pre class="text-xs mt-1 whitespace-pre-wrap">{props.connectionError}</pre>
+                  <pre class="text-xs mt-1 whitespace-pre-wrap">
+                    {props.connectionError}
+                  </pre>
                 </div>
               </div>
             )}
@@ -56,9 +60,19 @@ export function ConnectionView(props: ConnectionViewProps) {
                 />
                 <button
                   class="btn btn-square join-item"
-                  onClick={() => alert('QR code scanning not implemented yet.')}
+                  onClick={() => alert("QR code scanning not implemented yet.")}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
                     <path d="M3 7V5a2 2 0 0 1 2-2h2" />
                     <path d="M17 3h2a2 2 0 0 1 2 2v2" />
                     <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
@@ -80,7 +94,7 @@ export function ConnectionView(props: ConnectionViewProps) {
                   Connecting...
                 </>
               ) : (
-                'Connect'
+                "Connect"
               )}
             </button>
           </div>

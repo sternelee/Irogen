@@ -429,4 +429,3 @@ export function TerminalView(props: TerminalViewProps) {
 // Static references for external access
 TerminalView.fitAddon = null;
 TerminalView.searchAddon = null;
-

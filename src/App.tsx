@@ -8,10 +8,10 @@ import {
   createConnectionHistory,
   HistoryEntry,
 } from "./hooks/useConnectionHistory";
-import { TerminalView } from "./components/TerminalView";
+import { EnhancedTerminalView } from "./components/EnhancedTerminalView";
 import { SettingsModal } from "./components/SettingsModal";
 import { HomeView } from "./components/HomeView";
-import { NetworkIndicator } from "./components/ui/CyberEffects";
+import { MobileNavigation } from "./components/ui/MobileNavigation";
 import { P2PBackground } from "./components/P2PBackground";
 import { settingsStore, t } from "./stores/settingsStore";
 
@@ -27,6 +27,9 @@ function App() {
   const [activeTicket, setActiveTicket] = createSignal<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = createSignal(false);
   const [networkStrength, setNetworkStrength] = createSignal(3);
+  const [currentView, setCurrentView] = createSignal<"home" | "terminal">(
+    "home",
+  );
   const [currentTime, setCurrentTime] = createSignal(
     new Date().toLocaleTimeString("zh-CN", {
       hour: "2-digit",
@@ -39,7 +42,7 @@ function App() {
   let fitAddon: FitAddon | null = null;
   let unlistenRef: (() => void) | null = null;
 
-  const { history, addHistoryEntry, updateHistoryEntry } =
+  const { history, addHistoryEntry, updateHistoryEntry, deleteHistoryEntry } =
     createConnectionHistory();
 
   // 更新时间
@@ -121,6 +124,7 @@ function App() {
     setIsConnected(false);
     sessionIdRef = null;
     setActiveTicket(null);
+    setCurrentView("home");
     setStatus(t("connection.status.disconnected"));
     setNetworkStrength(3);
   };
@@ -141,13 +145,26 @@ function App() {
     setConnectionError(null);
 
     try {
-      const actualSessionId = await invoke<string>("connect_to_peer", {
+      const connectPromise = invoke<string>("connect_to_peer", {
         sessionTicket: ticket,
       });
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Connection timed out after 5 seconds")),
+          5000,
+        ),
+      );
+
+      const actualSessionId = await Promise.race([
+        connectPromise,
+        timeoutPromise,
+      ]);
 
       sessionIdRef = actualSessionId;
       setActiveTicket(ticket);
       setIsConnected(true);
+      setCurrentView("terminal");
       updateHistoryEntry(ticket, { description: "Connection established." });
 
       const unlisten = await listen<any>(
@@ -241,36 +258,35 @@ function App() {
   );
 
   return (
-    <div class="w-full h-screen font-mono" data-theme="riterm-dark">
+    <div class="w-full h-screen font-mono" data-theme="riterm-mobile">
       {/* P2P Background */}
       <P2PBackground />
 
-      {/* Main Content */}
-      <div class="relative z-20 w-full h-screen flex flex-col overflow-auto">
-        {/* Status Bar */}
-        {isConnected() && (
-          <div class="flex items-center justify-between px-4 py-2 border-b border-current border-opacity-20 text-sm">
-            <div class="flex items-center gap-3">
-              <span class="font-medium">{currentTime()}</span>
-              <div class="text-primary">⚡ RiTerm</div>
-            </div>
-            <div class="flex items-center gap-3">
-              <NetworkIndicator
-                strength={networkStrength()}
-                connected={isConnected()}
-                class="text-primary"
-              />
-              <span class="text-xs opacity-70">{status()}</span>
-            </div>
-          </div>
-        )}
+      {/* Main Layout - Mobile First */}
+      <div class="relative z-20 w-full h-screen flex flex-col overflow-hidden">
+        {/* Mobile Navigation */}
+        <MobileNavigation
+          currentView={currentView()}
+          onViewChange={setCurrentView}
+          isConnected={isConnected()}
+          networkStrength={networkStrength()}
+          status={status()}
+          currentTime={currentTime()}
+          onDisconnect={handleDisconnect}
+          onShowSettings={() => setIsSettingsOpen(true)}
+        />
 
-        {/* Main View */}
-        <div class="flex-1 relative">
-          {isConnected() ? (
-            <TerminalView
+        {/* Main Content */}
+        <div class="flex-1 overflow-auto">
+          {currentView() === "terminal" && isConnected() ? (
+            <EnhancedTerminalView
               onReady={handleTerminalReady}
               onInput={handleTerminalInput}
+              isConnected={isConnected()}
+              onDisconnect={handleDisconnect}
+              onShowKeyboard={() => {
+                /* TODO: Implement mobile keyboard */
+              }}
             />
           ) : (
             <HomeView
@@ -284,21 +300,14 @@ function App() {
               isLoggedIn={isLoggedIn()}
               onLogin={handleLogin}
               onSkipLogin={handleSkipLogin}
+              isConnected={isConnected()}
+              activeTicket={activeTicket()}
+              onReturnToSession={() => setCurrentView("terminal")}
+              onDeleteHistory={deleteHistoryEntry}
+              onDisconnect={handleDisconnect}
             />
           )}
         </div>
-
-        {/* Disconnect Button for Connected State */}
-        {isConnected() && (
-          <div class="p-4 bg-base-200 border-t border-current border-opacity-20">
-            <button
-              class="btn btn-error btn-sm w-full font-mono"
-              onClick={handleDisconnect}
-            >
-              🔌 {t("connection.disconnect")}
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Settings Modal */}

@@ -7,6 +7,9 @@ import {
   TypingAnimation,
 } from "./ui/CyberEffects";
 import { HistoryEntry } from "../hooks/useConnectionHistory";
+import { ConnectionInterface } from "./ConnectionInterface";
+import { SessionManagement } from "./SessionManagement";
+import { EnhancedCard, EnhancedButton } from "./ui/EnhancedComponents";
 
 interface HomeViewProps {
   sessionTicket: string;
@@ -19,12 +22,17 @@ interface HomeViewProps {
   isLoggedIn: boolean;
   onLogin: (username: string, password: string) => void;
   onSkipLogin: () => void;
+  isConnected: boolean;
+  activeTicket: string | null;
+  onReturnToSession: () => void;
+  onDeleteHistory: (ticket: string) => void;
+  onDisconnect: () => void;
 }
 
 export function HomeView(props: HomeViewProps) {
-  const [viewMode, setViewMode] = createSignal<"login" | "guest" | "main">(
-    "login",
-  );
+  const [viewMode, setViewMode] = createSignal<
+    "login" | "guest" | "main" | "sessions"
+  >("login");
   const [username, setUsername] = createSignal("");
   const [password, setPassword] = createSignal("");
 
@@ -42,27 +50,51 @@ export function HomeView(props: HomeViewProps) {
     props.onConnect(ticket);
   };
 
+  const handleShowDetails = (entry: HistoryEntry) => {
+    // TODO: Implement session details modal
+    console.log("Show details for:", entry);
+  };
+
+  const handleExportHistory = () => {
+    // TODO: Implement history export
+    console.log("Export history");
+  };
+
+  const handleImportHistory = () => {
+    // TODO: Implement history import
+    console.log("Import history");
+  };
+
   const renderLoginScreen = () => (
-    <div class="hero min-h-screen">
-      <div class="hero-content flex-col lg:flex-row-reverse">
-        <div class="text-center lg:text-left">
-          <div class="text-6xl text-primary mb-4">⚡</div>
-          <h1 class="text-5xl font-bold">
+    <div class="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 flex items-center justify-center p-4">
+      <div class="w-full max-w-md">
+        {/* Logo Section */}
+        <div class="text-center mb-8">
+          <div class="text-6xl text-primary mb-4 animate-bounce">⚡</div>
+          <h1 class="text-4xl font-bold mb-2">
             <TypingAnimation text="RiTerm" speed={100} />
           </h1>
-          <p class="py-6 font-mono">{t("app.title")}</p>
+          <p class="text-sm opacity-70 font-mono">{t("app.title")}</p>
         </div>
 
-        <div class="card bg-base-100 w-full max-w-sm shrink-0 shadow-2xl">
-          <div class="card-body">
+        {/* Login Card */}
+        <EnhancedCard variant="default" class="backdrop-blur-sm">
+          <div class="space-y-4">
+            <div class="text-center mb-6">
+              <h2 class="text-xl font-semibold mb-2">Welcome Back</h2>
+              <p class="text-sm opacity-70">
+                Sign in to access your P2P terminal sessions
+              </p>
+            </div>
+
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Username</span>
+                <span class="label-text font-medium">Username</span>
               </label>
               <input
                 type="text"
-                placeholder="username"
-                class="input input-bordered"
+                placeholder="Enter your username"
+                class="input input-bordered w-full"
                 value={username()}
                 onInput={(e) => setUsername(e.currentTarget.value)}
               />
@@ -70,32 +102,73 @@ export function HomeView(props: HomeViewProps) {
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Password</span>
+                <span class="label-text font-medium">Password</span>
               </label>
               <input
                 type="password"
-                placeholder="password"
-                class="input input-bordered"
+                placeholder="Enter your password"
+                class="input input-bordered w-full"
                 value={password()}
                 onInput={(e) => setPassword(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    username().trim() &&
+                    password().trim()
+                  ) {
+                    handleLogin();
+                  }
+                }}
               />
             </div>
 
-            <div class="form-control mt-6">
-              <button
-                class="btn btn-primary"
-                onClick={handleLogin}
-                disabled={!username().trim() || !password().trim()}
-              >
-                {t("connection.connect")}
-              </button>
+            <EnhancedButton
+              variant="primary"
+              fullWidth
+              size="lg"
+              onClick={handleLogin}
+              disabled={!username().trim() || !password().trim()}
+              icon="🔑"
+              haptic
+            >
+              Sign In
+            </EnhancedButton>
+
+            <div class="divider text-sm opacity-50">OR</div>
+
+            <EnhancedButton
+              variant="ghost"
+              fullWidth
+              onClick={handleGuestMode}
+              icon="👻"
+              haptic
+            >
+              Continue as Guest
+            </EnhancedButton>
+
+            <div class="text-center text-xs opacity-50 mt-4">
+              <p>Guest mode provides limited functionality</p>
             </div>
+          </div>
+        </EnhancedCard>
 
-            <div class="divider">OR</div>
-
-            <button class="btn btn-ghost" onClick={handleGuestMode}>
-              Continue as Guest 👻
-            </button>
+        {/* Features Preview */}
+        <div class="mt-8 grid grid-cols-2 gap-3">
+          <div class="text-center p-3">
+            <div class="text-2xl mb-1">🌐</div>
+            <div class="text-xs opacity-70">P2P Network</div>
+          </div>
+          <div class="text-center p-3">
+            <div class="text-2xl mb-1">🔐</div>
+            <div class="text-xs opacity-70">Secure Shell</div>
+          </div>
+          <div class="text-center p-3">
+            <div class="text-2xl mb-1">📱</div>
+            <div class="text-xs opacity-70">Mobile Ready</div>
+          </div>
+          <div class="text-center p-3">
+            <div class="text-2xl mb-1">⚡</div>
+            <div class="text-xs opacity-70">Real-time Sync</div>
           </div>
         </div>
       </div>
@@ -104,165 +177,85 @@ export function HomeView(props: HomeViewProps) {
 
   const renderMainScreen = () => (
     <div class="min-h-screen bg-base-200">
-      {/* Navbar */}
-      <div class="navbar bg-base-100 shadow-lg">
-        <div class="navbar-start">
-          <div class="flex items-center space-x-3">
-            <span class="text-2xl text-primary">⚡</span>
-            <h1 class="text-xl font-bold">RiTerm</h1>
+      {/* Header */}
+      <div class="bg-base-100 shadow-sm border-b border-base-300">
+        <div class="navbar px-4">
+          <div class="navbar-start">
+            <div class="flex items-center space-x-3">
+              <span class="text-2xl text-primary">⚡</span>
+              <h1 class="text-xl font-bold hidden sm:inline">RiTerm</h1>
+            </div>
           </div>
-        </div>
-        <div class="navbar-end">
-          <button
-            class="btn btn-ghost btn-square"
-            onClick={props.onShowSettings}
-          >
-            ⚙️
-          </button>
+
+          <div class="navbar-center">
+            <div class="tabs tabs-boxed">
+              <button
+                class={`tab tab-sm ${viewMode() === "main" ? "tab-active" : ""}`}
+                onClick={() => setViewMode("main")}
+              >
+                Connect
+              </button>
+              <button
+                class={`tab tab-sm ${viewMode() === "sessions" ? "tab-active" : ""}`}
+                onClick={() => setViewMode("sessions")}
+              >
+                Sessions
+              </button>
+            </div>
+          </div>
+
+          <div class="navbar-end">
+            <EnhancedButton
+              variant="ghost"
+              size="sm"
+              onClick={props.onShowSettings}
+              icon="⚙️"
+            >
+              <span class="hidden sm:inline">Settings</span>
+            </EnhancedButton>
+          </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div class="hero min-h-screen bg-base-200">
-        <div class="hero-content text-center">
-          <div class="max-w-2xl">
-            {/* Connection Section */}
-            <div class="card bg-base-100 shadow-xl mb-8">
-              <div class="card-body">
-                <h2 class="card-title justify-center text-2xl">
-                  {t("connection.title")} 🖥️
-                </h2>
-                <p class="text-sm opacity-70 mb-6">
-                  Enter session ticket to connect to remote terminal
-                </p>
-
-                <div class="form-control w-full">
-                  <input
-                    type="text"
-                    placeholder={t("connection.ticket.placeholder")}
-                    class="input input-bordered w-full"
-                    value={props.sessionTicket}
-                    onInput={(e) => props.onTicketInput(e.currentTarget.value)}
-                  />
-                </div>
-
-                <div class="card-actions justify-center mt-4">
-                  <button
-                    class={`btn btn-primary btn-lg ${
-                      props.connecting ? "loading" : ""
-                    }`}
-                    onClick={() => props.onConnect()}
-                    disabled={!props.sessionTicket.trim() || props.connecting}
-                  >
-                    {props.connecting ? "Connecting..." : "Connect 🚀"}
-                  </button>
-                </div>
-
-                {props.connectionError && (
-                  <div class="alert alert-error mt-4">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="stroke-current shrink-0 h-6 w-6"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <span>{props.connectionError}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Connection History */}
-            <Show when={props.history.length > 0}>
-              <div class="card bg-base-100 shadow-xl mb-8">
-                <div class="card-body">
-                  <h2 class="card-title">Recent Connections 📝</h2>
-                  <div class="max-h-40 overflow-y-auto">
-                    <For each={props.history.slice(0, 5)}>
-                      {(entry) => (
-                        <div class="flex items-center justify-between p-3 hover:bg-base-200 rounded-lg transition-colors">
-                          <div class="flex-1 min-w-0">
-                            <div class="font-mono text-sm truncate font-semibold">
-                              {entry.title}
-                            </div>
-                            <div class="text-xs opacity-70 font-mono">
-                              {entry.ticket.substring(0, 20)}...
-                            </div>
-                          </div>
-                          <div class="flex items-center space-x-2">
-                            <div
-                              class={`badge badge-sm ${
-                                entry.status === "Completed"
-                                  ? "badge-success"
-                                  : entry.status === "Failed"
-                                    ? "badge-error"
-                                    : "badge-warning"
-                              }`}
-                            >
-                              {entry.status}
-                            </div>
-                            <button
-                              class="btn btn-ghost btn-xs"
-                              onClick={() => handleQuickConnect(entry.ticket)}
-                            >
-                              Connect
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </For>
-                  </div>
-                </div>
-              </div>
-            </Show>
-
-            {/* Features Grid */}
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="card bg-base-100 shadow-xl">
-                <div class="card-body">
-                  <h2 class="card-title">
-                    <span class="text-primary">🌐</span>
-                    P2P Network
-                  </h2>
-                  <p class="text-sm opacity-80">
-                    Direct peer-to-peer terminal connections without central
-                    servers
-                  </p>
-                </div>
-              </div>
-
-              <div class="card bg-base-100 shadow-xl">
-                <div class="card-body">
-                  <h2 class="card-title">
-                    <span class="text-primary">🔐</span>
-                    Secure Shell
-                  </h2>
-                  <p class="text-sm opacity-80">
-                    End-to-end encrypted terminal sessions with full shell
-                    support
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="container mx-auto py-6">
+        <Show
+          when={viewMode() === "sessions"}
+          fallback={
+            <ConnectionInterface
+              sessionTicket={props.sessionTicket}
+              onTicketInput={props.onTicketInput}
+              onConnect={props.onConnect}
+              connecting={props.connecting}
+              connectionError={props.connectionError}
+              history={props.history}
+              isConnected={props.isConnected}
+              activeTicket={props.activeTicket}
+              onReturnToSession={props.onReturnToSession}
+              onDeleteHistory={props.onDeleteHistory}
+              onDisconnect={props.onDisconnect}
+              onQuickConnect={handleQuickConnect}
+            />
+          }
+        >
+          <SessionManagement
+            history={props.history}
+            activeTicket={props.activeTicket}
+            isConnected={props.isConnected}
+            onConnect={props.onConnect}
+            onDisconnect={props.onDisconnect}
+            onDeleteHistory={props.onDeleteHistory}
+            onUpdateHistory={(ticket, updates) => {
+              // TODO: Implement history update
+              console.log("Update history:", ticket, updates);
+            }}
+            onReturnToSession={props.onReturnToSession}
+            onShowDetails={handleShowDetails}
+            onExportHistory={handleExportHistory}
+            onImportHistory={handleImportHistory}
+          />
+        </Show>
       </div>
-
-      {/* Footer */}
-      <footer class="footer footer-center p-4 bg-base-300 text-base-content">
-        <div>
-          <p class="text-xs font-mono opacity-70">
-            RiTerm v1.0 - P2P Terminal Client
-          </p>
-        </div>
-      </footer>
     </div>
   );
 
