@@ -1,6 +1,6 @@
-# CLI Architecture - Separated Concerns
+# CLI Architecture - Host-Only Terminal Sharing
 
-This document outlines the refactored CLI architecture with proper separation of concerns.
+This document outlines the refactored CLI architecture focused exclusively on hosting terminal sessions. The CLI is designed as a host-only tool, while joining and session management are handled by the mobile app.
 
 ## Module Structure
 
@@ -17,14 +17,13 @@ This document outlines the refactored CLI architecture with proper separation of
 
 ### 2. **Command Handlers** (`src/commands/`)
 - **`host.rs`**: Host command implementation
-- **`join.rs`**: Join command implementation  
-- **`list.rs`**: List command implementation
-- **`play.rs`**: Play command implementation
+- **`play.rs`**: Session playback command
 
 **Responsibilities:**
-- Command-specific logic and validation
-- Orchestrating between session management and UI
-- Error handling for specific commands
+- Host session creation and management
+- Session recording and playback
+- Terminal integration and shell management
+- QR code generation for mobile clients
 
 ### 3. **User Interface** (`src/ui/`)
 - **`display.rs`**: General display and messaging

@@ -1,41 +1,40 @@
 use serde::{Deserialize, Serialize};
 
 /// Application-specific error types
-#[derive(Debug, thiserror::Error, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum AppError {
-    #[error("Network not initialized")]
     NetworkNotInitialized,
-
-    #[error("Network error: {0}")]
     NetworkError(String),
-
-    #[error("Invalid address: {0}")]
     InvalidAddress(String),
-
-    #[error("Connection failed: {0}")]
     ConnectionFailed(String),
-
-    #[error("Session not found: {0}")]
     SessionNotFound(String),
-
-    #[error("Session not active: {0}")]
     SessionNotActive(String),
-
-    #[error("Invalid ticket: {0}")]
     InvalidTicket(String),
-
-    #[error("Join failed: {0}")]
     JoinFailed(String),
-
-    #[error("Send failed: {0}")]
     SendFailed(String),
-
-    #[error("Parse error: {0}")]
     ParseError(String),
-
-    #[error("IO error: {0}")]
     IoError(String),
 }
+
+impl std::fmt::Display for AppError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NetworkNotInitialized => write!(f, "Network not initialized"),
+            Self::NetworkError(msg) => write!(f, "Network error: {}", msg),
+            Self::InvalidAddress(msg) => write!(f, "Invalid address: {}", msg),
+            Self::ConnectionFailed(msg) => write!(f, "Connection failed: {}", msg),
+            Self::SessionNotFound(msg) => write!(f, "Session not found: {}", msg),
+            Self::SessionNotActive(msg) => write!(f, "Session not active: {}", msg),
+            Self::InvalidTicket(msg) => write!(f, "Invalid ticket: {}", msg),
+            Self::JoinFailed(msg) => write!(f, "Join failed: {}", msg),
+            Self::SendFailed(msg) => write!(f, "Send failed: {}", msg),
+            Self::ParseError(msg) => write!(f, "Parse error: {}", msg),
+            Self::IoError(msg) => write!(f, "IO error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for AppError {}
 
 /// Result type for Tauri commands
 pub type AppResult<T> = Result<T, AppError>;

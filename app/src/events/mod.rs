@@ -1,5 +1,5 @@
 use crate::terminal_events::TerminalEvent;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter};
 use tokio::sync::broadcast;
 
 /// Event management for real-time updates
@@ -42,7 +42,10 @@ impl EventManager {
         let status_data = serde_json::json!({
             "session_id": session_id,
             "status": status,
-            "timestamp": chrono::Utc::now().timestamp(),
+            "timestamp": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
         });
 
         if let Err(e) = self.app_handle.emit("session-status", &status_data) {
@@ -55,7 +58,10 @@ impl EventManager {
         let status_data = serde_json::json!({
             "status": status,
             "details": details,
-            "timestamp": chrono::Utc::now().timestamp(),
+            "timestamp": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
         });
 
         if let Err(e) = self.app_handle.emit("network-status", &status_data) {

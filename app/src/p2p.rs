@@ -305,7 +305,7 @@ impl P2PNetwork {
 
     pub async fn join_session(
         &self,
-        ticket: SessionTicket,
+        ticket: &SessionTicket,
     ) -> Result<(GossipSender, broadcast::Receiver<TerminalEvent>)> {
         info!("Joining session with topic: {}", ticket.topic_id);
 
@@ -358,9 +358,9 @@ impl P2PNetwork {
 
     pub async fn send_terminal_output(
         &self,
-        session_id: &str,
         sender: &GossipSender,
         data: String,
+        session_id: &str,
     ) -> Result<()> {
         debug!("Sending terminal output");
         let sessions = self.sessions.read().await;
@@ -382,9 +382,9 @@ impl P2PNetwork {
 
     pub async fn send_input(
         &self,
-        session_id: &str,
         sender: &GossipSender,
         data: String,
+        session_id: &str,
     ) -> Result<()> {
         debug!("Sending input data");
         let sessions = self.sessions.read().await;
@@ -761,6 +761,13 @@ impl P2PNetwork {
 
     pub async fn get_active_sessions(&self) -> Vec<String> {
         self.sessions.read().await.keys().cloned().collect()
+    }
+
+    pub async fn get_session_stats(&self) -> (usize, usize) {
+        let sessions = self.sessions.read().await;
+        let total = sessions.len();
+        let hosted = sessions.values().filter(|s| s.is_host).count();
+        (total, hosted)
     }
 
     pub async fn is_session_host(&self, session_id: &str) -> bool {

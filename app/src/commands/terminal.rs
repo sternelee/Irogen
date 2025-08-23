@@ -33,7 +33,7 @@ pub async fn send_terminal_input(
 pub async fn send_directed_message(
     session_id: String,
     message: String,
-    target_node: Option<String>,
+    _target_node: Option<String>, // 添加下划线前缀表示有意未使用
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     let sessions_state = state.sessions.lock().await;

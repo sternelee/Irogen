@@ -54,12 +54,15 @@ pub async fn join_session(ticket: String, state: State<'_, AppState>) -> AppResu
                 .parse::<crate::p2p::SessionTicket>()
                 .map_err(|e| crate::error::AppError::InvalidTicket(e.to_string()))?;
 
+            // 保存 topic_id 以便后续使用
+            let topic_id = parsed_ticket.topic_id.to_string();
+
             let (sender, receiver) = network
-                .join_session(parsed_ticket)
+                .join_session(&parsed_ticket)
                 .await
                 .map_err(|e| crate::error::AppError::JoinFailed(e.to_string()))?;
 
-            let session_id = format!("session_{}", parsed_ticket.topic_id);
+            let session_id = format!("session_{}", topic_id);
 
             // Store session info
             let mut sessions_state = state.sessions.lock().await;

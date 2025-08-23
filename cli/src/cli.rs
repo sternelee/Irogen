@@ -1,13 +1,13 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
-use crate::commands::{HostCommand, JoinCommand, ListCommand, PlayCommand};
+use crate::commands::{HostCommand, PlayCommand};
 use crate::session::SessionManager;
 use crate::ui::DisplayManager;
 
 #[derive(Parser)]
 #[command(name = "iroh-code-remote")]
-#[command(about = "A terminal session sharing tool powered by iroh p2p network")]
+#[command(about = "Host terminal sessions for remote access via iroh p2p network")]
 pub struct Cli {
     #[arg(
         long,
@@ -44,15 +44,6 @@ pub enum Commands {
         #[arg(long, help = "List available shells and exit")]
         list_shells: bool,
     },
-
-    #[command(about = "Join a session using a ticket")]
-    Join {
-        #[arg(help = "Session ticket to join")]
-        ticket: String,
-    },
-
-    #[command(about = "List active sessions")]
-    List,
 
     #[command(about = "Play back a recorded session")]
     Play {
@@ -96,12 +87,6 @@ impl CliApp {
                     passthrough,
                     list_shells,
                 ).await
-            }
-            Commands::Join { ticket } => {
-                JoinCommand::execute(self.session_manager, ticket).await
-            }
-            Commands::List => {
-                ListCommand::execute(&self.session_manager).await
             }
             Commands::Play { file } => {
                 PlayCommand::execute(file).await
