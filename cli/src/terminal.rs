@@ -1006,23 +1006,29 @@ impl TerminalRecorder {
 pub struct TerminalPlayer {
     events: Vec<TerminalEvent>,
     current_index: usize,
+    speed: f32,
 }
 
 impl TerminalPlayer {
-    pub fn new(events: Vec<TerminalEvent>) -> Self {
+    pub fn new(events: Vec<TerminalEvent>, speed: f32) -> Self {
         Self {
             events,
             current_index: 0,
+            speed: speed.max(0.1), // Minimum speed of 0.1x
         }
     }
 
     pub async fn play(&mut self) -> Result<()> {
-        info!("Starting playback of {} events", self.events.len());
+        info!(
+            "Starting playback of {} events at {}x speed",
+            self.events.len(),
+            self.speed
+        );
 
         let mut last_timestamp = 0.0;
 
         for event in &self.events {
-            let delay = event.timestamp - last_timestamp;
+            let delay = (event.timestamp - last_timestamp) / self.speed as f64;
             if delay > 0.0 {
                 tokio::time::sleep(tokio::time::Duration::from_secs_f64(delay)).await;
             }

@@ -1,7 +1,11 @@
 mod cli;
+mod host;
 mod p2p;
+mod playback;
 mod shell;
+mod shell_manager;
 mod terminal;
+mod terminal_config;
 
 use anyhow::Result;
 use clap::Parser;
