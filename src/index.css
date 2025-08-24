@@ -31,9 +31,13 @@
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-    /* 移动端视口修复 */
+    /* Enhanced mobile viewport handling */
     position: fixed;
     overscroll-behavior: none;
+    /* Prevent unwanted zoom on input focus */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
   }
 
   body {
@@ -50,44 +54,90 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  #root {
-    height: 100vh;
-    height: 100dvh; /* 动态视口高度 */
-    width: 100%;
-    position: relative;
+  /* Re-enable text selection for content areas */
+  .selectable,
+  .terminal-container,
+  input,
+  textarea,
+  [contenteditable] {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
   }
 
-  /* 移动端键盘适配 */
+  #root {
+    height: 100vh;
+    height: var(--viewport-height, 100vh); /* Use CSS variable */
+    width: 100%;
+    position: relative;
+    /* Enhanced keyboard handling */
+    transition: height 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Keyboard-aware root adjustments */
+  .keyboard-visible #root {
+    height: var(--effective-viewport-height, 100vh);
+  }
+
+  /* Enhanced dynamic viewport support */
   @supports (height: 100dvh) {
     #root {
       height: 100dvh;
     }
+    
+    .keyboard-visible #root {
+      height: calc(100dvh - var(--keyboard-height, 0px));
+    }
   }
 
-  /* iOS Safari 特殊处理 */
+  /* iOS Safari specialized handling */
   @supports (-webkit-touch-callout: none) {
     #root {
       height: -webkit-fill-available;
       min-height: -webkit-fill-available;
     }
+    
+    .keyboard-visible #root {
+      height: calc(-webkit-fill-available - var(--keyboard-height, 0px));
+      min-height: calc(-webkit-fill-available - var(--keyboard-height, 0px));
+    }
+    
+    /* Prevent iOS zoom on input focus */
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="search"],
+    input[type="tel"],
+    input[type="url"],
+    textarea {
+      font-size: 16px !important;
+      transform: translateZ(0);
+      -webkit-appearance: none;
+      border-radius: 0;
+    }
   }
 
-  /* Mobile optimizations */
+  /* Enhanced mobile optimizations */
   .mobile button,
   .mobile a,
   .mobile [role="button"] {
     min-height: 44px;
     min-width: 44px;
+    /* Improve touch responsiveness */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
   }
 
   /* Hardware acceleration for animations */
   .animate-slide-up,
   .animate-slide-down,
   .animate-fade-in,
-  .animate-scale-in {
+  .animate-scale-in,
+  .mobile-viewport-transition {
     transform: translateZ(0);
     backface-visibility: hidden;
     perspective: 1000px;
+    will-change: transform;
   }
 
   /* Mobile keyboard animations */
@@ -161,49 +211,93 @@
     height: 100%;
   }
 
-  /* Mobile terminal optimizations */
+  /* Enhanced mobile terminal optimizations */
   .mobile-terminal {
-    /* 保持最小宽度以显示完整的远程内容 */
+    /* Maintain minimum width for remote content visibility */
     min-width: 640px;
-    /* 允许水平滚动查看宽内容 */
+    /* Allow horizontal scrolling for wide content */
     overflow-x: auto;
     overflow-y: hidden;
-    /* 启用平滑滚动 */
+    /* Enable smooth scrolling */
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
-    /* 移动端性能优化 */
-    will-change: transform;
+    /* Mobile performance optimizations */
+    will-change: transform, height;
     transform: translateZ(0);
+    /* Enhanced keyboard adaptation */
+    transition: height 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Keyboard-aware terminal height */
+  .keyboard-visible .mobile-terminal {
+    height: var(--effective-viewport-height, calc(100vh - var(--keyboard-height, 0px)));
+    max-height: var(--effective-viewport-height, calc(100vh - var(--keyboard-height, 0px)));
   }
 
   .mobile-terminal .xterm-viewport {
-    /* 禁用垂直滚动，只允许水平滚动 */
+    /* Disable vertical scrolling, only allow horizontal scrolling */
     overflow-y: hidden !important;
+    /* Enhanced touch scrolling */
+    -webkit-overflow-scrolling: touch;
   }
 
   .mobile-terminal .xterm-rows {
-    /* 保持固定宽度以防止内容换行 */
+    /* Maintain fixed width to prevent content wrapping */
     white-space: nowrap;
     min-width: 640px;
   }
 
-  /* Terminal container height transitions */
+  /* Enhanced terminal container transitions */
   .terminal-container {
     transition:
       height 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-      max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    will-change: height, max-height;
+      max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+      transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: height, max-height, transform;
   }
 
-  /* Mobile keyboard container */
+  /* Smart keyboard-aware height calculation */
+  .keyboard-visible .terminal-container {
+    height: calc(var(--effective-viewport-height, 100vh) - 120px); /* Reserve space for header */
+    max-height: calc(var(--effective-viewport-height, 100vh) - 120px);
+  }
+
+  /* Enhanced mobile keyboard container */
   .mobile-keyboard {
-    animation: slideUp 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: slideUpKeyboard 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     transform: translateZ(0);
     backface-visibility: hidden;
+    /* Keyboard-specific positioning */
+    position: fixed;
+    bottom: var(--safe-area-inset-bottom, 0px);
+    left: 0;
+    right: 0;
+    z-index: 1000;
   }
 
   .mobile-keyboard.hiding {
-    animation: slideDown 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: slideDownKeyboard 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Fixed element keyboard adaptation */
+  .fixed-bottom {
+    bottom: 0;
+    transition: bottom 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .keyboard-visible .fixed-bottom {
+    bottom: var(--keyboard-height, 0px);
+  }
+
+  /* Input focus enhancement */
+  .keyboard-visible input:focus,
+  .keyboard-visible textarea:focus,
+  .keyboard-visible [contenteditable]:focus {
+    /* Ensure focused inputs are highlighted */
+    outline: 2px solid var(--accent, #00d8ff);
+    outline-offset: 2px;
+    /* Prevent content jumping */
+    scroll-margin-bottom: calc(var(--keyboard-height, 0px) + 20px);
   }
 
   /* Ensure terminal content is visible */
@@ -417,13 +511,67 @@
     }
   }
 
-  /* Mobile viewport height fix */
-  .mobile-viewport {
+  /* Enhanced keyboard-aware viewport and layout utilities */
+  .keyboard-aware-layout {
     height: 100vh;
-    height: -webkit-fill-available;
-    /* iOS Safari viewport fix */
+    height: var(--effective-viewport-height, 100vh);
+    transition: height 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  /* Smart input positioning */
+  .smart-input-container {
+    position: relative;
+    transform: translateZ(0);
+  }
+
+  .keyboard-visible .smart-input-container.focused {
+    /* Ensure focused input containers are properly positioned */
+    z-index: 999;
+  }
+
+  /* Enhanced safe area handling with keyboard awareness */
+  .mobile-safe-area-keyboard {
+    padding-top: max(env(safe-area-inset-top), 0px);
+    padding-bottom: max(
+      env(safe-area-inset-bottom), 
+      var(--keyboard-height, 0px)
+    );
+    padding-left: max(env(safe-area-inset-left), 0px);
+    padding-right: max(env(safe-area-inset-right), 0px);
+  }
+
+  /* Keyboard visibility state utilities */
+  .hide-on-keyboard {
+    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .keyboard-visible .hide-on-keyboard {
+    opacity: 0;
+    transform: translateY(20px);
+    pointer-events: none;
+  }
+
+  .show-on-keyboard {
+    opacity: 0;
+    transform: translateY(20px);
+    pointer-events: none;
+    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .keyboard-visible .show-on-keyboard {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  /* Mobile viewport height fixes with keyboard consideration */
+  .mobile-viewport-fix {
+    height: 100vh;
+    height: -webkit-fill-available; /* iOS Safari fix */
     min-height: -webkit-fill-available;
-    /* 防止键盘弹出时页面滚动 */
     position: fixed;
     top: 0;
     left: 0;
@@ -432,42 +580,47 @@
     overflow: hidden;
   }
 
-  /* 键盘显示时的特殊处理 */
-  .keyboard-visible {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    overflow: hidden !important;
+  .keyboard-visible .mobile-viewport-fix {
+    bottom: var(--keyboard-height, 0px);
   }
 
-  /* 移动端专用样式 */
+  /* Enhanced input field optimizations */
   @media (max-width: 768px) {
-    .mobile-viewport {
-      -webkit-overflow-scrolling: none;
-      overscroll-behavior: none;
-    }
-
-    /* 防止iOS橡皮筋效果 */
-    body {
-      overscroll-behavior: none;
-      -webkit-overflow-scrolling: none;
-    }
-
-    /* 移动端输入框优化 */
+    /* Prevent iOS automatic zoom on input focus */
     input[type="text"],
+    input[type="email"],
     input[type="password"],
+    input[type="search"],
+    input[type="tel"],
+    input[type="url"],
     textarea {
-      font-size: 16px; /* 防止iOS自动缩放 */
-      zoom: 1; /* 防止Android自动缩放 */
+      font-size: 16px !important; /* Prevent zoom */
+      zoom: 1; /* Prevent Android zoom */
+      -webkit-appearance: none;
+      -webkit-border-radius: 0;
+      border-radius: 0;
     }
 
-    /* 移动端按钮优化 */
+    /* Enhanced button touch targets */
     .btn,
-    button {
+    button,
+    [role="button"] {
       min-height: 44px;
       min-width: 44px;
       touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+    }
+
+    /* Mobile-optimized scrolling */
+    .mobile-scroll {
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    }
+
+    /* Prevent rubber band effect on iOS */
+    body {
+      overscroll-behavior: none;
+      -webkit-overflow-scrolling: none;
     }
   }
 
@@ -501,7 +654,29 @@
   }
 }
 
-/* Custom animations */
+/* Enhanced custom animations */
+@keyframes slideUpKeyboard {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideDownKeyboard {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
 @keyframes slideUp {
   from {
     transform: translateY(20px);
@@ -521,6 +696,26 @@
   to {
     transform: translateY(0);
     opacity: 1;
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes viewportResize {
+  from {
+    height: var(--viewport-height, 100vh);
+  }
+  to {
+    height: var(--effective-viewport-height, 100vh);
   }
 }
 

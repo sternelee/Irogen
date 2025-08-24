@@ -9,7 +9,12 @@ import {
   EnhancedButton,
   FloatingActionButton,
 } from "./ui/EnhancedComponents";
-import { getDeviceCapabilities } from "../utils/mobile";
+import {
+  getDeviceCapabilities,
+  MobileKeyboard,
+  KeyboardManager,
+  InputFocusManager,
+} from "../utils/mobile";
 
 interface EnhancedTerminalViewProps {
   onReady: (terminal: Terminal, fitAddon: FitAddon) => void;
@@ -55,6 +60,11 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
   const [terminalHeight, setTerminalHeight] = createSignal<number | null>(null);
   const [lastResizeTime, setLastResizeTime] = createSignal(0);
 
+  // Enhanced mobile keyboard and input management
+  const [keyboardCleanup, setKeyboardCleanup] = createSignal<(() => void) | null>(null);
+  const [inputCleanup, setInputCleanup] = createSignal<(() => void) | null>(null);
+  const [fixedElementCleanup, setFixedElementCleanup] = createSignal<(() => void) | null>(null);
+  
   // 响应外部键盘状态变化
   createEffect(() => {
     const isExternalKeyboardVisible = props.keyboardVisible;
@@ -317,10 +327,73 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
     }
   };
 
-  // Initialize terminal
+  // Enhanced terminal initialization with mobile support
   onMount(() => {
     // Delay initialization slightly to ensure DOM is ready
     setTimeout(initializeTerminal, 50);
+    
+    // Enhanced mobile keyboard and input management setup
+    if (deviceCapabilities().isMobile) {
+      // Register terminal element for input focus management
+      if (terminalElement) {
+        const cleanup = InputFocusManager.trackInput(terminalElement);
+        setInputCleanup(() => cleanup);
+      }
+      
+      // Set up keyboard scroll adjustment callback
+      const keyboardCleanupFn = MobileKeyboard.onScrollAdjustment(() => {
+        // Force terminal to adjust when keyboard triggers scroll adjustments
+        const fit = fitAddon();
+        if (fit && terminalInstance) {
+          setTimeout(() => {
+            try {
+              fit.fit();
+              terminalInstance?.focus();
+            } catch (error) {
+              console.warn("Failed to adjust terminal for keyboard scroll:", error);
+            }
+          }, 100);
+        }
+      });
+      setKeyboardCleanup(() => keyboardCleanupFn);
+      
+      // Register mobile keyboard as fixed element if it exists
+      setTimeout(() => {
+        if (mobileKeyboardRef) {
+          const fixedCleanup = KeyboardManager.registerFixedElement(mobileKeyboardRef, {
+            adjustWithKeyboard: true,
+            onKeyboardShow: (keyboardHeight) => {
+              console.log(`Mobile keyboard adjusted for keyboard height: ${keyboardHeight}px`);
+            },
+            onKeyboardHide: () => {
+              console.log("Mobile keyboard restored to normal position");
+            }
+          });
+          setFixedElementCleanup(() => fixedCleanup);
+        }
+      }, 100);
+    }
+    
+    // Enhanced cleanup
+    onCleanup(() => {
+      const inputCleanupFn = inputCleanup();
+      if (inputCleanupFn) {
+        inputCleanupFn();
+        setInputCleanup(null);
+      }
+      
+      const keyboardCleanupFn = keyboardCleanup();
+      if (keyboardCleanupFn) {
+        keyboardCleanupFn();
+        setKeyboardCleanup(null);
+      }
+      
+      const fixedCleanupFn = fixedElementCleanup();
+      if (fixedCleanupFn) {
+        fixedCleanupFn();
+        setFixedElementCleanup(null);
+      }
+    });
   });
 
   // Update font size and theme
@@ -740,9 +813,9 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
       <Show when={showMobileKeyboard() && !props.keyboardVisible}>
         <div
           ref={mobileKeyboardRef}
-          class="bg-base-100 border-t border-base-300 p-3 shrink-0"
+          class="bg-base-100 border-t border-base-300 p-3 shrink-0 mobile-keyboard fixed-bottom"
           style={{
-            animation: "slideUp 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+            animation: "slideUpKeyboard 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
           }}
         >
           <div class="flex items-center justify-between mb-3">

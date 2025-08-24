@@ -20,7 +20,12 @@ import { HomeView } from "./components/HomeView";
 import { MobileNavigation } from "./components/ui/MobileNavigation";
 import { P2PBackground } from "./components/P2PBackground";
 import { t } from "./stores/settingsStore";
-import { initializeMobileUtils, getDeviceCapabilities } from "./utils/mobile";
+import {
+  initializeMobileUtils,
+  getDeviceCapabilities,
+  MobileKeyboard,
+  KeyboardInfo,
+} from "./utils/mobile";
 
 function App() {
   const [sessionTicket, setSessionTicket] = createSignal("");
@@ -43,14 +48,14 @@ function App() {
       minute: "2-digit",
     }),
   );
+  
+  // Enhanced mobile keyboard state management
   const [keyboardVisible, setKeyboardVisible] = createSignal(false);
-  const [viewportHeight, setViewportHeight] = createSignal(window.innerHeight);
-  const [safeViewportHeight, setSafeViewportHeight] = createSignal(
-    window.innerHeight,
-  );
   const [keyboardHeight, setKeyboardHeight] = createSignal(0);
+  const [effectiveViewportHeight, setEffectiveViewportHeight] = createSignal(window.innerHeight);
   const [debugInfo, setDebugInfo] = createSignal("");
-  // 终端信息状态
+  
+  // Terminal information state
   const [terminalInfo, setTerminalInfo] = createSignal<{
     sessionTitle: string;
     terminalType: string;
@@ -65,8 +70,12 @@ function App() {
   const { history, addHistoryEntry, updateHistoryEntry, deleteHistoryEntry } =
     createConnectionHistory();
 
-  // 更新时间和键盘状态监听
+  // Enhanced mobile initialization and keyboard state management
   onMount(() => {
+    // Initialize enhanced mobile utilities
+    initializeMobileUtils();
+    
+    // Time update timer
     const timer = setInterval(() => {
       setCurrentTime(
         new Date().toLocaleTimeString("zh-CN", {
@@ -76,133 +85,35 @@ function App() {
       );
     }, 1000);
 
-    // 更强大的键盘检测系统
-    const capabilities = getDeviceCapabilities();
-    const isMobileDevice = capabilities.isMobile;
-
-    // 初始高度记录（考虑安全区域）
-    const initialHeight = window.innerHeight;
-    const initialViewportHeight =
-      window.visualViewport?.height || window.innerHeight;
-    let keyboardAnimationFrame: number | null = null;
-
-    const updateViewportState = () => {
-      const currentWindowHeight = window.innerHeight;
-      const currentViewportHeight =
-        window.visualViewport?.height || window.innerHeight;
-      const visualViewportTop = window.visualViewport?.offsetTop || 0;
-
-      // 计算键盘高度（使用visualViewport提供更准确的检测）
-      const keyboardHeightFromWindow = initialHeight - currentWindowHeight;
-      const keyboardHeightFromViewport =
-        initialViewportHeight - currentViewportHeight;
-      const detectedKeyboardHeight = Math.max(
-        keyboardHeightFromWindow,
-        keyboardHeightFromViewport,
-      );
-
-      // 键盘检测阈值（适配不同设备）
-      const keyboardThreshold = isMobileDevice ? 120 : 150;
-      const isKeyboardVisible = detectedKeyboardHeight > keyboardThreshold;
-
-      // 计算安全的可用高度（减去键盘和安全区域）
-      const effectiveHeight = isKeyboardVisible
-        ? currentViewportHeight - visualViewportTop
-        : currentWindowHeight;
-
-      // 批量状态更新以避免多次重渲染
-      if (keyboardAnimationFrame) {
-        cancelAnimationFrame(keyboardAnimationFrame);
+    // Enhanced keyboard visibility tracking with the new mobile utilities
+    const unsubscribeKeyboard = MobileKeyboard.onVisibilityChange(
+      (visible: boolean, keyboardInfo?: KeyboardInfo) => {
+        setKeyboardVisible(visible);
+        
+        if (keyboardInfo) {
+          setKeyboardHeight(keyboardInfo.height);
+          setEffectiveViewportHeight(
+            keyboardInfo.viewportHeight - (keyboardInfo.viewportOffsetTop || 0)
+          );
+          
+          // Enhanced debug info
+          setDebugInfo(
+            `Keyboard: ${visible ? 'Visible' : 'Hidden'}, ` +
+            `Height: ${keyboardInfo.height}px, ` +
+            `Viewport: ${keyboardInfo.viewportHeight}px, ` +
+            `Effective: ${keyboardInfo.viewportHeight - (keyboardInfo.viewportOffsetTop || 0)}px`
+          );
+        } else {
+          setKeyboardHeight(0);
+          setEffectiveViewportHeight(window.innerHeight);
+          setDebugInfo("Keyboard: Hidden");
+        }
       }
-
-      keyboardAnimationFrame = requestAnimationFrame(() => {
-        setViewportHeight(currentWindowHeight);
-        setSafeViewportHeight(effectiveHeight);
-        setKeyboardHeight(detectedKeyboardHeight);
-        setKeyboardVisible(isKeyboardVisible);
-        setDebugInfo(
-          `WH: ${currentWindowHeight}, VH: ${currentViewportHeight}, VT: ${visualViewportTop}, KH: ${detectedKeyboardHeight}, KB: ${isKeyboardVisible}`,
-        );
-
-        console.log("Enhanced viewport change:", {
-          windowHeight: currentWindowHeight,
-          viewportHeight: currentViewportHeight,
-          viewportTop: visualViewportTop,
-          keyboardHeight: detectedKeyboardHeight,
-          isKeyboardVisible,
-          effectiveHeight,
-        });
-      });
-    };
-
-    // 主要的视口变化监听
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", updateViewportState);
-      window.visualViewport.addEventListener("scroll", updateViewportState);
-    }
-
-    // 备用窗口尺寸监听
-    window.addEventListener("resize", updateViewportState);
-
-    // 增强的焦点事件处理
-    const handleFocusIn = (event: FocusEvent) => {
-      const target = event.target as HTMLElement;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.contentEditable === "true" ||
-          target.closest(".xterm-helper-textarea")) // xterm 内部输入元素
-      ) {
-        // 延迟检测以等待键盘动画完成
-        setTimeout(updateViewportState, 150);
-        setTimeout(updateViewportState, 300);
-        setTimeout(updateViewportState, 500);
-      }
-    };
-
-    const handleFocusOut = (event: FocusEvent) => {
-      // 延迟检测以确保键盘完全收起
-      setTimeout(updateViewportState, 150);
-      setTimeout(updateViewportState, 300);
-    };
-
-    // 全局焦点事件监听
-    document.addEventListener("focusin", handleFocusIn, { passive: true });
-    document.addEventListener("focusout", handleFocusOut, { passive: true });
-
-    // 方向变化监听
-    const handleOrientationChange = () => {
-      // 方向改变时重新计算基准高度
-      setTimeout(() => {
-        updateViewportState();
-      }, 500); // 等待方向变化动画完成
-    };
-
-    window.addEventListener("orientationchange", handleOrientationChange);
-
-    // 初始状态设置
-    updateViewportState();
+    );
 
     onCleanup(() => {
       clearInterval(timer);
-      if (keyboardAnimationFrame) {
-        cancelAnimationFrame(keyboardAnimationFrame);
-      }
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener(
-          "resize",
-          updateViewportState,
-        );
-        window.visualViewport.removeEventListener(
-          "scroll",
-          updateViewportState,
-        );
-      }
-      window.removeEventListener("resize", updateViewportState);
-      window.removeEventListener("orientationchange", handleOrientationChange);
-      document.removeEventListener("focusin", handleFocusIn);
-      document.removeEventListener("focusout", handleFocusOut);
+      unsubscribeKeyboard();
     });
   });
 
@@ -219,9 +130,6 @@ function App() {
   };
 
   onMount(() => {
-    // 初始化移动端工具
-    initializeMobileUtils();
-
     // 初始化网络
     initializeNetwork();
   });
@@ -420,8 +328,8 @@ function App() {
       class="w-full font-mono mobile-viewport"
       data-theme="riterm-mobile"
       style={{
-        height: keyboardVisible() ? `${safeViewportHeight()}px` : "100vh",
-        "max-height": keyboardVisible() ? `${safeViewportHeight()}px` : "100vh",
+        height: keyboardVisible() ? `${effectiveViewportHeight()}px` : "100vh",
+        "max-height": keyboardVisible() ? `${effectiveViewportHeight()}px` : "100vh",
         "padding-top": "env(safe-area-inset-top)",
         "padding-bottom": keyboardVisible()
           ? "0px"
@@ -439,9 +347,9 @@ function App() {
       <div
         class="relative z-20 w-full flex flex-col overflow-hidden"
         style={{
-          height: keyboardVisible() ? `${safeViewportHeight()}px` : "100%",
+          height: keyboardVisible() ? `${effectiveViewportHeight()}px` : "100%",
           "max-height": keyboardVisible()
-            ? `${safeViewportHeight()}px`
+            ? `${effectiveViewportHeight()}px`
             : "100%",
           transition:
             "height 0.2s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -463,7 +371,7 @@ function App() {
         {window.location.hostname === "localhost" && (
           <div class="bg-yellow-100 text-black text-xs p-2 border-b shrink-0">
             Debug: {debugInfo()} | KB: {keyboardVisible() ? "Yes" : "No"} |
-            SafeVH: {safeViewportHeight()}px | KH: {keyboardHeight()}px
+            EffectiveVH: {effectiveViewportHeight()}px | KH: {keyboardHeight()}px
           </div>
         )}
 
@@ -472,10 +380,10 @@ function App() {
           class="flex-1 overflow-hidden" // 改为overflow-hidden防止滚动问题
           style={{
             height: keyboardVisible()
-              ? `${safeViewportHeight() - 60}px` // 导航栏高度约60px
+              ? `${effectiveViewportHeight() - 60}px` // 导航栏高度约60px
               : "auto",
             "max-height": keyboardVisible()
-              ? `${safeViewportHeight() - 60}px`
+              ? `${effectiveViewportHeight() - 60}px`
               : "none",
             transition:
               "height 0.2s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -494,7 +402,7 @@ function App() {
               terminalType={terminalInfo().terminalType}
               workingDirectory={terminalInfo().workingDirectory}
               keyboardVisible={keyboardVisible()}
-              safeViewportHeight={safeViewportHeight()}
+              safeViewportHeight={effectiveViewportHeight()}
               onKeyboardToggle={(visible) => {
                 // 处理内部移动键盘状态变化
                 console.log("Terminal internal keyboard toggled:", visible);
