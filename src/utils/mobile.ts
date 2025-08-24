@@ -499,4 +499,70 @@ export function initializeMobileUtils(): void {
     capabilities.supportsTouch,
   );
   document.documentElement.classList.add(`screen-${capabilities.screenSize}`);
+
+  // Add safe area support class
+  if (capabilities.isMobile || capabilities.isTablet) {
+    document.documentElement.classList.add("has-safe-area");
+    document.documentElement.classList.add("mobile-optimized");
+
+    // Set CSS custom properties for safe area
+    const style = document.createElement("style");
+    style.textContent = `
+      :root {
+        --safe-area-inset-top: env(safe-area-inset-top);
+        --safe-area-inset-right: env(safe-area-inset-right);
+        --safe-area-inset-bottom: env(safe-area-inset-bottom);
+        --safe-area-inset-left: env(safe-area-inset-left);
+        --viewport-height: 100vh;
+        --dynamic-viewport-height: 100dvh;
+      }
+
+      /* 移动端专用视口高度变量 */
+      @supports (height: 100dvh) {
+        :root {
+          --viewport-height: 100dvh;
+        }
+      }
+
+      /* iOS Safari 专用高度调整 */
+      @supports (-webkit-touch-callout: none) {
+        :root {
+          --viewport-height: -webkit-fill-available;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Add viewport meta tag for mobile optimization
+  if (
+    capabilities.isMobile &&
+    !document.querySelector('meta[name="viewport"]')
+  ) {
+    const viewport = document.createElement("meta");
+    viewport.name = "viewport";
+    viewport.content =
+      "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
+    document.head.appendChild(viewport);
+  }
+
+  // 键盘状态监听器，动态添加CSS类
+  MobileKeyboard.onVisibilityChange((visible) => {
+    document.documentElement.classList.toggle("keyboard-visible", visible);
+    document.body.classList.toggle("keyboard-visible", visible);
+
+    // 设置自定义属性供 CSS 使用
+    if (visible) {
+      const visualViewportHeight =
+        window.visualViewport?.height || window.innerHeight;
+      document.documentElement.style.setProperty(
+        "--dynamic-viewport-height",
+        `${visualViewportHeight}px`,
+      );
+    } else {
+      document.documentElement.style.removeProperty(
+        "--dynamic-viewport-height",
+      );
+    }
+  });
 }

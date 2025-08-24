@@ -1,4 +1,10 @@
-import { createSignal, createEffect, onMount, createMemo } from "solid-js";
+import {
+  createSignal,
+  createEffect,
+  onMount,
+  createMemo,
+  onCleanup,
+} from "solid-js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { invoke } from "@tauri-apps/api/core";
@@ -14,6 +20,7 @@ import { HomeView } from "./components/HomeView";
 import { MobileNavigation } from "./components/ui/MobileNavigation";
 import { P2PBackground } from "./components/P2PBackground";
 import { t } from "./stores/settingsStore";
+import { initializeMobileUtils, getDeviceCapabilities } from "./utils/mobile";
 
 function App() {
   const [sessionTicket, setSessionTicket] = createSignal("");
@@ -36,6 +43,13 @@ function App() {
       minute: "2-digit",
     }),
   );
+  const [keyboardVisible, setKeyboardVisible] = createSignal(false);
+  const [viewportHeight, setViewportHeight] = createSignal(window.innerHeight);
+  const [safeViewportHeight, setSafeViewportHeight] = createSignal(
+    window.innerHeight,
+  );
+  const [keyboardHeight, setKeyboardHeight] = createSignal(0);
+  const [debugInfo, setDebugInfo] = createSignal("");
   // 终端信息状态
   const [terminalInfo, setTerminalInfo] = createSignal<{
     sessionTitle: string;
@@ -51,7 +65,7 @@ function App() {
   const { history, addHistoryEntry, updateHistoryEntry, deleteHistoryEntry } =
     createConnectionHistory();
 
-  // 更新时间
+  // 更新时间和键盘状态监听
   onMount(() => {
     const timer = setInterval(() => {
       setCurrentTime(
@@ -62,7 +76,134 @@ function App() {
       );
     }, 1000);
 
-    return () => clearInterval(timer);
+    // 更强大的键盘检测系统
+    const capabilities = getDeviceCapabilities();
+    const isMobileDevice = capabilities.isMobile;
+
+    // 初始高度记录（考虑安全区域）
+    const initialHeight = window.innerHeight;
+    const initialViewportHeight =
+      window.visualViewport?.height || window.innerHeight;
+    let keyboardAnimationFrame: number | null = null;
+
+    const updateViewportState = () => {
+      const currentWindowHeight = window.innerHeight;
+      const currentViewportHeight =
+        window.visualViewport?.height || window.innerHeight;
+      const visualViewportTop = window.visualViewport?.offsetTop || 0;
+
+      // 计算键盘高度（使用visualViewport提供更准确的检测）
+      const keyboardHeightFromWindow = initialHeight - currentWindowHeight;
+      const keyboardHeightFromViewport =
+        initialViewportHeight - currentViewportHeight;
+      const detectedKeyboardHeight = Math.max(
+        keyboardHeightFromWindow,
+        keyboardHeightFromViewport,
+      );
+
+      // 键盘检测阈值（适配不同设备）
+      const keyboardThreshold = isMobileDevice ? 120 : 150;
+      const isKeyboardVisible = detectedKeyboardHeight > keyboardThreshold;
+
+      // 计算安全的可用高度（减去键盘和安全区域）
+      const effectiveHeight = isKeyboardVisible
+        ? currentViewportHeight - visualViewportTop
+        : currentWindowHeight;
+
+      // 批量状态更新以避免多次重渲染
+      if (keyboardAnimationFrame) {
+        cancelAnimationFrame(keyboardAnimationFrame);
+      }
+
+      keyboardAnimationFrame = requestAnimationFrame(() => {
+        setViewportHeight(currentWindowHeight);
+        setSafeViewportHeight(effectiveHeight);
+        setKeyboardHeight(detectedKeyboardHeight);
+        setKeyboardVisible(isKeyboardVisible);
+        setDebugInfo(
+          `WH: ${currentWindowHeight}, VH: ${currentViewportHeight}, VT: ${visualViewportTop}, KH: ${detectedKeyboardHeight}, KB: ${isKeyboardVisible}`,
+        );
+
+        console.log("Enhanced viewport change:", {
+          windowHeight: currentWindowHeight,
+          viewportHeight: currentViewportHeight,
+          viewportTop: visualViewportTop,
+          keyboardHeight: detectedKeyboardHeight,
+          isKeyboardVisible,
+          effectiveHeight,
+        });
+      });
+    };
+
+    // 主要的视口变化监听
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", updateViewportState);
+      window.visualViewport.addEventListener("scroll", updateViewportState);
+    }
+
+    // 备用窗口尺寸监听
+    window.addEventListener("resize", updateViewportState);
+
+    // 增强的焦点事件处理
+    const handleFocusIn = (event: FocusEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.contentEditable === "true" ||
+          target.closest(".xterm-helper-textarea")) // xterm 内部输入元素
+      ) {
+        // 延迟检测以等待键盘动画完成
+        setTimeout(updateViewportState, 150);
+        setTimeout(updateViewportState, 300);
+        setTimeout(updateViewportState, 500);
+      }
+    };
+
+    const handleFocusOut = (event: FocusEvent) => {
+      // 延迟检测以确保键盘完全收起
+      setTimeout(updateViewportState, 150);
+      setTimeout(updateViewportState, 300);
+    };
+
+    // 全局焦点事件监听
+    document.addEventListener("focusin", handleFocusIn, { passive: true });
+    document.addEventListener("focusout", handleFocusOut, { passive: true });
+
+    // 方向变化监听
+    const handleOrientationChange = () => {
+      // 方向改变时重新计算基准高度
+      setTimeout(() => {
+        updateViewportState();
+      }, 500); // 等待方向变化动画完成
+    };
+
+    window.addEventListener("orientationchange", handleOrientationChange);
+
+    // 初始状态设置
+    updateViewportState();
+
+    onCleanup(() => {
+      clearInterval(timer);
+      if (keyboardAnimationFrame) {
+        cancelAnimationFrame(keyboardAnimationFrame);
+      }
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener(
+          "resize",
+          updateViewportState,
+        );
+        window.visualViewport.removeEventListener(
+          "scroll",
+          updateViewportState,
+        );
+      }
+      window.removeEventListener("resize", updateViewportState);
+      window.removeEventListener("orientationchange", handleOrientationChange);
+      document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("focusout", handleFocusOut);
+    });
   });
 
   const initializeNetwork = async () => {
@@ -78,6 +219,10 @@ function App() {
   };
 
   onMount(() => {
+    // 初始化移动端工具
+    initializeMobileUtils();
+
+    // 初始化网络
     initializeNetwork();
   });
 
@@ -196,7 +341,7 @@ function App() {
                 setTerminalInfo({
                   sessionTitle: `Remote Shell`,
                   terminalType: shell || "shell",
-                  workingDirectory: cwd || "~"
+                  workingDirectory: cwd || "~",
                 });
 
                 // 在终端中显示历史记录
@@ -271,12 +416,37 @@ function App() {
   );
 
   return (
-    <div class="w-full h-screen font-mono" data-theme="riterm-mobile">
+    <div
+      class="w-full font-mono mobile-viewport"
+      data-theme="riterm-mobile"
+      style={{
+        height: keyboardVisible() ? `${safeViewportHeight()}px` : "100vh",
+        "max-height": keyboardVisible() ? `${safeViewportHeight()}px` : "100vh",
+        "padding-top": "env(safe-area-inset-top)",
+        "padding-bottom": keyboardVisible()
+          ? "0px"
+          : "env(safe-area-inset-bottom)",
+        transition:
+          "height 0.2s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+        overflow: "hidden", // 防止滚动
+        position: "relative",
+      }}
+    >
       {/* P2P Background */}
       <P2PBackground />
 
       {/* Main Layout - Mobile First */}
-      <div class="relative z-20 w-full h-screen flex flex-col overflow-hidden">
+      <div
+        class="relative z-20 w-full flex flex-col overflow-hidden"
+        style={{
+          height: keyboardVisible() ? `${safeViewportHeight()}px` : "100%",
+          "max-height": keyboardVisible()
+            ? `${safeViewportHeight()}px`
+            : "100%",
+          transition:
+            "height 0.2s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
+      >
         {/* Mobile Navigation */}
         <MobileNavigation
           currentView={currentView()}
@@ -289,8 +459,28 @@ function App() {
           onShowSettings={() => setIsSettingsOpen(true)}
         />
 
+        {/* Debug Info - 开发时显示 */}
+        {window.location.hostname === "localhost" && (
+          <div class="bg-yellow-100 text-black text-xs p-2 border-b shrink-0">
+            Debug: {debugInfo()} | KB: {keyboardVisible() ? "Yes" : "No"} |
+            SafeVH: {safeViewportHeight()}px | KH: {keyboardHeight()}px
+          </div>
+        )}
+
         {/* Main Content */}
-        <div class="flex-1 overflow-auto">
+        <div
+          class="flex-1 overflow-hidden" // 改为overflow-hidden防止滚动问题
+          style={{
+            height: keyboardVisible()
+              ? `${safeViewportHeight() - 60}px` // 导航栏高度约60px
+              : "auto",
+            "max-height": keyboardVisible()
+              ? `${safeViewportHeight() - 60}px`
+              : "none",
+            transition:
+              "height 0.2s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+          }}
+        >
           {currentView() === "terminal" && isConnected() ? (
             <EnhancedTerminalView
               onReady={handleTerminalReady}
@@ -303,6 +493,12 @@ function App() {
               sessionTitle={terminalInfo().sessionTitle}
               terminalType={terminalInfo().terminalType}
               workingDirectory={terminalInfo().workingDirectory}
+              keyboardVisible={keyboardVisible()}
+              safeViewportHeight={safeViewportHeight()}
+              onKeyboardToggle={(visible) => {
+                // 处理内部移动键盘状态变化
+                console.log("Terminal internal keyboard toggled:", visible);
+              }}
             />
           ) : (
             <HomeView

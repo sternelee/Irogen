@@ -9,6 +9,7 @@ import {
   EnhancedButton,
   FloatingActionButton,
 } from "./ui/EnhancedComponents";
+import { getDeviceCapabilities } from "../utils/mobile";
 
 interface EnhancedTerminalViewProps {
   onReady: (terminal: Terminal, fitAddon: FitAddon) => void;
@@ -19,6 +20,10 @@ interface EnhancedTerminalViewProps {
   sessionTitle?: string;
   terminalType?: string;
   workingDirectory?: string;
+  // 新增移动端适配属性
+  keyboardVisible?: boolean;
+  safeViewportHeight?: number;
+  onKeyboardToggle?: (visible: boolean) => void;
 }
 
 // Terminal debugging utility
@@ -46,9 +51,90 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
   const [isFullscreen, setIsFullscreen] = createSignal(false);
   const [fontSize, setFontSize] = createSignal(14);
   const [opacity, setOpacity] = createSignal(1);
+  const [deviceCapabilities] = createSignal(getDeviceCapabilities());
+  const [terminalHeight, setTerminalHeight] = createSignal<number | null>(null);
+  const [lastResizeTime, setLastResizeTime] = createSignal(0);
 
-  let terminalElement: HTMLDivElement | undefined;
-  let mobileKeyboardRef: HTMLDivElement | undefined;
+  // 响应外部键盘状态变化
+  createEffect(() => {
+    const isExternalKeyboardVisible = props.keyboardVisible;
+    if (isExternalKeyboardVisible !== undefined) {
+      // 外部键盘显示时，隐藏内部移动键盘以节省空间
+      if (isExternalKeyboardVisible && showMobileKeyboard()) {
+        setShowMobileKeyboard(false);
+      }
+
+      // 调整终端尺寸以适应键盘
+      const fit = fitAddon();
+      if (fit && terminalInstance) {
+        setTimeout(() => {
+          try {
+            fit.fit();
+            terminalInstance?.focus();
+            setLastResizeTime(Date.now());
+          } catch (error) {
+            console.warn(
+              "Failed to fit terminal after keyboard change:",
+              error,
+            );
+          }
+        }, 100);
+      }
+    }
+  });
+
+  // 计算最佳终端高度
+  const calculateTerminalHeight = () => {
+    if (!props.safeViewportHeight) return null;
+
+    const baseHeight = props.safeViewportHeight;
+    let availableHeight = baseHeight;
+
+    // 减去固定UI元素的高度
+    availableHeight -= 60; // 终端头部
+
+    if (showSearchBar()) {
+      availableHeight -= 50; // 搜索栏
+    }
+
+    if (showTerminalActions()) {
+      availableHeight -= 120; // 操作面板
+    }
+
+    if (showMobileKeyboard()) {
+      availableHeight -= 160; // 移动键盘
+    }
+
+    return Math.max(availableHeight, 200); // 最小高度200px
+  };
+
+  // 监听高度变化并更新终端
+  createEffect(() => {
+    const calculatedHeight = calculateTerminalHeight();
+    if (calculatedHeight && calculatedHeight !== terminalHeight()) {
+      setTerminalHeight(calculatedHeight);
+
+      // 延迟调整终端尺寸，避免频繁resize
+      const now = Date.now();
+      if (now - lastResizeTime() > 100) {
+        const fit = fitAddon();
+        if (fit && terminalInstance) {
+          setTimeout(() => {
+            try {
+              fit.fit();
+              terminalInstance?.focus();
+              setLastResizeTime(now);
+            } catch (error) {
+              console.warn(
+                "Failed to fit terminal after height change:",
+                error,
+              );
+            }
+          }, 150);
+        }
+      }
+    }
+  });
 
   // Touch gesture state
   const [isPinching, setIsPinching] = createSignal(false);
@@ -56,6 +142,9 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
   let terminalInstance: Terminal | null = null;
   let onDataDispose: { dispose: () => void } | null = null;
+  let terminalElement: HTMLDivElement | undefined;
+  let mobileKeyboardRef: HTMLDivElement | undefined;
+  let resizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   // Get terminal theme similar to original TerminalView
   const getTerminalTheme = () => ({
@@ -107,6 +196,10 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
         fontWeight: "normal",
         fontWeightBold: "bold",
         drawBoldTextInBrightColors: true,
+        // 移动端优化：保持远程内容宽度，但允许用户输入换行
+        cols: deviceCapabilities().isMobile ? 80 : undefined,
+        // 在移动端启用文本换行
+        wordSeparator: deviceCapabilities().isMobile ? " \t\n\r\f" : undefined,
       });
 
       // Load addons
@@ -126,7 +219,30 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
       // Open terminal
       term.open(terminalElement);
+
+      // Ensure font size is applied immediately after opening
+      const initialFontSize = fontSize();
+      term.options.fontSize = initialFontSize;
+      debugTerminal(`Initial font size set to ${initialFontSize}px`);
+
+      // Fit terminal after font size is set
       fit.fit();
+
+      // Force a refresh to apply all settings
+      setTimeout(() => {
+        try {
+          term.refresh(0, term.rows - 1);
+          fit.fit();
+          debugTerminal(
+            `Terminal refreshed with font size ${term.options.fontSize}px`,
+          );
+        } catch (error) {
+          console.warn(
+            "Failed to refresh terminal after initialization:",
+            error,
+          );
+        }
+      }, 100);
 
       // Add terminal-specific styling
       if (terminalElement) {
@@ -209,19 +325,35 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
   // Update font size and theme
   createEffect(() => {
-    if (terminalInstance) {
-      terminalInstance.options.fontSize = fontSize();
-      terminalInstance.options.theme = getTerminalTheme();
+    const currentFontSize = fontSize();
+    const currentTerminal = terminal();
+
+    if (currentTerminal && terminalInstance) {
+      debugTerminal(`Updating font size to ${currentFontSize}px`);
+
+      // Update terminal options
+      currentTerminal.options.fontSize = currentFontSize;
+      currentTerminal.options.theme = getTerminalTheme();
+
+      // Force terminal to refresh with new font size
       const fit = fitAddon();
       if (fit) {
+        // Use a longer timeout to ensure font changes are applied
         setTimeout(() => {
           try {
+            // Refresh the terminal to apply font changes
+            currentTerminal.refresh(0, currentTerminal.rows - 1);
+            // Then fit the terminal
             fit.fit();
-            terminalInstance?.focus();
+            currentTerminal.focus();
+
+            debugTerminal(
+              `Font size updated successfully to ${currentFontSize}px`,
+            );
           } catch (error) {
-            console.warn("Failed to fit terminal after font change:", error);
+            console.warn("Failed to update terminal font size:", error);
           }
-        }, 100);
+        }, 200); // Increased timeout for better reliability
       }
     }
   });
@@ -241,23 +373,33 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
       const distance = getTouchDistance(e.touches[0], e.touches[1]);
       const scale = distance / lastPinchDistance();
 
-      if (scale > 1.1) {
+      if (scale > 1.05) {
+        // Reduced threshold for more responsive scaling
         // Zoom in
-        setFontSize(Math.min(fontSize() + 1, 24));
-        setLastPinchDistance(distance);
+        const newSize = Math.min(fontSize() + 1, 24);
+        if (newSize !== fontSize()) {
+          setFontSize(newSize);
+          setLastPinchDistance(distance);
+          debugTerminal(`Pinch zoom in: font size ${newSize}px`);
 
-        // Haptic feedback
-        if (window.navigator?.vibrate) {
-          window.navigator.vibrate(10);
+          // Haptic feedback
+          if (window.navigator?.vibrate) {
+            window.navigator.vibrate(10);
+          }
         }
-      } else if (scale < 0.9) {
+      } else if (scale < 0.95) {
+        // Reduced threshold for more responsive scaling
         // Zoom out
-        setFontSize(Math.max(fontSize() - 1, 8));
-        setLastPinchDistance(distance);
+        const newSize = Math.max(fontSize() - 1, 8);
+        if (newSize !== fontSize()) {
+          setFontSize(newSize);
+          setLastPinchDistance(distance);
+          debugTerminal(`Pinch zoom out: font size ${newSize}px`);
 
-        // Haptic feedback
-        if (window.navigator?.vibrate) {
-          window.navigator.vibrate(10);
+          // Haptic feedback
+          if (window.navigator?.vibrate) {
+            window.navigator.vibrate(10);
+          }
         }
       }
     }
@@ -274,7 +416,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
     return Math.sqrt(dx * dx + dy * dy);
   };
 
-  // Mobile keyboard actions
+  // Mobile keyboard actions - 优化移动端按键布局
   const commonKeys = [
     { label: "Tab", key: "\t" },
     { label: "Ctrl+C", key: "\x03" },
@@ -286,6 +428,17 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
     { label: "→", key: "\x1b[C" },
     { label: "↑", key: "\x1b[A" },
     { label: "↓", key: "\x1b[B" },
+    // 移动端额外按键
+    ...(deviceCapabilities().isMobile
+      ? [
+          { label: "Home", key: "\x1b[H" },
+          { label: "End", key: "\x1b[F" },
+          { label: "PgUp", key: "\x1b[5~" },
+          { label: "PgDn", key: "\x1b[6~" },
+          { label: "Ctrl+Z", key: "\x1a" },
+          { label: "Ctrl+X", key: "\x18" },
+        ]
+      : []),
   ];
 
   const sendKey = (key: string) => {
@@ -334,9 +487,11 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
         <div class="flex items-center space-x-3">
           {/* 终端状态指示器 */}
           <div class="flex items-center space-x-2">
-            <div class={`w-2 h-2 rounded-full ${props.isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+            <div
+              class={`w-2 h-2 rounded-full ${props.isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
+            ></div>
             <div class="font-medium text-sm">
-              {props.isConnected ? '已连接' : '未连接'}
+              {props.isConnected ? "已连接" : "未连接"}
             </div>
           </div>
 
@@ -478,7 +633,15 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
             <EnhancedButton
               variant="outline"
               size="sm"
-              onClick={() => terminal()?.reset()}
+              onClick={() => {
+                const currentTerminal = terminal();
+                if (currentTerminal) {
+                  currentTerminal.reset();
+                  // Also reset font size to default
+                  setFontSize(14);
+                  debugTerminal("Terminal reset with default font size 14px");
+                }
+              }}
               icon="🔄"
             >
               Reset
@@ -492,16 +655,34 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
               <EnhancedButton
                 variant="ghost"
                 size="xs"
-                onClick={() => setFontSize(Math.max(fontSize() - 1, 8))}
+                onClick={() => {
+                  const newSize = Math.max(fontSize() - 1, 8);
+                  if (newSize !== fontSize()) {
+                    setFontSize(newSize);
+                    debugTerminal(
+                      `Font size decreased to ${newSize}px via button`,
+                    );
+                  }
+                }}
                 disabled={fontSize() <= 8}
               >
                 A-
               </EnhancedButton>
-              <span class="text-sm w-8 text-center">{fontSize()}</span>
+              <span class="text-sm w-12 text-center font-mono bg-base-300 px-2 py-1 rounded">
+                {fontSize()}px
+              </span>
               <EnhancedButton
                 variant="ghost"
                 size="xs"
-                onClick={() => setFontSize(Math.min(fontSize() + 1, 24))}
+                onClick={() => {
+                  const newSize = Math.min(fontSize() + 1, 24);
+                  if (newSize !== fontSize()) {
+                    setFontSize(newSize);
+                    debugTerminal(
+                      `Font size increased to ${newSize}px via button`,
+                    );
+                  }
+                }}
                 disabled={fontSize() >= 24}
               >
                 A+
@@ -511,31 +692,58 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
         </div>
       </Show>
 
-      {/* Terminal Container with Touch Support */}
-      <SwipeGesture
-        onSwipeDown={() => setShowMobileKeyboard(true)}
-        onSwipeUp={() => setShowMobileKeyboard(false)}
+      {/* Terminal Container with Touch Support and Mobile Optimizations */}
+      <div
         class="flex-1 relative overflow-hidden terminal-container"
+        style={{
+          height: terminalHeight() ? `${terminalHeight()}px` : "100%",
+          "max-height": terminalHeight() ? `${terminalHeight()}px` : "100%",
+          transition:
+            "height 0.2s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
       >
-        <div
-          ref={terminalElement}
-          id="enhanced-terminal-container"
-          class="terminal-content h-full w-full"
-          style={{
-            opacity: opacity(),
-            background: "transparent",
+        <SwipeGesture
+          onSwipeDown={() => {
+            if (!props.keyboardVisible) {
+              setShowMobileKeyboard(true);
+              props.onKeyboardToggle?.(true);
+            }
           }}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-        />
-      </SwipeGesture>
+          onSwipeUp={() => {
+            setShowMobileKeyboard(false);
+            props.onKeyboardToggle?.(false);
+          }}
+          class="w-full h-full"
+        >
+          <div
+            ref={terminalElement}
+            id="enhanced-terminal-container"
+            class={`terminal-content w-full ${deviceCapabilities().isMobile ? "mobile-terminal" : ""}`}
+            style={{
+              height: "100%",
+              opacity: opacity(),
+              background: "transparent",
+              // 移动端优化：允许水平滚动查看宽内容，但禁止垂直滚动
+              "overflow-x": deviceCapabilities().isMobile ? "auto" : "hidden",
+              "overflow-y": "hidden",
+              // 保持最小宽度以显示完整的远程内容
+              "min-width": deviceCapabilities().isMobile ? "640px" : "auto",
+            }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          />
+        </SwipeGesture>
+      </div>
 
       {/* Mobile Keyboard */}
-      <Show when={showMobileKeyboard()}>
+      <Show when={showMobileKeyboard() && !props.keyboardVisible}>
         <div
           ref={mobileKeyboardRef}
           class="bg-base-100 border-t border-base-300 p-3 shrink-0"
+          style={{
+            animation: "slideUp 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+          }}
         >
           <div class="flex items-center justify-between mb-3">
             <span class="text-sm font-medium">Terminal Keys</span>
@@ -556,7 +764,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
                 size="sm"
                 onClick={() => sendKey(keyDef.key)}
                 haptic
-                class="text-xs"
+                class={`text-xs ${deviceCapabilities().isMobile ? "min-h-[40px]" : ""}`}
               >
                 {keyDef.label}
               </EnhancedButton>
@@ -566,10 +774,17 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
       </Show>
 
       {/* Floating Action Buttons */}
-      <Show when={!showMobileKeyboard() && !isFullscreen()}>
+      <Show
+        when={
+          !showMobileKeyboard() && !isFullscreen() && !props.keyboardVisible
+        }
+      >
         <FloatingActionButton
           icon="⌨️"
-          onClick={() => setShowMobileKeyboard(true)}
+          onClick={() => {
+            setShowMobileKeyboard(true);
+            props.onKeyboardToggle?.(true);
+          }}
           position="bottom-right"
           variant="primary"
         />

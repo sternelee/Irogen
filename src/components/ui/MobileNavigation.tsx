@@ -62,8 +62,8 @@ export function MobileNavigation(props: MobileNavigationProps) {
 
   return (
     <>
-      {/* Top Status Bar - Mobile First */}
-      <div class="navbar bg-base-100 border-b border-base-300 min-h-12 px-4">
+      {/* Top Status Bar - Mobile First with Safe Area */}
+      <div class="navbar bg-base-100 border-b border-base-300 min-h-12 px-4 mobile-safe-top">
         <div class="navbar-start">
           <div class="flex items-center space-x-2">
             <button
