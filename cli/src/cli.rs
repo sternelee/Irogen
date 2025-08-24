@@ -16,6 +16,12 @@ pub struct Cli {
     )]
     pub relay: Option<String>,
 
+    #[arg(
+        long,
+        help = "Authentication token for ticket submission"
+    )]
+    pub auth: Option<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -91,7 +97,7 @@ impl CliApp {
 
                 let mut host_session = HostSession::new(self.network.clone());
                 host_session
-                    .start(shell, title, width, height, save, passthrough, share_config)
+                    .start(shell, title, width, height, save, passthrough, share_config, cli.auth)
                     .await
             }
             Commands::Play { file, speed } => PlaybackSession::start(file, speed).await,

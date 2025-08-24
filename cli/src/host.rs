@@ -10,11 +10,17 @@ use crate::terminal_config::TerminalConfigDetector;
 
 pub struct HostSession {
     network: P2PNetwork,
+    ticket: Option<String>,
+    auth_token: Option<String>,
 }
 
 impl HostSession {
     pub fn new(network: P2PNetwork) -> Self {
-        Self { network }
+        Self {
+            network,
+            ticket: None,
+            auth_token: None,
+        }
     }
 
     pub async fn start(
@@ -26,7 +32,11 @@ impl HostSession {
         save_file: Option<String>,
         passthrough: bool,
         share_config: bool,
+        auth: Option<String>,
     ) -> Result<()> {
+        // Store auth token for later use
+        self.auth_token = auth.clone();
+
         let (shell_config, header) = Self::setup_environment(shell, title, width, height)?;
         let session_id = header.session_id.clone();
 
@@ -52,6 +62,17 @@ impl HostSession {
             .create_session_ticket(topic_id, &session_id)
             .await?;
         println!("💡 Join using: {}", ticket);
+
+        // Store ticket and submit to API if auth is provided
+        let ticket_string = ticket.to_string();
+        self.ticket = Some(ticket_string.clone());
+
+        if let Some(auth_token) = &self.auth_token {
+            match self.submit_ticket_to_api(&ticket_string, auth_token).await {
+                Ok(_) => println!("✅ Ticket submitted to API successfully"),
+                Err(e) => println!("❌ Failed to submit ticket to API: {}", e),
+            }
+        }
 
         // Display QR code for the ticket
         self.display_qr_code(&ticket.to_string());
@@ -91,6 +112,14 @@ impl HostSession {
         self.network
             .end_session(&sender, session_id.clone())
             .await?;
+
+        // Delete ticket from API if auth was used
+        if let (Some(ticket), Some(auth_token)) = (&self.ticket, &self.auth_token) {
+            match self.delete_ticket_from_api(ticket, auth_token).await {
+                Ok(_) => println!("✅ Ticket deleted from API successfully"),
+                Err(e) => println!("❌ Failed to delete ticket from API: {}", e),
+            }
+        }
 
         if let Some(save_path) = save_file {
             println!("💾 Saving session to: {}", save_path);
@@ -272,6 +301,50 @@ impl HostSession {
         Ok(recorder)
     }
 
+    async fn submit_ticket_to_api(&self, ticket: &str, auth_token: &str) -> Result<()> {
+        let base_host_api = std::env::var("BASE_HOST_API")
+            .unwrap_or_else(|_| "https://api.example.com".to_string());
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post(&format!("{}/ticket", base_host_api))
+            .header("authentication", auth_token)
+            .header("Content-Type", "text/plain")
+            .body(ticket.to_string())
+            .send()
+            .await
+            .context("Failed to send ticket to API")?;
+
+        if response.status().is_success() {
+            info!("Ticket submitted successfully to {}/ticket", base_host_api);
+            Ok(())
+        } else {
+            anyhow::bail!("API returned status: {}", response.status())
+        }
+    }
+
+    async fn delete_ticket_from_api(&self, ticket: &str, auth_token: &str) -> Result<()> {
+        let base_host_api = std::env::var("BASE_HOST_API")
+            .unwrap_or_else(|_| "https://api.example.com".to_string());
+        let client = reqwest::Client::new();
+
+        let response = client
+            .delete(&format!("{}/ticket", base_host_api))
+            .header("authentication", auth_token)
+            .header("Content-Type", "text/plain")
+            .body(ticket.to_string())
+            .send()
+            .await
+            .context("Failed to delete ticket from API")?;
+
+        if response.status().is_success() {
+            info!("Ticket deleted successfully from {}/ticket", base_host_api);
+            Ok(())
+        } else {
+            anyhow::bail!("API returned status: {}", response.status())
+        }
+    }
+
     fn display_qr_code(&self, ticket: &str) {
         use qrcode::QrCode;
 
@@ -292,3 +365,35 @@ impl HostSession {
     }
 }
 
+impl Drop for HostSession {
+    fn drop(&mut self) {
+        // Clean up ticket on drop (e.g., when Ctrl+C is pressed)
+        if let (Some(ticket), Some(auth_token)) = (&self.ticket, &self.auth_token) {
+            let ticket = ticket.clone();
+            let auth_token = auth_token.clone();
+
+            // Use a blocking approach for cleanup since we can't await in Drop
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new();
+                if let Ok(rt) = rt {
+                    rt.block_on(async move {
+                        let base_host_api = std::env::var("BASE_HOST_API")
+                            .unwrap_or_else(|_| "https://api.example.com".to_string());
+                        let client = reqwest::Client::new();
+
+                        if let Err(e) = client
+                            .delete(&format!("{}/ticket", base_host_api))
+                            .header("authentication", &auth_token)
+                            .header("Content-Type", "text/plain")
+                            .body(ticket)
+                            .send()
+                            .await
+                        {
+                            eprintln!("Failed to delete ticket on exit: {}", e);
+                        }
+                    });
+                }
+            });
+        }
+    }
+}

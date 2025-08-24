@@ -26,3 +26,4 @@ tracing-appender.workspace = true
 bincode = { workspace = true }
 chacha20poly1305 = "0.10"
 aead = "0.5"
+reqwest = { version = "0.12", features = ["json"] }
