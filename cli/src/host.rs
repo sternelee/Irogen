@@ -31,7 +31,6 @@ impl HostSession {
         height: u16,
         save_file: Option<String>,
         passthrough: bool,
-        share_config: bool,
         auth: Option<String>,
     ) -> Result<()> {
         // Store auth token for later use
@@ -40,10 +39,7 @@ impl HostSession {
         let (shell_config, header) = Self::setup_environment(shell, title, width, height)?;
         let session_id = header.session_id.clone();
 
-        // 如果启用配置共享，检测并记录终端配置
-        if share_config {
-            self.display_terminal_config().await;
-        }
+        self.display_terminal_config().await;
 
         println!("🌐 Node ID: {}", self.network.get_node_id().await);
         if let Ok(node_addr) = self.network.get_node_addr().await {
@@ -346,7 +342,75 @@ impl HostSession {
     }
 
     fn display_qr_code(&self, ticket: &str) {
+        use crate::string_compressor::StringCompressor;
         use fast_qr::qr::QRBuilder;
+
+        // Show compression statistics
+        println!("🔧 Ticket Compression Analysis:");
+
+        // For display purposes, if this is already a compressed ticket (CT_ prefix),
+        // try to show the compression ratio by decompressing and recompressing
+        if ticket.starts_with("CT_") {
+            println!("   ✅ Using compressed ticket format");
+            if let Ok(decompressed) = StringCompressor::decompress(&ticket[3..]) {
+                println!(
+                    "   📊 Original (decompressed): {} bytes",
+                    decompressed.len()
+                );
+                println!("   📊 Compressed: {} bytes", ticket.len());
+                let compression_ratio =
+                    (1.0 - (ticket.len() as f64 / decompressed.len() as f64)) * 100.0;
+                println!(
+                    "   📊 Compression ratio: {:.1}% reduction",
+                    compression_ratio
+                );
+
+                // Test different compression methods for comparison
+                if let Ok(standard_compressed) = StringCompressor::compress(&decompressed) {
+                    println!(
+                        "   🔍 Standard compression would be: {} bytes",
+                        standard_compressed.len()
+                    );
+                }
+                if let Ok(hybrid_compressed) = StringCompressor::compress_hybrid(&decompressed) {
+                    println!(
+                        "   🔍 Hybrid compression achieved: {} bytes (current method)",
+                        hybrid_compressed.len()
+                    );
+                }
+            }
+        } else {
+            // This shouldn't happen with new tickets, but handle legacy format
+            println!("   ⚠️  Using uncompressed ticket format");
+            if let Ok(compressed) = StringCompressor::compress_hybrid(ticket) {
+                let compression_ratio =
+                    (1.0 - (compressed.len() as f64 / ticket.len() as f64)) * 100.0;
+                println!(
+                    "   📊 Could compress from {} to {} bytes ({:.1}% reduction)",
+                    ticket.len(),
+                    compressed.len(),
+                    compression_ratio
+                );
+            }
+        }
+
+        println!("   📏 Final ticket length: {} characters", ticket.len());
+
+        // Calculate QR code data density
+        let qr_efficiency = if ticket.len() < 100 {
+            "Excellent"
+        } else if ticket.len() < 150 {
+            "Good"
+        } else if ticket.len() < 250 {
+            "Fair"
+        } else {
+            "Poor"
+        };
+        println!(
+            "   📱 Mobile QR compatibility: {} (shorter is better for scanning)",
+            qr_efficiency
+        );
+        println!();
 
         match QRBuilder::new(ticket.as_bytes()).build() {
             Ok(qr_code) => {

@@ -16,10 +16,7 @@ pub struct Cli {
     )]
     pub relay: Option<String>,
 
-    #[arg(
-        long,
-        help = "Authentication token for ticket submission"
-    )]
+    #[arg(long, help = "Authentication token for ticket submission")]
     pub auth: Option<String>,
 
     #[command(subcommand)]
@@ -50,9 +47,6 @@ pub enum Commands {
 
         #[arg(long, help = "List available shells and exit")]
         list_shells: bool,
-
-        #[arg(long, help = "Share terminal configuration with remote app")]
-        share_config: bool,
     },
 
     #[command(about = "Play back a recorded session")]
@@ -88,7 +82,6 @@ impl CliApp {
                 save,
                 passthrough,
                 list_shells,
-                share_config,
             } => {
                 if list_shells {
                     ShellManager::list_available()?;
@@ -97,7 +90,7 @@ impl CliApp {
 
                 let mut host_session = HostSession::new(self.network.clone());
                 host_session
-                    .start(shell, title, width, height, save, passthrough, share_config, cli.auth)
+                    .start(shell, title, width, height, save, passthrough, cli.auth)
                     .await
             }
             Commands::Play { file, speed } => PlaybackSession::start(file, speed).await,

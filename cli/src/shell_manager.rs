@@ -139,4 +139,3 @@ pub struct ShellInfo {
     pub available: bool,
     pub features: Vec<String>,
 }
-

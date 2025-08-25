@@ -467,4 +467,3 @@ mod tests {
         assert_eq!(summary, "iTerm2-zsh-macOS-120x30");
     }
 }
-

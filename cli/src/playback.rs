@@ -125,4 +125,3 @@ impl std::fmt::Display for SessionInfo {
         )
     }
 }
-

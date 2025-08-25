@@ -25,6 +25,7 @@ macro_rules! warn {
 }
 use url::Url;
 
+use crate::string_compressor::StringCompressor;
 use crate::terminal_events::TerminalEvent;
 
 use aead::{Aead, KeyInit};
@@ -140,9 +141,23 @@ pub struct SessionTicket {
 
 impl std::fmt::Display for SessionTicket {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // First serialize to bytes
         let bytes = bincode::serialize(self).map_err(|_| std::fmt::Error)?;
-        let encoded = data_encoding::BASE32.encode(&bytes);
-        write!(f, "{}", encoded)
+
+        // Convert to BASE32 string for compression
+        let base32_string = data_encoding::BASE32.encode(&bytes);
+
+        // Compress the BASE32 string to make QR codes smaller
+        match StringCompressor::compress_hybrid(&base32_string) {
+            Ok(compressed) => {
+                // Add a prefix to indicate this is a compressed ticket
+                write!(f, "CT_{}", compressed)
+            }
+            Err(_) => {
+                // Fallback to original encoding if compression fails
+                write!(f, "{}", base32_string)
+            }
+        }
     }
 }
 
@@ -153,8 +168,23 @@ impl std::str::FromStr for SessionTicket {
         // 清理输入：移除空白字符和换行符
         let cleaned = s.trim().replace([' ', '\n', '\r', '\t'], "");
 
+        if cleaned.is_empty() {
+            return Err(anyhow::anyhow!("Empty ticket"));
+        }
+
+        // Check if this is a compressed ticket (starts with "CT_")
+        let base32_string = if cleaned.starts_with("CT_") {
+            // This is a compressed ticket, decompress it
+            let compressed_part = &cleaned[3..]; // Remove "CT_" prefix
+            StringCompressor::decompress(compressed_part)
+                .map_err(|e| anyhow::anyhow!("Failed to decompress ticket: {}", e))?
+        } else {
+            // This is an uncompressed ticket, use as-is
+            cleaned
+        };
+
         // 验证BASE32字符集（A-Z, 2-7, =）
-        if !cleaned
+        if !base32_string
             .chars()
             .all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c) || c == '=')
         {
@@ -163,16 +193,16 @@ impl std::str::FromStr for SessionTicket {
             ));
         }
 
-        // 验证长度（BASE32编码的长度应该是8的倍数，或者有正确的填充）
-        let len = cleaned.len();
-        if len == 0 {
-            return Err(anyhow::anyhow!("Empty ticket"));
-        }
-
         // BASE32解码
         let bytes = data_encoding::BASE32
-            .decode(cleaned.as_bytes())
-            .map_err(|e| anyhow::anyhow!("Failed to decode ticket (length: {}): {}", len, e))?;
+            .decode(base32_string.as_bytes())
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to decode ticket (length: {}): {}",
+                    base32_string.len(),
+                    e
+                )
+            })?;
 
         // 验证解码后的数据长度是否合理
         if bytes.len() < 32 {

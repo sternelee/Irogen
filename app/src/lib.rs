@@ -6,6 +6,7 @@ use tauri::{Emitter, State};
 use tokio::sync::{RwLock, mpsc};
 
 mod p2p;
+mod string_compressor;
 mod terminal_events;
 
 use iroh_gossip::api::GossipSender;
@@ -321,7 +322,7 @@ pub fn run() {
     #[cfg(desktop)]
     {
         builder = builder
-            .plugin(tauri_plugin_updater::Builder::new().build())
+            // .plugin(tauri_plugin_updater::Builder::new().build())
             .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
                 let _ = app
                     .get_webview_window("main")
