@@ -7,6 +7,10 @@
   ],
   "permissions": [
     "core:event:allow-listen",
-    "core:event:default"
+    "core:event:default",
+    "notification:default",
+    "clipboard-manager:default",
+    "http:default",
+    "os:default"
   ]
 }

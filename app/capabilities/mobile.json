@@ -11,6 +11,10 @@
   "permissions": [
     "barcode-scanner:allow-scan",
     "barcode-scanner:allow-cancel",
-    "barcode-scanner:default"
+    "barcode-scanner:default",
+    "notification:default",
+    "clipboard-manager:default",
+    "http:default",
+    "os:default"
   ]
 }

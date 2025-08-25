@@ -14,9 +14,21 @@ importers:
       '@tauri-apps/plugin-barcode-scanner':
         specifier: ~2
         version: 2.4.0
-      '@tauri-apps/plugin-os':
-        specifier: ^2.3.0
+      '@tauri-apps/plugin-clipboard-manager':
+        specifier: ~2.3.0
+        version: 2.3.0
+      '@tauri-apps/plugin-http':
+        specifier: ~2.5.2
+        version: 2.5.2
+      '@tauri-apps/plugin-notification':
+        specifier: ~2.3.1
         version: 2.3.1
+      '@tauri-apps/plugin-os':
+        specifier: ~2
+        version: 2.3.1
+      '@tauri-apps/plugin-updater':
+        specifier: ~2.9.0
+        version: 2.9.0
       '@xterm/xterm':
         specifier: ^5.5.0
         version: 5.5.0
@@ -605,8 +617,20 @@ packages:
   '@tauri-apps/plugin-barcode-scanner@2.4.0':
     resolution: {integrity: sha512-L+z7hejwlg3L7gApj1XburCL7pF4QbrU5rZDeCevGGqG85i0jXWUykU50v2/NI0XdLhFXYx3ERbXDPblH/BvBA==}
 
+  '@tauri-apps/plugin-clipboard-manager@2.3.0':
+    resolution: {integrity: sha512-81NOBA2P+OTY8RLkBwyl9ZR/0CeggLub4F6zxcxUIfFOAqtky7J61+K/MkH2SC1FMxNBxrX0swDuKvkjkHadlA==}
+
+  '@tauri-apps/plugin-http@2.5.2':
+    resolution: {integrity: sha512-x1mQKHSLDk4mS2S938OTeyk8L7QyLpCrKZCZcjkljGsvTvRMojCvI9SeJ1kaxc7t8xSilkC7WdId8xER9TIGLg==}
+
+  '@tauri-apps/plugin-notification@2.3.1':
+    resolution: {integrity: sha512-7gqgfANSREKhh35fY1L4j3TUjUdePmU735FYDqRGeIf8nMXWpcx6j4FhN9/4nYz+m0mv79DCTPLqIPTySggGgg==}
+
   '@tauri-apps/plugin-os@2.3.1':
     resolution: {integrity: sha512-ty5V8XDUIFbSnrk3zsFoP3kzN+vAufYzalJSlmrVhQTImIZa1aL1a03bOaP2vuBvfR+WDRC6NgV2xBl8G07d+w==}
+
+  '@tauri-apps/plugin-updater@2.9.0':
+    resolution: {integrity: sha512-j++sgY8XpeDvzImTrzWA08OqqGqgkNyxczLD7FjNJJx/uXxMZFz5nDcfkyoI/rCjYuj2101Tci/r/HFmOmoxCg==}
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -1434,9 +1458,25 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.7.0
 
+  '@tauri-apps/plugin-clipboard-manager@2.3.0':
+    dependencies:
+      '@tauri-apps/api': 2.7.0
+
+  '@tauri-apps/plugin-http@2.5.2':
+    dependencies:
+      '@tauri-apps/api': 2.8.0
+
+  '@tauri-apps/plugin-notification@2.3.1':
+    dependencies:
+      '@tauri-apps/api': 2.8.0
+
   '@tauri-apps/plugin-os@2.3.1':
     dependencies:
       '@tauri-apps/api': 2.8.0
+
+  '@tauri-apps/plugin-updater@2.9.0':
+    dependencies:
+      '@tauri-apps/api': 2.7.0
 
   '@types/babel__core@7.20.5':
     dependencies:
