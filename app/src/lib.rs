@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use tauri::{AppHandle, Manager};
 use tauri::{Emitter, State};
 use tokio::sync::{RwLock, mpsc};
 
@@ -311,7 +312,30 @@ async fn parse_session_ticket(ticket: String) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init());
+
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+                let _ = app
+                    .get_webview_window("main")
+                    .expect("no main window")
+                    .set_focus();
+            }));
+    }
+
+    #[cfg(mobile)]
+    {
+        builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+    }
+
+    builder
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             initialize_network,
@@ -325,11 +349,7 @@ pub fn run() {
             get_node_info,
             parse_session_ticket
         ])
-        .setup(|app| {
-            #[cfg(mobile)]
-            app.handle().plugin(tauri_plugin_barcode_scanner::init());
-            Ok(())
-        })
+        .setup(|app| Ok(()))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
