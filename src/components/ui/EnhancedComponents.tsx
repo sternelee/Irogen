@@ -31,7 +31,7 @@ export function EnhancedCard(props: EnhancedCardProps) {
     if (!props.status) return null;
     const colors = {
       success: "bg-success",
-      warning: "bg-warning", 
+      warning: "bg-warning",
       error: "bg-error",
       info: "bg-info"
     };
@@ -39,7 +39,7 @@ export function EnhancedCard(props: EnhancedCardProps) {
   };
 
   return (
-    <div 
+    <div
       class={`${getVariantClass()} ${props.class || ""} ${props.onTap ? "cursor-pointer hover:shadow-xl transition-all duration-200" : ""} relative overflow-hidden`}
       onClick={props.onTap}
     >
@@ -73,7 +73,7 @@ export function EnhancedCard(props: EnhancedCardProps) {
 
 // Enhanced Button with Haptic Feedback
 interface EnhancedButtonProps {
-  children: JSX.Element;
+  children?: JSX.Element;
   onClick?: () => void;
   variant?: "primary" | "secondary" | "accent" | "ghost" | "outline" | "error" | "success";
   size?: "xs" | "sm" | "md" | "lg";
@@ -274,7 +274,7 @@ export function PullToRefresh(props: PullToRefreshProps) {
 
     const currentY = e.touches[0].clientY;
     const distance = Math.max(0, currentY - startY);
-    
+
     if (distance > 0) {
       e.preventDefault();
       setPullDistance(Math.min(distance, threshold * 1.5));
@@ -285,7 +285,7 @@ export function PullToRefresh(props: PullToRefreshProps) {
     if (!isPulling()) return;
 
     setIsPulling(false);
-    
+
     if (pullDistance() >= threshold) {
       setIsRefreshing(true);
       try {
@@ -310,7 +310,7 @@ export function PullToRefresh(props: PullToRefreshProps) {
     >
       <Show when={pullDistance() > 0 || isRefreshing()}>
         <div class="absolute top-0 left-0 right-0 flex justify-center py-4 bg-base-100">
-          <Show 
+          <Show
             when={isRefreshing()}
             fallback={
               <div class="flex flex-col items-center text-sm opacity-70">
@@ -326,7 +326,7 @@ export function PullToRefresh(props: PullToRefreshProps) {
           </Show>
         </div>
       </Show>
-      
+
       <div style={{ "margin-top": pullDistance() > 0 ? "60px" : "0px" }}>
         {props.children}
       </div>

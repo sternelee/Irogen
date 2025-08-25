@@ -46,13 +46,12 @@ export function HomeView(props: HomeViewProps) {
       // 使用Tauri的条码扫描插件
       const { scan } = await import("@tauri-apps/plugin-barcode-scanner");
       const result = await scan();
+      console.log(result);
       if (result) {
-        props.onTicketInput(result);
+        props.onTicketInput(result.content);
       }
     } catch (error) {
       console.error("QR Scanner error:", error);
-      // 回退到模拟扫描
-      props.onTicketInput("demo-scanned-ticket-" + Date.now());
     }
   };
 
@@ -253,7 +252,7 @@ export function HomeView(props: HomeViewProps) {
         </div>
 
         {/* 连接输入框 */}
-        <div class="w-full max-w-md mb-8">
+        <div class="w-full max-w-md mb-4">
           <div class="flex items-center space-x-2">
             <div class="flex-1">
               <EnhancedInput
@@ -278,7 +277,6 @@ export function HomeView(props: HomeViewProps) {
                 onClick={handleShowQRScanner}
                 icon="📷"
                 haptic
-                title="扫码连接"
                 class="shrink-0"
               />
             </Show>
@@ -286,17 +284,17 @@ export function HomeView(props: HomeViewProps) {
         </div>
 
         {/* 登录按钮 */}
-        <EnhancedButton
-          variant="primary"
-          size="lg"
-          fullWidth
-          onClick={() => setShowLoginModal(true)}
-          icon="🚀"
-          haptic
-          class="max-w-md"
-        >
-          帐号登录
-        </EnhancedButton>
+        {/* <EnhancedButton */}
+        {/*   variant="primary" */}
+        {/*   size="lg" */}
+        {/*   fullWidth */}
+        {/*   onClick={() => setShowLoginModal(true)} */}
+        {/*   icon="🚀" */}
+        {/*   haptic */}
+        {/*   class="max-w-md" */}
+        {/* > */}
+        {/*   帐号登录 */}
+        {/* </EnhancedButton> */}
 
         {/* 历史连接按钮 */}
         <Show when={props.history.length > 0}>
@@ -305,7 +303,7 @@ export function HomeView(props: HomeViewProps) {
             fullWidth
             onClick={() => setShowHistoryModal(true)}
             icon="📚"
-            class="max-w-md mt-4"
+            class="max-w-md md:mt-4"
           >
             历史连接
           </EnhancedButton>
