@@ -200,8 +200,6 @@ impl HostSession {
         }
     }
 
-
-
     async fn spawn_pty_tasks(
         &self,
         session_id: String,

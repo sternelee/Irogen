@@ -8,22 +8,6 @@ use std::io::Read;
 pub struct StringCompressor;
 
 impl StringCompressor {
-    /// Compress a string using Brotli compression + Base64 URL-safe encoding
-    /// This is optimized for mobile QR code compatibility
-    pub fn compress(input: &str) -> Result<String> {
-        let input_bytes = input.as_bytes();
-
-        // Use Brotli compression with maximum settings for best compression
-        let mut compressor = CompressorReader::new(input_bytes, 8192, 11, 24);
-        let mut compressed_data = Vec::new();
-        compressor.read_to_end(&mut compressed_data)?;
-
-        // Use Base64 URL-safe encoding without padding (shorter)
-        let encoded = BASE64_URL_SAFE_NO_PAD.encode(&compressed_data);
-
-        Ok(encoded)
-    }
-
     /// Decompress a string that was compressed with compress() or compress_hybrid()
     pub fn decompress(compressed: &str) -> Result<String> {
         // Check for different compression prefixes
@@ -104,10 +88,5 @@ impl StringCompressor {
         // Use Base64 URL-safe encoding without padding
         let encoded = BASE64_URL_SAFE_NO_PAD.encode(&compressed_data);
         Ok(encoded)
-    }
-
-    /// Validate that a string can be decompressed (for testing)
-    pub fn validate_compressed(compressed: &str) -> bool {
-        Self::decompress(compressed).is_ok()
     }
 }

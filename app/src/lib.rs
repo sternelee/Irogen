@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use tauri::{AppHandle, Manager};
+use tauri::Manager;
 use tauri::{Emitter, State};
 use tokio::sync::{RwLock, mpsc};
 
@@ -151,16 +151,16 @@ async fn connect_to_peer(
     });
 
     // Send participant joined notification automatically after successful join
-    if let Err(e) = network
-        .send_participant_joined(&session_id, &sender)
-        .await
-    {
+    if let Err(e) = network.send_participant_joined(&session_id, &sender).await {
         #[cfg(debug_assertions)]
         eprintln!("Failed to send participant joined notification: {}", e);
         // 不返回错误，因为连接已经成功，只是通知失败
     } else {
         #[cfg(debug_assertions)]
-        println!("Successfully sent participant joined notification for session: {}", session_id);
+        println!(
+            "Successfully sent participant joined notification for session: {}",
+            session_id
+        );
     }
 
     Ok(session_id)
@@ -249,8 +249,11 @@ async fn send_participant_joined(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     #[cfg(debug_assertions)]
-    println!("send_participant_joined called for session_id: {}", session_id);
-    
+    println!(
+        "send_participant_joined called for session_id: {}",
+        session_id
+    );
+
     // Clone the session sender to avoid holding the lock across await
     let session_sender = {
         let sessions = state.sessions.read().await;
@@ -274,11 +277,17 @@ async fn send_participant_joined(
         .send_participant_joined(&session_id, &session_sender)
         .await
     {
-        return Err(format!("Failed to send participant joined notification: {}", e));
+        return Err(format!(
+            "Failed to send participant joined notification: {}",
+            e
+        ));
     }
 
     #[cfg(debug_assertions)]
-    println!("Successfully sent participant joined notification for session: {}", session_id);
+    println!(
+        "Successfully sent participant joined notification for session: {}",
+        session_id
+    );
 
     Ok(())
 }

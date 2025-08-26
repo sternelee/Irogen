@@ -287,52 +287,6 @@ impl P2PNetwork {
         Ok(network)
     }
 
-    pub async fn create_shared_session(
-        &self,
-        header: SessionHeader,
-    ) -> Result<(TopicId, GossipSender, mpsc::UnboundedReceiver<String>)> {
-        let session_id = header.session_id.clone();
-        info!("Creating shared session: {}", session_id);
-
-        // Create topic for this session using random bytes
-        let topic_id = TopicId::from_bytes(rand::random());
-        let key: EncryptionKey = ChaCha20Poly1305::generate_key(&mut OsRng).into();
-
-        let (event_sender, _event_receiver) = broadcast::channel(1000);
-        let (_input_sender, input_receiver) = mpsc::unbounded_channel();
-
-        let session = SharedSession {
-            header: header.clone(),
-            participants: vec![self.endpoint.node_id().to_string()],
-            is_host: true,
-            event_sender: event_sender.clone(),
-            node_id: self.endpoint.node_id(),
-            key,
-        };
-
-        self.sessions
-            .write()
-            .await
-            .insert(session_id.clone(), session);
-
-        // Subscribe to the gossip topic (empty node_ids means we're creating a new topic)
-        let topic = self.gossip.subscribe(topic_id, vec![]).await?;
-        let (sender, receiver) = topic.split();
-
-        // Start listening for messages on this topic
-        self.start_topic_listener(receiver, session_id).await?;
-
-        // Send session info message
-        let body = TerminalMessageBody::SessionInfo {
-            from: self.endpoint.node_id(),
-            header,
-        };
-        let message = EncryptedTerminalMessage::new(body, &key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-
-        Ok((topic_id, sender, input_receiver))
-    }
-
     pub async fn join_session(
         &self,
         ticket: SessionTicket,
@@ -386,30 +340,6 @@ impl P2PNetwork {
         Ok((sender, event_receiver))
     }
 
-    pub async fn send_terminal_output(
-        &self,
-        session_id: &str,
-        sender: &GossipSender,
-        data: String,
-    ) -> Result<()> {
-        debug!("Sending terminal output");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for output"))?;
-
-        let body = TerminalMessageBody::Output {
-            from: self.endpoint.node_id(),
-            data,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
-    }
-
     pub async fn send_input(
         &self,
         session_id: &str,
@@ -460,32 +390,6 @@ impl P2PNetwork {
         Ok(())
     }
 
-    pub async fn send_resize_event(
-        &self,
-        session_id: &str,
-        sender: &GossipSender,
-        width: u16,
-        height: u16,
-    ) -> Result<()> {
-        debug!("Sending resize event");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for resize"))?;
-
-        let body = TerminalMessageBody::Resize {
-            from: self.endpoint.node_id(),
-            width,
-            height,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
-    }
-
     pub async fn end_session(&self, session_id: &str, sender: &GossipSender) -> Result<()> {
         info!("Ending session: {}", session_id);
         let sessions = self.sessions.read().await;
@@ -519,34 +423,6 @@ impl P2PNetwork {
 
         let body = TerminalMessageBody::ParticipantJoined {
             from: self.endpoint.node_id(),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
-    }
-
-    pub async fn send_history_data(
-        &self,
-        session_id: &str,
-        sender: &GossipSender,
-        shell_type: String,
-        working_dir: String,
-        history: Vec<String>,
-    ) -> Result<()> {
-        debug!("Sending history data");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for history data"))?;
-
-        let body = TerminalMessageBody::HistoryData {
-            from: self.endpoint.node_id(),
-            shell_type,
-            working_dir,
-            history,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
@@ -745,63 +621,5 @@ impl P2PNetwork {
 
     pub async fn get_node_id(&self) -> String {
         self.endpoint.node_id().to_string()
-    }
-
-    pub async fn get_node_addr(&self) -> Result<NodeAddr> {
-        let watcher = self.endpoint.node_addr();
-        let mut stream = watcher.stream();
-        let node_addr = stream
-            .next()
-            .await
-            .flatten()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get node address"))?;
-        Ok(node_addr)
-    }
-
-    pub async fn connect_to_peer(&self, node_addr: NodeAddr) -> Result<()> {
-        info!("Connecting to peer: {}", node_addr.node_id);
-
-        // Add the peer to our endpoint
-        self.endpoint.add_node_addr(node_addr.clone())?;
-        info!("Successfully added peer {} to endpoint", node_addr.node_id);
-
-        Ok(())
-    }
-
-    pub async fn create_session_ticket(
-        &self,
-        topic_id: TopicId,
-        session_id: &str,
-    ) -> Result<SessionTicket> {
-        // Get the actual node address with network information
-        let me = self.get_node_addr().await?;
-        let nodes = vec![me];
-
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
-
-        Ok(SessionTicket {
-            topic_id,
-            nodes,
-            key: session.key,
-        })
-    }
-
-    pub async fn get_active_sessions(&self) -> Vec<String> {
-        self.sessions.read().await.keys().cloned().collect()
-    }
-
-    pub async fn is_session_host(&self, session_id: &str) -> bool {
-        if let Some(session) = self.sessions.read().await.get(session_id) {
-            session.is_host
-        } else {
-            false
-        }
-    }
-
-    pub async fn shutdown(&self) -> Result<()> {
-        self.router.shutdown().await.map_err(Into::into)
     }
 }
