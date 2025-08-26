@@ -82,7 +82,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
   const [showPerformanceStats, setShowPerformanceStats] = createSignal(false);
   const [searchQuery, setSearchQuery] = createSignal("");
   const [isFullscreen, setIsFullscreen] = createSignal(false);
-  const [fontSize, setFontSize] = createSignal(14);
+  const [fontSize, setFontSize] = createSignal(getDeviceCapabilities().isMobile ? 10 : 14);
   const [opacity, setOpacity] = createSignal(1);
   const [deviceCapabilities] = createSignal(getDeviceCapabilities());
   const [terminalHeight, setTerminalHeight] = createSignal<number | null>(null);
@@ -206,12 +206,12 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
   // 移动端渲染器优化
   const getMobileOptimizedRenderer = (): RendererType => {
     const caps = deviceCapabilities();
-    
+
     if (caps.isMobile) {
       // 移动设备优先使用Canvas，避免WebGL的电池消耗
       // 检查是否是低端设备（基于屏幕尺寸和触摸支持）
       const isLowEndDevice = caps.screenSize === "xs" || caps.screenSize === "sm";
-      
+
       if (!isLowEndDevice) {
         // 只在高端移动设备上使用WebGL
         return props.preferredRenderer === "webgl" ? "webgl" : "canvas";
@@ -220,7 +220,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
         return "canvas";
       }
     }
-    
+
     // 桌面设备使用首选渲染器
     return props.preferredRenderer || "webgl";
   };
@@ -231,7 +231,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
     try {
       debugTerminal("Attempting to enable WebGL renderer...");
-      
+
       // 清理现有Canvas渲染器
       const currentCanvasAddon = canvasAddon();
       if (currentCanvasAddon) {
@@ -241,7 +241,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
       // 创建新的WebGL渲染器
       const webgl = new WebglAddon();
-      
+
       // 设置WebGL上下文丢失回调
       webgl.onContextLoss(() => {
         debugTerminal("WebGL context lost, falling back to Canvas renderer");
@@ -254,7 +254,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
       terminalInstance.loadAddon(webgl);
       setWebglAddon(webgl);
       setActiveRenderer("webgl");
-      
+
       debugTerminal("WebGL renderer enabled successfully");
       return true;
     } catch (error) {
@@ -271,7 +271,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
     try {
       debugTerminal("Attempting to enable Canvas renderer...");
-      
+
       // 清理现有WebGL渲染器
       const currentWebglAddon = webglAddon();
       if (currentWebglAddon) {
@@ -281,11 +281,11 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
       // 创建新的Canvas渲染器并优化移动设备
       const canvas = new CanvasAddon();
-      
+
       terminalInstance.loadAddon(canvas);
       setCanvasAddon(canvas);
       setActiveRenderer("canvas");
-      
+
       // 移动端 Canvas 优化
       if (deviceCapabilities().isMobile) {
         setTimeout(() => {
@@ -294,21 +294,21 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
             // 移动设备优化设置
             canvasEl.style.imageRendering = "optimizeSpeed"; // 优先考虑性能
             canvasEl.style.willChange = "transform"; // 提示浏览器优化
-            
+
             // 防止移动端缩放手势干扰
             canvasEl.style.touchAction = "pan-y";
-            
+
             // 优化移动设备的渲染精度
             const ctx = canvasEl.getContext("2d");
             if (ctx) {
               ctx.imageSmoothingEnabled = false; // 移动设备上关闭反锤齿以提高性能
             }
-            
+
             debugTerminal("Canvas renderer optimized for mobile device");
           }
         }, 100);
       }
-      
+
       debugTerminal("Canvas renderer enabled successfully");
       return true;
     } catch (error) {
@@ -480,20 +480,20 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
       // 初始化渲染器系统 - 移动端优化
       const optimizedRenderer = getMobileOptimizedRenderer();
-      
+
       // 尝试启用优化后的渲染器
       let rendererInitialized = false;
-      
+
       if (optimizedRenderer === "webgl" && !deviceCapabilities().isMobile) {
         rendererInitialized = await enableWebglRenderer();
         debugTerminal(`WebGL renderer initialization: ${rendererInitialized ? "success" : "failed"}`);
       }
-      
+
       if (!rendererInitialized && (optimizedRenderer === "canvas" || optimizedRenderer === "webgl")) {
         rendererInitialized = await enableCanvasRenderer();
         debugTerminal(`Canvas renderer initialization: ${rendererInitialized ? "success" : "failed"}`);
       }
-      
+
       if (!rendererInitialized) {
         setActiveRenderer("dom");
         debugTerminal("Using DOM renderer (fallback)");
@@ -579,7 +579,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
         if (canvas) {
           canvas.style.transform = "translateZ(0)";
           canvas.style.backfaceVisibility = "hidden";
-          
+
           if (deviceCapabilities().isMobile) {
             // 移动设备特定优化
             canvas.style.imageRendering = "optimizeSpeed"; // 优先考虑性能
@@ -587,7 +587,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
             canvas.style.userSelect = "none"; // 防止意外选中
             (canvas.style as any).webkitUserSelect = "none";
             (canvas.style as any).webkitTouchCallout = "none"; // iOS Safari 优化
-            
+
             // 低端设备上降低渲染精度以提高性能
             const isLowEndDevice = deviceCapabilities().screenSize === "xs" || deviceCapabilities().screenSize === "sm";
             if (isLowEndDevice) {
@@ -597,7 +597,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
             // 桌面设备优化
             canvas.style.imageRendering = "auto"; // 高质量渲染
           }
-          
+
           debugTerminal(`Canvas optimized for ${deviceCapabilities().isMobile ? "mobile" : "desktop"} device`);
         }
       }
@@ -626,7 +626,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
       onDataDispose = term.onData((data) => {
         debugTerminal(`Terminal input: ${data}`);
         props.onInput(data);
-        
+
         // 性能监控：计算帧数
         if (props.enablePerformanceMonitoring) {
           frameCount++;
@@ -835,7 +835,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
       setIsPinching(true);
       const distance = getTouchDistance(e.touches[0], e.touches[1]);
       setLastPinchDistance(distance);
-      
+
       // 移动设备优化：禁用页面缩放
       e.preventDefault();
     }
@@ -851,7 +851,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
       // 移动设备上使用更保守的阈值防止意外缩放
       const zoomThreshold = deviceCapabilities().isMobile ? 1.15 : 1.1;
       const zoomOutThreshold = deviceCapabilities().isMobile ? 0.85 : 0.9;
-      
+
       if (scale > zoomThreshold) {
         // 放大 - 移动设备上增加阈值以提高稳定性
         const newSize = Math.min(fontSize() + 1, deviceCapabilities().isMobile ? 20 : 24);
@@ -909,13 +909,13 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
     // 移动端额外按键
     ...(deviceCapabilities().isMobile
       ? [
-          { label: "Home", key: "\x1b[H" },
-          { label: "End", key: "\x1b[F" },
-          { label: "PgUp", key: "\x1b[5~" },
-          { label: "PgDn", key: "\x1b[6~" },
-          { label: "Ctrl+Z", key: "\x1a" },
-          { label: "Ctrl+X", key: "\x18" },
-        ]
+        { label: "Home", key: "\x1b[H" },
+        { label: "End", key: "\x1b[F" },
+        { label: "PgUp", key: "\x1b[5~" },
+        { label: "PgDn", key: "\x1b[6~" },
+        { label: "Ctrl+Z", key: "\x1a" },
+        { label: "Ctrl+X", key: "\x18" },
+      ]
       : []),
   ];
 
@@ -1064,34 +1064,33 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
               关闭
             </EnhancedButton>
           </div>
-          
+
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
             <div class="bg-base-100 p-2 rounded">
               <div class="text-xs opacity-60">帧率 (FPS)</div>
               <div class="font-mono font-bold text-primary">{performanceStats().fps}</div>
             </div>
-            
+
             <div class="bg-base-100 p-2 rounded">
               <div class="text-xs opacity-60">帧时间 (ms)</div>
               <div class="font-mono font-bold text-secondary">{performanceStats().frameTime.toFixed(1)}</div>
             </div>
-            
+
             <div class="bg-base-100 p-2 rounded">
               <div class="text-xs opacity-60">渲染器</div>
-              <div class={`font-mono font-bold capitalize ${
-                activeRenderer() === "webgl" ? "text-green-600" :
+              <div class={`font-mono font-bold capitalize ${activeRenderer() === "webgl" ? "text-green-600" :
                 activeRenderer() === "canvas" ? "text-blue-600" : "text-orange-600"
-              }`}>
+                }`}>
                 {activeRenderer()}
               </div>
             </div>
-            
+
             <div class="bg-base-100 p-2 rounded">
               <div class="text-xs opacity-60">回退次数</div>
               <div class="font-mono font-bold text-warning">{performanceStats().fallbackCount}</div>
             </div>
           </div>
-          
+
           {/* 渲染器切换 */}
           <div class="mt-3">
             <div class="text-sm mb-2">渲染器切换：</div>

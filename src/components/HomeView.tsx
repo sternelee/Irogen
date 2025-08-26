@@ -239,10 +239,10 @@ export function HomeView(props: HomeViewProps) {
   const renderMainView = () => (
     <div class="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 flex flex-col">
       {/* 主内容区域 - Logo 和 Slogan */}
-      <div class="flex-1 flex flex-col items-center justify-center p-6">
+      <div class="flex-1 flex flex-col items-center sm:justify-center p-6">
         {/* Logo */}
-        <div class="text-center mb-12">
-          <div class="text-8xl text-primary mb-6 animate-bounce">⚡</div>
+        <div class="text-center mb-12 mt-6 sm:mt-0">
+          <div class="text-8xl text-primary mb-8 animate-bounce">⚡</div>
           <h1 class="text-5xl font-bold mb-3">
             <TypingAnimation text="RiTerm" speed={100} />
           </h1>

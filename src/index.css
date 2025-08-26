@@ -84,7 +84,7 @@
     #root {
       height: 100dvh;
     }
-    
+
     .keyboard-visible #root {
       height: calc(100dvh - var(--keyboard-height, 0px));
     }
@@ -96,12 +96,12 @@
       height: -webkit-fill-available;
       min-height: -webkit-fill-available;
     }
-    
+
     .keyboard-visible #root {
       height: calc(-webkit-fill-available - var(--keyboard-height, 0px));
       min-height: calc(-webkit-fill-available - var(--keyboard-height, 0px));
     }
-    
+
     /* Prevent iOS zoom on input focus */
     input[type="text"],
     input[type="email"],
@@ -496,7 +496,7 @@
 
   /* 仅顶部安全区域（常用于状态栏） */
   .mobile-safe-top {
-    padding-top: max(env(safe-area-inset-top), 20px);
+    padding-top: max(env(safe-area-inset-top), 10px);
   }
 
   /* 动态安全区域适配 */
@@ -534,7 +534,7 @@
   .mobile-safe-area-keyboard {
     padding-top: max(env(safe-area-inset-top), 0px);
     padding-bottom: max(
-      env(safe-area-inset-bottom), 
+      env(safe-area-inset-bottom),
       var(--keyboard-height, 0px)
     );
     padding-left: max(env(safe-area-inset-left), 0px);

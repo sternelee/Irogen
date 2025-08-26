@@ -374,13 +374,13 @@ function App() {
         />
 
         {/* Debug Info - 开发时显示 */}
-        {window.location.hostname === "localhost" && (
-          <div class="bg-yellow-100 text-black text-xs p-2 border-b shrink-0">
-            Debug: {debugInfo()} | KB: {keyboardVisible() ? "Yes" : "No"} |
-            EffectiveVH: {effectiveViewportHeight()}px | KH: {keyboardHeight()}
-            px
-          </div>
-        )}
+        {/* {window.location.hostname === "localhost" && ( */}
+        {/*   <div class="bg-yellow-100 text-black text-xs p-2 border-b shrink-0"> */}
+        {/*     Debug: {debugInfo()} | KB: {keyboardVisible() ? "Yes" : "No"} | */}
+        {/*     EffectiveVH: {effectiveViewportHeight()}px | KH: {keyboardHeight()} */}
+        {/*     px */}
+        {/*   </div> */}
+        {/* )} */}
 
         {/* Main Content */}
         <div

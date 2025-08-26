@@ -35,6 +35,7 @@
 		3842AE2A64FB9933D0400EA4 /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
 		39EEC6A55698228E08917A52 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
 		682535EEFE1DA20BE07B123C /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		7A05282E47B281CC7BE91ABF /* string_compressor.rs */ = {isa = PBXFileReference; path = string_compressor.rs; sourceTree = "<group>"; };
 		81E326B61ED92E1D1EECF952 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		9FACFFCB6E3743955F72464C /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		AF1DE57E7D9CF13BB2E0E038 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -109,6 +110,7 @@
 				17B52554D60D361AFE791C3E /* lib.rs */,
 				1631E4CFBB715FFDBF919C8C /* main.rs */,
 				26E7DE2D9752A77772B2174D /* p2p.rs */,
+				7A05282E47B281CC7BE91ABF /* string_compressor.rs */,
 				14CBE83B3D93B2CBA321AD5E /* terminal_events.rs */,
 			);
 			name = src;
@@ -152,6 +154,20 @@
 				329C38BE5E8B40354375D0D0 /* bindings */,
 			);
 			path = app;
+			sourceTree = "<group>";
+		};
+		"TEMP_70455967-B546-4CB7-9358-F6EEFA1C4AA9" /* arm64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = arm64;
+			sourceTree = "<group>";
+		};
+		"TEMP_914648A2-299D-42A6-9D43-E634ECB2C63F" /* x86_64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = x86_64;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

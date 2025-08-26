@@ -125,7 +125,7 @@ jobs:
           file_glob: true
           overwrite: true
 
-  publish-to-riterm-release:
+  publish-to-release:
     # This job publishes the compiled artifacts to a separate release repository (sternelee/riterm-release).
     # It depends on 'publish-tauri' to ensure all artifacts are built and uploaded to the primary release first.
     needs: publish-tauri
@@ -159,9 +159,9 @@ jobs:
 
       - name: Create GitHub Release in sternelee/riterm-release
         env:
-          # IMPORTANT: Ensure 'RITERM_RELEASE_TOKEN' is configured as a repository secret
+          # IMPORTANT: Ensure 'GITHUB_TOKEN' is configured as a repository secret
           # with write access to the 'sternelee/riterm-release' repository.
-          GITHUB_TOKEN: ${{ secrets.RITERM_RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RELEASE_TAG="${{ steps.get_tag_name.outputs.TAG_NAME }}"
           echo "Attempting to create release '$RELEASE_TAG' in sternelee/riterm-release..."
@@ -178,7 +178,7 @@ jobs:
 
       - name: Upload artifacts to sternelee/riterm-release
         env:
-          GITHUB_TOKEN: ${{ secrets.RITERM_RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RELEASE_TAG="${{ steps.get_tag_name.outputs.TAG_NAME }}"
           echo "Uploading artifacts to release '$RELEASE_TAG' in sternelee/riterm-release..."
