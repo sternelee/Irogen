@@ -44,7 +44,7 @@ function App() {
 
   // Enhanced Multi-session state management with proper lifecycle
   type SessionStatus = "connecting" | "connected" | "failed" | "disconnected" | "reconnecting";
-  
+
   interface SessionState {
     sessionId: string;
     ticket: string;
@@ -61,7 +61,7 @@ function App() {
       workingDirectory: string;
     };
   }
-  
+
   const [activeSessions, setActiveSessions] = createSignal<Map<string, SessionState>>(new Map());
   const [currentSessionTicket, setCurrentSessionTicket] = createSignal<string | null>(null);
   const [globalConnectionState, setGlobalConnectionState] = createSignal<{
@@ -69,7 +69,7 @@ function App() {
     pendingConnections: number;
     failedConnections: number;
   }>({ activeConnections: 0, pendingConnections: 0, failedConnections: 0 });
-  
+
   // Session management utilities
   const updateSessionState = (ticket: string, updates: Partial<SessionState>) => {
     const sessions = activeSessions();
@@ -78,14 +78,14 @@ function App() {
       const updatedSession = { ...session, ...updates };
       sessions.set(ticket, updatedSession);
       setActiveSessions(new Map(sessions));
-      
+
       // Update global connection state
       updateGlobalConnectionState();
-      
+
       console.log(`🔄 Session ${ticket.substring(0, 8)} status updated:`, updatedSession.status);
     }
   };
-  
+
   const updateGlobalConnectionState = () => {
     const sessions = Array.from(activeSessions().values());
     const state = {
@@ -94,7 +94,7 @@ function App() {
       failedConnections: sessions.filter(s => s.status === "failed").length,
     };
     setGlobalConnectionState(state);
-    
+
     // Update overall status based on session states
     if (state.activeConnections > 0) {
       if (state.activeConnections === 1) {
@@ -114,19 +114,19 @@ function App() {
       setNetworkStrength(3);
     }
   };
-  
+
   const removeSession = async (ticket: string, reason: string = "User disconnected") => {
     const sessions = activeSessions();
     const session = sessions.get(ticket);
-    
+
     if (session) {
       console.log(`🗑️ Removing session ${ticket.substring(0, 8)}: ${reason}`);
-      
+
       // Show disconnect message in terminal
       if (session.terminal && session.status === "connected") {
         session.terminal.writeln(`\r\n\x1b[1;33m👋 ${reason}\x1b[0m`);
       }
-      
+
       // Clean up resources
       try {
         if (session.sessionId && session.status === "connected") {
@@ -135,12 +135,12 @@ function App() {
       } catch (error) {
         console.warn(`Failed to disconnect session ${session.sessionId}:`, error);
       }
-      
+
       // Clean up event listener
       if (session.unlisten) {
         session.unlisten();
       }
-      
+
       // Clean up terminal resources
       if (session.terminal) {
         try {
@@ -149,17 +149,17 @@ function App() {
           console.warn("Failed to dispose terminal:", error);
         }
       }
-      
+
       // Remove from sessions
       sessions.delete(ticket);
       setActiveSessions(new Map(sessions));
-      
+
       // Update history
       updateHistoryEntry(ticket, {
         status: session.status === "failed" ? "Failed" : "Completed",
         description: reason,
       });
-      
+
       // Handle current session switching
       if (currentSessionTicket() === ticket) {
         const remainingSessions = Array.from(sessions.keys());
@@ -170,7 +170,7 @@ function App() {
           setCurrentView("home");
         }
       }
-      
+
       updateGlobalConnectionState();
     }
   };
@@ -195,19 +195,19 @@ function App() {
     const state = globalConnectionState();
     return state.activeConnections > 0;
   });
-  
+
   const isConnecting = createMemo(() => {
     const state = globalConnectionState();
     return state.pendingConnections > 0;
   });
-  
+
   const activeTicket = createMemo(() => currentSessionTicket());
-  
+
   const currentSession = createMemo(() => {
     const ticket = currentSessionTicket();
     return ticket ? activeSessions().get(ticket) : null;
   });
-  
+
   const terminalInfo = createMemo(() => {
     const session = currentSession();
     return session?.terminalInfo || {
@@ -216,7 +216,7 @@ function App() {
       workingDirectory: "~"
     };
   });
-  
+
   const sessionsList = createMemo(() => {
     return Array.from(activeSessions().values()).sort((a, b) => {
       // Sort by connection time, connected sessions first
@@ -294,34 +294,34 @@ function App() {
   const getSessionDisplayInfo = createMemo(() => {
     const state = globalConnectionState();
     const { activeConnections, pendingConnections, failedConnections } = state;
-    
+
     if (activeConnections > 0) {
       if (pendingConnections > 0) {
-        return { 
-          count: activeConnections + pendingConnections, 
-          status: `${activeConnections} connected, ${pendingConnections} connecting` 
+        return {
+          count: activeConnections + pendingConnections,
+          status: `${activeConnections} connected, ${pendingConnections} connecting`
         };
       }
-      return { 
-        count: activeConnections, 
-        status: activeConnections === 1 ? "Connected" : `Connected to ${activeConnections} sessions` 
+      return {
+        count: activeConnections,
+        status: activeConnections === 1 ? "Connected" : `Connected to ${activeConnections} sessions`
       };
     }
-    
+
     if (pendingConnections > 0) {
-      return { 
-        count: pendingConnections, 
-        status: `Connecting to ${pendingConnections} session(s)...` 
+      return {
+        count: pendingConnections,
+        status: `Connecting to ${pendingConnections} session(s)...`
       };
     }
-    
+
     if (failedConnections > 0) {
-      return { 
-        count: failedConnections, 
-        status: `${failedConnections} connection(s) failed` 
+      return {
+        count: failedConnections,
+        status: `${failedConnections} connection(s) failed`
       };
     }
-    
+
     return { count: 0, status: "Disconnected" };
   });
 
@@ -333,7 +333,7 @@ function App() {
   const handleTerminalReady = (term: Terminal, addon: FitAddon) => {
     const ticket = currentSessionTicket();
     if (!ticket) return;
-    
+
     const session = activeSessions().get(ticket);
     if (session && session.status === "connected") {
       // Update session with terminal instances
@@ -341,7 +341,7 @@ function App() {
         terminal: term,
         fitAddon: addon,
       });
-      
+
       // Set up resize handler for this specific terminal
       const resizeHandler = () => {
         try {
@@ -350,16 +350,16 @@ function App() {
           console.warn(`Failed to fit terminal for session ${ticket.substring(0, 8)}:`, error);
         }
       };
-      
+
       window.addEventListener("resize", resizeHandler);
-      
+
       // Store cleanup function
       const originalUnlisten = session.unlisten;
       const enhancedUnlisten = () => {
         window.removeEventListener("resize", resizeHandler);
         originalUnlisten?.();
       };
-      
+
       updateSessionState(ticket, { unlisten: enhancedUnlisten });
 
       // Initialize terminal with welcome message
@@ -371,10 +371,10 @@ function App() {
         "\x1b[33mWaiting for session data...\x1b[0m",
         "",
       ].join("\r\n");
-      
+
       term.writeln(welcomeMessage);
       term.focus();
-      
+
       console.log(`🖥️ Terminal ready for session: ${ticket.substring(0, 8)}`);
     } else {
       console.warn(`⚠️ Terminal ready but session not found or not connected: ${ticket?.substring(0, 8)}`);
@@ -411,7 +411,7 @@ function App() {
     // Check if this ticket is already connected or connecting
     const sessions = activeSessions();
     const existingSession = sessions.get(ticket);
-    
+
     if (existingSession) {
       if (existingSession.status === "connected") {
         // Already connected to this ticket, just switch to it
@@ -457,12 +457,12 @@ function App() {
     const updatedSessions = new Map(sessions);
     updatedSessions.set(ticket, initialSession);
     setActiveSessions(updatedSessions);
-    
+
     // Set as current session and switch to terminal view
     setCurrentSessionTicket(ticket);
     setCurrentView("terminal");
     setConnectionError(null);
-    
+
     console.log(`🚀 Starting connection to: ${ticket.substring(0, 8)}`);
 
     try {
@@ -500,7 +500,7 @@ function App() {
         `terminal-event-${actualSessionId}`,
         (event) => {
           const termEvent = event.payload;
-          console.log(`📜 [${ticket.substring(0, 8)}] Received terminal event:`, termEvent.event_type);
+          console.log(`📜 [${ticket.substring(0, 8)}] Received terminal event:`, termEvent);
 
           const currentSessions = activeSessions();
           const session = currentSessions.get(ticket);
@@ -581,20 +581,20 @@ function App() {
       console.log(`✅ Connected successfully to session: ${ticket.substring(0, 8)}`);
     } catch (error) {
       console.error(`❌ Connection failed for ${ticket.substring(0, 8)}:`, error);
-      
+
       const errorMessage = String(error);
       updateSessionState(ticket, {
         status: "failed",
         lastError: errorMessage,
       });
-      
+
       updateHistoryEntry(ticket, {
         status: "Failed",
         description: errorMessage,
       });
-      
+
       setConnectionError(errorMessage);
-      
+
       // Auto-remove failed sessions after a delay
       setTimeout(async () => {
         const currentSession = activeSessions().get(ticket);
@@ -680,15 +680,14 @@ function App() {
             <For each={sessionsList()}>
               {(session) => (
                 <button
-                  class={`px-3 py-1 text-xs rounded-t-lg border-b-2 whitespace-nowrap flex items-center gap-2 ${
-                    currentSessionTicket() === session.ticket
-                      ? "bg-gray-700 border-blue-500 text-white"
-                      : session.status === "connected"
+                  class={`px-3 py-1 text-xs rounded-t-lg border-b-2 whitespace-nowrap flex items-center gap-2 ${currentSessionTicket() === session.ticket
+                    ? "bg-gray-700 border-blue-500 text-white"
+                    : session.status === "connected"
                       ? "bg-gray-900 border-transparent text-gray-300 hover:text-white hover:bg-gray-800"
                       : session.status === "connecting"
-                      ? "bg-yellow-900 border-yellow-500 text-yellow-200 animate-pulse"
-                      : "bg-red-900 border-red-500 text-red-200"
-                  }`}
+                        ? "bg-yellow-900 border-yellow-500 text-yellow-200 animate-pulse"
+                        : "bg-red-900 border-red-500 text-red-200"
+                    }`}
                   onClick={() => session.status === "connected" && setCurrentSessionTicket(session.ticket)}
                   disabled={session.status !== "connected"}
                   title={`${session.terminalInfo.sessionTitle} - ${session.status}`}
