@@ -526,25 +526,6 @@ impl P2PNetwork {
         Ok(())
     }
 
-    /// 发送参与者加入通知
-    pub async fn send_participant_joined(
-        &self,
-        sender: &GossipSender,
-        session_id: &str,
-    ) -> Result<()> {
-        debug!("Sending participant joined notification");
-        let key = self.get_session_key(session_id).await?;
-        let body = TerminalMessageBody::ParticipantJoined {
-            from: self.endpoint.node_id(),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
-    }
-
     /// 发送历史记录数据给新参与者
     pub async fn send_history_data(
         &self,
@@ -690,37 +671,6 @@ impl P2PNetwork {
                                                 "🔓 Successfully decrypted message: {:?}",
                                                 std::mem::discriminant(&body)
                                             );
-                                            // Log the specific message type for debugging
-                                            match &body {
-                                                TerminalMessageBody::ParticipantJoined {
-                                                    from,
-                                                    ..
-                                                } => {
-                                                    info!(
-                                                        "📍 Received ParticipantJoined message from: {}",
-                                                        from.fmt_short()
-                                                    );
-                                                }
-                                                TerminalMessageBody::Output { .. } => {
-                                                    debug!("📝 Received Output message");
-                                                }
-                                                TerminalMessageBody::Input { .. } => {
-                                                    debug!("⌨️  Received Input message");
-                                                }
-                                                TerminalMessageBody::SessionInfo { .. } => {
-                                                    info!("ℹ️  Received SessionInfo message");
-                                                }
-                                                TerminalMessageBody::HistoryData { .. } => {
-                                                    info!("📜 Received HistoryData message");
-                                                }
-                                                TerminalMessageBody::Configuration { .. } => {
-                                                    info!("⚙️  Received Configuration message");
-                                                }
-                                                _ => {
-                                                    debug!("📬 Received other message type");
-                                                }
-                                            }
-
                                             if let Err(e) = network_clone
                                                 .handle_gossip_message(&session_id, body)
                                                 .await
