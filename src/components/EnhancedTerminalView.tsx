@@ -17,6 +17,11 @@ import {
   KeyboardManager,
   InputFocusManager,
 } from "../utils/mobile";
+import {
+  globalBatteryOptimizer,
+  injectBatteryOptimizationStyles,
+  type PowerSaveConfig,
+} from "../utils/batteryOptimizer";
 
 interface SessionTab {
   id: string;
@@ -105,6 +110,17 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
   // 新增标签页相关状态
   const [showTabSwitcher, setShowTabSwitcher] = createSignal(false);
   const [tabKeySequence, setTabKeySequence] = createSignal("");
+  // 电池优化状态
+  const [powerSaveConfig, setPowerSaveConfig] = createSignal<PowerSaveConfig>({
+    enableAnimations: true,
+    useWebGLRenderer: true,
+    maxScrollback: 10000,
+    refreshRate: 60,
+    enableCursorBlink: true,
+    enableTransparency: true,
+    fontSmoothing: true,
+  });
+  const [batteryOptimized, setBatteryOptimized] = createSignal(false);
 
   // Enhanced mobile keyboard and input management
   const [keyboardCleanup, setKeyboardCleanup] = createSignal<
@@ -114,6 +130,9 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
     null,
   );
   const [fixedElementCleanup, setFixedElementCleanup] = createSignal<
+    (() => void) | null
+  >(null);
+  const [batteryOptimizerCleanup, setBatteryOptimizerCleanup] = createSignal<
     (() => void) | null
   >(null);
 
@@ -183,11 +202,11 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
     const tabs = props.sessionTabs;
     const currentIndex = tabs.findIndex(tab => tab.id === props.currentSessionId);
-    
+
     if (currentIndex === -1) return false;
 
     let newIndex = currentIndex;
-    
+
     switch (keySequence) {
       case "Ctrl+Tab":
       case "Cmd+]":
@@ -220,14 +239,14 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
     if (newIndex !== currentIndex && newIndex >= 0 && newIndex < tabs.length) {
       props.onTabSwitch?.(tabs[newIndex].id);
-      
+
       // 显示标签页切换提示
       setShowTabSwitcher(true);
       setTimeout(() => setShowTabSwitcher(false), 1000);
-      
+
       return true;
     }
-    
+
     return false;
   };
 
@@ -282,57 +301,101 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
   let frameCount = 0;
   let fallbackCount = 0;
 
-  // 移动端渲染器优化
+  // 移动端渲染器优化 - 电池感知增强版本
   const getMobileOptimizedRenderer = (): RendererType => {
     const caps = deviceCapabilities();
+    const config = powerSaveConfig();
 
     if (caps.isMobile) {
-      // 移动设备优先使用Canvas，避免WebGL的电池消耗
-      // 检查是否是低端设备（基于屏幕尺寸和触摸支持）
+      // 电池优化：省电模式时强制使用DOM渲染器
+      if (!config.useWebGLRenderer) {
+        console.log(`🔋 Battery optimization: using DOM renderer`);
+        return "dom";
+      }
+
+      // 检查电池状态和性能指标
+      const batteryLevel = getBatteryLevel();
+      const isLowBattery = batteryLevel > 0 && batteryLevel < 0.3;
       const isLowEndDevice = caps.screenSize === "xs" || caps.screenSize === "sm";
 
-      if (!isLowEndDevice) {
-        // 只在高端移动设备上使用WebGL
-        return props.preferredRenderer === "webgl" ? "webgl" : "canvas";
-      } else {
-        // 低端设备或不支持WebGL时使用Canvas
+      // 移动设备渲染器选择策略：
+      // 1. 低电量时强制使用DOM渲染器
+      if (isLowBattery) {
+        console.log(`🔋 Low battery (${(batteryLevel * 100).toFixed(1)}%), using DOM renderer`);
+        return "dom";
+      }
+
+      // 2. 低端设备使用Canvas
+      if (isLowEndDevice) {
         return "canvas";
       }
+
+      // 3. 高端移动设备根据用户偏好选择，但默认使用Canvas以省电
+      return props.preferredRenderer === "webgl" && config.useWebGLRenderer ? "webgl" : "canvas";
     }
 
     // 桌面设备使用首选渲染器
     return props.preferredRenderer || "webgl";
   };
 
-  // WebGL 渲染器管理
+  // 获取电池电量的辅助函数
+  const getBatteryLevel = (): number => {
+    // 从全局电池优化器获取电池信息
+    return globalBatteryOptimizer.getBatteryState().level;
+  };
+
+  // WebGL 渲染器管理 - 防闪烁优化版本
   const enableWebglRenderer = async () => {
     if (!terminalInstance) return false;
 
     try {
       debugTerminal("Attempting to enable WebGL renderer...");
 
-      // 清理现有Canvas渲染器
-      const currentCanvasAddon = canvasAddon();
-      if (currentCanvasAddon) {
-        currentCanvasAddon.dispose();
-        setCanvasAddon(null);
+      // 预创建WebGL渲染器以测试兼容性
+      const testWebgl = new WebglAddon();
+
+      // 先隐藏终端以防止闪烁
+      if (terminalElement) {
+        terminalElement.style.opacity = "0.5";
+        terminalElement.style.transition = "opacity 0.2s ease";
       }
 
-      // 创建新的WebGL渲染器
-      const webgl = new WebglAddon();
+      // 清理现有Canvas渲染器（延迟处理以减少闪烁）
+      const currentCanvasAddon = canvasAddon();
 
       // 设置WebGL上下文丢失回调
-      webgl.onContextLoss(() => {
+      testWebgl.onContextLoss(() => {
         debugTerminal("WebGL context lost, falling back to Canvas renderer");
         setActiveRenderer("canvas");
         fallbackCount++;
         setPerformanceStats(prev => ({ ...prev, fallbackCount, activeRenderer: "canvas" }));
-        setTimeout(() => enableCanvasRenderer(), 100);
+        // 延迟回退以避免竞态条件
+        setTimeout(() => enableCanvasRenderer(), 200);
       });
 
-      terminalInstance.loadAddon(webgl);
-      setWebglAddon(webgl);
+      // 加载WebGL渲染器
+      terminalInstance.loadAddon(testWebgl);
+
+      // 等待渲染器初始化
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // 现在安全地清理旧渲染器
+      if (currentCanvasAddon) {
+        try {
+          currentCanvasAddon.dispose();
+          setCanvasAddon(null);
+        } catch (error) {
+          console.warn("Error disposing canvas addon:", error);
+        }
+      }
+
+      setWebglAddon(testWebgl);
       setActiveRenderer("webgl");
+
+      // 恢复终端显示
+      if (terminalElement) {
+        terminalElement.style.opacity = "1";
+      }
 
       debugTerminal("WebGL renderer enabled successfully");
       return true;
@@ -340,52 +403,83 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
       debugTerminal(`WebGL renderer failed: ${error}`);
       fallbackCount++;
       setPerformanceStats(prev => ({ ...prev, fallbackCount }));
+
+      // 恢复终端显示
+      if (terminalElement) {
+        terminalElement.style.opacity = "1";
+      }
+
       return false;
     }
   };
 
-  // Canvas 渲染器管理 - 移动端优化
+  // Canvas 渲染器管理 - 移动端优化和防闪烁版本
   const enableCanvasRenderer = async () => {
     if (!terminalInstance) return false;
 
     try {
       debugTerminal("Attempting to enable Canvas renderer...");
 
-      // 清理现有WebGL渲染器
-      const currentWebglAddon = webglAddon();
-      if (currentWebglAddon) {
-        currentWebglAddon.dispose();
-        setWebglAddon(null);
+      // 先隐藏终端以防止闪烁
+      if (terminalElement) {
+        terminalElement.style.opacity = "0.5";
+        terminalElement.style.transition = "opacity 0.2s ease";
       }
 
-      // 创建新的Canvas渲染器并优化移动设备
+      // 清理现有WebGL渲染器（延迟处理）
+      const currentWebglAddon = webglAddon();
+
+      // 创建新的Canvas渲染器
       const canvas = new CanvasAddon();
 
+      // 加载Canvas渲染器
       terminalInstance.loadAddon(canvas);
+
+      // 等待渲染器初始化
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // 现在安全地清理旧渲染器
+      if (currentWebglAddon) {
+        try {
+          currentWebglAddon.dispose();
+          setWebglAddon(null);
+        } catch (error) {
+          console.warn("Error disposing WebGL addon:", error);
+        }
+      }
+
       setCanvasAddon(canvas);
       setActiveRenderer("canvas");
 
       // 移动端 Canvas 优化
       if (deviceCapabilities().isMobile) {
-        setTimeout(() => {
+        // 使用requestAnimationFrame确保DOM更新完成
+        requestAnimationFrame(() => {
           const canvasEl = terminalElement?.querySelector("canvas");
           if (canvasEl) {
             // 移动设备优化设置
-            canvasEl.style.imageRendering = "optimizeSpeed"; // 优先考虑性能
-            canvasEl.style.willChange = "transform"; // 提示浏览器优化
-
-            // 防止移动端缩放手势干扰
+            canvasEl.style.imageRendering = "optimizeSpeed";
+            canvasEl.style.willChange = "transform";
             canvasEl.style.touchAction = "pan-y";
 
             // 优化移动设备的渲染精度
             const ctx = canvasEl.getContext("2d");
             if (ctx) {
-              ctx.imageSmoothingEnabled = false; // 移动设备上关闭反锤齿以提高性能
+              ctx.imageSmoothingEnabled = false;
+              // 设置低功耗渲染选项
+              if ('desynchronized' in ctx.canvas) {
+                (ctx.canvas as any).desynchronized = true;
+              }
             }
 
             debugTerminal("Canvas renderer optimized for mobile device");
           }
-        }, 100);
+        });
+      }
+
+      // 恢复终端显示
+      if (terminalElement) {
+        terminalElement.style.opacity = "1";
       }
 
       debugTerminal("Canvas renderer enabled successfully");
@@ -394,54 +488,123 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
       debugTerminal(`Canvas renderer failed: ${error}`);
       fallbackCount++;
       setPerformanceStats(prev => ({ ...prev, fallbackCount }));
+
+      // 恢复终端显示
+      if (terminalElement) {
+        terminalElement.style.opacity = "1";
+      }
+
       return false;
     }
   };
 
-  // 渲染器切换函数
+  // 渲染器切换函数 - 无闪烁优化版本
   const switchRenderer = async (renderer: RendererType) => {
     if (!terminalInstance || activeRenderer() === renderer) return;
 
     debugTerminal(`Switching renderer from ${activeRenderer()} to ${renderer}`);
 
-    switch (renderer) {
-      case "webgl":
-        const webglSuccess = await enableWebglRenderer();
-        if (!webglSuccess) {
-          debugTerminal("WebGL fallback to Canvas");
+    // 显示切换指示器
+    const showSwitchingIndicator = () => {
+      if (terminalElement) {
+        const indicator = document.createElement('div');
+        indicator.className = 'renderer-switching-indicator';
+        indicator.style.cssText = `
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: rgba(0, 0, 0, 0.8);
+          color: white;
+          padding: 8px 16px;
+          border-radius: 4px;
+          font-size: 12px;
+          z-index: 1000;
+          pointer-events: none;
+        `;
+        indicator.textContent = `切换到 ${renderer.toUpperCase()} 渲染器...`;
+        terminalElement.appendChild(indicator);
+
+        return () => {
+          if (indicator.parentNode) {
+            indicator.parentNode.removeChild(indicator);
+          }
+        };
+      }
+      return () => { };
+    };
+
+    const removeIndicator = showSwitchingIndicator();
+
+    try {
+      switch (renderer) {
+        case "webgl":
+          const webglSuccess = await enableWebglRenderer();
+          if (!webglSuccess) {
+            debugTerminal("WebGL fallback to Canvas");
+            await enableCanvasRenderer();
+          }
+          break;
+        case "canvas":
           await enableCanvasRenderer();
-        }
-        break;
-      case "canvas":
-        await enableCanvasRenderer();
-        break;
-      case "dom":
-        // 清理所有硬件加速渲染器
-        const currentWebgl = webglAddon();
-        const currentCanvas = canvasAddon();
-        if (currentWebgl) {
-          currentWebgl.dispose();
-          setWebglAddon(null);
-        }
-        if (currentCanvas) {
-          currentCanvas.dispose();
-          setCanvasAddon(null);
-        }
-        setActiveRenderer("dom");
-        debugTerminal("Switched to DOM renderer");
-        break;
+          break;
+        case "dom":
+          // 平滑切换到DOM渲染器
+          if (terminalElement) {
+            terminalElement.style.opacity = "0.5";
+            terminalElement.style.transition = "opacity 0.2s ease";
+          }
+
+          // 延迟清理以避免闪烁
+          setTimeout(() => {
+            const currentWebgl = webglAddon();
+            const currentCanvas = canvasAddon();
+            if (currentWebgl) {
+              try {
+                currentWebgl.dispose();
+                setWebglAddon(null);
+              } catch (error) {
+                console.warn("Error disposing WebGL addon:", error);
+              }
+            }
+            if (currentCanvas) {
+              try {
+                currentCanvas.dispose();
+                setCanvasAddon(null);
+              } catch (error) {
+                console.warn("Error disposing Canvas addon:", error);
+              }
+            }
+            setActiveRenderer("dom");
+
+            // 恢复显示
+            if (terminalElement) {
+              terminalElement.style.opacity = "1";
+            }
+
+            debugTerminal("Switched to DOM renderer");
+          }, 100);
+          break;
+      }
+    } finally {
+      // 移除切换指示器
+      setTimeout(removeIndicator, 300);
     }
 
     // 更新性能统计
     setPerformanceStats(prev => ({ ...prev, activeRenderer: activeRenderer(), fallbackCount }));
   };
 
-  // 性能监控
+  // 性能监控 - 增强多会话支持版本
   const startPerformanceMonitoring = () => {
     if (!props.enablePerformanceMonitoring) return;
 
     frameCount = 0;
     lastFrameTime = performance.now();
+
+    // 智能性能监控，根据会话数量调整监控频率
+    const sessionCount = props.sessionTabs?.length || 1;
+    const monitoringInterval = Math.max(1000, sessionCount * 200); // 更多会话时降低监控频率
 
     performanceMonitorId = setInterval(() => {
       const currentTime = performance.now();
@@ -449,16 +612,30 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
       const fps = Math.round((frameCount * 1000) / deltaTime);
       const frameTime = deltaTime / frameCount;
 
+      // 检测性能下降并自动优化
+      if (fps < 30 && sessionCount > 1) {
+        console.warn(`🐌 Performance degradation detected (${fps} FPS) with ${sessionCount} sessions`);
+        // 自动降级渲染器
+        if (activeRenderer() === "webgl") {
+          debugTerminal("Auto-switching to Canvas renderer due to performance");
+          switchRenderer("canvas");
+        } else if (activeRenderer() === "canvas" && sessionCount > 3) {
+          debugTerminal("Auto-switching to DOM renderer due to performance");
+          switchRenderer("dom");
+        }
+      }
+
       setPerformanceStats(prev => ({
         ...prev,
         fps: isFinite(fps) ? fps : 0,
         frameTime: isFinite(frameTime) ? frameTime : 0,
         renderTime: performance.now() - currentTime,
+        sessionCount, // 添加会话数量到性能统计
       }));
 
       frameCount = 0;
       lastFrameTime = currentTime;
-    }, 1000);
+    }, monitoringInterval);
   };
 
   const stopPerformanceMonitoring = () => {
@@ -497,12 +674,20 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
     if (terminalElement && !terminalInstance) {
       debugTerminal("Initializing new terminal...");
 
+      // 根据会话数量优化终端配置
+      const sessionCount = props.sessionTabs?.length || 1;
+      const isMultiSession = sessionCount > 1;
+
+      // 多会话优化策略：减少资源消耗
+      const optimizedScrollback = isMultiSession ? Math.min(5000, 10000 / sessionCount) : 10000;
+      const optimizedFontSize = isMultiSession && deviceCapabilities().isMobile ? Math.max(fontSize() - 1, 10) : fontSize();
+
       const term = new Terminal({
-        cursorBlink: true,
+        cursorBlink: !isMultiSession || !deviceCapabilities().isMobile, // 多会话时在移动设备上禁用光标闪烁
         cursorStyle: "block",
-        scrollback: 10000,
+        scrollback: optimizedScrollback, // 动态调整滚动缓存
         theme: getTerminalTheme(),
-        fontSize: fontSize(),
+        fontSize: optimizedFontSize,
         fontFamily:
           '"JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", "Menlo", "Consolas", "DejaVu Sans Mono", monospace',
         letterSpacing: 0.5,
@@ -511,10 +696,10 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
         convertEol: true,
         rightClickSelectsWord: true,
         macOptionIsMeta: true,
-        // 增强滚动性能设置
+        // 增强滚动性能设置（多会话优化）
         fastScrollModifier: "alt",
-        fastScrollSensitivity: 3, // Reduced for smoother scrolling
-        scrollSensitivity: 1, // Reduced for finer control
+        fastScrollSensitivity: isMultiSession ? 5 : 3, // 多会话时加快滚动
+        scrollSensitivity: isMultiSession ? 2 : 1, // 多会话时降低敏感度
         minimumContrastRatio: 4.5,
         fontWeight: "normal",
         fontWeightBold: "bold",
@@ -522,10 +707,22 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
         // 移动端优化设置
         cols: deviceCapabilities().isMobile ? 80 : undefined,
         wordSeparator: deviceCapabilities().isMobile ? " \t\n\r\f" : undefined,
-        // 性能优化
+        // 性能优化（多会话增强）
         disableStdin: false,
-        allowProposedApi: true, // Enable performance improvements
-        windowOptions: {
+        allowProposedApi: true,
+        // 多会话优化：禁用不必要的窗口操作
+        windowOptions: isMultiSession ? {
+          restoreWin: false,
+          minimizeWin: false,
+          setWinPosition: false,
+          setWinSizePixels: false,
+          raiseWin: false,
+          lowerWin: false,
+          refreshWin: false,
+          setWinSizeChars: false,
+          maximizeWin: false,
+          fullscreenWin: false,
+        } : {
           restoreWin: true,
           minimizeWin: true,
           setWinPosition: true,
@@ -539,6 +736,9 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
         },
       });
 
+      debugTerminal(`Terminal initialized with session count: ${sessionCount}, scrollback: ${optimizedScrollback}`);
+
+      // 余下的初始化逻辑保持不变...
       // Load basic addons
       const fit = new FitAddon();
       const webLinks = new WebLinksAddon();
@@ -578,12 +778,22 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
         debugTerminal("Using DOM renderer (fallback)");
       }
 
-      // 移动设备的渲染器特定优化
+      // 移动设备的渲染器特定优化 - 多会话增强
       if (deviceCapabilities().isMobile && activeRenderer() !== "dom") {
-        // 优化移动设备的终端设置
-        term.options.scrollback = Math.min(term.options.scrollback || 1000, 3000); // 限制移动设备的滚动缓存
-        term.options.fastScrollSensitivity = 5; // 移动设备上加快滚动
-        debugTerminal("Applied mobile-specific terminal optimizations");
+        // 多会话优化：进一步减少移动设备的资源消耗
+        const currentScrollback = term.options.scrollback || 1000;
+        const optimizedScrollback = isMultiSession ? Math.min(currentScrollback, 2000) : Math.min(currentScrollback, 3000);
+
+        term.options.scrollback = optimizedScrollback;
+        term.options.fastScrollSensitivity = isMultiSession ? 7 : 5; // 多会话时更加快速的滚动
+
+        // 多会话时禁用一些耗资源的特性
+        if (isMultiSession && sessionCount > 2) {
+          term.options.cursorBlink = false; // 禁用光标闪烁
+          term.options.allowTransparency = false; // 禁用透明度
+        }
+
+        debugTerminal(`Applied multi-session mobile optimizations: sessions=${sessionCount}, scrollback=${optimizedScrollback}`);
       }
 
       // 设置初始字体大小
@@ -858,6 +1068,39 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
   // Enhanced terminal initialization with mobile support
   onMount(async () => {
+    // 初始化电池优化
+    injectBatteryOptimizationStyles();
+    await globalBatteryOptimizer.initialize();
+
+    // 设置电池优化监听器
+    const batteryCleanup = globalBatteryOptimizer.onConfigChange((config) => {
+      setPowerSaveConfig(config);
+      setBatteryOptimized(globalBatteryOptimizer.isPowerSaveMode());
+
+      // 电池优化时自动调整渲染器
+      if (terminalInstance) {
+        const recommendedRenderer = globalBatteryOptimizer.getRecommendedRenderer();
+        if (recommendedRenderer !== activeRenderer()) {
+          console.log(`🔋 Battery optimization: switching to ${recommendedRenderer} renderer`);
+          switchRenderer(recommendedRenderer);
+        }
+
+        // 应用终端优化
+        const terminalOpts = globalBatteryOptimizer.getTerminalOptimizations();
+        terminalInstance.options.cursorBlink = terminalOpts.cursorBlink;
+        terminalInstance.options.allowTransparency = terminalOpts.transparency;
+
+        // 调整滚动缓存
+        if (terminalInstance.options.scrollback !== terminalOpts.scrollback) {
+          terminalInstance.options.scrollback = terminalOpts.scrollback;
+          console.log(`🔋 Scrollback adjusted to ${terminalOpts.scrollback} for battery optimization`);
+        }
+
+        terminalInstance.refresh(0, terminalInstance.rows - 1);
+      }
+    });
+    setBatteryOptimizerCleanup(() => batteryCleanup);
+
     // Delay initialization slightly to ensure DOM is ready
     setTimeout(async () => {
       await initializeTerminal();
@@ -915,6 +1158,13 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
     // Enhanced cleanup
     onCleanup(() => {
+      // 清理电池优化器
+      const batteryCleanup = batteryOptimizerCleanup();
+      if (batteryCleanup) {
+        batteryCleanup();
+        setBatteryOptimizerCleanup(null);
+      }
+
       const inputCleanupFn = inputCleanup();
       if (inputCleanupFn) {
         inputCleanupFn();
@@ -1065,8 +1315,8 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
 
   // 标签页切换快捷键（移动端）
   const tabSwitchKeys = props.sessionTabs && props.sessionTabs.length > 1 ? [
-    { 
-      label: "下一个标签页", 
+    {
+      label: "下一个标签页",
       action: () => {
         const tabs = props.sessionTabs!;
         const currentIndex = tabs.findIndex(tab => tab.id === props.currentSessionId);
@@ -1076,8 +1326,8 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
         }
       }
     },
-    { 
-      label: "上一个标签页", 
+    {
+      label: "上一个标签页",
       action: () => {
         const tabs = props.sessionTabs!;
         const currentIndex = tabs.findIndex(tab => tab.id === props.currentSessionId);
@@ -1197,13 +1447,20 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
             </EnhancedButton>
           </Show>
 
+          {/* 显示电池状态 */}
+          <Show when={batteryOptimized()}>
+            <div class="text-xs opacity-70 hidden sm:block">
+              🔋 省电模式
+            </div>
+          </Show>
+
           <div class="text-xs opacity-70 hidden sm:block">
             字体: {fontSize()}px
           </div>
 
           <Show when={props.enablePerformanceMonitoring}>
             <div class="text-xs opacity-70 hidden md:block">
-              渲染器: {activeRenderer()}
+              渲染器: {activeRenderer()}{batteryOptimized() ? " (省电)" : ""}
             </div>
           </Show>
 
@@ -1256,8 +1513,10 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
             </div>
 
             <div class="bg-base-100 p-2 rounded">
-              <div class="text-xs opacity-60">回退次数</div>
-              <div class="font-mono font-bold text-warning">{performanceStats().fallbackCount}</div>
+              <div class="text-xs opacity-60">电池状态</div>
+              <div class={`font-mono font-bold ${globalBatteryOptimizer.isPowerSaveMode() ? "text-warning" : "text-success"}`}>
+                {globalBatteryOptimizer.isPowerSaveMode() ? "🔋 省电" : "⚙️ 正常"}
+              </div>
             </div>
           </div>
 
@@ -1508,7 +1767,7 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
               Ctrl+Tab 切换 | Ctrl+1-9 直接跳转
             </div>
           </div>
-          
+
           <div class="flex space-x-1 overflow-x-auto">
             <For each={props.sessionTabs}>
               {(tab, index) => (
@@ -1516,11 +1775,10 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
                   variant={tab.id === props.currentSessionId ? "primary" : "outline"}
                   size="sm"
                   onClick={() => props.onTabSwitch?.(tab.id)}
-                  class={`min-w-0 max-w-48 flex items-center space-x-2 ${
-                    tab.id === props.currentSessionId 
-                      ? "ring-2 ring-primary ring-opacity-50" 
-                      : ""
-                  }`}
+                  class={`min-w-0 max-w-48 flex items-center space-x-2 ${tab.id === props.currentSessionId
+                    ? "ring-2 ring-primary ring-opacity-50"
+                    : ""
+                    }`}
                 >
                   <div class="flex items-center space-x-2 min-w-0">
                     <span class="text-xs opacity-60 shrink-0">{index() + 1}</span>

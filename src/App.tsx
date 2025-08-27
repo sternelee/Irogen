@@ -27,6 +27,7 @@ import {
   MobileKeyboard,
   KeyboardInfo,
 } from "./utils/mobile";
+import { globalBatteryOptimizer } from "./utils/batteryOptimizer";
 
 function App() {
   const [sessionTicket, setSessionTicket] = createSignal("");
@@ -233,6 +234,9 @@ function App() {
   onMount(() => {
     // Initialize enhanced mobile utilities
     initializeMobileUtils();
+
+    // Initialize battery optimizer
+    globalBatteryOptimizer.initialize().catch(console.error);
 
     // Time update timer
     const timer = setInterval(() => {
