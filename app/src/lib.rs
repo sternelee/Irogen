@@ -157,6 +157,20 @@ async fn connect_to_peer(
         sessions.insert(session_id.clone(), terminal_session.clone());
     }
 
+    // Send participant joined notification after session is created
+    if let Err(e) = network.send_participant_joined(&session_id, &sender).await {
+        eprintln!(
+            "Warning: Failed to send participant joined notification: {}",
+            e
+        );
+        // Continue anyway, as this is not a fatal error
+    } else {
+        println!(
+            "✅ Sent participant joined notification for session: {}",
+            session_id
+        );
+    }
+
     // Handle incoming terminal events with cancellation support
     let app_handle_clone = app_handle.clone();
     let session_id_clone_events = session_id.clone();
@@ -251,19 +265,6 @@ async fn connect_to_peer(
             }
         }
     });
-
-    // Send participant joined notification automatically after successful join
-    if let Err(e) = network.send_participant_joined(&session_id, &sender).await {
-        #[cfg(debug_assertions)]
-        eprintln!("Failed to send participant joined notification: {}", e);
-        // 不返回错误，因为连接已经成功，只是通知失败
-    } else {
-        #[cfg(debug_assertions)]
-        println!(
-            "Successfully sent participant joined notification for session: {}",
-            session_id
-        );
-    }
 
     Ok(session_id)
 }

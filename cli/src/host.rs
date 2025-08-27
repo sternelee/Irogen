@@ -37,7 +37,7 @@ impl HostSession {
         self.auth_token = auth.clone();
 
         let (shell_config, header) = Self::setup_environment(shell, title, width, height)?;
-        let session_id = header.session_id.clone();
+        let original_session_id = header.session_id.clone();
 
         self.display_terminal_config().await;
 
@@ -51,6 +51,13 @@ impl HostSession {
             .create_shared_session(header)
             .await
             .context("Failed to create shared session")?;
+
+        // CRITICAL: Use the consistent session_id format that matches create_shared_session
+        let session_id = format!("session_{}", topic_id);
+        println!(
+            "🔗 Using session_id: {} (derived from topic: {})",
+            session_id, topic_id
+        );
 
         // Create and display session ticket
         let ticket = self

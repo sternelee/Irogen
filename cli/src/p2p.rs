@@ -282,12 +282,23 @@ impl P2PNetwork {
         &self,
         header: SessionHeader,
     ) -> Result<(TopicId, GossipSender, mpsc::UnboundedReceiver<String>)> {
-        let session_id = header.session_id.clone();
-        debug!("Creating shared session");
+        let original_session_id = header.session_id.clone();
+        info!(
+            "🚀 Creating shared session with original ID: {}",
+            original_session_id
+        );
 
         // Create topic for this session using random bytes
         let topic_id = TopicId::from_bytes(rand::random());
         let key: EncryptionKey = rand::random();
+        info!("🎯 Created topic_id: {} with encryption key", topic_id);
+
+        // CRITICAL FIX: Use the same session_id format as the app for consistency
+        let session_id = format!("session_{}", topic_id);
+        info!(
+            "📝 Using consistent session_id format: {} (was: {})",
+            session_id, original_session_id
+        );
 
         let (event_sender, _event_receiver) = broadcast::channel(1000);
         let (input_sender, input_receiver) = mpsc::unbounded_channel();
@@ -295,6 +306,7 @@ impl P2PNetwork {
         // Subscribe to the gossip topic (empty node_ids means we're creating a new topic)
         let topic = self.gossip.subscribe(topic_id, vec![]).await?;
         let (sender, receiver) = topic.split();
+        info!("📡 Successfully subscribed to gossip topic: {}", topic_id);
 
         let session = SharedSession {
             header: header.clone(),
@@ -310,9 +322,12 @@ impl P2PNetwork {
             .write()
             .await
             .insert(session_id.clone(), session);
+        info!("✅ Session {} added to sessions map as host", session_id);
 
         // Start listening for messages on this topic
-        self.start_topic_listener(receiver, session_id).await?;
+        self.start_topic_listener(receiver, session_id.clone())
+            .await?;
+        info!("👂 Started gossip listener for session: {}", session_id);
 
         // Send session info message
         let body = TerminalMessageBody::SessionInfo {
@@ -321,6 +336,10 @@ impl P2PNetwork {
         };
         let message = EncryptedTerminalMessage::new(body, &key)?;
         sender.broadcast(message.to_vec()?.into()).await?;
+        info!(
+            "📤 Sent initial SessionInfo message for session: {}",
+            session_id
+        );
 
         Ok((topic_id, sender, input_receiver))
     }
@@ -642,36 +661,96 @@ impl P2PNetwork {
         let network_clone = self.clone();
 
         tokio::spawn(async move {
-            debug!("Starting gossip message listener");
+            info!(
+                "🎧 Starting gossip message listener for session: {}",
+                session_id
+            );
 
             loop {
                 match receiver.next().await {
                     Some(Ok(Event::Received(msg))) => {
-                        debug!("Received gossip message: {} bytes", msg.content.len());
+                        info!(
+                            "📨 CLI received gossip message: {} bytes for session: {}",
+                            msg.content.len(),
+                            session_id
+                        );
 
                         match EncryptedTerminalMessage::from_bytes(&msg.content) {
                             Ok(encrypted_msg) => {
+                                info!("✅ Successfully deserialized encrypted message");
                                 let sessions_guard = network_clone.sessions.read().await;
                                 if let Some(session) = sessions_guard.get(&session_id) {
                                     let key = session.key;
+                                    info!("🔑 Found session and encryption key");
                                     drop(sessions_guard); // 释放锁
 
                                     match encrypted_msg.decrypt(&key) {
                                         Ok(body) => {
+                                            info!(
+                                                "🔓 Successfully decrypted message: {:?}",
+                                                std::mem::discriminant(&body)
+                                            );
+                                            // Log the specific message type for debugging
+                                            match &body {
+                                                TerminalMessageBody::ParticipantJoined {
+                                                    from,
+                                                    ..
+                                                } => {
+                                                    info!(
+                                                        "📍 Received ParticipantJoined message from: {}",
+                                                        from.fmt_short()
+                                                    );
+                                                }
+                                                TerminalMessageBody::Output { .. } => {
+                                                    debug!("📝 Received Output message");
+                                                }
+                                                TerminalMessageBody::Input { .. } => {
+                                                    debug!("⌨️  Received Input message");
+                                                }
+                                                TerminalMessageBody::SessionInfo { .. } => {
+                                                    info!("ℹ️  Received SessionInfo message");
+                                                }
+                                                TerminalMessageBody::HistoryData { .. } => {
+                                                    info!("📜 Received HistoryData message");
+                                                }
+                                                TerminalMessageBody::Configuration { .. } => {
+                                                    info!("⚙️  Received Configuration message");
+                                                }
+                                                _ => {
+                                                    debug!("📬 Received other message type");
+                                                }
+                                            }
+
                                             if let Err(e) = network_clone
                                                 .handle_gossip_message(&session_id, body)
                                                 .await
                                             {
-                                                error!("Failed to handle gossip message: {}", e);
+                                                error!("❌ Failed to handle gossip message: {}", e);
                                             }
                                         }
-                                        Err(e) => error!("Failed to decrypt message: {}", e),
+                                        Err(e) => {
+                                            error!("❌ Failed to decrypt message: {}", e);
+                                            info!(
+                                                "🔍 Nonce length: {}, Ciphertext length: {}",
+                                                encrypted_msg.nonce.len(),
+                                                encrypted_msg.ciphertext.len()
+                                            );
+                                        }
                                     }
                                 } else {
-                                    warn!("Session not found for incoming message");
+                                    warn!(
+                                        "⚠️  Session {} not found for incoming message",
+                                        session_id
+                                    );
+                                    // Show available sessions for debugging
+                                    let available_sessions: Vec<String> = {
+                                        let sessions_debug = network_clone.sessions.read().await;
+                                        sessions_debug.keys().cloned().collect()
+                                    };
+                                    info!("🔍 Available sessions: {:?}", available_sessions);
                                 }
                             }
-                            Err(e) => error!("Failed to deserialize encrypted message: {}", e),
+                            Err(e) => error!("❌ Failed to deserialize encrypted message: {}", e),
                         }
                     }
                     Some(Ok(Event::NeighborUp(peer_id))) => {
@@ -790,103 +869,54 @@ impl P2PNetwork {
                     );
                 }
                 TerminalMessageBody::ParticipantJoined { from, timestamp: _ } => {
-                    debug!(
-                        "New participant {} joined session {}",
+                    info!(
+                        "🎉 CLI Processing ParticipantJoined message: participant {} joined session {}",
                         from.fmt_short(),
                         session_id
                     );
 
-                    // 如果我们是主机，自动发送历史记录
+                    // 如果我们是主机，自动发送完整的上下文信息
                     if session.is_host {
-                        debug!("We are the host, attempting to send history data");
+                        info!(
+                            "✅ We are the host, sending complete context to new participant {}",
+                            from.fmt_short()
+                        );
 
                         // 获取 gossip_sender 的克隆
                         let gossip_sender = session.gossip_sender.clone();
                         drop(sessions_guard); // 释放锁
 
                         if let Some(sender) = gossip_sender {
-                            // 获取历史记录回调
-                            let callback = {
-                                let history_callback_guard = self.history_callback.read().await;
-                                history_callback_guard.as_ref().map(|cb| cb(session_id))
-                            };
+                            let network_clone = self.clone();
+                            let session_id_clone = session_id.to_string();
 
-                            if let Some(receiver) = callback {
-                                // 在新的任务中处理历史记录发送，避免阻塞消息处理
-                                let network_clone = self.clone();
-                                let session_id_clone = session_id.to_string();
-
-                                tokio::spawn(async move {
-                                    match receiver.await {
-                                        Ok(Some(session_info)) => {
-                                            debug!("Got history data, sending to new participant");
-
-                                            // 发送历史数据
-                                            if let Err(e) = network_clone
-                                                .send_history_data(
-                                                    &sender,
-                                                    session_info,
-                                                    &session_id_clone,
-                                                )
-                                                .await
-                                            {
-                                                error!("Failed to send history data: {}", e);
-                                            } else {
-                                                debug!(
-                                                    "✅ Successfully sent history data to new participant"
-                                                );
-
-                                                // 历史数据发送成功后，发送终端配置
-                                                if let Err(e) = network_clone
-                                                    .send_terminal_config_to_new_participant(
-                                                        &sender,
-                                                        &session_id_clone,
-                                                    )
-                                                    .await
-                                                {
-                                                    error!(
-                                                        "Failed to send terminal configuration: {}",
-                                                        e
-                                                    );
-                                                } else {
-                                                    debug!(
-                                                        "✅ Successfully sent terminal configuration to new participant"
-                                                    );
-                                                }
-                                            }
-                                        }
-                                        Ok(None) => {
-                                            debug!("No history data available to send");
-
-                                            // 即使没有历史数据，也要发送终端配置
-                                            if let Err(e) = network_clone
-                                                .send_terminal_config_to_new_participant(
-                                                    &sender,
-                                                    &session_id_clone,
-                                                )
-                                                .await
-                                            {
-                                                error!(
-                                                    "Failed to send terminal configuration: {}",
-                                                    e
-                                                );
-                                            } else {
-                                                debug!(
-                                                    "✅ Successfully sent terminal configuration to new participant"
-                                                );
-                                            }
-                                        }
-                                        Err(_e) => {
-                                            error!("Failed to get history data");
-                                        }
-                                    }
-                                });
-                            } else {
-                                warn!("No history callback set, cannot send history data");
-                            }
+                            // 使用优化后的方法处理新参与者加入
+                            tokio::spawn(async move {
+                                info!(
+                                    "🚀 Starting context sync for new participant {} in session: {}",
+                                    from.fmt_short(),
+                                    session_id_clone
+                                );
+                                if let Err(e) = network_clone
+                                    .handle_new_participant_joined(&sender, &session_id_clone)
+                                    .await
+                                {
+                                    error!("❌ Failed to handle new participant joined: {}", e);
+                                } else {
+                                    info!(
+                                        "✅ Successfully sent context to new participant {}",
+                                        from.fmt_short()
+                                    );
+                                }
+                            });
                         } else {
-                            warn!("No gossip sender available for sending history data");
+                            warn!("❌ No gossip sender available for new participant context sync");
                         }
+                    } else {
+                        info!(
+                            "ℹ️  We are not the host, so we won't send context information to {}",
+                            from.fmt_short()
+                        );
                     }
                 }
                 TerminalMessageBody::HistoryData {
@@ -1043,6 +1073,71 @@ impl P2PNetwork {
     /// 检查会话是否存在
     pub async fn session_exists(&self, session_id: &str) -> bool {
         self.sessions.read().await.contains_key(session_id)
+    }
+
+    /// 处理新参与者加入，发送完整上下文信息（配置 + 历史）
+    pub async fn handle_new_participant_joined(
+        &self,
+        sender: &GossipSender,
+        session_id: &str,
+    ) -> Result<()> {
+        info!(
+            "📋 Handling new participant joined for session: {}",
+            session_id
+        );
+
+        // 首先立即发送终端配置，让新参与者了解环境
+        info!("📤 Sending terminal configuration to new participant...");
+        if let Err(e) = self
+            .send_terminal_config_to_new_participant(sender, session_id)
+            .await
+        {
+            error!("❌ Failed to send terminal configuration: {}", e);
+        } else {
+            info!("✅ Terminal configuration sent to new participant");
+        }
+
+        // 然后发送历史数据（如果有历史回调设置）
+        info!("📜 Checking for history callback...");
+        let callback = {
+            let history_callback = self.history_callback.read().await;
+            history_callback.as_ref().map(|cb| cb(session_id))
+        };
+
+        if let Some(receiver) = callback {
+            info!("📞 History callback found, waiting for history data...");
+            // 等待历史数据并发送
+            match receiver.await {
+                Ok(Some(session_info)) => {
+                    info!(
+                        "📨 Got history data, sending to new participant ({}字符 logs, shell: {}, cwd: {})",
+                        session_info.logs.len(),
+                        session_info.shell,
+                        session_info.cwd
+                    );
+
+                    if let Err(e) = self
+                        .send_history_data(sender, session_info, session_id)
+                        .await
+                    {
+                        error!("❌ Failed to send history data: {}", e);
+                    } else {
+                        info!("✅ Successfully sent history data to new participant");
+                    }
+                }
+                Ok(None) => {
+                    info!("ℹ️  No history data available to send");
+                }
+                Err(e) => {
+                    error!("❌ Failed to get history data from callback: {:?}", e);
+                }
+            }
+        } else {
+            warn!("⚠️  No history callback set, skipping history data");
+        }
+
+        info!("🎉 Completed handling new participant joined");
+        Ok(())
     }
 
     /// 设置历史记录获取回调函数

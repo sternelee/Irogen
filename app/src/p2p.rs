@@ -107,6 +107,14 @@ pub struct SessionHeader {
     pub session_id: String,
 }
 
+/// Session information containing logs, shell type and current working directory
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionInfo {
+    pub logs: String,
+    pub shell: String,
+    pub cwd: String,
+}
+
 pub type EncryptionKey = [u8; 32];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,12 +151,16 @@ pub enum TerminalMessageBody {
     },
     /// Participant joined notification
     ParticipantJoined { from: NodeId, timestamp: u64 },
-    /// History data message
+    /// History data message (using SessionInfo structure like CLI)
     HistoryData {
         from: NodeId,
-        shell_type: String,
-        working_dir: String,
-        history: Vec<String>,
+        session_info: SessionInfo,
+        timestamp: u64,
+    },
+    /// Terminal configuration broadcast
+    Configuration {
+        from: NodeId,
+        config_data: serde_json::Value,
         timestamp: u64,
     },
 }
@@ -491,20 +503,41 @@ impl P2PNetwork {
         session_id: &str,
         sender: &GossipSender,
     ) -> Result<()> {
-        debug!("Sending participant joined notification");
+        info!(
+            "📢 APP sending participant joined notification for session: {}",
+            session_id
+        );
         let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for participant joined"))?;
+        let session = sessions.get(session_id).ok_or_else(|| {
+            anyhow::anyhow!("Session not found for participant joined: {}", session_id)
+        })?;
+
+        info!("🔑 Using encryption key for session: {}", session_id);
+        let my_node_id = self.endpoint.node_id();
+        info!(
+            "🏷️  Sending ParticipantJoined from node: {}",
+            my_node_id.fmt_short()
+        );
 
         let body = TerminalMessageBody::ParticipantJoined {
-            from: self.endpoint.node_id(),
+            from: my_node_id,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
         let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
+        let message_bytes = message.to_vec()?;
+        info!(
+            "📦 Created encrypted ParticipantJoined message: {} bytes",
+            message_bytes.len()
+        );
+
+        sender.broadcast(message_bytes.into()).await?;
+        info!(
+            "✅ Successfully broadcast ParticipantJoined notification from: {} for session: {}",
+            my_node_id.fmt_short(),
+            session_id
+        );
         Ok(())
     }
 
@@ -653,46 +686,76 @@ impl P2PNetwork {
                     }
                     TerminalMessageBody::HistoryData {
                         from,
-                        shell_type,
-                        working_dir,
-                        history,
+                        session_info,
                         timestamp,
                     } => {
-                        info!("Received history data from {}", from.fmt_short());
+                        info!(
+                            "Received history data from {} - Shell: {}, CWD: {}, {} chars of logs",
+                            from.fmt_short(),
+                            session_info.shell,
+                            session_info.cwd,
+                            session_info.logs.len()
+                        );
 
-                        // Send session info event
-                        let info_event = TerminalEvent {
+                        // Send welcome message with context info
+                        let welcome_event = TerminalEvent {
                             timestamp: timestamp as f64,
                             event_type: crate::terminal_events::EventType::Output,
                             data: format!(
-                                "=== Session History ===\nShell: {}\nWorking Directory: {}\n",
-                                shell_type, working_dir
+                                "\r\n🔗 Connected to remote terminal session\r\n📍 Shell: {} | Directory: {}\r\n📜 Restoring session history...\r\n\r\n",
+                                session_info.shell, session_info.cwd
                             ),
                         };
-                        if session.event_sender.send(info_event).is_err() {
-                            warn!("No active receivers for history info event, skipping");
+                        if session.event_sender.send(welcome_event).is_err() {
+                            warn!("No active receivers for welcome event, skipping");
                         }
 
-                        // Send each history line as a separate event
-                        for (i, line) in history.iter().enumerate() {
+                        // Send the complete session logs as history data
+                        if !session_info.logs.trim().is_empty() {
                             let history_event = TerminalEvent {
-                                timestamp: (timestamp as f64) + (i as f64 * 0.001), // Slight time offset for ordering
+                                timestamp: timestamp as f64 - 1.0, // Past timestamp
                                 event_type: crate::terminal_events::EventType::HistoryData,
-                                data: line.clone(),
+                                data: session_info.logs.clone(),
                             };
                             if session.event_sender.send(history_event).is_err() {
                                 warn!("No active receivers for history data event, skipping");
                             }
                         }
 
-                        // Send separator
-                        let separator_event = TerminalEvent {
-                            timestamp: (timestamp as f64) + (history.len() as f64 * 0.001) + 0.001,
+                        // Send current prompt to show we're ready
+                        let prompt_event = TerminalEvent {
+                            timestamp: timestamp as f64 + 0.1,
                             event_type: crate::terminal_events::EventType::Output,
-                            data: "=== End of History ===\n".to_string(),
+                            data: format!("\r\n📡 Remote session active - ready for input\r\n"),
                         };
-                        if session.event_sender.send(separator_event).is_err() {
-                            warn!("No active receivers for history separator event, skipping");
+                        if session.event_sender.send(prompt_event).is_err() {
+                            warn!("No active receivers for prompt event, skipping");
+                        }
+                    }
+                    TerminalMessageBody::Configuration {
+                        from,
+                        config_data,
+                        timestamp,
+                    } => {
+                        info!("Received terminal configuration from {}", from.fmt_short());
+
+                        // Parse and display configuration in a structured way
+                        if let Ok(_config_str) = serde_json::to_string_pretty(&config_data) {
+                            let event = TerminalEvent {
+                                timestamp: timestamp as f64,
+                                event_type: crate::terminal_events::EventType::Output,
+                                data: format!(
+                                    "\r\n⚙️  Terminal Configuration from {}\r\n{}\r\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n",
+                                    from.fmt_short(),
+                                    Self::format_config_display(&config_data)
+                                ),
+                            };
+
+                            if session.event_sender.send(event).is_err() {
+                                warn!("No active receivers for configuration event, skipping");
+                            }
+                        } else {
+                            debug!("Failed to serialize configuration data: {:?}", config_data);
                         }
                     }
                 }
@@ -703,5 +766,88 @@ impl P2PNetwork {
 
     pub async fn get_node_id(&self) -> String {
         self.endpoint.node_id().to_string()
+    }
+
+    /// Format terminal configuration for display
+    fn format_config_display(config_data: &serde_json::Value) -> String {
+        let mut display = String::new();
+
+        if let Some(obj) = config_data.as_object() {
+            // Terminal type
+            if let Some(terminal_type) = obj.get("terminal_type").and_then(|v| v.as_str()) {
+                display.push_str(&format!("🖥️  Terminal: {}\r\n", terminal_type));
+            }
+
+            // Shell configuration
+            if let Some(shell_config) = obj.get("shell_config").and_then(|v| v.as_object()) {
+                if let Some(shell_type) = shell_config.get("shell_type").and_then(|v| v.as_str()) {
+                    display.push_str(&format!("🐚 Shell: {}", shell_type));
+
+                    if let Some(shell_path) =
+                        shell_config.get("shell_path").and_then(|v| v.as_str())
+                    {
+                        display.push_str(&format!(" ({})", shell_path));
+                    }
+                    display.push_str("\r\n");
+                }
+
+                // Theme
+                if let Some(theme) = shell_config.get("theme").and_then(|v| v.as_str()) {
+                    display.push_str(&format!("🎨 Theme: {}\r\n", theme));
+                }
+
+                // Plugins
+                if let Some(plugins) = shell_config.get("plugins").and_then(|v| v.as_array()) {
+                    if !plugins.is_empty() {
+                        display.push_str("🔌 Plugins: ");
+                        let plugin_names: Vec<String> = plugins
+                            .iter()
+                            .filter_map(|v| v.as_str())
+                            .map(|s| s.to_string())
+                            .collect();
+                        display.push_str(&plugin_names.join(", "));
+                        display.push_str("\r\n");
+                    }
+                }
+            }
+
+            // Terminal size
+            if let Some(terminal_size) = obj.get("terminal_size").and_then(|v| v.as_object()) {
+                if let (Some(width), Some(height)) = (
+                    terminal_size.get("width").and_then(|v| v.as_u64()),
+                    terminal_size.get("height").and_then(|v| v.as_u64()),
+                ) {
+                    display.push_str(&format!("📏 Size: {}×{}\r\n", width, height));
+                }
+            }
+
+            // System info
+            if let Some(system_info) = obj.get("system_info").and_then(|v| v.as_object()) {
+                if let (Some(os), Some(arch)) = (
+                    system_info.get("os").and_then(|v| v.as_str()),
+                    system_info.get("arch").and_then(|v| v.as_str()),
+                ) {
+                    display.push_str(&format!("💻 System: {} ({})", os, arch));
+
+                    if let Some(hostname) = system_info.get("hostname").and_then(|v| v.as_str()) {
+                        display.push_str(&format!(" @ {}", hostname));
+                    }
+                    display.push_str("\r\n");
+                }
+
+                if let Some(cwd) = system_info
+                    .get("working_directory")
+                    .and_then(|v| v.as_str())
+                {
+                    display.push_str(&format!("📁 Directory: {}\r\n", cwd));
+                }
+            }
+        }
+
+        if display.is_empty() {
+            "Configuration data received but could not be parsed".to_string()
+        } else {
+            display
+        }
     }
 }
