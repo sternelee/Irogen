@@ -4,3 +4,4 @@ dist
 logs
 *.jks
 keystore.properties
+app/gen
