@@ -1,4 +1,5 @@
 mod cli;
+mod crossterm_context;
 mod host;
 mod p2p;
 mod playback;

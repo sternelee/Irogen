@@ -26,6 +26,7 @@ macro_rules! warn {
 }
 use url::Url;
 
+use crate::crossterm_context::CrosstermContext;
 use crate::string_compressor::StringCompressor;
 use crate::terminal_events::TerminalEvent;
 
@@ -161,6 +162,14 @@ pub enum TerminalMessageBody {
         config_data: serde_json::Value,
         timestamp: u64,
     },
+    /// Crossterm context broadcast
+    CrosstermContext {
+        from: NodeId,
+        context: CrosstermContext,
+        timestamp: u64,
+    },
+    /// Request crossterm context
+    RequestCrosstermContext { from: NodeId, timestamp: u64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -700,6 +709,64 @@ impl P2PNetwork {
                             }
                         } else {
                             debug!("Failed to serialize configuration data: {:?}", config_data);
+                        }
+                    }
+                    TerminalMessageBody::CrosstermContext {
+                        from,
+                        context,
+                        timestamp,
+                    } => {
+                        use crate::crossterm_context::CrosstermContextProcessor;
+
+                        info!(
+                            "Received crossterm context from {}: {}",
+                            from.fmt_short(),
+                            CrosstermContextProcessor::generate_context_summary(&context)
+                        );
+
+                        // 应用上下文到当前环境（如果需要）
+                        if let Err(e) =
+                            CrosstermContextProcessor::apply_context_to_environment(&context)
+                        {
+                            warn!("Failed to apply crossterm context: {}", e);
+                        }
+
+                        // 创建格式化的显示事件
+                        let event = TerminalEvent {
+                            timestamp: timestamp as f64,
+                            event_type: crate::terminal_events::EventType::Output,
+                            data: format!(
+                                "\r\n🖥️  Crossterm Context from {}\r\n{}\r\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n",
+                                from.fmt_short(),
+                                CrosstermContextProcessor::format_context_display(&context)
+                            ),
+                        };
+
+                        if session.event_sender.send(event).is_err() {
+                            warn!("No active receivers for crossterm context event, skipping");
+                        }
+                    }
+                    TerminalMessageBody::RequestCrosstermContext { from, timestamp: _ } => {
+                        info!(
+                            "Received crossterm context request from {}",
+                            from.fmt_short()
+                        );
+
+                        // 移动端通常不作为主机，但可以显示请求信息
+                        let event = TerminalEvent {
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs() as f64,
+                            event_type: crate::terminal_events::EventType::Output,
+                            data: format!(
+                                "\r\n🔍 {} requested terminal context information\r\n",
+                                from.fmt_short()
+                            ),
+                        };
+
+                        if session.event_sender.send(event).is_err() {
+                            warn!("No active receivers for context request event, skipping");
                         }
                     }
                 }

@@ -18,6 +18,7 @@ use tokio::sync::{RwLock, broadcast, mpsc};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
+use crate::crossterm_context::CrosstermContext;
 use crate::string_compressor::StringCompressor;
 use crate::terminal::{SessionHeader, SessionInfo, TerminalEvent};
 
@@ -147,6 +148,14 @@ pub enum TerminalMessageBody {
         config_data: serde_json::Value,
         timestamp: u64,
     },
+    /// Crossterm context broadcast
+    CrosstermContext {
+        from: NodeId,
+        context: CrosstermContext,
+        timestamp: u64,
+    },
+    /// Request crossterm context
+    RequestCrosstermContext { from: NodeId, timestamp: u64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -608,6 +617,71 @@ impl P2PNetwork {
         Ok(())
     }
 
+    /// 发送crossterm终端上下文给所有参与者
+    pub async fn send_crossterm_context(
+        &self,
+        sender: &GossipSender,
+        context: CrosstermContext,
+        session_id: &str,
+    ) -> Result<()> {
+        debug!("Sending crossterm context data");
+        let key = self.get_session_key(session_id).await?;
+        let body = TerminalMessageBody::CrosstermContext {
+            from: self.endpoint.node_id(),
+            context,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    /// 检测并发送crossterm上下文给新参与者
+    pub async fn send_crossterm_context_to_new_participant(
+        &self,
+        sender: &GossipSender,
+        session_id: &str,
+    ) -> Result<()> {
+        use crate::crossterm_context::CrosstermContextDetector;
+
+        debug!("Detecting and sending crossterm context to new participant");
+
+        match CrosstermContextDetector::detect_context() {
+            Ok(context) => {
+                self.send_crossterm_context(sender, context, session_id)
+                    .await?;
+                debug!("✅ Crossterm context sent to new participant");
+            }
+            Err(e) => {
+                warn!("Failed to detect crossterm context: {}", e);
+                return Err(anyhow::anyhow!("Failed to detect crossterm context: {}", e));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 请求crossterm上下文
+    pub async fn request_crossterm_context(
+        &self,
+        sender: &GossipSender,
+        session_id: &str,
+    ) -> Result<()> {
+        debug!("Requesting crossterm context");
+        let key = self.get_session_key(session_id).await?;
+        let body = TerminalMessageBody::RequestCrosstermContext {
+            from: self.endpoint.node_id(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
     pub async fn end_session(&self, sender: &GossipSender, session_id: String) -> Result<()> {
         debug!("Ending session: {}", session_id);
 
@@ -877,6 +951,78 @@ impl P2PNetwork {
                         }
                     }
                 }
+                TerminalMessageBody::CrosstermContext {
+                    from,
+                    context,
+                    timestamp: _,
+                } => {
+                    use crate::crossterm_context::CrosstermContextDetector;
+
+                    debug!(
+                        "Received crossterm context from {}: {}",
+                        from.fmt_short(),
+                        CrosstermContextDetector::generate_context_summary(&context)
+                    );
+
+                    // 将crossterm上下文信息格式化为可读字符串
+                    let context_info = format!(
+                        "Terminal: {} ({}x{})\nColors: {} colors, RGB: {}\nCursor: {:?}, Visible: {}\nKeyboard: Enhanced: {}, Paste: {}, Mouse: {}",
+                        context.terminal_info.terminal_type,
+                        context.terminal_info.size.0,
+                        context.terminal_info.size.1,
+                        context.terminal_capabilities.color_count,
+                        context.color_config.supports_truecolor,
+                        context.cursor_config.shape,
+                        context.cursor_config.visible,
+                        context.keyboard_config.enhanced_keyboard,
+                        context.keyboard_config.bracketed_paste,
+                        context.keyboard_config.mouse_capture
+                    );
+
+                    let event = TerminalEvent {
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs() as f64,
+                        event_type: crate::terminal::EventType::Output,
+                        data: format!(
+                            "\r\n🖥️  Crossterm Context from {}\r\n{}\r\n--- End of Context ---\r\n",
+                            from.fmt_short(),
+                            context_info
+                        ),
+                    };
+
+                    if let Err(_e) = session.event_sender.send(event) {
+                        warn!("Failed to send crossterm context event to subscribers");
+                    }
+                }
+                TerminalMessageBody::RequestCrosstermContext { from, timestamp: _ } => {
+                    debug!(
+                        "Received crossterm context request from {}",
+                        from.fmt_short()
+                    );
+
+                    // 如果是主机，响应crossterm上下文请求
+                    if session.is_host {
+                        if let Some(ref gossip_sender) = session.gossip_sender {
+                            let sender_clone = gossip_sender.clone();
+                            let session_id_clone = session_id.to_string();
+                            let network_clone = self.clone();
+
+                            tokio::spawn(async move {
+                                if let Err(e) = network_clone
+                                    .send_crossterm_context_to_new_participant(
+                                        &sender_clone,
+                                        &session_id_clone,
+                                    )
+                                    .await
+                                {
+                                    warn!("Failed to respond to crossterm context request: {}", e);
+                                }
+                            });
+                        }
+                    }
+                }
             }
         }
         Ok(())
@@ -992,6 +1138,16 @@ impl P2PNetwork {
             error!("❌ Failed to send terminal configuration: {}", e);
         } else {
             info!("✅ Terminal configuration sent to new participant");
+        }
+
+        // 发送crossterm上下文
+        if let Err(e) = self
+            .send_crossterm_context_to_new_participant(sender, session_id)
+            .await
+        {
+            error!("❌ Failed to send crossterm context: {}", e);
+        } else {
+            info!("✅ Crossterm context sent to new participant");
         }
 
         // 然后发送历史数据（如果有历史回调设置）
