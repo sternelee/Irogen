@@ -3,7 +3,6 @@ use clap::{Parser, Subcommand};
 
 use crate::host::HostSession;
 use crate::p2p::P2PNetwork;
-use crate::playback::PlaybackSession;
 use crate::shell_manager::ShellManager;
 
 #[derive(Parser)]
@@ -48,15 +47,6 @@ pub enum Commands {
         #[arg(long, help = "List available shells and exit")]
         list_shells: bool,
     },
-
-    #[command(about = "Play back a recorded session")]
-    Play {
-        #[arg(help = "Path to the session file")]
-        file: String,
-
-        #[arg(long, help = "Playback speed multiplier", default_value_t = 1.0)]
-        speed: f32,
-    },
 }
 
 pub struct CliApp {
@@ -93,7 +83,6 @@ impl CliApp {
                     .start(shell, title, width, height, save, passthrough, cli.auth)
                     .await
             }
-            Commands::Play { file, speed } => PlaybackSession::start(file, speed).await,
         }
     }
 

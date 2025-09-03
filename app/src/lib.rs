@@ -8,10 +8,10 @@ use tauri::{Emitter, State};
 use tokio::sync::{RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
 
+mod crossterm_context;
 mod p2p;
 mod string_compressor;
 mod terminal_events;
-mod crossterm_context;
 
 use iroh_gossip::api::GossipSender;
 use p2p::{P2PNetwork, SessionTicket};
