@@ -31,7 +31,6 @@
 - 简单的命令行界面
 - QR 码分享会话票据
 - 自动 Shell 检测
-- 会话录制和回放
 
 ## 🚀 快速开始
 
@@ -141,10 +140,8 @@ riterm/
 │   │   ├── main.rs        # 程序入口
 │   │   ├── cli.rs         # 命令行界面
 │   │   ├── p2p.rs         # P2P 网络通信
-│   │   ├── terminal.rs    # 终端录制和回放
-│   │   ├── shell.rs       # Shell 检测和配置
-│   │   ├── host.rs        # 主机会话管理
-│   │   └── playback.rs    # 会话回放
+│   │   ├── terminal.rs    # 终端录制和管理
+│   │   └── shell.rs      # Shell 检测和配置
 │   └── Cargo.toml
 ├── app/                    # Tauri 多平台应用
 │   ├── src/
@@ -186,8 +183,7 @@ riterm/
 #### 2. 终端管理 (`cli/src/terminal.rs`)
 - **TerminalRecorder**：终端会话录制和管理
 - **LogRecorder**：日志文件记录
-- **SessionInfo**：会话信息（logs, shell, cwd）
-- **TerminalPlayer**：会话回放
+- **SessionInfo**：会话信息（logs, shell, cwd)
 
 #### 3. Shell 支持 (`cli/src/shell.rs`)
 - **ShellDetector**：自动检测可用 Shell
