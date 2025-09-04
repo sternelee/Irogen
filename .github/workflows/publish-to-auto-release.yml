@@ -14,14 +14,46 @@ jobs:
     strategy:
       matrix:
         include:
-          - platform: "ubuntu-latest"
-            target: "x86_64-unknown-linux-gnu"
-          - platform: "macos-latest"
-            target: "x86_64-apple-darwin"
-          - platform: "macos-latest"
-            target: "aarch64-apple-darwin"
-          - platform: "windows-latest"
-            target: "x86_64-pc-windows-msvc"
+          - binary_name: riterm-x86_64-unknown-linux-musl
+            binary_path: target/x86_64-unknown-linux-musl/release/riterm
+            cross: 'true'
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - binary_name: riterm-aarch64-unknown-linux-musl
+            binary_path: target/aarch64-unknown-linux-musl/release/riterm
+            cross: 'true'
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+          - binary_name: riterm-x86_64-unknown-linux-gnu
+            binary_path: target/x86_64-unknown-linux-gnu/release/riterm
+            cross: 'false'
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - binary_name: riterm-aarch64-unknown-linux-gnu
+            binary_path: target/aarch64-unknown-linux-gnu/release/riterm
+            cross: 'true'
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - binary_name: riterm-x86_64-apple-darwin
+            binary_path: target/x86_64-apple-darwin/release/riterm
+            cross: 'false'
+            os: macos-latest
+            target: x86_64-apple-darwin
+          - binary_name: riterm-aarch64-apple-darwin
+            binary_path: target/aarch64-apple-darwin/release/riterm
+            cross: 'false'
+            os: macos-latest
+            target: aarch64-apple-darwin
+          - binary_name: riterm-x86_64-pc-windows-msvc.exe
+            binary_path: target/x86_64-pc-windows-msvc/release/riterm.exe
+            cross: 'false'
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - binary_name: riterm-aarch64-pc-windows-msvc.exe
+            binary_path: target/aarch64-pc-windows-msvc/release/riterm.exe
+            cross: 'false'
+            os: windows-latest
+            target: aarch64-pc-windows-msvc
 
     runs-on: ${{ matrix.platform }}
     steps:
