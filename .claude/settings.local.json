@@ -44,7 +44,13 @@
       "mcp__mcphub__context7-resolve-library-id",
       "mcp__mcphub__context7-get-library-docs",
       "WebSearch",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(./target/debug/cli:*)",
+      "mcp__mcp-hub__context7-resolve-library-id",
+      "mcp__mcp-hub__context7-get-library-docs",
+      "mcp__mcp-hub__grep-searchGitHub",
+      "Bash(./target/release/cli --quiet)",
+      "Bash(./target/release/cli)"
     ],
     "deny": []
   }

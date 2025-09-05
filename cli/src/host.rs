@@ -39,8 +39,7 @@ impl HostSession {
         let (shell_config, header) = Self::setup_environment(shell, title, width, height)?;
         let session_id = header.session_id.clone();
 
-        self.display_terminal_config().await;
-
+        // 直接启动会话，不显示配置信息
         println!("🌐 Node ID: {}", self.network.get_node_id().await);
         if let Ok(node_addr) = self.network.get_node_addr().await {
             println!("📍 Node Address: {:?}", node_addr);
@@ -152,9 +151,15 @@ impl HostSession {
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
-            title,
+            title: title.clone(),
             command: Some(format!("{} {}", command, args.join(" "))),
-            session_id,
+            session_id: session_id.clone(),
+            session_name: title.clone().unwrap_or_else(|| session_id.clone()),
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+            max_participants: 10,
+            is_private: false,
         };
 
         println!("🚀 Starting shared terminal session...");
@@ -164,40 +169,6 @@ impl HostSession {
         println!();
 
         Ok((shell_config, header))
-    }
-
-    async fn display_terminal_config(&self) {
-        match TerminalConfigDetector::detect_full_config() {
-            Ok(config) => {
-                let summary = TerminalConfigDetector::generate_config_summary(&config);
-                println!("🔧 Terminal Config: {}", summary);
-                println!(
-                    "   Shell: {} ({})",
-                    config.shell_config.shell_type, config.shell_config.shell_path
-                );
-                println!(
-                    "   Terminal: {} ({}x{})",
-                    config.terminal_type, config.terminal_size.width, config.terminal_size.height
-                );
-
-                if !config.shell_config.plugins.is_empty() {
-                    println!("   Plugins: {}", config.shell_config.plugins.join(", "));
-                }
-
-                if let Some(theme) = &config.shell_config.theme {
-                    println!("   Theme: {}", theme);
-                }
-
-                println!(
-                    "   OS: {} ({})",
-                    config.system_info.os, config.system_info.arch
-                );
-                println!();
-            }
-            Err(e) => {
-                warn!("Failed to detect terminal configuration: {}", e);
-            }
-        }
     }
 
     async fn spawn_pty_tasks(

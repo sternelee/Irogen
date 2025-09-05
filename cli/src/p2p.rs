@@ -233,8 +233,11 @@ impl P2PNetwork {
     pub async fn new(relay_url: Option<String>) -> Result<Self> {
         debug!("Initializing iroh P2P network with gossip...");
 
-        // Create iroh endpoint with optional custom relay
-        let endpoint_builder = Endpoint::builder();
+        // Create iroh endpoint with IPv4 preference and disabled IPv6 to reduce connectivity warnings
+        let endpoint_builder = Endpoint::builder()
+            .bind_addr_v4(std::net::SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, 0)) // Prefer IPv4 binding
+            .bind_addr_v6(std::net::SocketAddrV6::new(std::net::Ipv6Addr::LOCALHOST, 0, 0, 0)); // Bind IPv6 to localhost only
+            
         let endpoint = if let Some(relay) = relay_url {
             debug!("Using custom relay server: {}", relay);
             // Parse the relay URL and use it for discovery
@@ -244,7 +247,7 @@ impl P2PNetwork {
                 .bind()
                 .await?
         } else {
-            debug!("Using default n0 relay server");
+            debug!("Using default n0 relay server with IPv4 preference");
             endpoint_builder.discovery_n0().bind().await?
         };
 
@@ -351,6 +354,12 @@ impl P2PNetwork {
                 title: None,
                 command: None,
                 session_id: session_id.clone(),
+                session_name: session_id.clone(),
+                created_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_secs(),
+                max_participants: 10,
+                is_private: false,
             },
             participants: vec![],
             is_host: false,

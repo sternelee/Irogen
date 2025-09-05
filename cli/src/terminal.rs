@@ -122,6 +122,10 @@ pub struct SessionHeader {
     pub title: Option<String>,
     pub command: Option<String>,
     pub session_id: String,
+    pub session_name: String,
+    pub created_at: u64,
+    pub max_participants: u32,
+    pub is_private: bool,
 }
 
 /// 会话信息，包含日志、shell类型和当前工作目录

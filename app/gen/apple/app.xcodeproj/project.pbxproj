@@ -156,20 +156,6 @@
 			path = app;
 			sourceTree = "<group>";
 		};
-		"TEMP_70455967-B546-4CB7-9358-F6EEFA1C4AA9" /* arm64 */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = arm64;
-			sourceTree = "<group>";
-		};
-		"TEMP_914648A2-299D-42A6-9D43-E634ECB2C63F" /* x86_64 */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = x86_64;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */

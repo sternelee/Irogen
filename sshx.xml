@@ -1,0 +1,1880 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+examples/
+  session_persistence_test.rs
+  stdin_client.rs
+src/
+  terminal/
+    unix.rs
+    windows.rs
+  controller.rs
+  encrypt.rs
+  lib.rs
+  main.rs
+  runner.rs
+  session_persistence.rs
+  terminal.rs
+Cargo.toml
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="examples/session_persistence_test.rs">
+use anyhow::Result;
+use sshx::session_persistence::{SessionPersistence, SessionState};
+use std::path::Path;
+
+/// Test session persistence functionality
+fn main() -> Result<()> {
+    println!("🔄 sshx 会话持久化功能测试");
+    println!("============================");
+
+    // 1. 测试会话ID生成
+    println!("\n📋 步骤 1: 测试会话ID生成");
+
+    let api_key = Some("test-api-key-12345");
+    let server = "http://localhost:3000";
+    let work_dir = Some(Path::new("/tmp/test"));
+
+    let session_id1 = SessionPersistence::generate_session_id(api_key, server, work_dir);
+    let session_id2 = SessionPersistence::generate_session_id(api_key, server, work_dir);
+
+    println!("✅ 相同参数生成相同ID: {}", session_id1 == session_id2);
+    println!("   会话ID: {}", session_id1);
+
+    // 测试不同参数生成不同ID
+    let different_id =
+        SessionPersistence::generate_session_id(Some("different-key"), server, work_dir);
+    println!("✅ 不同API Key生成不同ID: {}", session_id1 != different_id);
+
+    // 2. 测试会话状态保存和加载
+    println!("\n💾 步骤 2: 测试会话状态保存和加载");
+
+    let persistence = SessionPersistence::new()?;
+
+    let test_state = SessionState {
+        session_id: session_id1.clone(),
+        encryption_key: "test-encryption-key-abcd1234".to_string(),
+        write_password: Some("test-write-password".to_string()),
+        session_name: "user-12345678-1640995200".to_string(),
+        session_token: "test-session-token".to_string(),
+        base_url: "http://localhost:3000/s/user-12345678-1640995200".to_string(),
+        full_url: "http://localhost:3000/s/user-12345678-1640995200#test-encryption-key-abcd1234".to_string(),
+        write_url: Some("http://localhost:3000/s/user-12345678-1640995200#test-encryption-key-abcd1234,test-write-password".to_string()),
+        server_origin: server.to_string(),
+        api_key: api_key.map(|s| s.to_string()),
+        created_at: chrono::Utc::now().timestamp() as u64,
+        last_accessed: chrono::Utc::now().timestamp() as u64,
+    };
+
+    // 保存会话状态
+    persistence.save_session(&test_state)?;
+    println!("✅ 会话状态保存成功");
+
+    // 加载会话状态
+    let loaded_state = persistence.load_session(&session_id1)?;
+    match loaded_state {
+        Some(state) => {
+            println!("✅ 会话状态加载成功");
+            println!("   会话名称: {}", state.session_name);
+            println!("   加密密钥: {}...", &state.encryption_key[..10]);
+            println!("   完整URL: {}", state.full_url);
+            println!("   API Key: {:?}", state.api_key);
+        }
+        None => {
+            println!("❌ 会话状态加载失败");
+            return Ok(());
+        }
+    }
+
+    // 3. 测试会话有效性检查
+    println!("\n⏰ 步骤 3: 测试会话有效性检查");
+
+    let loaded_state = loaded_state.unwrap();
+    let is_valid = persistence.is_session_valid(&loaded_state, 24);
+    println!(
+        "✅ 会话有效性检查: {}",
+        if is_valid { "有效" } else { "无效" }
+    );
+
+    // 4. 测试会话列表
+    println!("\n📋 步骤 4: 测试会话列表");
+
+    let sessions = persistence.list_sessions()?;
+    println!("✅ 找到 {} 个保存的会话", sessions.len());
+
+    for (i, session) in sessions.iter().enumerate() {
+        println!("   会话 {}: {}", i + 1, session.session_name);
+        println!("     ID: {}", session.session_id);
+        println!(
+            "     创建时间: {}",
+            chrono::DateTime::from_timestamp(session.created_at as i64, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_else(|| "无效时间".to_string())
+        );
+    }
+
+    // 5. 测试会话清理
+    println!("\n🧹 步骤 5: 测试会话清理");
+
+    // 创建一个旧会话用于测试清理
+    let old_state = SessionState {
+        session_id: "old-test-session".to_string(),
+        encryption_key: "old-key".to_string(),
+        write_password: None,
+        session_name: "old-session".to_string(),
+        session_token: "old-token".to_string(),
+        base_url: "http://localhost:3000/s/old-session".to_string(),
+        full_url: "http://localhost:3000/s/old-session#old-key".to_string(),
+        write_url: None,
+        server_origin: server.to_string(),
+        api_key: None,
+        created_at: (chrono::Utc::now().timestamp() - 30 * 24 * 60 * 60) as u64, // 30天前
+        last_accessed: (chrono::Utc::now().timestamp() - 30 * 24 * 60 * 60) as u64,
+    };
+
+    persistence.save_session(&old_state)?;
+    println!("✅ 创建旧会话用于测试");
+
+    let removed_count = persistence.cleanup_old_sessions(7)?; // 清理7天前的会话
+    println!("✅ 清理了 {} 个旧会话", removed_count);
+
+    // 6. 清理测试数据
+    println!("\n🧹 步骤 6: 清理测试数据");
+
+    persistence.remove_session(&session_id1)?;
+    println!("✅ 测试会话已清理");
+
+    println!("\n🎉 会话持久化功能测试完成!");
+    println!("\n💡 使用提示:");
+    println!("   1. 持久会话: sshx --api-key YOUR_API_KEY");
+    println!("   2. 临时会话: sshx (不提供 API Key)");
+    println!("   3. 清理旧会话: sshx --cleanup-sessions 7");
+    println!("   4. 会话文件位置: ~/.config/sshx/sessions/");
+
+    Ok(())
+}
+</file>
+
+<file path="examples/stdin_client.rs">
+use std::io::Read;
+use std::sync::Arc;
+use std::thread;
+
+use anyhow::Result;
+use sshx::terminal::{get_default_shell, Terminal};
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+use tokio::signal;
+use tokio::sync::mpsc;
+use tracing::{error, info, trace};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
+
+    let shell = get_default_shell().await;
+    info!(%shell, "using default shell");
+
+    let mut terminal = Terminal::new(&shell).await?;
+
+    // Separate thread for reading from standard input.
+    let (tx, mut rx) = mpsc::channel::<Arc<[u8]>>(16);
+    thread::spawn(move || loop {
+        let mut buf = [0u8; 256];
+        let n = std::io::stdin().read(&mut buf).unwrap();
+        if tx.blocking_send(buf[0..n].into()).is_err() {
+            break;
+        }
+    });
+
+    let exit_signal = signal::ctrl_c();
+    tokio::pin!(exit_signal);
+
+    loop {
+        let mut buf = [0u8; 256];
+
+        tokio::select! {
+            Some(bytes) = rx.recv() => {
+                terminal.write_all(&bytes).await?;
+            }
+            result = terminal.read(&mut buf) => {
+                let n = result?;
+                io::stdout().write_all(&buf[..n]).await?;
+            }
+            result = &mut exit_signal => {
+                if let Err(err) = result {
+                    error!(?err, "failed to listen for exit signal");
+                }
+                trace!("gracefully exiting main");
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+</file>
+
+<file path="src/terminal/unix.rs">
+use std::convert::Infallible;
+use std::env;
+use std::ffi::{CStr, CString};
+use std::os::fd::{AsRawFd, RawFd};
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use anyhow::Result;
+use close_fds::CloseFdsBuilder;
+use nix::errno::Errno;
+use nix::libc::{login_tty, TIOCGWINSZ, TIOCSWINSZ};
+use nix::pty::{self, Winsize};
+use nix::sys::signal::{kill, Signal::SIGKILL};
+use nix::sys::wait::waitpid;
+use nix::unistd::{execvp, fork, ForkResult, Pid};
+use pin_project::{pin_project, pinned_drop};
+use tokio::fs::{self, File};
+use tokio::io::{self, AsyncRead, AsyncWrite};
+use tracing::{instrument, trace};
+
+/// Returns the default shell on this system.
+pub async fn get_default_shell() -> String {
+    if let Ok(shell) = env::var("SHELL") {
+        if !shell.is_empty() {
+            return shell;
+        }
+    }
+    for shell in [
+        "/bin/bash",
+        "/bin/sh",
+        "/usr/local/bin/bash",
+        "/usr/local/bin/sh",
+    ] {
+        if fs::metadata(shell).await.is_ok() {
+            return shell.to_string();
+        }
+    }
+    String::from("sh")
+}
+
+/// An object that stores the state for a terminal session.
+#[pin_project(PinnedDrop)]
+pub struct Terminal {
+    child: Pid,
+    #[pin]
+    master_read: File,
+    #[pin]
+    master_write: File,
+}
+
+impl Terminal {
+    /// Create a new terminal, with attached PTY.
+    #[instrument]
+    pub async fn new(shell: &str) -> Result<Terminal> {
+        let result = pty::openpty(None, None)?;
+
+        // The slave file descriptor was created by openpty() and is forked here.
+        let child = Self::fork_child(shell, result.slave.as_raw_fd())?;
+
+        // We need to clone the file object to prevent livelocks in Tokio, when multiple
+        // reads and writes happen concurrently on the same file descriptor. This is a
+        // current limitation of how the `tokio::fs::File` struct is implemented, due to
+        // its blocking I/O on a separate thread.
+        let master_read = File::from(std::fs::File::from(result.master));
+        let master_write = master_read.try_clone().await?;
+
+        trace!(%child, "creating new terminal");
+
+        Ok(Self {
+            child,
+            master_read,
+            master_write,
+        })
+    }
+
+    /// Entry point for the child process, which spawns a shell.
+    fn fork_child(shell: &str, slave_port: RawFd) -> Result<Pid> {
+        let shell = CString::new(shell.to_owned())?;
+
+        // Safety: This does not use any async-signal-unsafe operations in the child
+        // branch, such as memory allocation.
+        match unsafe { fork() }? {
+            ForkResult::Parent { child } => Ok(child),
+            ForkResult::Child => match Self::execv_child(&shell, slave_port) {
+                Ok(infallible) => match infallible {},
+                Err(_) => std::process::exit(1),
+            },
+        }
+    }
+
+    fn execv_child(shell: &CStr, slave_port: RawFd) -> Result<Infallible, Errno> {
+        // Safety: The slave file descriptor was created by openpty().
+        Errno::result(unsafe { login_tty(slave_port) })?;
+        // Safety: This is called immediately before an execv(), and there are no other
+        // threads in this process to interact with its file descriptor table.
+        unsafe { CloseFdsBuilder::new().closefrom(3) };
+
+        // Set terminal environment variables appropriately.
+        env::set_var("TERM", "xterm-256color");
+        env::set_var("COLORTERM", "truecolor");
+        env::set_var("TERM_PROGRAM", "sshx");
+        env::remove_var("TERM_PROGRAM_VERSION");
+
+        // Start the process.
+        execvp(shell, &[shell])
+    }
+
+    /// Get the window size of the TTY.
+    pub fn get_winsize(&self) -> Result<(u16, u16)> {
+        nix::ioctl_read_bad!(ioctl_get_winsize, TIOCGWINSZ, Winsize);
+        let mut winsize = make_winsize(0, 0);
+        // Safety: The master file descriptor was created by openpty().
+        unsafe { ioctl_get_winsize(self.master_read.as_raw_fd(), &mut winsize) }?;
+        Ok((winsize.ws_row, winsize.ws_col))
+    }
+
+    /// Set the window size of the TTY.
+    pub fn set_winsize(&mut self, rows: u16, cols: u16) -> Result<()> {
+        nix::ioctl_write_ptr_bad!(ioctl_set_winsize, TIOCSWINSZ, Winsize);
+        let winsize = make_winsize(rows, cols);
+        // Safety: The master file descriptor was created by openpty().
+        unsafe { ioctl_set_winsize(self.master_read.as_raw_fd(), &winsize) }?;
+        Ok(())
+    }
+}
+
+// Redirect terminal reads to the read file object.
+impl AsyncRead for Terminal {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut io::ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        self.project().master_read.poll_read(cx, buf)
+    }
+}
+
+// Redirect terminal writes to the write file object.
+impl AsyncWrite for Terminal {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        self.project().master_write.poll_write(cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.project().master_write.poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.project().master_write.poll_shutdown(cx)
+    }
+}
+
+#[pinned_drop]
+impl PinnedDrop for Terminal {
+    fn drop(self: Pin<&mut Self>) {
+        let this = self.project();
+        let child = *this.child;
+        trace!(%child, "dropping terminal");
+
+        // Kill the child process on closure so that it doesn't keep running.
+        kill(child, SIGKILL).ok();
+
+        // Reap the zombie process in a background thread.
+        std::thread::spawn(move || {
+            waitpid(child, None).ok();
+        });
+    }
+}
+
+fn make_winsize(rows: u16, cols: u16) -> Winsize {
+    Winsize {
+        ws_row: rows,
+        ws_col: cols,
+        ws_xpixel: 0, // ignored
+        ws_ypixel: 0, // ignored
+    }
+}
+</file>
+
+<file path="src/terminal/windows.rs">
+use std::pin::Pin;
+use std::process::Command;
+use std::task::Context;
+use std::task::Poll;
+
+use anyhow::Result;
+use pin_project::{pin_project, pinned_drop};
+use tokio::fs::{self, File};
+use tokio::io::{self, AsyncRead, AsyncWrite};
+use tracing::instrument;
+
+/// Returns the default shell on this system.
+///
+/// For Windows, this is implemented currently to just look for shells at a
+/// couple locations. If it fails, it returns `cmd.exe`.
+///
+/// Note: I can't get `powershell.exe` to work with ConPTY, since it returns
+/// error 8009001d. There's some magic environment variables that need to be set
+/// for Powershell to launch. This is why I don't typically use Windows!
+pub async fn get_default_shell() -> String {
+    for shell in [
+        "C:\\Program Files\\Git\\bin\\bash.exe",
+        "C:\\Windows\\System32\\cmd.exe",
+    ] {
+        if fs::metadata(shell).await.is_ok() {
+            return shell.to_string();
+        }
+    }
+    String::from("cmd.exe")
+}
+
+/// An object that stores the state for a terminal session.
+#[pin_project(PinnedDrop)]
+pub struct Terminal {
+    child: conpty::Process,
+    #[pin]
+    reader: File,
+    #[pin]
+    writer: File,
+    winsize: (u16, u16),
+}
+
+impl Terminal {
+    /// Create a new terminal, with attached PTY.
+    #[instrument]
+    pub async fn new(shell: &str) -> Result<Terminal> {
+        let mut command = Command::new(shell);
+
+        // Set terminal environment variables appropriately.
+        command.env("TERM", "xterm-256color");
+        command.env("COLORTERM", "truecolor");
+        command.env("TERM_PROGRAM", "sshx");
+        command.env_remove("TERM_PROGRAM_VERSION");
+
+        let mut child =
+            tokio::task::spawn_blocking(move || conpty::Process::spawn(command)).await??;
+        let reader = File::from_std(child.output()?.into());
+        let writer = File::from_std(child.input()?.into());
+
+        Ok(Self {
+            child,
+            reader,
+            writer,
+            winsize: (0, 0),
+        })
+    }
+
+    /// Get the window size of the TTY.
+    pub fn get_winsize(&self) -> Result<(u16, u16)> {
+        Ok(self.winsize)
+    }
+
+    /// Set the window size of the TTY.
+    pub fn set_winsize(&mut self, rows: u16, cols: u16) -> Result<()> {
+        let rows_i16 = rows.min(i16::MAX as u16) as i16;
+        let cols_i16 = cols.min(i16::MAX as u16) as i16;
+        self.child.resize(cols_i16, rows_i16)?; // Note argument order
+        self.winsize = (rows, cols);
+        Ok(())
+    }
+}
+
+// Redirect terminal reads to the read file object.
+impl AsyncRead for Terminal {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut io::ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        self.project().reader.poll_read(cx, buf)
+    }
+}
+
+// Redirect terminal writes to the write file object.
+impl AsyncWrite for Terminal {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        self.project().writer.poll_write(cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.project().writer.poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.project().writer.poll_shutdown(cx)
+    }
+}
+
+#[pinned_drop]
+impl PinnedDrop for Terminal {
+    fn drop(self: Pin<&mut Self>) {
+        let this = self.project();
+        this.child.exit(0).ok();
+    }
+}
+</file>
+
+<file path="src/controller.rs">
+//! Network gRPC client allowing server control of terminals.
+
+use std::collections::HashMap;
+use std::pin::pin;
+
+use anyhow::{Context, Result};
+use sshx_core::proto::{
+    client_update::ClientMessage, server_update::ServerMessage,
+    sshx_service_client::SshxServiceClient, ClientUpdate, CloseRequest, NewShell, OpenRequest,
+};
+use sshx_core::{rand_alphanumeric, Sid};
+use tokio::sync::mpsc;
+use tokio::task;
+use tokio::time::{self, Duration, Instant, MissedTickBehavior};
+use tokio_stream::{wrappers::ReceiverStream, StreamExt};
+use tonic::transport::Channel;
+use tracing::{debug, error, info, warn};
+
+use crate::encrypt::Encrypt;
+use crate::runner::{Runner, ShellData};
+use crate::session_persistence::{SessionPersistence, SessionState};
+
+/// Interval for sending empty heartbeat messages to the server.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(2);
+
+/// Interval to automatically reestablish connections.
+const RECONNECT_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Handles a single session's communication with the remote server.
+pub struct Controller {
+    origin: String,
+    runner: Runner,
+    encrypt: Encrypt,
+    encryption_key: String,
+
+    name: String,
+    token: String,
+    url: String,
+    write_url: Option<String>,
+
+    /// Session persistence manager.
+    persistence: SessionPersistence,
+    /// Session ID for persistence.
+    session_id: String,
+    /// Whether this session was restored from disk.
+    is_restored: bool,
+
+    /// Channels with backpressure routing messages to each shell task.
+    shells_tx: HashMap<Sid, mpsc::Sender<ShellData>>,
+    /// Channel shared with tasks to allow them to output client messages.
+    output_tx: mpsc::Sender<ClientMessage>,
+    /// Owned receiving end of the `output_tx` channel.
+    output_rx: mpsc::Receiver<ClientMessage>,
+}
+
+impl Controller {
+    /// Construct a new controller, connecting to the remote server.
+    /// Attempts to restore from a previous session if possible.
+    pub async fn new(
+        origin: &str,
+        name: &str,
+        runner: Runner,
+        enable_readers: bool,
+        api_key: Option<String>,
+    ) -> Result<Self> {
+        Self::new_with_persistence(origin, name, runner, enable_readers, api_key, true).await
+    }
+
+    /// Construct a new controller with optional session persistence.
+    pub async fn new_with_persistence(
+        origin: &str,
+        name: &str,
+        runner: Runner,
+        enable_readers: bool,
+        api_key: Option<String>,
+        enable_persistence: bool,
+    ) -> Result<Self> {
+        debug!(%origin, "connecting to server");
+
+        let persistence = SessionPersistence::new()?;
+        let session_id = SessionPersistence::generate_session_id(
+            api_key.as_deref(),
+            origin,
+            std::env::current_dir().ok().as_deref(),
+        );
+
+        // Try to restore existing session if persistence is enabled
+        if enable_persistence {
+            if let Some(restored_state) = persistence.load_session(&session_id)? {
+                // Check if the session is still valid (not too old)
+                if persistence.is_session_valid(&restored_state, 24) {
+                    // Verify the session still exists on the server
+                    if let Ok(controller) =
+                        Self::restore_from_state(restored_state, runner.clone(), &persistence, &session_id)
+                            .await
+                    {
+                        info!("Successfully restored session from previous run");
+                        return Ok(controller);
+                    } else {
+                        warn!("Failed to restore session, creating new one");
+                        // Remove invalid session file
+                        let _ = persistence.remove_session(&session_id);
+                    }
+                } else {
+                    info!("Previous session too old, creating new one");
+                    // Remove expired session file
+                    let _ = persistence.remove_session(&session_id);
+                }
+            }
+        }
+
+        // Create new session
+        Self::create_new_session(
+            origin,
+            name,
+            runner,
+            enable_readers,
+            api_key,
+            persistence,
+            session_id,
+            enable_persistence,
+        )
+        .await
+    }
+
+    /// Create a completely new session.
+    async fn create_new_session(
+        origin: &str,
+        name: &str,
+        runner: Runner,
+        enable_readers: bool,
+        api_key: Option<String>,
+        persistence: SessionPersistence,
+        session_id: String,
+        enable_persistence: bool,
+    ) -> Result<Self> {
+        let encryption_key = rand_alphanumeric(14); // 83.3 bits of entropy
+
+        let kdf_task = {
+            let encryption_key = encryption_key.clone();
+            task::spawn_blocking(move || Encrypt::new(&encryption_key))
+        };
+
+        let (write_password, kdf_write_password_task) = if enable_readers {
+            let write_password = rand_alphanumeric(14); // 83.3 bits of entropy
+            let task = {
+                let write_password = write_password.clone();
+                task::spawn_blocking(move || Encrypt::new(&write_password))
+            };
+            (Some(write_password), Some(task))
+        } else {
+            (None, None)
+        };
+
+        let mut client = Self::connect(origin).await?;
+        let encrypt = kdf_task.await?;
+        let write_password_hash = if let Some(task) = kdf_write_password_task {
+            Some(task.await?.zeros().into())
+        } else {
+            None
+        };
+
+        let req = OpenRequest {
+            origin: origin.into(),
+            encrypted_zeros: encrypt.zeros().into(),
+            name: name.into(),
+            write_password_hash,
+            user_api_key: api_key.clone(),
+        };
+        let mut resp = client.open(req).await?.into_inner();
+        resp.url = resp.url + "#" + &encryption_key;
+
+        let write_url = if let Some(ref write_password) = write_password {
+            Some(resp.url.clone() + "," + write_password)
+        } else {
+            None
+        };
+
+        // Save session state for future restoration
+        if enable_persistence {
+            let session_state = SessionState {
+                session_id: session_id.clone(),
+                encryption_key: encryption_key.clone(),
+                write_password: write_password.clone(),
+                session_name: resp.name.clone(),
+                session_token: resp.token.clone(),
+                base_url: resp.url.split('#').next().unwrap_or(&resp.url).to_string(),
+                full_url: resp.url.clone(),
+                write_url: write_url.clone(),
+                server_origin: origin.to_string(),
+                api_key: api_key.clone(),
+                created_at: chrono::Utc::now().timestamp() as u64,
+                last_accessed: chrono::Utc::now().timestamp() as u64,
+            };
+
+            if let Err(err) = persistence.save_session(&session_state) {
+                warn!("Failed to save session state: {}", err);
+            }
+        }
+
+        let (output_tx, output_rx) = mpsc::channel(64);
+        Ok(Self {
+            origin: origin.into(),
+            runner,
+            encrypt,
+            encryption_key,
+            name: resp.name,
+            token: resp.token,
+            url: resp.url,
+            write_url,
+            persistence,
+            session_id,
+            is_restored: false,
+            shells_tx: HashMap::new(),
+            output_tx,
+            output_rx,
+        })
+    }
+
+    /// Restore controller from saved session state.
+    async fn restore_from_state(
+        state: SessionState,
+        runner: Runner,
+        persistence: &SessionPersistence,
+        session_id: &str,
+    ) -> Result<Self> {
+        debug!("Attempting to restore session: {}", state.session_name);
+
+        // Recreate encryption objects
+        let encrypt = {
+            let encryption_key = state.encryption_key.clone();
+            task::spawn_blocking(move || Encrypt::new(&encryption_key)).await?
+        };
+
+        // Test connection to server to verify session is still valid
+        let mut client = Self::connect(&state.server_origin).await?;
+
+        // Try to establish a channel connection to verify the session exists
+        let hello = ClientMessage::Hello(format!("{},{}", state.session_name, state.session_token));
+        let (tx, rx) = mpsc::channel(16);
+
+        // Send hello message
+        let update = ClientUpdate {
+            client_message: Some(hello),
+        };
+        tx.send(update)
+            .await
+            .context("Failed to send hello message")?;
+
+        // Try to establish channel - if this fails, the session doesn't exist
+        let _resp = client
+            .channel(ReceiverStream::new(rx))
+            .await
+            .context("Session no longer exists on server")?;
+
+        // Session is valid, create controller
+        let (output_tx, output_rx) = mpsc::channel(64);
+        Ok(Self {
+            origin: state.server_origin,
+            runner,
+            encrypt,
+            encryption_key: state.encryption_key,
+            name: state.session_name,
+            token: state.session_token,
+            url: state.full_url,
+            write_url: state.write_url,
+            persistence: persistence.clone(),
+            session_id: session_id.to_string(),
+            is_restored: true,
+            shells_tx: HashMap::new(),
+            output_tx,
+            output_rx,
+        })
+    }
+
+    /// Create a new gRPC client to the HTTP(S) origin.
+    ///
+    /// This is used on reconnection to the server, since some replicas may be
+    /// gracefully shutting down, which means connected clients need to start a
+    /// new TCP handshake.
+    async fn connect(origin: &str) -> Result<SshxServiceClient<Channel>, tonic::transport::Error> {
+        SshxServiceClient::connect(String::from(origin)).await
+    }
+
+    /// Returns the name of the session.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the URL of the session.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    /// Returns the write URL of the session, if it exists.
+    pub fn write_url(&self) -> Option<&str> {
+        self.write_url.as_deref()
+    }
+
+    /// Returns the encryption key for this session, hidden from the server.
+    pub fn encryption_key(&self) -> &str {
+        &self.encryption_key
+    }
+
+    /// Returns whether this session was restored from a previous run.
+    pub fn is_restored(&self) -> bool {
+        self.is_restored
+    }
+
+    /// Returns the session ID used for persistence.
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    /// Run the controller forever, listening for requests from the server.
+    pub async fn run(&mut self) -> ! {
+        let mut last_retry = Instant::now();
+        let mut retries = 0;
+        loop {
+            if let Err(err) = self.try_channel().await {
+                if last_retry.elapsed() >= Duration::from_secs(10) {
+                    retries = 0;
+                }
+                let secs = 2_u64.pow(retries.min(4));
+                error!(%err, "disconnected, retrying in {secs}s...");
+                time::sleep(Duration::from_secs(secs)).await;
+                retries += 1;
+            }
+            last_retry = Instant::now();
+        }
+    }
+
+    /// Helper function used by `run()` that can return errors.
+    async fn try_channel(&mut self) -> Result<()> {
+        let (tx, rx) = mpsc::channel(16);
+
+        let hello = ClientMessage::Hello(format!("{},{}", self.name, self.token));
+        send_msg(&tx, hello).await?;
+
+        let mut client = Self::connect(&self.origin).await?;
+        let resp = client.channel(ReceiverStream::new(rx)).await?;
+        let mut messages = resp.into_inner(); // A stream of server messages.
+
+        let mut interval = time::interval(HEARTBEAT_INTERVAL);
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let mut reconnect = pin!(time::sleep(RECONNECT_INTERVAL));
+        loop {
+            let message = tokio::select! {
+                _ = interval.tick() => {
+                    tx.send(ClientUpdate::default()).await?;
+                    continue;
+                }
+                msg = self.output_rx.recv() => {
+                    let msg = msg.context("unreachable: output_tx was closed?")?;
+                    send_msg(&tx, msg).await?;
+                    continue;
+                }
+                item = messages.next() => {
+                    item.context("server closed connection")??
+                        .server_message
+                        .context("server message is missing")?
+                }
+                _ = &mut reconnect => {
+                    return Ok(()); // Reconnect to the server.
+                }
+            };
+
+            match message {
+                ServerMessage::Input(input) => {
+                    let data = self.encrypt.segment(0x200000000, input.offset, &input.data);
+                    if let Some(sender) = self.shells_tx.get(&Sid(input.id)) {
+                        // This line applies backpressure if the shell task is overloaded.
+                        sender.send(ShellData::Data(data)).await.ok();
+                    } else {
+                        warn!(%input.id, "received data for non-existing shell");
+                    }
+                }
+                ServerMessage::CreateShell(new_shell) => {
+                    let id = Sid(new_shell.id);
+                    let center = (new_shell.x, new_shell.y);
+                    if !self.shells_tx.contains_key(&id) {
+                        self.spawn_shell_task(id, center);
+                    } else {
+                        warn!(%id, "server asked to create duplicate shell");
+                    }
+                }
+                ServerMessage::CloseShell(id) => {
+                    // Closes the channel when it is dropped, notifying the task to shut down.
+                    self.shells_tx.remove(&Sid(id));
+                    send_msg(&tx, ClientMessage::ClosedShell(id)).await?;
+                }
+                ServerMessage::Sync(seqnums) => {
+                    for (id, seq) in seqnums.map {
+                        if let Some(sender) = self.shells_tx.get(&Sid(id)) {
+                            sender.send(ShellData::Sync(seq)).await.ok();
+                        } else {
+                            warn!(%id, "received sequence number for non-existing shell");
+                            send_msg(&tx, ClientMessage::ClosedShell(id)).await?;
+                        }
+                    }
+                }
+                ServerMessage::Resize(msg) => {
+                    if let Some(sender) = self.shells_tx.get(&Sid(msg.id)) {
+                        sender.send(ShellData::Size(msg.rows, msg.cols)).await.ok();
+                    } else {
+                        warn!(%msg.id, "received resize for non-existing shell");
+                    }
+                }
+                ServerMessage::Ping(ts) => {
+                    // Echo back the timestamp, for stateless latency measurement.
+                    send_msg(&tx, ClientMessage::Pong(ts)).await?;
+                }
+                ServerMessage::Error(err) => {
+                    error!(?err, "error received from server");
+                }
+            }
+        }
+    }
+
+    /// Entry point to start a new terminal task on the client.
+    fn spawn_shell_task(&mut self, id: Sid, center: (i32, i32)) {
+        let (shell_tx, shell_rx) = mpsc::channel(16);
+        let opt = self.shells_tx.insert(id, shell_tx);
+        debug_assert!(opt.is_none(), "shell ID cannot be in existing tasks");
+
+        let runner = self.runner.clone();
+        let encrypt = self.encrypt.clone();
+        let output_tx = self.output_tx.clone();
+        tokio::spawn(async move {
+            debug!(%id, "spawning new shell");
+            let new_shell = NewShell {
+                id: id.0,
+                x: center.0,
+                y: center.1,
+            };
+            if let Err(err) = output_tx.send(ClientMessage::CreatedShell(new_shell)).await {
+                error!(%id, ?err, "failed to send shell creation message");
+                return;
+            }
+            if let Err(err) = runner.run(id, encrypt, shell_rx, output_tx.clone()).await {
+                let err = ClientMessage::Error(err.to_string());
+                output_tx.send(err).await.ok();
+            }
+            output_tx.send(ClientMessage::ClosedShell(id.0)).await.ok();
+        });
+    }
+
+    /// Terminate this session gracefully.
+    pub async fn close(&self) -> Result<()> {
+        debug!("closing session");
+
+        // Remove session state from disk
+        if let Err(err) = self.persistence.remove_session(&self.session_id) {
+            warn!("Failed to remove session state: {}", err);
+        }
+
+        let req = CloseRequest {
+            name: self.name.clone(),
+            token: self.token.clone(),
+        };
+        let mut client = Self::connect(&self.origin).await?;
+        client.close(req).await?;
+        Ok(())
+    }
+
+    /// Update session access time for persistence.
+    pub fn update_access_time(&self) {
+        // This could be called periodically to update the last_accessed time
+        // For now, we'll update it when the session is saved
+    }
+
+    /// Clean up old session files.
+    pub fn cleanup_old_sessions(&self, max_age_days: u64) -> Result<usize> {
+        self.persistence.cleanup_old_sessions(max_age_days)
+    }
+}
+
+/// Attempt to send a client message over an update channel.
+async fn send_msg(tx: &mpsc::Sender<ClientUpdate>, message: ClientMessage) -> Result<()> {
+    let update = ClientUpdate {
+        client_message: Some(message),
+    };
+    tx.send(update)
+        .await
+        .context("failed to send message to server")
+}
+</file>
+
+<file path="src/encrypt.rs">
+//! Encryption of byte streams based on a random key.
+
+use aes::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
+
+type Aes128Ctr64BE = ctr::Ctr64BE<aes::Aes128>;
+
+// Note: The KDF salt is public, as it needs to be used from the web client. It
+// only exists to make rainbow table attacks less likely.
+const SALT: &str =
+    "This is a non-random salt for sshx.io, since we want to stretch the security of 83-bit keys!";
+
+/// Encrypts byte streams using the Argon2 hash of a random key.
+#[derive(Clone)]
+pub struct Encrypt {
+    aes_key: [u8; 16], // 16-bit
+}
+
+impl Encrypt {
+    /// Construct a new encryptor.
+    pub fn new(key: &str) -> Self {
+        use argon2::{Algorithm, Argon2, Params, Version};
+        // These parameters must match the browser implementation.
+        let hasher = Argon2::new(
+            Algorithm::Argon2id,
+            Version::V0x13,
+            Params::new(19 * 1024, 2, 1, Some(16)).unwrap(),
+        );
+        let mut aes_key = [0; 16];
+        hasher
+            .hash_password_into(key.as_bytes(), SALT.as_bytes(), &mut aes_key)
+            .expect("failed to hash key with argon2");
+        Self { aes_key }
+    }
+
+    /// Get the encrypted zero block.
+    pub fn zeros(&self) -> Vec<u8> {
+        let mut zeros = [0; 16];
+        let mut cipher = Aes128Ctr64BE::new(&self.aes_key.into(), &zeros.into());
+        cipher.apply_keystream(&mut zeros);
+        zeros.to_vec()
+    }
+
+    /// Encrypt a segment of data from a stream.
+    ///
+    /// Note that in CTR mode, the encryption operation is the same as the
+    /// decryption operation.
+    pub fn segment(&self, stream_num: u64, offset: u64, data: &[u8]) -> Vec<u8> {
+        assert_ne!(stream_num, 0, "stream number must be nonzero"); // security check
+
+        let mut iv = [0; 16];
+        iv[0..8].copy_from_slice(&stream_num.to_be_bytes());
+
+        let mut cipher = Aes128Ctr64BE::new(&self.aes_key.into(), &iv.into());
+        let mut buf = data.to_vec();
+        cipher.seek(offset);
+        cipher.apply_keystream(&mut buf);
+        buf
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Encrypt;
+
+    #[test]
+    fn make_encrypt() {
+        let encrypt = Encrypt::new("test");
+        assert_eq!(
+            encrypt.zeros(),
+            [198, 3, 249, 238, 65, 10, 224, 98, 253, 73, 148, 1, 138, 3, 108, 143],
+        );
+    }
+
+    #[test]
+    fn roundtrip_ctr() {
+        let encrypt = Encrypt::new("this is a test key");
+        let data = b"hello world";
+        let encrypted = encrypt.segment(1, 0, data);
+        assert_eq!(encrypted.len(), data.len());
+        let decrypted = encrypt.segment(1, 0, &encrypted);
+        assert_eq!(decrypted, data);
+    }
+
+    #[test]
+    fn matches_offset() {
+        let encrypt = Encrypt::new("this is a test key");
+        let data = b"1st block.(16B)|2nd block......|3rd block";
+        let encrypted = encrypt.segment(1, 0, data);
+        assert_eq!(encrypted.len(), data.len());
+        for i in 1..data.len() {
+            let encrypted_suffix = encrypt.segment(1, i as u64, &data[i..]);
+            assert_eq!(encrypted_suffix, &encrypted[i..]);
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn zero_stream_num() {
+        let encrypt = Encrypt::new("this is a test key");
+        encrypt.segment(0, 0, b"hello world");
+    }
+}
+</file>
+
+<file path="src/lib.rs">
+//! Library code for the sshx command-line client application.
+//!
+//! This crate does not forbid use of unsafe code because it needs to interact
+//! with operating-system APIs to access pseudoterminal (PTY) devices.
+
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
+
+pub mod controller;
+pub mod encrypt;
+pub mod runner;
+pub mod session_persistence;
+pub mod terminal;
+</file>
+
+<file path="src/main.rs">
+use std::process::ExitCode;
+
+use ansi_term::Color::{Cyan, Fixed, Green};
+use anyhow::Result;
+use clap::Parser;
+use sshx::{
+    controller::Controller, runner::Runner, session_persistence::SessionPersistence,
+    terminal::get_default_shell,
+};
+use tokio::signal;
+use tracing::error;
+
+/// A secure web-based, collaborative terminal.
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// Address of the remote sshx server.
+    #[clap(long, default_value = "https://sshx.io", env = "SSHX_SERVER")]
+    server: String,
+
+    /// Local shell command to run in the terminal.
+    #[clap(long)]
+    shell: Option<String>,
+
+    /// Quiet mode, only prints the URL to stdout.
+    #[clap(short, long)]
+    quiet: bool,
+
+    /// Session name displayed in the title (defaults to user@hostname).
+    #[clap(long)]
+    name: Option<String>,
+
+    /// Enable read-only access mode - generates separate URLs for viewers and
+    /// editors.
+    #[clap(long)]
+    enable_readers: bool,
+
+    /// User API key for authenticated sessions.
+    /// When provided, enables session persistence to maintain consistent URLs across restarts.
+    #[clap(long, env = "SSHX_API_KEY")]
+    api_key: Option<String>,
+
+    /// Clean up old session files (older than specified days).
+    #[clap(long)]
+    cleanup_sessions: Option<u64>,
+}
+
+fn print_greeting(shell: &str, controller: &Controller) {
+    let version_str = match option_env!("CARGO_PKG_VERSION") {
+        Some(version) => format!("v{version}"),
+        None => String::from("[dev]"),
+    };
+
+    let status_indicator = if controller.is_restored() {
+        format!(" {}", Fixed(8).paint("(restored)"))
+    } else {
+        String::new()
+    };
+
+    if let Some(write_url) = controller.write_url() {
+        println!(
+            r#"
+  {sshx} {version}{status}
+
+  {arr}  Read-only link: {link_v}
+  {arr}  Writable link:  {link_e}
+  {arr}  Shell:          {shell_v}
+"#,
+            sshx = Green.bold().paint("sshx"),
+            version = Green.paint(&version_str),
+            status = status_indicator,
+            arr = Green.paint("➜"),
+            link_v = Cyan.underline().paint(controller.url()),
+            link_e = Cyan.underline().paint(write_url),
+            shell_v = Fixed(8).paint(shell),
+        );
+    } else {
+        println!(
+            r#"
+  {sshx} {version}{status}
+
+  {arr}  Link:  {link_v}
+  {arr}  Shell: {shell_v}
+"#,
+            sshx = Green.bold().paint("sshx"),
+            version = Green.paint(&version_str),
+            status = status_indicator,
+            arr = Green.paint("➜"),
+            link_v = Cyan.underline().paint(controller.url()),
+            shell_v = Fixed(8).paint(shell),
+        );
+    }
+}
+
+#[tokio::main]
+async fn start(args: Args) -> Result<()> {
+    // Handle session cleanup if requested
+    if let Some(max_age_days) = args.cleanup_sessions {
+        let persistence = SessionPersistence::new()?;
+        let removed_count = persistence.cleanup_old_sessions(max_age_days)?;
+        println!("Cleaned up {} old session files", removed_count);
+        return Ok(());
+    }
+    let shell = match args.shell {
+        Some(shell) => shell,
+        None => get_default_shell().await,
+    };
+
+    let name = args.name.unwrap_or_else(|| {
+        let mut name = whoami::username();
+        if let Ok(host) = whoami::fallible::hostname() {
+            // Trim domain information like .lan or .local
+            let host = host.split('.').next().unwrap_or(&host);
+            name += "@";
+            name += host;
+        }
+        name
+    });
+
+    let runner = Runner::Shell(shell.clone());
+
+    // Enable session persistence only when using API key
+    let enable_persistence = args.api_key.is_some();
+
+    let mut controller = Controller::new_with_persistence(
+        &args.server,
+        &name,
+        runner,
+        args.enable_readers,
+        args.api_key,
+        enable_persistence,
+    )
+    .await?;
+    if args.quiet {
+        if let Some(write_url) = controller.write_url() {
+            println!("{}", write_url);
+        } else {
+            println!("{}", controller.url());
+        }
+    } else {
+        print_greeting(&shell, &controller);
+    }
+
+    let exit_signal = signal::ctrl_c();
+    tokio::pin!(exit_signal);
+    tokio::select! {
+        _ = controller.run() => unreachable!(),
+        Ok(()) = &mut exit_signal => (),
+    };
+    controller.close().await?;
+
+    Ok(())
+}
+
+fn main() -> ExitCode {
+    let args = Args::parse();
+
+    let default_level = if args.quiet { "error" } else { "info" };
+
+    tracing_subscriber::fmt()
+        .with_env_filter(std::env::var("RUST_LOG").unwrap_or(default_level.into()))
+        .with_writer(std::io::stderr)
+        .init();
+
+    match start(args) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            error!("{err:?}");
+            ExitCode::FAILURE
+        }
+    }
+}
+</file>
+
+<file path="src/runner.rs">
+//! Defines tasks that control the behavior of a single shell in the client.
+
+use anyhow::Result;
+use encoding_rs::{CoderResult, UTF_8};
+use sshx_core::proto::{client_update::ClientMessage, TerminalData};
+use sshx_core::Sid;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::mpsc,
+};
+
+use crate::encrypt::Encrypt;
+use crate::terminal::Terminal;
+
+const CONTENT_CHUNK_SIZE: usize = 1 << 16; // Send at most this many bytes at a time.
+const CONTENT_ROLLING_BYTES: usize = 8 << 20; // Store at least this much content.
+const CONTENT_PRUNE_BYTES: usize = 12 << 20; // Prune when we exceed this length.
+
+/// Variants of terminal behavior that are used by the controller.
+#[derive(Debug, Clone)]
+pub enum Runner {
+    /// Spawns the specified shell as a subprocess, forwarding PTYs.
+    Shell(String),
+
+    /// Mock runner that only echos its input, useful for testing.
+    Echo,
+}
+
+/// Internal message routed to shell runners.
+pub enum ShellData {
+    /// Sequence of input bytes from the server.
+    Data(Vec<u8>),
+    /// Information about the server's current sequence number.
+    Sync(u64),
+    /// Resize the shell to a different number of rows and columns.
+    Size(u32, u32),
+}
+
+impl Runner {
+    /// Asynchronous task to run a single shell with process I/O.
+    pub async fn run(
+        &self,
+        id: Sid,
+        encrypt: Encrypt,
+        shell_rx: mpsc::Receiver<ShellData>,
+        output_tx: mpsc::Sender<ClientMessage>,
+    ) -> Result<()> {
+        match self {
+            Self::Shell(shell) => shell_task(id, encrypt, shell, shell_rx, output_tx).await,
+            Self::Echo => echo_task(id, encrypt, shell_rx, output_tx).await,
+        }
+    }
+}
+
+/// Asynchronous task handling a single shell within the session.
+async fn shell_task(
+    id: Sid,
+    encrypt: Encrypt,
+    shell: &str,
+    mut shell_rx: mpsc::Receiver<ShellData>,
+    output_tx: mpsc::Sender<ClientMessage>,
+) -> Result<()> {
+    let mut term = Terminal::new(shell).await?;
+    term.set_winsize(24, 80)?;
+
+    let mut content = String::new(); // content from the terminal
+    let mut content_offset = 0; // bytes before the first character of `content`
+    let mut decoder = UTF_8.new_decoder(); // UTF-8 streaming decoder
+    let mut seq = 0; // our log of the server's sequence number
+    let mut seq_outdated = 0; // number of times seq has been outdated
+    let mut buf = [0u8; 4096]; // buffer for reading
+    let mut finished = false; // set when this is done
+
+    while !finished {
+        tokio::select! {
+            result = term.read(&mut buf) => {
+                let n = result?;
+                if n == 0 {
+                    finished = true;
+                } else {
+                    content.reserve(decoder.max_utf8_buffer_length(n).unwrap());
+                    let (result, _, _) = decoder.decode_to_string(&buf[..n], &mut content, false);
+                    debug_assert!(result == CoderResult::InputEmpty);
+                }
+            }
+            item = shell_rx.recv() => {
+                match item {
+                    Some(ShellData::Data(data)) => {
+                        term.write_all(&data).await?;
+                    }
+                    Some(ShellData::Sync(seq2)) => {
+                        if seq2 < seq as u64 {
+                            seq_outdated += 1;
+                            if seq_outdated >= 3 {
+                                seq = seq2 as usize;
+                            }
+                        }
+                    }
+                    Some(ShellData::Size(rows, cols)) => {
+                        term.set_winsize(rows as u16, cols as u16)?;
+                    }
+                    None => finished = true, // Server closed this shell.
+                }
+            }
+        }
+
+        if finished {
+            content.reserve(decoder.max_utf8_buffer_length(0).unwrap());
+            let (result, _, _) = decoder.decode_to_string(&[], &mut content, true);
+            debug_assert!(result == CoderResult::InputEmpty);
+        }
+
+        // Send data if the server has fallen behind.
+        if content_offset + content.len() > seq {
+            let start = prev_char_boundary(&content, seq - content_offset);
+            let end = prev_char_boundary(&content, (start + CONTENT_CHUNK_SIZE).min(content.len()));
+            let data = encrypt.segment(
+                0x100000000 | id.0 as u64, // stream number
+                (content_offset + start) as u64,
+                &content.as_bytes()[start..end],
+            );
+            let data = TerminalData {
+                id: id.0,
+                data: data.into(),
+                seq: (content_offset + start) as u64,
+            };
+            output_tx.send(ClientMessage::Data(data)).await?;
+            seq = content_offset + end;
+            seq_outdated = 0;
+        }
+
+        if content.len() > CONTENT_PRUNE_BYTES && seq - CONTENT_ROLLING_BYTES > content_offset {
+            let pruned = (seq - CONTENT_ROLLING_BYTES) - content_offset;
+            let pruned = prev_char_boundary(&content, pruned);
+            content_offset += pruned;
+            content.drain(..pruned);
+        }
+    }
+    Ok(())
+}
+
+/// Find the last char boundary before an index in O(1) time.
+fn prev_char_boundary(s: &str, i: usize) -> usize {
+    (0..=i)
+        .rev()
+        .find(|&j| s.is_char_boundary(j))
+        .expect("no previous char boundary")
+}
+
+async fn echo_task(
+    id: Sid,
+    encrypt: Encrypt,
+    mut shell_rx: mpsc::Receiver<ShellData>,
+    output_tx: mpsc::Sender<ClientMessage>,
+) -> Result<()> {
+    let mut seq = 0;
+    while let Some(item) = shell_rx.recv().await {
+        match item {
+            ShellData::Data(data) => {
+                let msg = String::from_utf8_lossy(&data);
+                let term_data = TerminalData {
+                    id: id.0,
+                    data: encrypt
+                        .segment(0x100000000 | id.0 as u64, seq, msg.as_bytes())
+                        .into(),
+                    seq,
+                };
+                output_tx.send(ClientMessage::Data(term_data)).await?;
+                seq += msg.len() as u64;
+            }
+            ShellData::Sync(_) => (),
+            ShellData::Size(_, _) => (),
+        }
+    }
+    Ok(())
+}
+</file>
+
+<file path="src/session_persistence.rs">
+//! Session persistence for sshx client to maintain consistent URLs across restarts.
+
+use std::collections::hash_map::DefaultHasher;
+use std::fs;
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use tracing::{debug, info, warn};
+
+/// Persistent session information that can be restored across restarts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionState {
+    /// Unique session identifier based on stable factors.
+    pub session_id: String,
+    /// Encryption key for the session.
+    pub encryption_key: String,
+    /// Write password for read-only mode (if enabled).
+    pub write_password: Option<String>,
+    /// Session name returned by server.
+    pub session_name: String,
+    /// Session token for authentication.
+    pub session_token: String,
+    /// Base URL without encryption key.
+    pub base_url: String,
+    /// Full session URL with encryption key.
+    pub full_url: String,
+    /// Write URL (if read-only mode is enabled).
+    pub write_url: Option<String>,
+    /// Server origin.
+    pub server_origin: String,
+    /// API key used (if any).
+    pub api_key: Option<String>,
+    /// Timestamp when session was created.
+    pub created_at: u64,
+    /// Timestamp when session was last accessed.
+    pub last_accessed: u64,
+}
+
+/// Session persistence manager.
+#[derive(Clone)]
+pub struct SessionPersistence {
+    /// Directory to store session files.
+    session_dir: PathBuf,
+}
+
+impl SessionPersistence {
+    /// Create a new session persistence manager.
+    pub fn new() -> Result<Self> {
+        let session_dir = Self::get_session_dir()?;
+        fs::create_dir_all(&session_dir)
+            .with_context(|| format!("Failed to create session directory: {:?}", session_dir))?;
+
+        Ok(Self { session_dir })
+    }
+
+    /// Generate a stable session identifier based on execution context.
+    pub fn generate_session_id(
+        api_key: Option<&str>,
+        server_origin: &str,
+        working_dir: Option<&Path>,
+    ) -> String {
+        let mut hasher = DefaultHasher::new();
+
+        // Hash API key (most important for user sessions)
+        if let Some(key) = api_key {
+            key.hash(&mut hasher);
+        }
+
+        // Hash server origin
+        server_origin.hash(&mut hasher);
+
+        // Hash working directory
+        let work_dir = working_dir
+            .map(|p| p.to_path_buf())
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_else(|| PathBuf::from("."));
+        work_dir.hash(&mut hasher);
+
+        // Hash hostname for additional uniqueness
+        if let Ok(hostname) = whoami::fallible::hostname() {
+            hostname.hash(&mut hasher);
+        }
+
+        // Hash username
+        whoami::username().hash(&mut hasher);
+
+        format!("sshx-{:016x}", hasher.finish())
+    }
+
+    /// Save session state to disk.
+    pub fn save_session(&self, state: &SessionState) -> Result<()> {
+        let file_path = self.session_dir.join(format!("{}.json", state.session_id));
+        let json_data =
+            serde_json::to_string_pretty(state).context("Failed to serialize session state")?;
+
+        fs::write(&file_path, json_data)
+            .with_context(|| format!("Failed to write session file: {:?}", file_path))?;
+
+        debug!("Session state saved to {:?}", file_path);
+        Ok(())
+    }
+
+    /// Load session state from disk.
+    pub fn load_session(&self, session_id: &str) -> Result<Option<SessionState>> {
+        let file_path = self.session_dir.join(format!("{}.json", session_id));
+
+        if !file_path.exists() {
+            return Ok(None);
+        }
+
+        let json_data = fs::read_to_string(&file_path)
+            .with_context(|| format!("Failed to read session file: {:?}", file_path))?;
+
+        let mut state: SessionState = serde_json::from_str(&json_data)
+            .with_context(|| format!("Failed to parse session file: {:?}", file_path))?;
+
+        // Update last accessed time
+        state.last_accessed = chrono::Utc::now().timestamp() as u64;
+
+        debug!("Session state loaded from {:?}", file_path);
+        Ok(Some(state))
+    }
+
+    /// Remove session state from disk.
+    pub fn remove_session(&self, session_id: &str) -> Result<()> {
+        let file_path = self.session_dir.join(format!("{}.json", session_id));
+
+        if file_path.exists() {
+            fs::remove_file(&file_path)
+                .with_context(|| format!("Failed to remove session file: {:?}", file_path))?;
+            debug!("Session state removed: {:?}", file_path);
+        }
+
+        Ok(())
+    }
+
+    /// List all stored sessions.
+    pub fn list_sessions(&self) -> Result<Vec<SessionState>> {
+        let mut sessions = Vec::new();
+
+        if !self.session_dir.exists() {
+            return Ok(sessions);
+        }
+
+        let entries = fs::read_dir(&self.session_dir)
+            .with_context(|| format!("Failed to read session directory: {:?}", self.session_dir))?;
+
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    if let Ok(Some(session)) = self.load_session(stem) {
+                        sessions.push(session);
+                    }
+                }
+            }
+        }
+
+        // Sort by last accessed time (most recent first)
+        sessions.sort_by(|a, b| b.last_accessed.cmp(&a.last_accessed));
+
+        Ok(sessions)
+    }
+
+    /// Clean up old session files (older than specified days).
+    pub fn cleanup_old_sessions(&self, max_age_days: u64) -> Result<usize> {
+        let cutoff_time = chrono::Utc::now().timestamp() as u64 - (max_age_days * 24 * 60 * 60);
+        let sessions = self.list_sessions()?;
+        let mut removed_count = 0;
+
+        for session in sessions {
+            if session.last_accessed < cutoff_time {
+                if let Err(err) = self.remove_session(&session.session_id) {
+                    warn!(
+                        "Failed to remove old session {}: {}",
+                        session.session_id, err
+                    );
+                } else {
+                    removed_count += 1;
+                    info!("Removed old session: {}", session.session_id);
+                }
+            }
+        }
+
+        Ok(removed_count)
+    }
+
+    /// Get the session storage directory.
+    fn get_session_dir() -> Result<PathBuf> {
+        let base_dir = if let Some(config_dir) = dirs::config_dir() {
+            config_dir
+        } else if let Some(home_dir) = dirs::home_dir() {
+            home_dir.join(".config")
+        } else {
+            PathBuf::from(".")
+        };
+
+        Ok(base_dir.join("sshx").join("sessions"))
+    }
+
+    /// Check if a session is still valid (not too old).
+    pub fn is_session_valid(&self, state: &SessionState, max_age_hours: u64) -> bool {
+        let max_age_seconds = max_age_hours * 60 * 60;
+        let current_time = chrono::Utc::now().timestamp() as u64;
+
+        current_time.saturating_sub(state.created_at) <= max_age_seconds
+    }
+}
+
+impl Default for SessionPersistence {
+    fn default() -> Self {
+        Self::new().expect("Failed to create session persistence")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_session_id_generation() {
+        let api_key = Some("test-api-key");
+        let server = "http://localhost:3000";
+        let work_dir = Some(Path::new("/tmp/test"));
+
+        let id1 = SessionPersistence::generate_session_id(api_key, server, work_dir);
+        let id2 = SessionPersistence::generate_session_id(api_key, server, work_dir);
+
+        // Same inputs should generate same ID
+        assert_eq!(id1, id2);
+
+        // Different API key should generate different ID
+        let id3 = SessionPersistence::generate_session_id(Some("different-key"), server, work_dir);
+        assert_ne!(id1, id3);
+
+        // Different server should generate different ID
+        let id4 =
+            SessionPersistence::generate_session_id(api_key, "http://different.com", work_dir);
+        assert_ne!(id1, id4);
+    }
+
+    #[test]
+    fn test_session_state_serialization() {
+        let state = SessionState {
+            session_id: "test-session".to_string(),
+            encryption_key: "test-key".to_string(),
+            write_password: Some("write-pass".to_string()),
+            session_name: "test-name".to_string(),
+            session_token: "test-token".to_string(),
+            base_url: "http://example.com/s/test".to_string(),
+            full_url: "http://example.com/s/test#key".to_string(),
+            write_url: Some("http://example.com/s/test#key,write".to_string()),
+            server_origin: "http://example.com".to_string(),
+            api_key: Some("api-key".to_string()),
+            created_at: 1640995200,
+            last_accessed: 1640995300,
+        };
+
+        let json = serde_json::to_string(&state).unwrap();
+        let deserialized: SessionState = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(state.session_id, deserialized.session_id);
+        assert_eq!(state.encryption_key, deserialized.encryption_key);
+        assert_eq!(state.api_key, deserialized.api_key);
+    }
+}
+</file>
+
+<file path="src/terminal.rs">
+//! Terminal driver, which communicates with a shell subprocess through PTY.
+
+#![allow(unsafe_code)]
+
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        mod unix;
+        pub use unix::{get_default_shell, Terminal};
+    } else if #[cfg(windows)] {
+        mod windows;
+        pub use windows::{get_default_shell, Terminal};
+    } else {
+        compile_error!("unsupported platform for terminal driver");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+
+    use super::Terminal;
+
+    #[tokio::test]
+    async fn winsize() -> Result<()> {
+        let shell = if cfg!(unix) { "/bin/sh" } else { "cmd.exe" };
+        let mut terminal = Terminal::new(shell).await?;
+        assert_eq!(terminal.get_winsize()?, (0, 0));
+        terminal.set_winsize(120, 72)?;
+        assert_eq!(terminal.get_winsize()?, (120, 72));
+        Ok(())
+    }
+}
+</file>
+
+<file path="Cargo.toml">
+[package]
+name = "sshx"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+description.workspace = true
+repository.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+edition = "2021"
+
+[dependencies]
+aes = "0.8.3"
+ansi_term = "0.12.1"
+anyhow.workspace = true
+argon2 = { version = "0.5.2", default-features = false, features = ["alloc"] }
+cfg-if = "1.0.0"
+chrono = { version = "0.4.31", features = ["serde"] }
+clap.workspace = true
+dirs = "5.0.1"
+ctr = "0.9.2"
+encoding_rs = "0.8.31"
+pin-project = "1.1.3"
+serde = { version = "1.0.193", features = ["derive"] }
+serde_json = "1.0.108"
+sshx-core.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tonic.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+whoami = { version = "1.5.1", default-features = false }
+
+[target.'cfg(unix)'.dependencies]
+close_fds = "0.3.2"
+nix = { version = "0.27.1", features = ["ioctl", "process", "signal", "term"] }
+
+[target.'cfg(windows)'.dependencies]
+conpty = "0.7.0"
+</file>
+
+</files>
