@@ -92,11 +92,11 @@ mod ansi_filter_tests {
     
     #[test]
     fn test_preserve_useful_ansi() {
-        // Test that we preserve useful ANSI sequences like colors
+        // Test that we filter out problematic ANSI sequences but preserve content
         let colored_text = "\x1B[31mRed Text\x1B[0m";
         let filtered = filter_ansi_sequences(colored_text);
-        // Colors should be preserved (not in our filter list)
-        assert!(filtered.contains("31m"));
+        // All ANSI sequences should be filtered out
+        assert!(!filtered.contains("31m"));
         assert!(filtered.contains("Red Text"));
     }
     

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Manager};
+use tauri::Manager;
 use tauri::{Emitter, State};
 use tokio::sync::{RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
@@ -14,7 +14,7 @@ mod string_compressor;
 mod terminal_events;
 
 use iroh_gossip::api::GossipSender;
-use p2p::{P2PNetwork, SessionTicket};
+use riterm_shared::{P2PNetwork, SessionTicket};
 use terminal_events::{EventType, TerminalEvent};
 
 /// Maximum number of concurrent sessions to prevent memory exhaustion

@@ -1,0 +1,884 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+
+Additional Info:
+----------------
+
+================================================================
+Directory Structure
+================================================================
+.cargo/
+  config.toml
+src/
+  lib.rs
+  main.rs
+.gitignore
+Cargo.toml
+
+================================================================
+Files
+================================================================
+
+================
+File: .cargo/config.toml
+================
+# we specify the profile here, because it is the only way to define
+# different settings for a single crate in a workspace.
+[profile.release]
+codegen-units = 1
+strip = "symbols"
+debug = false
+lto = true
+opt-level = "z"
+panic = 'abort'
+
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
+
+================
+File: src/lib.rs
+================
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, Mutex},
+};
+
+use anyhow::Result;
+use chat_shared::{ChatSender, ChatTicket, NodeId, TopicId};
+use n0_future::{time::Duration, StreamExt};
+use serde::{Deserialize, Serialize};
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber_wasm::MakeConsoleWriter;
+use wasm_bindgen::{prelude::wasm_bindgen, JsError, JsValue};
+use wasm_streams::ReadableStream;
+
+#[wasm_bindgen(start)]
+fn start() {
+    console_error_panic_hook::set_once();
+
+    tracing_subscriber::fmt()
+        .with_max_level(LevelFilter::DEBUG)
+        .with_writer(
+            // To avoide trace events in the browser from showing their JS backtrace
+            MakeConsoleWriter::default().map_trace_level_to(tracing::Level::DEBUG),
+        )
+        // If we don't do this in the browser, we get a runtime error.
+        .without_time()
+        .with_ansi(false)
+        .init();
+
+    tracing::info!("(testing logging) Logging setup");
+}
+
+/// Node for chatting over iroh-gossip
+#[wasm_bindgen]
+pub struct ChatNode(chat_shared::ChatNode);
+
+#[wasm_bindgen]
+impl ChatNode {
+    /// Spawns a gossip node.
+    pub async fn spawn() -> Result<Self, JsError> {
+        let inner = chat_shared::ChatNode::spawn(None)
+            .await
+            .map_err(to_js_err)?;
+        Ok(Self(inner))
+    }
+
+    /// Returns the node id of this node.
+    pub fn node_id(&self) -> String {
+        self.0.node_id().to_string()
+    }
+
+    /// Returns information about all the remote nodes this [`Endpoint`] knows about.
+    pub fn remote_info(&self) -> Vec<JsValue> {
+        self.0
+            .remote_info()
+            .into_iter()
+            .map(|value| serde_wasm_bindgen::to_value(&value).unwrap())
+            .collect()
+    }
+
+    /// Opens a chat.
+    pub async fn create(&self, nickname: String) -> Result<Channel, JsError> {
+        // let ticket = ChatTicket::new(topic);
+        let ticket = ChatTicket::new_random();
+        self.join_inner(ticket, nickname).await
+    }
+
+    /// Joins a chat.
+    pub async fn join(&self, ticket: String, nickname: String) -> Result<Channel, JsError> {
+        let ticket = ChatTicket::deserialize(&ticket).map_err(to_js_err)?;
+        self.join_inner(ticket, nickname).await
+    }
+
+    async fn join_inner(&self, ticket: ChatTicket, nickname: String) -> Result<Channel, JsError> {
+        let (sender, receiver) = self.0.join(&ticket, nickname).await.map_err(to_js_err)?;
+        let sender = ChannelSender(sender);
+        let neighbors = Arc::new(Mutex::new(BTreeSet::new()));
+        let neighbors2 = neighbors.clone();
+        let receiver = receiver.map(move |event| {
+            if let Ok(event) = &event {
+                match event {
+                    chat_shared::Event::Joined { neighbors } => {
+                        neighbors2.lock().unwrap().extend(neighbors.iter().cloned());
+                    }
+                    chat_shared::Event::NeighborUp { node_id } => {
+                        neighbors2.lock().unwrap().insert(*node_id);
+                    }
+                    chat_shared::Event::NeighborDown { node_id } => {
+                        neighbors2.lock().unwrap().remove(node_id);
+                    }
+                    _ => {}
+                }
+            }
+            event
+                .map_err(|err| JsValue::from(&err.to_string()))
+                .map(|event| serde_wasm_bindgen::to_value(&event).unwrap())
+        });
+        let receiver = ReadableStream::from_stream(receiver).into_raw();
+
+        // Add ourselves to the ticket.
+        let mut ticket = ticket;
+        ticket.bootstrap.insert(self.0.node_id());
+        // ticket.bootstrap = [self.0.node_id()].into_iter().collect();
+
+        let topic = Channel {
+            topic_id: ticket.topic_id,
+            bootstrap: ticket.bootstrap,
+            neighbors,
+            me: self.0.node_id(),
+            sender,
+            receiver,
+        };
+        Ok(topic)
+    }
+}
+
+type ChannelReceiver = wasm_streams::readable::sys::ReadableStream;
+
+#[wasm_bindgen]
+pub struct Channel {
+    topic_id: TopicId,
+    me: NodeId,
+    bootstrap: BTreeSet<NodeId>,
+    neighbors: Arc<Mutex<BTreeSet<NodeId>>>,
+    sender: ChannelSender,
+    receiver: ChannelReceiver,
+}
+
+#[wasm_bindgen]
+impl Channel {
+    #[wasm_bindgen(getter)]
+    pub fn sender(&self) -> ChannelSender {
+        self.sender.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn receiver(&mut self) -> ChannelReceiver {
+        self.receiver.clone()
+    }
+
+    pub fn ticket(&self, opts: JsValue) -> Result<String, JsError> {
+        let opts: TicketOpts = serde_wasm_bindgen::from_value(opts)?;
+        let mut ticket = ChatTicket::new(self.topic_id);
+        if opts.include_myself {
+            ticket.bootstrap.insert(self.me);
+        }
+        if opts.include_bootstrap {
+            ticket.bootstrap.extend(self.bootstrap.iter().copied());
+        }
+        if opts.include_neighbors {
+            let neighbors = self.neighbors.lock().unwrap();
+            ticket.bootstrap.extend(neighbors.iter().copied())
+        }
+        tracing::info!("opts {:?} ticket {:?}", opts, ticket);
+        Ok(ticket.serialize())
+    }
+
+    pub fn id(&self) -> String {
+        self.topic_id.to_string()
+    }
+
+    pub fn neighbors(&self) -> Vec<String> {
+        self.neighbors
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|x| x.to_string())
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerInfo {
+    pub node_id: NodeId,
+    pub nickname: String,
+    pub last_active: Duration,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TicketOpts {
+    pub include_myself: bool,
+    pub include_bootstrap: bool,
+    pub include_neighbors: bool,
+}
+
+#[wasm_bindgen]
+#[derive(Debug, Clone)]
+pub struct ChannelSender(ChatSender);
+
+#[wasm_bindgen]
+impl ChannelSender {
+    pub async fn broadcast(&self, text: String) -> Result<(), JsError> {
+        self.0.send(text).await.map_err(to_js_err)?;
+        Ok(())
+    }
+
+    pub fn set_nickame(&self, nickname: String) {
+        self.0.set_nickname(nickname);
+    }
+}
+
+fn to_js_err(err: impl Into<anyhow::Error>) -> JsError {
+    let err: anyhow::Error = err.into();
+    JsError::new(&err.to_string())
+}
+
+================
+File: .gitignore
+================
+/pkg
+
+================
+File: Cargo.toml
+================
+[package]
+name = "chat-browser"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+anyhow = "1.0.86"
+chat-shared = { version = "0.1.0", path = "../shared" }
+console_error_panic_hook = "0.1.7"
+getrandom = { version = "0.2", features = ["js"] }
+n0-future = "0.1.2"
+serde = "1.0.217"
+serde-wasm-bindgen = "0.6.5"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-subscriber-wasm = "0.1.0"
+wasm-bindgen = "=0.2.100"
+wasm-bindgen-futures = "0.4"
+wasm-streams = "0.4.2"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["--enable-nontrapping-float-to-int", "--enable-bulk-memory"]
+
+================
+File: src/main.rs
+================
+use std::collections::HashMap;
+
+use anyhow::{Context, Result};
+use chat_shared::{ChatNode, ChatTicket, Event};
+use clap::Parser;
+use iroh::SecretKey;
+use n0_future::StreamExt;
+use tokio::io::{AsyncBufReadExt, BufReader};
+
+#[derive(Parser, Debug)]
+struct Args {
+    #[clap(subcommand)]
+    command: Command,
+    /// Set your name for this chat session
+    #[clap(short, long)]
+    nickname: String,
+}
+
+#[derive(Parser, Debug)]
+pub enum Command {
+    /// Create a new chat channel
+    Create,
+    /// Join a chat channel
+    Join {
+        /// Ticket for the channel
+        ticket: String,
+    },
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
+    let args = Args::parse();
+
+    let secret_key = match std::env::var("IROH_SECRET") {
+        Err(_) => {
+            let secret_key = SecretKey::generate(rand::rngs::OsRng);
+            println!("* using new secret. to reuse, set this environment variable:");
+            println!(
+                "IROH_SECRET={}",
+                data_encoding::HEXLOWER.encode(&secret_key.to_bytes())
+            );
+            secret_key
+        }
+        Ok(s) => s
+            .parse()
+            .context("failed to parse secret key from IROH_SECRET environment variable")?,
+    };
+
+    let node = ChatNode::spawn(Some(secret_key)).await?;
+    println!("node id: {}", node.node_id());
+
+    let ticket = match args.command {
+        Command::Create => ChatTicket::new_random(),
+        Command::Join { ticket } => ChatTicket::deserialize(&ticket)?,
+    };
+
+    let mut our_ticket = ticket.clone();
+    our_ticket.bootstrap = [node.node_id()].into_iter().collect();
+    println!("* ticket to join this chat:");
+    println!("{}", our_ticket.serialize());
+
+    println!("* waiting for peers ...");
+    let (sender, mut receiver) = node.join(&ticket, args.nickname).await?;
+
+    let receive = tokio::task::spawn(async move {
+        let mut names = HashMap::new();
+        while let Some(event) = receiver.try_next().await? {
+            match event {
+                Event::Joined { neighbors } => {
+                    println!("* swarm joined");
+                    for node_id in neighbors {
+                        println!("* neighbor up: {node_id}")
+                    }
+                }
+                Event::Presence {
+                    from,
+                    nickname,
+                    sent_timestamp: _,
+                } => {
+                    let from_short = from.fmt_short();
+                    if !nickname.is_empty() {
+                        let old_name = names.get(&from);
+                        if old_name != Some(&nickname) {
+                            println!("* {from_short} is now known as {nickname}")
+                        }
+                    }
+                    names.insert(from, nickname.clone());
+                }
+                Event::MessageReceived {
+                    from,
+                    text,
+                    nickname,
+                    sent_timestamp: _,
+                } => {
+                    let from_short = from.fmt_short();
+                    if !nickname.is_empty() {
+                        let old_name = names.get(&from);
+                        if old_name != Some(&nickname) {
+                            println!("* {from_short} is now known as {nickname}")
+                        }
+                    }
+                    println!("<{from_short}> {nickname}: {text}");
+                }
+                Event::NeighborUp { node_id } => {
+                    println!("* neighbor up: {node_id}")
+                }
+                Event::NeighborDown { node_id } => {
+                    println!("* neighbor down: {node_id}")
+                }
+                Event::Lagged => {
+                    println!("* warn: gossip stream lagged")
+                }
+            }
+        }
+        println!("* closed");
+        anyhow::Ok(())
+    });
+
+    let send = tokio::task::spawn(async move {
+        let mut input = BufReader::new(tokio::io::stdin()).lines();
+        while let Some(line) = input.next_line().await? {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            println!("* sending message: {line}");
+            sender.send(line.to_string()).await?;
+        }
+        anyhow::Ok(())
+    });
+
+    // TODO: Clean shutown.
+    receive.await??;
+    send.await??;
+    Ok(())
+}
+
+================
+File: .gitignore
+================
+/target
+
+================
+File: Cargo.toml
+================
+[package]
+name = "chat-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.95"
+clap = { version = "4.5.29", features = ["derive"] }
+iroh = { workspace = true, default-features = false }
+n0-future = "0.1.2"
+rand = "0.8"
+chat-shared = { version = "0.1.0", path = "../shared" }
+tokio = { version = "1.43.0", features = ["rt", "macros"] }
+tracing-subscriber = "0.3.19"
+data-encoding = "2.9"
+
+================
+File: src/lib.rs
+================
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, Mutex},
+};
+
+use anyhow::{Context, Result};
+pub use iroh::NodeId;
+use iroh::{endpoint::RemoteInfo, protocol::Router, PublicKey, SecretKey};
+use iroh_base::{ticket::Ticket, Signature};
+pub use iroh_gossip::proto::TopicId;
+use iroh_gossip::{
+    api::{Event as GossipEvent, GossipSender},
+    net::{Gossip, GOSSIP_ALPN},
+};
+use n0_future::{
+    boxed::BoxStream,
+    task::{self, AbortOnDropHandle},
+    time::{Duration, SystemTime},
+    StreamExt,
+};
+use serde::{Deserialize, Serialize};
+use tokio::sync::{Mutex as TokioMutex, Notify};
+use tracing::{debug, info, warn};
+
+pub const TOPIC_PREFIX: &str = "iroh-example-chat/0:";
+pub const PRESENCE_INTERVAL: Duration = Duration::from_secs(5);
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ChatTicket {
+    pub topic_id: TopicId,
+    pub bootstrap: BTreeSet<NodeId>,
+}
+
+impl ChatTicket {
+    pub fn new_random() -> Self {
+        let topic_id = TopicId::from_bytes(rand::random());
+        Self::new(topic_id)
+    }
+
+    pub fn new(topic_id: TopicId) -> Self {
+        Self {
+            topic_id,
+            bootstrap: Default::default(),
+        }
+    }
+    pub fn deserialize(input: &str) -> Result<Self> {
+        <Self as Ticket>::deserialize(input).map_err(Into::into)
+    }
+    pub fn serialize(&self) -> String {
+        <Self as Ticket>::serialize(self)
+    }
+}
+
+impl Ticket for ChatTicket {
+    const KIND: &'static str = "chat";
+
+    fn to_bytes(&self) -> Vec<u8> {
+        postcard::to_stdvec(&self).unwrap()
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Result<Self, iroh_base::ticket::ParseError> {
+        let ticket = postcard::from_bytes(bytes)?;
+        Ok(ticket)
+    }
+}
+
+pub struct ChatNode {
+    secret_key: SecretKey,
+    router: Router,
+    gossip: Gossip,
+}
+
+impl ChatNode {
+    /// Spawns a gossip node.
+    pub async fn spawn(secret_key: Option<SecretKey>) -> Result<Self> {
+        let secret_key = secret_key.unwrap_or_else(|| SecretKey::generate(rand::rngs::OsRng));
+        let endpoint = iroh::Endpoint::builder()
+            .secret_key(secret_key.clone())
+            .discovery_n0()
+            .alpns(vec![GOSSIP_ALPN.to_vec()])
+            .bind()
+            .await?;
+
+        let node_id = endpoint.node_id();
+        info!("endpoint bound");
+        info!("node id: {node_id:#?}");
+
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        info!("gossip spawned");
+        let router = Router::builder(endpoint)
+            .accept(GOSSIP_ALPN, gossip.clone())
+            .spawn();
+        info!("router spawned");
+        Ok(Self {
+            gossip,
+            router,
+            secret_key,
+        })
+    }
+
+    /// Returns the node id of this node.
+    pub fn node_id(&self) -> NodeId {
+        self.router.endpoint().node_id()
+    }
+
+    /// Returns information about all the remote nodes this [`Endpoint`] knows about.
+    pub fn remote_info(&self) -> Vec<RemoteInfo> {
+        self.router
+            .endpoint()
+            .remote_info_iter()
+            .collect::<Vec<_>>()
+    }
+
+    /// Joins a chat channel from a ticket.
+    ///
+    /// Returns a [`ChatSender`] to send messages or change our nickname
+    /// and a stream of [`Event`] items for incoming messages and other event.s
+    pub async fn join(
+        &self,
+        ticket: &ChatTicket,
+        nickname: String,
+    ) -> Result<(ChatSender, BoxStream<Result<Event>>)> {
+        let topic_id = ticket.topic_id;
+        let bootstrap = ticket.bootstrap.iter().cloned().collect();
+        info!(?bootstrap, "joining {topic_id}");
+        let gossip_topic = self.gossip.subscribe(topic_id, bootstrap).await?;
+        let (sender, receiver) = gossip_topic.split();
+
+        let nickname = Arc::new(Mutex::new(nickname));
+        let trigger_presence = Arc::new(Notify::new());
+
+        // We spawn a task that occasionally sens a Presence message with our nickname.
+        // This allows to track which peers are online currently.
+        let sender = Arc::new(TokioMutex::new(sender));
+        let presence_task = AbortOnDropHandle::new(task::spawn({
+            let secret_key = self.secret_key.clone();
+            let sender = sender.clone();
+            let trigger_presence = trigger_presence.clone();
+            let nickname = nickname.clone();
+
+            async move {
+                loop {
+                    let nickname = nickname.lock().expect("poisened").clone();
+                    let message = Message::Presence { nickname };
+                    debug!("send presence {message:?}");
+                    let signed_message = SignedMessage::sign_and_encode(&secret_key, message)
+                        .expect("failed to encode message");
+                    if let Err(err) = sender.lock().await.broadcast(signed_message.into()).await {
+                        tracing::warn!("presence task failed to broadcast: {err}");
+                        break;
+                    }
+                    n0_future::future::race(
+                        n0_future::time::sleep(PRESENCE_INTERVAL),
+                        trigger_presence.notified(),
+                    )
+                    .await;
+                }
+            }
+        }));
+
+        // We create a stream of events, coming from the gossip topic event receiver.
+        // We'll want to map the events to our own event type, which includes parsing
+        // the messages and verifying the signatures, and trigger presence
+        // once the swarm is joined initially.
+        let receiver = n0_future::stream::try_unfold(receiver, {
+            let trigger_presence = trigger_presence.clone();
+            move |mut receiver| {
+                let trigger_presence = trigger_presence.clone();
+                async move {
+                    loop {
+                        // Store if we were joined before the next event comes in.
+                        let was_joined = receiver.is_joined();
+
+                        // Fetch the next event.
+                        let Some(event) = receiver.try_next().await? else {
+                            return Ok(None);
+                        };
+                        // Convert into our event type. this fails if we receive a message
+                        // that cannot be decoced into our event type. If that is the case,
+                        // we just keep and log the error.
+                        let event: Event = match event.try_into() {
+                            Ok(event) => event,
+                            Err(err) => {
+                                warn!("received invalid message: {err}");
+                                continue;
+                            }
+                        };
+                        // If we just joined, trigger sending our presence message.
+                        if !was_joined && receiver.is_joined() {
+                            trigger_presence.notify_waiters()
+                        };
+
+                        break Ok(Some((event, receiver)));
+                    }
+                }
+            }
+        });
+
+        let sender = ChatSender {
+            secret_key: self.secret_key.clone(),
+            nickname,
+            sender,
+            trigger_presence,
+            _presence_task: Arc::new(presence_task),
+        };
+        Ok((sender, Box::pin(receiver)))
+    }
+
+    pub async fn shutdown(&self) {
+        if let Err(err) = self.router.shutdown().await {
+            warn!("failed to shutdown router cleanly: {err}");
+        }
+        self.router.endpoint().close().await;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ChatSender {
+    nickname: Arc<Mutex<String>>,
+    secret_key: SecretKey,
+    sender: Arc<TokioMutex<GossipSender>>,
+    trigger_presence: Arc<Notify>,
+    _presence_task: Arc<AbortOnDropHandle<()>>,
+}
+
+impl ChatSender {
+    pub async fn send(&self, text: String) -> Result<()> {
+        let nickname = self.nickname.lock().expect("poisened").clone();
+        let message = Message::Message { text, nickname };
+        let signed_message = SignedMessage::sign_and_encode(&self.secret_key, message)?;
+        self.sender
+            .lock()
+            .await
+            .broadcast(signed_message.into())
+            .await?;
+        Ok(())
+    }
+
+    pub fn set_nickname(&self, name: String) {
+        *self.nickname.lock().expect("poisened") = name;
+        self.trigger_presence.notify_waiters();
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum Event {
+    #[serde(rename_all = "camelCase")]
+    Joined {
+        neighbors: Vec<NodeId>,
+    },
+    #[serde(rename_all = "camelCase")]
+    MessageReceived {
+        from: NodeId,
+        text: String,
+        nickname: String,
+        sent_timestamp: u64,
+    },
+    #[serde(rename_all = "camelCase")]
+    Presence {
+        from: NodeId,
+        nickname: String,
+        sent_timestamp: u64,
+    },
+    #[serde(rename_all = "camelCase")]
+    NeighborUp {
+        node_id: NodeId,
+    },
+    #[serde(rename_all = "camelCase")]
+    NeighborDown {
+        node_id: NodeId,
+    },
+    Lagged,
+}
+
+impl TryFrom<GossipEvent> for Event {
+    type Error = anyhow::Error;
+    fn try_from(event: GossipEvent) -> Result<Self, Self::Error> {
+        let converted = match event {
+            GossipEvent::NeighborUp(node_id) => Self::NeighborUp { node_id },
+            GossipEvent::NeighborDown(node_id) => Self::NeighborDown { node_id },
+            GossipEvent::Received(message) => {
+                let message = SignedMessage::verify_and_decode(&message.content)
+                    .context("failed to parse and verify signed message")?;
+                match message.message {
+                    Message::Presence { nickname } => Self::Presence {
+                        from: message.from,
+                        nickname,
+                        sent_timestamp: message.timestamp,
+                    },
+                    Message::Message { text, nickname } => Self::MessageReceived {
+                        from: message.from,
+                        text,
+                        nickname,
+                        sent_timestamp: message.timestamp,
+                    },
+                }
+            }
+            GossipEvent::Lagged => Self::Lagged,
+        };
+        Ok(converted)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SignedMessage {
+    from: PublicKey,
+    data: Vec<u8>,
+    signature: Signature,
+}
+
+impl SignedMessage {
+    pub fn verify_and_decode(bytes: &[u8]) -> Result<ReceivedMessage> {
+        let signed_message: Self = postcard::from_bytes(bytes)?;
+        let key: PublicKey = signed_message.from;
+        key.verify(&signed_message.data, &signed_message.signature)?;
+        let message: WireMessage = postcard::from_bytes(&signed_message.data)?;
+        let WireMessage::VO { timestamp, message } = message;
+        Ok(ReceivedMessage {
+            from: signed_message.from,
+            timestamp,
+            message,
+        })
+    }
+
+    pub fn sign_and_encode(secret_key: &SecretKey, message: Message) -> Result<Vec<u8>> {
+        let timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as u64;
+        let wire_message = WireMessage::VO { timestamp, message };
+        let data = postcard::to_stdvec(&wire_message)?;
+        let signature = secret_key.sign(&data);
+        let from: PublicKey = secret_key.public();
+        let signed_message = Self {
+            from,
+            data,
+            signature,
+        };
+        let encoded = postcard::to_stdvec(&signed_message)?;
+        Ok(encoded)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum WireMessage {
+    VO { timestamp: u64, message: Message },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Message {
+    Presence { nickname: String },
+    Message { text: String, nickname: String },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReceivedMessage {
+    timestamp: u64,
+    from: NodeId,
+    message: Message,
+}
+
+================
+File: .gitignore
+================
+/target
+
+================
+File: Cargo.toml
+================
+[package]
+name = "chat-shared"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+blake3 = { version = "1", package = "iroh-blake3" }
+hex = "0.4"
+iroh = { workspace = true }
+iroh-base = { workspace = true, default-features = false, features = ["ticket"] }
+iroh-gossip = { workspace = true, default-features = false, features = ["net"] }
+n0-future = "0.1.2"
+postcard = "1.1.1"
+rand = "0.8"
+serde = "1"
+tokio = { version = "1", default-features = false, features = ["sync"] }
+tracing = "0.1"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["--enable-nontrapping-float-to-int", "--enable-bulk-memory"]
+
+
+
+================================================================
+End of Codebase
+================================================================

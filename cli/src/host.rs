@@ -3,9 +3,9 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::p2p::P2PNetwork;
+use riterm_shared::{P2PNetwork, SessionHeader};
 use crate::shell::{ShellConfig, ShellDetector};
-use crate::terminal::{SessionHeader, TerminalRecorder};
+use crate::terminal::{TerminalRecorder};
 use crate::terminal_config::TerminalConfigDetector;
 
 pub struct HostSession {
@@ -106,7 +106,7 @@ impl HostSession {
         );
 
         self.network
-            .end_session(&sender, session_id.clone())
+            .end_session(&session_id, &sender)
             .await?;
 
         // Delete ticket from API if auth was used
@@ -221,25 +221,25 @@ impl HostSession {
         tokio::spawn(async move {
             while let Some(event) = event_receiver.recv().await {
                 match event.event_type {
-                    crate::terminal::EventType::Output => {
+                    riterm_shared::EventType::Output => {
                         if let Err(e) = network_clone
-                            .send_terminal_output(&sender, event.data, &session_id_clone_for_events)
+                            .send_terminal_output(&session_id_clone_for_events, &sender, event.data)
                             .await
                         {
                             error!("Failed to send terminal output: {}", e);
                         }
                     }
-                    crate::terminal::EventType::Input => {
+                    riterm_shared::EventType::Input => {
                         if let Err(e) = network_clone
-                            .send_input(&sender, event.data, &session_id_clone_for_events)
+                            .send_input(&session_id_clone_for_events, &sender, event.data)
                             .await
                         {
                             error!("Failed to send terminal input: {}", e);
                         }
                     }
-                    crate::terminal::EventType::Resize { width, height } => {
+                    riterm_shared::EventType::Resize { width, height } => {
                         if let Err(e) = network_clone
-                            .send_resize_event(&sender, width, height, &session_id_clone_for_events)
+                            .send_resize_event(&session_id_clone_for_events, &sender, width, height)
                             .await
                         {
                             error!("Failed to send resize event: {}", e);

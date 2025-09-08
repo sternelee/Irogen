@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::shell::{ShellDetector, ShellType};
 

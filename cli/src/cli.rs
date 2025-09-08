@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
 use crate::host::HostSession;
-use crate::p2p::P2PNetwork;
+use riterm_shared::P2PNetwork;
 use crate::shell_manager::ShellManager;
 
 #[derive(Parser)]

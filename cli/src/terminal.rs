@@ -2,17 +2,17 @@ use anyhow::{Context, Result};
 use crossterm;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::fs::OpenOptions;
 use tokio::io::BufWriter;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
 use crate::shell::ShellConfig;
+use riterm_shared::{TerminalEvent, EventType, SessionInfo};
 
 /// Maximum number of events to keep in memory buffer to prevent memory leaks
 const MAX_EVENTS_BUFFER: usize = 10000;
@@ -24,20 +24,20 @@ fn create_ansi_filter_regex() -> Regex {
     // Match problematic ANSI escape sequences that cause display issues:
     Regex::new(
         r"(?x)
-        // \x1B\[                    # Start with ESC[
-        (?:
+        \x1B\[                    # Start with ESC[
+        (?:  
             [0-9]*;[0-9]*c        | # Device Status Report response (e.g., 1;2c from vim)
             [0-9]*;[0-9]*R        | # Cursor Position Report response
-            // \?[0-9]+[hl]          | # Private mode set/reset
-            // [0-9]*;?[0-9]*;?[0-9]*[ABCDEFGHJKSTfmsu] | # Other CSI sequences
-            // [0-9]*[ABCDEFGHJKST]    # Simple cursor movement, etc.
+            \?[0-9]+[hl]          | # Private mode set/reset
+            [0-9]*;?[0-9]*;?[0-9]*[ABCDEFGHJKSTfmsu] | # Other CSI sequences
+            [0-9]*[ABCDEFGHJKST]    # Simple cursor movement, etc.
         )
-        // |
-        // \x1B\]0;[^\x07\x1B]*[\x07\x1B\\] | # Window title sequences
-        // \x1B[()>][0-9AB]          | # Character set selection
-        // \x1B[?0-9]*[hl]           | # Mode queries and responses
-        // \x1B>[0-9]*c              | # Secondary Device Attribute responses
-        // \x1B\[>[0-9;]*c            # Primary Device Attribute responses
+        |
+        \x1B\]0;[^\x07\x1B]*[\x07\x1B\\] | # Window title sequences
+        \x1B[()>][0-9AB]          | # Character set selection
+        \x1B[?0-9]*[hl]           | # Mode queries and responses
+        \x1B>[0-9]*c              | # Secondary Device Attribute responses
+        \x1B\[[>0-9;]*c            # Primary Device Attribute responses
     ",
     )
     .expect("Invalid regex pattern")
@@ -181,41 +181,6 @@ impl PtyResources {
 
         Ok((resources, child))
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TerminalEvent {
-    pub timestamp: f64,
-    pub event_type: EventType,
-    pub data: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EventType {
-    Output,
-    Input,
-    Resize { width: u16, height: u16 },
-    Start,
-    End,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionHeader {
-    pub version: u8,
-    pub width: u16,
-    pub height: u16,
-    pub timestamp: u64,
-    pub title: Option<String>,
-    pub command: Option<String>,
-    pub session_id: String,
-}
-
-/// 会话信息，包含日志、shell类型和当前工作目录
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionInfo {
-    pub logs: String,
-    pub shell: String,
-    pub cwd: String,
 }
 
 /// 日志记录器，用于记录终端输出到文件

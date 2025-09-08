@@ -36,6 +36,7 @@ tauri-plugin-notification = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-http = "2"
 tauri-plugin-os = "2"
+riterm-shared = { path = "../shared" }
 
 [features]
 default = ["custom-protocol"]
