@@ -9,6 +9,7 @@ use iroh_gossip::{
     net::Gossip,
     proto::TopicId,
 };
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -317,96 +318,6 @@ impl P2PNetwork {
         Ok((topic_id, sender, input_receiver))
     }
 
-    pub async fn join_session(
-        &self,
-        ticket: SessionTicket,
-    ) -> Result<(GossipSender, broadcast::Receiver<TerminalEvent>)> {
-        debug!("Joining session");
-
-        let session_id = format!("session_{}", ticket.topic_id);
-        let (event_sender, event_receiver) = broadcast::channel(1000);
-
-        // Add peer addresses to endpoint's addressbook
-        for peer in &ticket.nodes {
-            self.endpoint.add_node_addr(peer.clone())?;
-        }
-
-        // Subscribe and join the gossip topic with known peers
-        let node_ids = ticket.nodes.iter().map(|p| p.node_id).collect();
-        let topic = self
-            .gossip
-            .subscribe_and_join(ticket.topic_id, node_ids)
-            .await?;
-        let (sender, receiver) = topic.split();
-
-        // Create session entry for this joined session
-        let session = SharedSession {
-            header: SessionHeader {
-                version: 2,
-                width: 80,
-                height: 24,
-                timestamp: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)?
-                    .as_secs(),
-                title: None,
-                command: None,
-                session_id: session_id.clone(),
-            },
-            participants: vec![],
-            is_host: false,
-            event_sender: event_sender.clone(),
-            input_sender: None, // Joining sessions don't need to handle input this way
-            key: ticket.key,
-            gossip_sender: Some(sender.clone()),
-        };
-
-        self.sessions
-            .write()
-            .await
-            .insert(session_id.clone(), session);
-
-        // Start listening for messages on this topic
-        self.start_topic_listener(receiver, session_id).await?;
-
-        Ok((sender, event_receiver))
-    }
-
-    pub async fn join_session_with_retry(
-        &self,
-        ticket: SessionTicket,
-        max_retries: u32,
-    ) -> Result<(GossipSender, broadcast::Receiver<TerminalEvent>)> {
-        debug!(
-            "Joining session with topic: {} (with retry)",
-            ticket.topic_id
-        );
-
-        let mut last_error = None;
-
-        for attempt in 1..=max_retries {
-            debug!("Connection attempt {} of {}", attempt, max_retries);
-
-            match self.join_session(ticket.clone()).await {
-                Ok(result) => {
-                    debug!("✅ Successfully joined session on attempt {}", attempt);
-                    return Ok(result);
-                }
-                Err(e) => {
-                    debug!("Attempt {} failed: {}", attempt, e);
-                    last_error = Some(e);
-
-                    if attempt < max_retries {
-                        debug!("Waiting before next attempt...");
-                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                    }
-                }
-            }
-        }
-
-        Err(last_error
-            .unwrap_or_else(|| anyhow::anyhow!("Failed to join session after multiple attempts")))
-    }
-
     pub async fn send_terminal_output(
         &self,
         sender: &GossipSender,
@@ -468,25 +379,6 @@ impl P2PNetwork {
             from: self.endpoint.node_id(),
             width,
             height,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
-    }
-
-    /// 发送参与者加入通知
-    pub async fn send_participant_joined(
-        &self,
-        sender: &GossipSender,
-        session_id: &str,
-    ) -> Result<()> {
-        debug!("Sending participant joined notification");
-        let key = self.get_session_key(session_id).await?;
-        let body = TerminalMessageBody::ParticipantJoined {
-            from: self.endpoint.node_id(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
@@ -847,25 +739,6 @@ impl P2PNetwork {
         })
     }
 
-    pub async fn shutdown(&self) -> Result<()> {
-        self.router.shutdown().await.map_err(Into::into)
-    }
-
-    /// 批量获取活跃会话，减少锁的获取次数
-    pub async fn get_active_sessions(&self) -> Vec<String> {
-        self.sessions.read().await.keys().cloned().collect()
-    }
-
-    /// 检查是否为会话主机，使用短暂的读锁
-    pub async fn is_session_host(&self, session_id: &str) -> bool {
-        self.sessions
-            .read()
-            .await
-            .get(session_id)
-            .map(|s| s.is_host)
-            .unwrap_or(false)
-    }
-
     /// 优化的会话密钥获取方法，使用作用域减少锁的持有时间
     async fn get_session_key(&self, session_id: &str) -> Result<EncryptionKey> {
         let key = {
@@ -876,19 +749,6 @@ impl P2PNetwork {
         key.ok_or_else(|| anyhow::anyhow!("Session not found"))
     }
 
-    /// 批量操作：获取会话统计信息
-    pub async fn get_session_stats(&self) -> (usize, usize) {
-        let sessions = self.sessions.read().await;
-        let total = sessions.len();
-        let hosted = sessions.values().filter(|s| s.is_host).count();
-        (total, hosted)
-    }
-
-    /// 检查会话是否存在
-    pub async fn session_exists(&self, session_id: &str) -> bool {
-        self.sessions.read().await.contains_key(session_id)
-    }
-
     /// 设置历史记录获取回调函数
     pub async fn set_history_callback<F>(&self, callback: F)
     where
@@ -896,87 +756,5 @@ impl P2PNetwork {
     {
         let mut history_callback = self.history_callback.write().await;
         *history_callback = Some(Box::new(callback));
-    }
-
-    /// 自动发送历史记录给新参与者
-    pub async fn auto_send_history(&self, sender: &GossipSender, session_id: &str) -> Result<()> {
-        // 检查是否为主机
-        if !self.is_session_host(session_id).await {
-            return Ok(());
-        }
-
-        // 获取历史记录回调
-        let callback = {
-            let history_callback = self.history_callback.read().await;
-            history_callback.as_ref().map(|cb| cb(session_id))
-        };
-
-        if let Some(receiver) = callback {
-            // 等待历史记录数据
-            match receiver.await {
-                Ok(Some(session_info)) => {
-                    debug!("Auto-sending history data to new participant");
-                    self.send_history_data(sender, session_info, session_id)
-                        .await?;
-                }
-                Ok(None) => {
-                    debug!("No history data available to send");
-                }
-                Err(_e) => {
-                    error!("Failed to get history data");
-                }
-            }
-        } else {
-            warn!("No history callback set, cannot send history data");
-        }
-
-        Ok(())
-    }
-
-    pub async fn diagnose_connection(&self, ticket: &SessionTicket) -> Result<()> {
-        debug!(
-            "Diagnosing connection to session with topic: {}",
-            ticket.topic_id
-        );
-
-        for (i, node) in ticket.nodes.iter().enumerate() {
-            debug!(
-                "Testing connection to node {}/{}: {}",
-                i + 1,
-                ticket.nodes.len(),
-                node.node_id
-            );
-
-            // Test connection to each direct address
-            if node.direct_addresses.is_empty() {
-                debug!("Node has no direct addresses specified");
-            }
-
-            for (j, addr) in node.direct_addresses.iter().enumerate() {
-                debug!(
-                    "Testing direct address {}/{}: {}",
-                    j + 1,
-                    node.direct_addresses.len(),
-                    addr
-                );
-
-                // Try to connect to the address
-                let result = tokio::net::TcpStream::connect(addr).await;
-                match result {
-                    Ok(_) => debug!("✅ Successfully connected to {}", addr),
-                    Err(e) => debug!("❌ Failed to connect to {}: {}", addr, e),
-                }
-            }
-
-            // Test connection through endpoint
-            debug!("Adding node {} to endpoint", node.node_id);
-            if let Err(e) = self.endpoint.add_node_addr(node.clone()) {
-                debug!("Failed to add node to endpoint: {}", e);
-            } else {
-                debug!("✅ Successfully added node to endpoint");
-            }
-        }
-
-        Ok(())
     }
 }

@@ -591,13 +591,13 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
     // 移动端额外按键
     ...(deviceCapabilities().isMobile
       ? [
-        { label: "Home", key: "\x1b[H" },
-        { label: "End", key: "\x1b[F" },
-        { label: "PgUp", key: "\x1b[5~" },
-        { label: "PgDn", key: "\x1b[6~" },
-        { label: "Ctrl+Z", key: "\x1a" },
-        { label: "Ctrl+X", key: "\x18" },
-      ]
+          { label: "Home", key: "\x1b[H" },
+          { label: "End", key: "\x1b[F" },
+          { label: "PgUp", key: "\x1b[5~" },
+          { label: "PgDn", key: "\x1b[6~" },
+          { label: "Ctrl+Z", key: "\x1a" },
+          { label: "Ctrl+X", key: "\x18" },
+        ]
       : []),
   ];
 

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::p2p::P2PNetwork;
@@ -432,26 +432,57 @@ impl Drop for HostSession {
             let ticket = ticket.clone();
             let auth_token = auth_token.clone();
 
-            // Use a blocking approach for cleanup since we can't await in Drop
+            // Use a non-blocking approach to avoid potential deadlocks
             std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new();
-                if let Ok(rt) = rt {
-                    rt.block_on(async move {
-                        let base_host_api = std::env::var("BASE_HOST_API")
-                            .unwrap_or_else(|_| "https://api.example.com".to_string());
-                        let client = reqwest::Client::new();
+                // Use a timeout to prevent hanging on shutdown
+                let cleanup_result = std::thread::spawn(move || {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build();
 
-                        if let Err(e) = client
-                            .delete(&format!("{}/ticket", base_host_api))
-                            .header("authentication", &auth_token)
-                            .header("Content-Type", "text/plain")
-                            .body(ticket)
-                            .send()
-                            .await
-                        {
-                            eprintln!("Failed to delete ticket on exit: {}", e);
-                        }
-                    });
+                    if let Ok(rt) = rt {
+                        rt.block_on(async move {
+                            let base_host_api = std::env::var("BASE_HOST_API")
+                                .unwrap_or_else(|_| "https://api.example.com".to_string());
+
+                            // Set a shorter timeout for cleanup operations
+                            let client = reqwest::Client::builder()
+                                .timeout(std::time::Duration::from_secs(3))
+                                .build();
+
+                            if let Ok(client) = client {
+                                let request_future = client
+                                    .delete(&format!("{}/ticket", base_host_api))
+                                    .header("authentication", &auth_token)
+                                    .header("Content-Type", "text/plain")
+                                    .body(ticket)
+                                    .send();
+
+                                // Add timeout to the entire cleanup operation
+                                match tokio::time::timeout(
+                                    std::time::Duration::from_secs(5),
+                                    request_future,
+                                )
+                                .await
+                                {
+                                    Ok(Ok(_)) => {
+                                        debug!("Ticket cleanup completed successfully");
+                                    }
+                                    Ok(Err(e)) => {
+                                        debug!("Failed to delete ticket on exit: {}", e);
+                                    }
+                                    Err(_) => {
+                                        debug!("Ticket cleanup timed out");
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+
+                // Wait for cleanup with overall timeout
+                if cleanup_result.join().is_err() {
+                    debug!("Ticket cleanup thread panicked or timed out");
                 }
             });
         }

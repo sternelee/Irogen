@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use crossterm;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -12,6 +13,91 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
 use crate::shell::ShellConfig;
+
+/// Maximum number of events to keep in memory buffer to prevent memory leaks
+const MAX_EVENTS_BUFFER: usize = 10000;
+/// When buffer is full, remove this many oldest events to make room
+const BUFFER_CLEANUP_SIZE: usize = 2500;
+
+/// ANSI escape sequence patterns that should be filtered out
+fn create_ansi_filter_regex() -> Regex {
+    // Match problematic ANSI escape sequences that cause display issues:
+    Regex::new(
+        r"(?x)
+        // \x1B\[                    # Start with ESC[
+        (?:
+            [0-9]*;[0-9]*c        | # Device Status Report response (e.g., 1;2c from vim)
+            [0-9]*;[0-9]*R        | # Cursor Position Report response
+            // \?[0-9]+[hl]          | # Private mode set/reset
+            // [0-9]*;?[0-9]*;?[0-9]*[ABCDEFGHJKSTfmsu] | # Other CSI sequences
+            // [0-9]*[ABCDEFGHJKST]    # Simple cursor movement, etc.
+        )
+        // |
+        // \x1B\]0;[^\x07\x1B]*[\x07\x1B\\] | # Window title sequences
+        // \x1B[()>][0-9AB]          | # Character set selection
+        // \x1B[?0-9]*[hl]           | # Mode queries and responses
+        // \x1B>[0-9]*c              | # Secondary Device Attribute responses
+        // \x1B\[>[0-9;]*c            # Primary Device Attribute responses
+    ",
+    )
+    .expect("Invalid regex pattern")
+}
+
+/// Filter out problematic ANSI escape sequences that cause display issues
+fn filter_ansi_sequences(input: &str) -> String {
+    lazy_static::lazy_static! {
+        static ref ANSI_FILTER: Regex = create_ansi_filter_regex();
+    }
+
+    let mut filtered = ANSI_FILTER.replace_all(input, "").to_string();
+
+    // Additional cleanup for vim-specific sequences and other problematic sequences
+    let vim_sequences = &[
+        "\x1B[?1000h", // Mouse tracking enable
+        "\x1B[?1000l", // Mouse tracking disable
+        "\x1B[?1002h", // Cell motion mouse tracking
+        "\x1B[?1002l", // Cell motion mouse tracking disable
+        "\x1B[?1006h", // SGR mouse mode
+        "\x1B[?1006l", // SGR mouse mode disable
+        "\x1B[?2004h", // Bracketed paste mode enable
+        "\x1B[?2004l", // Bracketed paste mode disable
+        "\x1B[?25h",   // Show cursor
+        "\x1B[?25l",   // Hide cursor
+        "\x1B[?1049h", // Enable alternative buffer
+        "\x1B[?1049l", // Disable alternative buffer
+        "\x1B[?47h",   // Enable alternative buffer (legacy)
+        "\x1B[?47l",   // Disable alternative buffer (legacy)
+        "\x1B[c",      // Device Attribute query
+        "\x1B[>c",     // Secondary Device Attribute query
+        "\x1B[6n",     // Cursor position query
+    ];
+
+    for seq in vim_sequences {
+        filtered = filtered.replace(seq, "");
+    }
+
+    // Remove standalone escape sequences that might appear
+    // This regex handles sequences that might be incomplete or variations
+    let cleanup_regex = Regex::new(r"\x1B\[[?0-9;]*[a-zA-Z]").expect("Invalid cleanup regex");
+    let mut prev_len = filtered.len();
+
+    // Keep filtering until no more matches (handle nested sequences)
+    loop {
+        filtered = cleanup_regex.replace_all(&filtered, "").to_string();
+        if filtered.len() == prev_len {
+            break;
+        }
+        prev_len = filtered.len();
+    }
+
+    filtered
+}
+
+/// Check if a string contains only ANSI escape sequences (no visible content)
+fn is_only_ansi_sequences(input: &str) -> bool {
+    let filtered = filter_ansi_sequences(input);
+    filtered.trim().is_empty()
+}
 
 /// 终端原始模式的 RAII 包装器，确保在离开作用域时恢复终端模式
 struct RawModeGuard;
@@ -276,10 +362,7 @@ impl TerminalRecorder {
             data: data_str,
         };
 
-        if let Ok(mut events) = self.events.lock() {
-            events.push(event.clone());
-        }
-
+        self.add_event_with_limit(event.clone())?;
         self.event_sender
             .send(event)
             .context("Failed to send input event")?;
@@ -288,30 +371,45 @@ impl TerminalRecorder {
 
     pub fn record_output(&self, data: &[u8]) -> Result<()> {
         let data_str = String::from_utf8_lossy(data).to_string();
-        let event = TerminalEvent {
-            timestamp: self.get_relative_timestamp(),
-            event_type: EventType::Output,
-            data: data_str.clone(),
-        };
 
-        if let Ok(mut events) = self.events.lock() {
-            events.push(event.clone());
+        // Skip recording if this is only ANSI escape sequences with no visible content
+        if is_only_ansi_sequences(&data_str) {
+            debug!(
+                "Filtered pure ANSI sequence: {:?}",
+                data_str.escape_debug().to_string()
+            );
+            return Ok(());
         }
 
-        // 异步记录到日志文件
-        let log_recorder = self.log_recorder.clone();
-        let data_for_log = data_str.clone();
-        tokio::spawn(async move {
-            if let Ok(mut recorder) = log_recorder.try_lock() {
-                if let Err(e) = recorder.write_log(&data_for_log).await {
-                    error!("Failed to write to log file: {}", e);
-                }
-            }
-        });
+        // Filter out problematic ANSI escape sequences but keep visible content
+        let filtered_data = filter_ansi_sequences(&data_str);
 
-        self.event_sender
-            .send(event)
-            .context("Failed to send output event")?;
+        // Only create event if there's actual content after filtering
+        if !filtered_data.trim().is_empty() {
+            let event = TerminalEvent {
+                timestamp: self.get_relative_timestamp(),
+                event_type: EventType::Output,
+                data: filtered_data.clone(),
+            };
+
+            self.add_event_with_limit(event.clone())?;
+
+            // 异步记录到日志文件 (使用过滤后的数据)
+            let log_recorder = self.log_recorder.clone();
+            let data_for_log = filtered_data.clone();
+            tokio::spawn(async move {
+                if let Ok(mut recorder) = log_recorder.try_lock() {
+                    if let Err(e) = recorder.write_log(&data_for_log).await {
+                        error!("Failed to write to log file: {}", e);
+                    }
+                }
+            });
+
+            self.event_sender
+                .send(event)
+                .context("Failed to send output event")?;
+        }
+
         Ok(())
     }
 
@@ -322,14 +420,48 @@ impl TerminalRecorder {
             data: String::new(),
         };
 
-        if let Ok(mut events) = self.events.lock() {
-            events.push(event.clone());
-        }
-
+        self.add_event_with_limit(event.clone())?;
         self.event_sender
             .send(event)
             .context("Failed to send resize event")?;
         Ok(())
+    }
+
+    /// Add event to buffer with memory limit enforcement
+    fn add_event_with_limit(&self, event: TerminalEvent) -> Result<()> {
+        if let Ok(mut events) = self.events.lock() {
+            // Check if buffer is getting too large
+            if events.len() >= MAX_EVENTS_BUFFER {
+                debug!(
+                    "Event buffer reached limit ({}), cleaning up {} oldest events",
+                    MAX_EVENTS_BUFFER, BUFFER_CLEANUP_SIZE
+                );
+
+                // Remove oldest events to make room
+                events.drain(0..BUFFER_CLEANUP_SIZE);
+
+                info!(
+                    "Event buffer cleaned up, current size: {} events",
+                    events.len()
+                );
+            }
+
+            events.push(event);
+        } else {
+            error!("Failed to acquire lock on events buffer");
+            return Err(anyhow::anyhow!("Events buffer lock contention"));
+        }
+
+        Ok(())
+    }
+
+    /// Get current buffer statistics
+    pub fn get_buffer_stats(&self) -> (usize, usize) {
+        if let Ok(events) = self.events.lock() {
+            (events.len(), MAX_EVENTS_BUFFER)
+        } else {
+            (0, MAX_EVENTS_BUFFER)
+        }
     }
 
     pub fn handle_remote_input(&self, data: &str, writer: &mut dyn Write) -> Result<()> {
@@ -998,60 +1130,6 @@ impl TerminalRecorder {
                 info!("Child process exited with status: {:?}", status);
             }
         });
-
-        Ok(())
-    }
-}
-
-pub struct TerminalPlayer {
-    events: Vec<TerminalEvent>,
-    current_index: usize,
-    speed: f32,
-}
-
-impl TerminalPlayer {
-    pub fn new(events: Vec<TerminalEvent>, speed: f32) -> Self {
-        Self {
-            events,
-            current_index: 0,
-            speed: speed.max(0.1), // Minimum speed of 0.1x
-        }
-    }
-
-    pub async fn play(&mut self) -> Result<()> {
-        info!(
-            "Starting playback of {} events at {}x speed",
-            self.events.len(),
-            self.speed
-        );
-
-        let mut last_timestamp = 0.0;
-
-        for event in &self.events {
-            let delay = (event.timestamp - last_timestamp) / self.speed as f64;
-            if delay > 0.0 {
-                tokio::time::sleep(tokio::time::Duration::from_secs_f64(delay)).await;
-            }
-
-            match &event.event_type {
-                EventType::Output => {
-                    print!("{}", event.data);
-                    std::io::stdout().flush().ok();
-                }
-                EventType::Start => {
-                    info!("Session started with command: {}", event.data);
-                }
-                EventType::End => {
-                    info!("Session ended");
-                }
-                EventType::Resize { width, height } => {
-                    debug!("Terminal resized to {}x{}", width, height);
-                }
-                EventType::Input => {}
-            }
-
-            last_timestamp = event.timestamp;
-        }
 
         Ok(())
     }
