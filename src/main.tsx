@@ -1,10 +1,14 @@
 import { render } from "solid-js/web";
+import VConsole from 'vconsole';
+
 import App from "./App";
 import "./index.css";
 import "./fonts.css";
 import { initializeMobileUtils } from "./utils/mobile";
 import { initializeTheme } from "./utils/theme";
 import { initializePerformanceOptimizations } from "./utils/performance";
+
+new VConsole();
 
 // Initialize mobile utilities and optimizations
 initializeMobileUtils();
