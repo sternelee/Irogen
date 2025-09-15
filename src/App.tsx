@@ -101,9 +101,9 @@ function App() {
           // Enhanced debug info
           setDebugInfo(
             `Keyboard: ${visible ? "Visible" : "Hidden"}, ` +
-              `Height: ${keyboardInfo.height}px, ` +
-              `Viewport: ${keyboardInfo.viewportHeight}px, ` +
-              `Effective: ${keyboardInfo.viewportHeight - (keyboardInfo.viewportOffsetTop || 0)}px`,
+            `Height: ${keyboardInfo.height}px, ` +
+            `Viewport: ${keyboardInfo.viewportHeight}px, ` +
+            `Effective: ${keyboardInfo.viewportHeight - (keyboardInfo.viewportOffsetTop || 0)}px`,
           );
         } else {
           setKeyboardHeight(0);

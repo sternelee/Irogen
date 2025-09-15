@@ -183,7 +183,7 @@ async fn connect_to_peer(
 
                             let event_name = format!("terminal-event-{}", session_id_clone_events);
                             #[cfg(debug_assertions)]
-                            println!("Broadcasting event to: {}", event_name);
+                            // println!("Broadcasting event to: {}", event_name);
                             let _ = app_handle_clone.emit(&event_name, &event);
                         }
                         Err(_) => {
@@ -551,4 +551,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
