@@ -341,6 +341,18 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
       // Setup callbacks
       props.onReady(term, fit);
 
+      // 移动端额外验证
+      if (deviceCapabilities().isMobile) {
+        debugTerminal("Mobile terminal validation:", term);
+        setTimeout(() => {
+          if (terminalInstance && terminalInstance.element) {
+            debugTerminal("Mobile terminal validation passed - terminal is ready");
+          } else {
+            debugTerminal("Mobile terminal validation failed - terminal may not be ready");
+          }
+        }, 200);
+      }
+
       onDataDispose = term.onData((data) => {
         debugTerminal(`Terminal input: ${data}`);
         props.onInput(data);

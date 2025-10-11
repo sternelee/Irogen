@@ -138,6 +138,20 @@ function App() {
   const handleTerminalReady = (term: Terminal, addon: FitAddon) => {
     terminalInstance = term;
     fitAddon = addon;
+
+    // 移动端调试信息
+    const deviceCapabilities = getDeviceCapabilities();
+    if (deviceCapabilities.isMobile) {
+      console.log("[Mobile Debug] Terminal ready callback triggered:", {
+        terminal: !!term,
+        isDisposed: !!(term as any)._isDisposed,
+        element: !!term.element,
+        rows: term.rows,
+        cols: term.cols,
+        terminalInstanceRef: !!terminalInstance
+      });
+    }
+
     window.addEventListener("resize", () => addon.fit());
   };
 
@@ -148,13 +162,15 @@ function App() {
         input: data,
       }).catch((error) => {
         console.error("Failed to send input:", error);
-        terminalInstance?.writeln(`\r\n❌ Failed to send input: ${error}`);
+        if (terminalInstance && !(terminalInstance as any)._isDisposed) {
+          terminalInstance.writeln(`\r\n❌ Failed to send input: ${error}`);
+        }
       });
     }
   };
 
   const handleDisconnect = async () => {
-    if (terminalInstance) {
+    if (terminalInstance && !(terminalInstance as any)._isDisposed) {
       terminalInstance.writeln(
         "\r\n\x1b[1;33m👋 Disconnected from session\x1b[0m",
       );
@@ -254,9 +270,14 @@ function App() {
         `terminal-event-${actualSessionId}`,
         (event) => {
           const termEvent = event.payload;
-          if (terminalInstance) {
+          if (terminalInstance && !(terminalInstance as any)._isDisposed) {
             if (termEvent.event_type === "Output") {
-              terminalInstance.write(termEvent.data);
+              try {
+                terminalInstance.write(termEvent.data);
+                console.log(`[Mobile Debug] Successfully wrote to terminal: ${termEvent.data.length} chars`);
+              } catch (error) {
+                console.error("[Mobile Debug] Failed to write to terminal:", error);
+              }
             } else if (termEvent.event_type === "End") {
               // INFO: 其他端退出不影响本端
               // terminalInstance.writeln("\r\n\r\n[Session Ended]");
@@ -278,20 +299,24 @@ function App() {
                 });
 
                 // 在终端中显示历史记录
-                terminalInstance.writeln(
-                  "\r\n\x1b[1;36m📜 Session History Received\x1b[0m",
-                );
-                terminalInstance.writeln(`\x1b[1;33mShell:\x1b[0m ${shell}`);
-                terminalInstance.writeln(
-                  `\x1b[1;33mWorking Directory:\x1b[0m ${cwd}`,
-                );
-                terminalInstance.writeln(
-                  "\x1b[1;33m--- History Start ---\x1b[0m",
-                );
-                terminalInstance.write(logs);
-                terminalInstance.writeln(
-                  "\x1b[1;33m--- History End ---\x1b[0m\r\n",
-                );
+                if (terminalInstance && !(terminalInstance as any)._isDisposed) {
+                  terminalInstance.writeln(
+                    "\r\n\x1b[1;36m📜 Session History Received\x1b[0m",
+                  );
+                  terminalInstance.writeln(`\x1b[1;33mShell:\x1b[0m ${shell}`);
+                  terminalInstance.writeln(
+                    `\x1b[1;33mWorking Directory:\x1b[0m ${cwd}`,
+                  );
+                  terminalInstance.writeln(
+                    "\x1b[1;33m--- History Start ---\x1b[0m",
+                  );
+                  terminalInstance.write(logs);
+                  terminalInstance.writeln(
+                    "\x1b[1;33m--- History End ---\x1b[0m\r\n",
+                  );
+                } else {
+                  console.error("[Mobile Debug] Cannot display history - terminal not ready");
+                }
 
                 // 更新连接历史记录
                 updateHistoryEntry(ticket, {
@@ -303,9 +328,11 @@ function App() {
                 );
               } catch (error) {
                 console.error("❌ Failed to parse history data:", error);
-                terminalInstance.writeln(
-                  "\r\n\x1b[1;31m❌ Failed to parse session history\x1b[0m\r\n",
-                );
+                if (terminalInstance && !(terminalInstance as any)._isDisposed) {
+                  terminalInstance.writeln(
+                    "\r\n\x1b[1;31m❌ Failed to parse session history\x1b[0m\r\n",
+                  );
+                }
               }
             }
           }
@@ -315,11 +342,13 @@ function App() {
       unlistenRef = unlisten;
       setStatus(t("connection.status.connected"));
       setNetworkStrength(4);
-      terminalInstance?.clear();
-      terminalInstance?.writeln(
-        "\r\n\x1b[1;32m🚀 P2P Connection established!\x1b[0m",
-      );
-      terminalInstance?.focus();
+      if (terminalInstance && !(terminalInstance as any)._isDisposed) {
+        terminalInstance.clear();
+        terminalInstance.writeln(
+          "\r\n\x1b[1;32m🚀 P2P Connection established!\x1b[0m",
+        );
+        terminalInstance.focus();
+      }
     } catch (error) {
       console.error("Connection failed:", error);
       const errorMessage = String(error);
