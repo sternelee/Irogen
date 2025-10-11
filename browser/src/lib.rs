@@ -1,10 +1,8 @@
 use std::str::FromStr;
 
 use anyhow::Result;
-use futures_lite::StreamExt;
-use rand::RngCore;
 use riterm_shared::{
-    p2p::{P2PNetwork, TerminalEvent, SessionHeader},
+    p2p::{P2PNetwork, SessionHeader, TerminalEvent},
     SessionTicket,
 };
 use tracing::level_filters::LevelFilter;
@@ -72,10 +70,18 @@ impl RitermNode {
             session_id: format!("browser_{}", uuid::Uuid::new_v4()),
         };
 
-        let (topic_id, gossip_sender, input_receiver) = self.0.create_shared_session(header.clone()).await.map_err(to_js_err)?;
+        let (topic_id, gossip_sender, input_receiver) = self
+            .0
+            .create_shared_session(header.clone())
+            .await
+            .map_err(to_js_err)?;
 
         // Create session ticket
-        let ticket = self.0.create_session_ticket(topic_id, &header.session_id).await.map_err(to_js_err)?;
+        let ticket = self
+            .0
+            .create_session_ticket(topic_id, &header.session_id)
+            .await
+            .map_err(to_js_err)?;
 
         Session::new(
             header.session_id,
@@ -83,7 +89,8 @@ impl RitermNode {
             gossip_sender,
             Some(input_receiver),
             self.0.clone(),
-        ).await
+        )
+        .await
     }
 
     /// Joins a terminal session from a ticket.
@@ -91,7 +98,11 @@ impl RitermNode {
         let ticket = SessionTicket::from_str(&ticket).map_err(to_js_err)?;
         let session_id = format!("joined_{}", ticket.topic_id);
 
-        let (gossip_sender, event_receiver) = self.0.join_session(ticket.clone()).await.map_err(to_js_err)?;
+        let (gossip_sender, event_receiver) = self
+            .0
+            .join_session(ticket.clone())
+            .await
+            .map_err(to_js_err)?;
 
         Session::new_joined(
             session_id,
@@ -99,7 +110,8 @@ impl RitermNode {
             gossip_sender,
             event_receiver,
             self.0.clone(),
-        ).await
+        )
+        .await
     }
 }
 
@@ -123,14 +135,17 @@ impl Session {
         network: P2PNetwork,
     ) -> Result<Self, JsError> {
         let receiver = if let Some(mut input_receiver) = input_receiver {
-            Some(ReadableStream::from_stream(async_stream::stream! {
-                while let Some(input) = input_receiver.recv().await {
-                    tracing::info!("🟢 Received input: {}", input);
-                    let bytes = input.as_bytes();
-                    let array = js_sys::Uint8Array::from(bytes);
-                    yield Ok(array.into());
-                }
-            }).into_raw())
+            Some(
+                ReadableStream::from_stream(async_stream::stream! {
+                    while let Some(input) = input_receiver.recv().await {
+                        tracing::info!("🟢 Received input: {}", input);
+                        let bytes = input.as_bytes();
+                        let array = js_sys::Uint8Array::from(bytes);
+                        yield Ok(array.into());
+                    }
+                })
+                .into_raw(),
+            )
         } else {
             None
         };
@@ -151,17 +166,20 @@ impl Session {
         mut event_receiver: tokio::sync::broadcast::Receiver<TerminalEvent>,
         network: P2PNetwork,
     ) -> Result<Self, JsError> {
-        let receiver = Some(ReadableStream::from_stream(async_stream::stream! {
-            while let Ok(event) = event_receiver.recv().await {
-                tracing::debug!("Received terminal event: {:?}", event);
+        let receiver = Some(
+            ReadableStream::from_stream(async_stream::stream! {
+                while let Ok(event) = event_receiver.recv().await {
+                    tracing::debug!("Received terminal event: {:?}", event);
 
-                // Convert terminal event to bytes
-                let event_json = serde_json::to_string(&event).unwrap_or_default();
-                let bytes = event_json.as_bytes();
-                let array = js_sys::Uint8Array::from(bytes);
-                yield Ok(array.into());
-            }
-        }).into_raw());
+                    // Convert terminal event to bytes
+                    let event_json = serde_json::to_string(&event).unwrap_or_default();
+                    let bytes = event_json.as_bytes();
+                    let array = js_sys::Uint8Array::from(bytes);
+                    yield Ok(array.into());
+                }
+            })
+            .into_raw(),
+        );
 
         Ok(Self {
             session_id,
@@ -205,7 +223,7 @@ impl Session {
 }
 
 #[wasm_bindgen]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SessionSender {
     gossip_sender: iroh_gossip::api::GossipSender,
     session_id: String,
@@ -217,7 +235,12 @@ impl SessionSender {
     /// Send terminal output data
     pub async fn send_output(&self, data: String) -> Result<(), JsError> {
         self.network
-            .send_terminal_output(&self.session_id, &self.gossip_sender, data)
+            .send_terminal_output(
+                &self.session_id,
+                &self.gossip_sender,
+                self.session_id.clone(),
+                data,
+            )
             .await
             .map_err(to_js_err)?;
         Ok(())

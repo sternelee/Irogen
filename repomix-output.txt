@@ -1,0 +1,2859 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+
+Additional Info:
+----------------
+
+================================================================
+Directory Structure
+================================================================
+cli/
+  src/
+    terminal/
+      unix.rs
+      windows.rs
+    main.rs
+    sleep_inhibitor.rs
+    terminal_manager.rs
+    terminal.rs
+    web_proxy.rs
+  .gitignore
+  Cargo.toml
+shared/
+  src/
+    lib.rs
+  .gitignore
+  Cargo.toml
+Cargo.toml
+
+================================================================
+Files
+================================================================
+
+================
+File: cli/src/terminal/unix.rs
+================
+use std::convert::Infallible;
+use std::env;
+use std::ffi::{CStr, CString};
+use std::os::fd::{AsRawFd, RawFd};
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use anyhow::Result;
+use close_fds::CloseFdsBuilder;
+use nix::errno::Errno;
+use nix::libc::{login_tty, TIOCGWINSZ, TIOCSWINSZ};
+use nix::pty::{self, Winsize};
+use nix::sys::signal::{kill, Signal::SIGKILL};
+use nix::sys::wait::waitpid;
+use nix::unistd::{execvp, fork, ForkResult, Pid};
+use pin_project::{pin_project, pinned_drop};
+use tokio::fs::{self, File};
+use tokio::io::{self, AsyncRead, AsyncWrite};
+use tracing::{instrument, trace};
+
+/// Returns the default shell on this system.
+pub async fn get_default_shell() -> String {
+    if let Ok(shell) = env::var("SHELL") {
+        if !shell.is_empty() {
+            return shell;
+        }
+    }
+    for shell in [
+        "/bin/bash",
+        "/bin/sh",
+        "/usr/local/bin/bash",
+        "/usr/local/bin/sh",
+    ] {
+        if fs::metadata(shell).await.is_ok() {
+            return shell.to_string();
+        }
+    }
+    String::from("sh")
+}
+
+/// An object that stores the state for a terminal session.
+#[pin_project(PinnedDrop)]
+pub struct Terminal {
+    child: Pid,
+    #[pin]
+    master_read: File,
+    #[pin]
+    master_write: File,
+}
+
+impl Terminal {
+    /// Create a new terminal, with attached PTY.
+    #[instrument]
+    pub async fn new(shell: &str) -> Result<Terminal> {
+        let result = pty::openpty(None, None)?;
+
+        // The slave file descriptor was created by openpty() and is forked here.
+        let child = Self::fork_child(shell, result.slave.as_raw_fd())?;
+
+        // We need to clone the file object to prevent livelocks in Tokio, when multiple
+        // reads and writes happen concurrently on the same file descriptor. This is a
+        // current limitation of how the `tokio::fs::File` struct is implemented, due to
+        // its blocking I/O on a separate thread.
+        let master_read = File::from(std::fs::File::from(result.master));
+        let master_write = master_read.try_clone().await?;
+
+        trace!(%child, "creating new terminal");
+
+        Ok(Self {
+            child,
+            master_read,
+            master_write,
+        })
+    }
+
+    /// Entry point for the child process, which spawns a shell.
+    fn fork_child(shell: &str, slave_port: RawFd) -> Result<Pid> {
+        let shell = CString::new(shell.to_owned())?;
+
+        // Safety: This does not use any async-signal-unsafe operations in the child
+        // branch, such as memory allocation.
+        match unsafe { fork() }? {
+            ForkResult::Parent { child } => Ok(child),
+            ForkResult::Child => match Self::execv_child(&shell, slave_port) {
+                Ok(infallible) => match infallible {},
+                Err(_) => std::process::exit(1),
+            },
+        }
+    }
+
+    fn execv_child(shell: &CStr, slave_port: RawFd) -> Result<Infallible, Errno> {
+        // Safety: The slave file descriptor was created by openpty().
+        Errno::result(unsafe { login_tty(slave_port) })?;
+        // Safety: This is called immediately before an execv(), and there are no other
+        // threads in this process to interact with its file descriptor table.
+        unsafe { CloseFdsBuilder::new().closefrom(3) };
+
+        // Set terminal environment variables appropriately.
+        unsafe {
+            env::set_var("TERM", "xterm-256color");
+            env::set_var("COLORTERM", "truecolor");
+            env::set_var("TERM_PROGRAM", "iroh-chat");
+            env::remove_var("TERM_PROGRAM_VERSION");
+        }
+
+        // Start the process.
+        execvp(shell, &[shell])
+    }
+
+    /// Get the window size of the TTY.
+    pub fn get_winsize(&self) -> Result<(u16, u16)> {
+        nix::ioctl_read_bad!(ioctl_get_winsize, TIOCGWINSZ, Winsize);
+        let mut winsize = make_winsize(0, 0);
+        // Safety: The master file descriptor was created by openpty().
+        unsafe { ioctl_get_winsize(self.master_read.as_raw_fd(), &mut winsize) }?;
+        Ok((winsize.ws_row, winsize.ws_col))
+    }
+
+    /// Set the window size of the TTY.
+    pub fn set_winsize(&mut self, rows: u16, cols: u16) -> Result<()> {
+        nix::ioctl_write_ptr_bad!(ioctl_set_winsize, TIOCSWINSZ, Winsize);
+        let winsize = make_winsize(rows, cols);
+        // Safety: The master file descriptor was created by openpty().
+        unsafe { ioctl_set_winsize(self.master_read.as_raw_fd(), &winsize) }?;
+        Ok(())
+    }
+}
+
+// Redirect terminal reads to the read file object.
+impl AsyncRead for Terminal {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut io::ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        self.project().master_read.poll_read(cx, buf)
+    }
+}
+
+// Redirect terminal writes to the write file object.
+impl AsyncWrite for Terminal {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        self.project().master_write.poll_write(cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.project().master_write.poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.project().master_write.poll_shutdown(cx)
+    }
+}
+
+#[pinned_drop]
+impl PinnedDrop for Terminal {
+    fn drop(self: Pin<&mut Self>) {
+        let this = self.project();
+        let child = *this.child;
+        trace!(%child, "dropping terminal");
+
+        // Kill the child process on closure so that it doesn't keep running.
+        kill(child, SIGKILL).ok();
+
+        // Reap the zombie process in a background thread.
+        std::thread::spawn(move || {
+            waitpid(child, None).ok();
+        });
+    }
+}
+
+fn make_winsize(rows: u16, cols: u16) -> Winsize {
+    Winsize {
+        ws_row: rows,
+        ws_col: cols,
+        ws_xpixel: 0, // ignored
+        ws_ypixel: 0, // ignored
+    }
+}
+
+================
+File: cli/src/terminal/windows.rs
+================
+use std::pin::Pin;
+use std::process::Command;
+use std::task::Context;
+use std::task::Poll;
+
+use anyhow::Result;
+use pin_project::{pin_project, pinned_drop};
+use tokio::fs::{self, File};
+use tokio::io::{self, AsyncRead, AsyncWrite};
+use tracing::instrument;
+
+/// Returns the default shell on this system.
+///
+/// For Windows, this is implemented currently to just look for shells at a
+/// couple locations. If it fails, it returns `cmd.exe`.
+///
+/// Note: I can't get `powershell.exe` to work with ConPTY, since it returns
+/// error 8009001d. There's some magic environment variables that need to be set
+/// for Powershell to launch. This is why I don't typically use Windows!
+pub async fn get_default_shell() -> String {
+    for shell in [
+        "C:\\Program Files\\Git\\bin\\bash.exe",
+        "C:\\Windows\\System32\\cmd.exe",
+    ] {
+        if fs::metadata(shell).await.is_ok() {
+            return shell.to_string();
+        }
+    }
+    String::from("cmd.exe")
+}
+
+/// An object that stores the state for a terminal session.
+#[pin_project(PinnedDrop)]
+pub struct Terminal {
+    child: conpty::Process,
+    #[pin]
+    reader: File,
+    #[pin]
+    writer: File,
+    winsize: (u16, u16),
+}
+
+impl Terminal {
+    /// Create a new terminal, with attached PTY.
+    #[instrument]
+    pub async fn new(shell: &str) -> Result<Terminal> {
+        let mut command = Command::new(shell);
+
+        // Set terminal environment variables appropriately.
+        command.env("TERM", "xterm-256color");
+        command.env("COLORTERM", "truecolor");
+        command.env("TERM_PROGRAM", "iroh-chat");
+        command.env_remove("TERM_PROGRAM_VERSION");
+
+        let mut child =
+            tokio::task::spawn_blocking(move || conpty::Process::spawn(command)).await??;
+        let reader = File::from_std(child.output()?.into());
+        let writer = File::from_std(child.input()?.into());
+
+        Ok(Self {
+            child,
+            reader,
+            writer,
+            winsize: (0, 0),
+        })
+    }
+
+    /// Get the window size of the TTY.
+    pub fn get_winsize(&self) -> Result<(u16, u16)> {
+        Ok(self.winsize)
+    }
+
+    /// Set the window size of the TTY.
+    pub fn set_winsize(&mut self, rows: u16, cols: u16) -> Result<()> {
+        let rows_i16 = rows.min(i16::MAX as u16) as i16;
+        let cols_i16 = cols.min(i16::MAX as u16) as i16;
+        self.child.resize(cols_i16, rows_i16)?; // Note argument order
+        self.winsize = (rows, cols);
+        Ok(())
+    }
+}
+
+// Redirect terminal reads to the read file object.
+impl AsyncRead for Terminal {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut io::ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        self.project().reader.poll_read(cx, buf)
+    }
+}
+
+// Redirect terminal writes to the write file object.
+impl AsyncWrite for Terminal {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        self.project().writer.poll_write(cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.project().writer.poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.project().writer.poll_shutdown(cx)
+    }
+}
+
+#[pinned_drop]
+impl PinnedDrop for Terminal {
+    fn drop(self: Pin<&mut Self>) {
+        let this = self.project();
+        this.child.exit(0).ok();
+    }
+}
+
+================
+File: cli/src/main.rs
+================
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
+use clap::Parser;
+use iroh::SecretKey;
+use n0_future::StreamExt;
+use shared::{ChatNode, ChatTicket, Event};
+use tokio::sync::RwLock;
+
+mod sleep_inhibitor;
+mod terminal;
+mod terminal_manager;
+mod web_proxy;
+use sleep_inhibitor::SleepInhibitor;
+use terminal_manager::TerminalManager;
+use web_proxy::WebProxyManager;
+
+#[derive(Parser)]
+#[command(name = "iroh-chat-term")]
+#[command(about = "Terminal chat and sharing application")]
+struct Cli {
+    #[arg(long, help = "Prevent system from sleeping while running")]
+    no_sleep: bool,
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let cli = Cli::parse();
+    tracing_subscriber::fmt::init();
+
+    let secret_key = match std::env::var("IROH_SECRET") {
+        Err(_) => {
+            let secret_key = {
+                let bytes = rand::random::<[u8; 32]>();
+                SecretKey::from_bytes(&bytes)
+            };
+            println!("* using new secret. to reuse, set this environment variable:");
+            println!(
+                "IROH_SECRET={}",
+                data_encoding::HEXLOWER.encode(&secret_key.to_bytes())
+            );
+            secret_key
+        }
+        Ok(s) => s
+            .parse()
+            .context("failed to parse secret key from IROH_SECRET environment variable")?,
+    };
+
+    let node = ChatNode::spawn(Some(secret_key)).await?;
+
+    // Initialize sleep inhibitor if --no-sleep flag is provided
+    let sleep_inhibitor = if cli.no_sleep {
+        println!("* System sleep inhibition enabled");
+        match SleepInhibitor::new().await {
+            Ok(inhibitor) => {
+                println!("* Successfully inhibited system sleep");
+                Some(inhibitor)
+            }
+            Err(e) => {
+                eprintln!("* Warning: Failed to inhibit system sleep: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Run terminal mode directly
+    let result = run_terminal_mode(node).await;
+
+    // Cleanup sleep inhibitor
+    if let Some(inhibitor) = sleep_inhibitor {
+        if let Err(e) = inhibitor.release().await {
+            eprintln!("* Warning: Failed to release sleep inhibition: {}", e);
+        } else {
+            println!("* System sleep inhibition released");
+        }
+    }
+
+    result
+}
+
+async fn run_terminal_mode(node: ChatNode) -> Result<()> {
+    let ticket = ChatTicket::new_random();
+    let mut our_ticket = ticket.clone();
+    our_ticket.bootstrap = [node.node_id()].into_iter().collect();
+    println!("* node id: {}", node.node_id());
+    println!("* ticket to join this terminal session:");
+    println!("{}", our_ticket.serialize());
+
+    let terminal_manager = Arc::new(RwLock::new(TerminalManager::new(node.node_id())));
+    let manager_clone = terminal_manager.clone();
+
+    // Create web proxy manager
+    let web_proxy_manager = Arc::new(RwLock::new(WebProxyManager::new(Arc::new(
+        node.endpoint().clone(),
+    ))));
+    let web_manager_clone = web_proxy_manager.clone();
+
+    println!("* waiting for terminal connections ...");
+    let (sender, mut receiver) = node.join(&ticket, "terminal-server".to_string()).await?;
+
+    let receive_task = tokio::task::spawn(async move {
+        while let Some(event) = receiver.try_next().await? {
+            match event {
+                Event::NodeJoined { node_id } => {
+                    println!("* neighbor up: {node_id}");
+
+                    // Use optimized state synchronization
+                    println!("* broadcasting terminal state to new neighbor");
+                    let manager = manager_clone.read().await;
+                    if let Err(e) = manager.sync_state_optimized(sender.clone()).await {
+                        println!("* failed to broadcast terminal state: {}", e);
+                    } else {
+                        println!("* broadcasted terminal state to new neighbor");
+                    }
+
+                    // Broadcast WebShare state to new neighbor
+                    println!("* broadcasting WebShare state to new neighbor");
+                    let web_manager = web_manager_clone.read().await;
+                    let web_share_proxies = web_manager.get_active_proxies();
+                    if !web_share_proxies.is_empty() {
+                        if let Err(e) = sender.send_web_share_state(web_share_proxies).await {
+                            println!("* failed to broadcast WebShare state: {}", e);
+                        } else {
+                            println!("* broadcasted WebShare state to new neighbor");
+                        }
+                    }
+                }
+                Event::NodeLeft { node_id } => {
+                    println!("* neighbor down: {node_id}")
+                }
+                Event::MessageReceived {
+                    from,
+                    text,
+                    nickname,
+                } => {
+                    let from_short = from.fmt_short();
+                    if text.is_empty() {
+                        // Presence message
+                        println!("* {from_short} is now known as {nickname}");
+                    } else {
+                        // Regular chat message
+                        println!("<{from_short}> {nickname}: {text}");
+                    }
+                }
+                Event::TerminalBatch {
+                    from: _,
+                    operations,
+                } => {
+                    // Optimized batch processing of terminal operations
+                    for operation in operations {
+                        match operation {
+                            shared::TerminalOp::Create {
+                                session_id,
+                                shell_path: _,
+                                name,
+                            } => {
+                                println!("* terminal create request for session {}", session_id);
+                                let mut manager = manager_clone.write().await;
+                                if let Err(e) = manager
+                                    .create_session(
+                                        session_id.clone(),
+                                        name.clone(), // name
+                                        None,         // Use default shell
+                                        sender.clone(),
+                                    )
+                                    .await
+                                {
+                                    println!(
+                                        "* failed to create terminal session {}: {}",
+                                        session_id, e
+                                    );
+                                }
+                            }
+                            shared::TerminalOp::Input { session_id, data } => {
+                                let manager = manager_clone.read().await;
+                                if let Err(e) = manager.send_input(&session_id, data).await {
+                                    println!(
+                                        "* failed to forward input to terminal {}: {}",
+                                        session_id, e
+                                    );
+                                }
+                            }
+                            shared::TerminalOp::Output { session_id, data } => {
+                                if let Ok(text) = String::from_utf8(data.clone()) {
+                                    println!("[Terminal {}] {}", session_id, text);
+                                } else {
+                                    println!("[Terminal {}] (binary data)", session_id);
+                                }
+                            }
+                            shared::TerminalOp::Resize {
+                                session_id,
+                                rows,
+                                cols,
+                            } => {
+                                let manager = manager_clone.read().await;
+                                if let Err(e) = manager
+                                    .resize_terminal(&session_id, rows as u16, cols as u16)
+                                    .await
+                                {
+                                    println!(
+                                        "* terminal {} failed to resize to {}x{}: {}",
+                                        session_id, rows, cols, e
+                                    );
+                                }
+                            }
+                            shared::TerminalOp::Status { session_id, status } => {
+                                println!(
+                                    "* terminal status for session {} - {}",
+                                    session_id, status
+                                );
+                            }
+                            shared::TerminalOp::Close { session_id } => {
+                                let mut manager = manager_clone.write().await;
+                                if let Err(e) = manager.close_session(&session_id).await {
+                                    println!(
+                                        "* failed to close terminal session {}: {}",
+                                        session_id, e
+                                    );
+                                }
+                            }
+                            shared::TerminalOp::Rename {
+                                session_id,
+                                new_name,
+                            } => {
+                                let display_name = new_name.as_deref().unwrap_or("no name");
+                                println!("* terminal {} renamed to '{}'", session_id, display_name);
+
+                                let mut manager = manager_clone.write().await;
+                                if let Err(e) = manager.rename_session(&session_id, new_name).await
+                                {
+                                    println!("* failed to rename terminal {}: {}", session_id, e);
+                                }
+                            }
+                        }
+                    }
+                }
+                Event::TerminalState { from: _, terminals } => {
+                    println!(
+                        "* terminal state received with {} terminals",
+                        terminals.len()
+                    );
+
+                    // Optimized state synchronization - batch create missing terminals
+                    let mut manager = manager_clone.write().await;
+                    let existing_sessions = manager.list_sessions();
+
+                    for terminal_info in terminals {
+                        if !existing_sessions.contains(&terminal_info.session_id) {
+                            println!(
+                                "* creating terminal {} from state sync",
+                                terminal_info.session_id
+                            );
+                            if let Err(e) = manager
+                                .create_session(
+                                    terminal_info.session_id.clone(),
+                                    terminal_info.name.clone(),
+                                    None,
+                                    sender.clone(),
+                                )
+                                .await
+                            {
+                                println!(
+                                    "* failed to create terminal {}: {}",
+                                    terminal_info.session_id, e
+                                );
+                            }
+                        }
+                    }
+                }
+                Event::WebShare {
+                    from,
+                    local_port,
+                    public_port,
+                } => {
+                    println!(
+                        "* web share request from {}: {} -> {}",
+                        from.fmt_short(),
+                        public_port,
+                        local_port
+                    );
+
+                    let mut manager = web_manager_clone.write().await;
+                    if let Err(e) = manager
+                        .start_proxy(local_port, public_port, from.into(), None)
+                        .await
+                    {
+                        println!("* failed to start web proxy: {}", e);
+                    } else {
+                        println!("* web proxy started successfully");
+                    }
+                }
+                Event::WebShareStop { from, public_port } => {
+                    println!(
+                        "* web share stop request from {}: port {}",
+                        from.fmt_short(),
+                        public_port
+                    );
+
+                    let mut manager = web_manager_clone.write().await;
+                    if let Err(e) = manager.stop_proxy(public_port).await {
+                        println!("* failed to stop web proxy: {}", e);
+                    } else {
+                        println!("* web proxy stopped successfully");
+                    }
+                }
+                Event::WebShareState { from: _, proxies } => {
+                    println!(
+                        "* web share state received with {} active proxies",
+                        proxies.len()
+                    );
+
+                    // Process incoming WebShare state - recreate proxies locally
+                    {
+                        let _manager = web_manager_clone.write().await;
+                        let local_node_id = node.node_id();
+
+                        for proxy_info in proxies {
+                            // Only create proxies that belong to other nodes
+                            if proxy_info.node_id != local_node_id {
+                                // For now, we just log the incoming proxy info
+                                // In a full implementation, you might want to create local
+                                // forwarding rules or track these in a UI
+                                println!(
+                                    "* remote proxy available: {} -> {} from node {}",
+                                    proxy_info.public_port,
+                                    proxy_info.local_port,
+                                    proxy_info.node_id.fmt_short()
+                                );
+                            }
+                        }
+                    }
+                }
+                Event::Lagged => {
+                    println!("* warn: gossip stream lagged")
+                }
+            }
+        }
+        anyhow::Ok(())
+    });
+
+    // Handle terminal resize signals
+    let resize_task = tokio::task::spawn(async move {
+        // Here you could handle terminal resize signals if needed
+        // For now, we'll just keep the task alive
+        tokio::time::sleep(tokio::time::Duration::from_secs(u64::MAX)).await;
+        anyhow::Ok(())
+    });
+
+    // Wait for either task to complete
+    tokio::select! {
+        result = receive_task => {
+            result??;
+        }
+        result = resize_task => {
+            result??;
+        }
+    }
+
+    // Cleanup
+    let mut manager = terminal_manager.write().await;
+    manager.close_all_sessions().await?;
+
+    // Cleanup web proxies
+    let mut web_manager = web_proxy_manager.write().await;
+    web_manager.stop_all_proxies().await?;
+
+    println!("* terminal server shutdown");
+    Ok(())
+}
+
+================
+File: cli/src/sleep_inhibitor.rs
+================
+use anyhow::Result;
+use std::process::{Command, Stdio};
+
+cfg_if::cfg_if! {
+    if #[cfg(windows)] {
+        use windows::Win32::System::Power::{
+            SetThreadExecutionState, EXECUTION_STATE, ES_CONTINUOUS,
+            ES_SYSTEM_REQUIRED, ES_DISPLAY_REQUIRED
+        };
+        use std::sync::atomic::{AtomicBool, Ordering};
+    }
+}
+
+pub struct SleepInhibitor {
+    #[cfg(unix)]
+    child: Option<std::process::Child>,
+    #[cfg(windows)]
+    is_active: std::sync::Arc<AtomicBool>,
+}
+
+impl SleepInhibitor {
+    pub async fn new() -> Result<Self> {
+        cfg_if::cfg_if! {
+            if #[cfg(unix)] {
+                Self::new_unix().await
+            } else if #[cfg(windows)] {
+                Self::new_windows().await
+            } else {
+                anyhow::bail!("Sleep inhibition not supported on this platform");
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    async fn new_unix() -> Result<Self> {
+        // Try different methods based on the platform
+        if cfg!(target_os = "macos") {
+            // Use caffeinate on macOS
+            let mut child = Command::new("caffeinate")
+                .arg("-d") // Prevent system sleep
+                .arg("-i") // Prevent idle sleep
+                .arg("-u") // Prevent the system from sleeping due to inactivity
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|e| anyhow::anyhow!("Failed to spawn caffeinate: {}", e))?;
+
+            // Give it a moment to start
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+            // Check if the process is still running
+            match child.try_wait()? {
+                Some(status) => {
+                    anyhow::bail!("caffeinate process exited with status: {}", status);
+                }
+                None => {
+                    // Process is still running, which is what we want
+                    Ok(Self { child: Some(child) })
+                }
+            }
+        } else if cfg!(target_os = "linux") {
+            // Try systemd-inhibit first on Linux
+            if let Ok(inhibitor) = Self::try_systemd_inhibit() {
+                return Ok(inhibitor);
+            }
+
+            // Fallback to xdg-screensaver
+            #[cfg(target_os = "linux")]
+            {
+                Self::try_xdg_screensaver().await
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                anyhow::bail!("Sleep inhibition not supported on this platform");
+            }
+        } else {
+            // Generic Unix - try to use a simple approach
+            anyhow::bail!("Sleep inhibition not supported on this Unix platform");
+        }
+    }
+
+    #[cfg(unix)]
+    fn try_systemd_inhibit() -> Result<Self> {
+        let child = Command::new("systemd-inhibit")
+            .arg("--what=sleep")
+            .arg("--who=iroh-chat-term")
+            .arg("--why=Terminal chat session is active")
+            .arg("--mode=block")
+            .arg("sleep")
+            .arg("infinity")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("Failed to spawn systemd-inhibit: {}", e))?;
+
+        Ok(Self { child: Some(child) })
+    }
+
+    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
+    async fn try_xdg_screensaver() -> Result<Self> {
+        // Create a simple process that periodically calls xdg-screensaver reset
+        let mut child = Command::new("sh")
+            .arg("-c")
+            .arg("while true; do xdg-screensaver reset; sleep 30; done")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("Failed to spawn xdg-screensaver loop: {}", e))?;
+
+        // Give it a moment to start
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Check if the process is still running
+        match child.try_wait()? {
+            Some(status) => {
+                anyhow::bail!("xdg-screensaver process exited with status: {}", status);
+            }
+            None => {
+                // Process is still running, which is what we want
+                Ok(Self { child: Some(child) })
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    async fn new_windows() -> Result<Self> {
+        let is_active = std::sync::Arc::new(AtomicBool::new(false));
+
+        unsafe {
+            let flags = ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED | ES_CONTINUOUS;
+            let result = SetThreadExecutionState(EXECUTION_STATE(flags));
+
+            if result.is_empty() {
+                anyhow::bail!("Failed to set execution state");
+            }
+        }
+
+        is_active.store(true, Ordering::SeqCst);
+
+        // Start a background task to keep the system awake
+        let is_active_clone = is_active.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+
+            while is_active_clone.load(Ordering::SeqCst) {
+                interval.tick().await;
+
+                unsafe {
+                    let flags = ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED | ES_CONTINUOUS;
+                    let result = SetThreadExecutionState(EXECUTION_STATE(flags));
+
+                    if result.is_empty() {
+                        eprintln!("Warning: Failed to maintain sleep inhibition");
+                        break;
+                    }
+                }
+            }
+        });
+
+        Ok(Self { is_active })
+    }
+
+    pub async fn release(mut self) -> Result<()> {
+        cfg_if::cfg_if! {
+            if #[cfg(unix)] {
+                if let Some(mut child) = self.child.take() {
+                    child.kill().map_err(|e| anyhow::anyhow!("Failed to kill sleep inhibitor process: {}", e))?;
+                    child.wait().map_err(|e| anyhow::anyhow!("Failed to wait for sleep inhibitor process: {}", e))?;
+                }
+                Ok(())
+            } else if #[cfg(windows)] {
+                self.release_windows().await
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    async fn release_windows(self) -> Result<()> {
+        self.is_active.store(false, Ordering::SeqCst);
+
+        unsafe {
+            let result = SetThreadExecutionState(EXECUTION_STATE::ES_CONTINUOUS);
+
+            if result.is_empty() {
+                anyhow::bail!("Failed to restore execution state");
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Drop for SleepInhibitor {
+    fn drop(&mut self) {
+        cfg_if::cfg_if! {
+            if #[cfg(unix)] {
+                if let Some(mut child) = self.child.take() {
+                    let _ = child.kill();
+                }
+            } else if #[cfg(windows)] {
+                self.is_active.store(false, Ordering::SeqCst);
+
+                unsafe {
+                    let _ = SetThreadExecutionState(EXECUTION_STATE::ES_CONTINUOUS);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_sleep_inhibitor_creation() {
+        // This test may fail on systems without sleep inhibition support
+        // but should not panic
+        let _inhibitor = SleepInhibitor::new().await;
+    }
+}
+
+================
+File: cli/src/terminal_manager.rs
+================
+use std::collections::HashMap;
+
+use anyhow::{Context, Result};
+use encoding_rs::CoderResult;
+use shared::{ChatSender, NodeId, TerminalInfo, TerminalPosition, TerminalSize};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::mpsc;
+use tracing::{debug, error, info, warn};
+
+use crate::terminal::{get_default_shell, Terminal};
+
+const BUFFER_SIZE: usize = 4096;
+const CONTENT_ROLLING_BYTES: usize = 8 << 20; // 8MB
+
+/// Terminal session management
+pub struct TerminalSession {
+    session_id: String,
+    terminal: Terminal,
+    sender: ChatSender,
+    decoder: encoding_rs::Decoder,
+    content: String,
+    content_offset: usize,
+    sequence: u64,
+    last_activity: u64,
+    current_size: (u16, u16),
+}
+
+impl TerminalSession {
+    pub async fn new(
+        session_id: String,
+        _name: Option<String>, // name parameter kept for compatibility but not stored
+        shell_path: Option<String>,
+        sender: ChatSender,
+    ) -> Result<Self> {
+        let shell = match shell_path {
+            Some(shell) => shell,
+            None => get_default_shell().await,
+        };
+        info!(
+            "Creating terminal session '{}' ({}) with shell: {}",
+            session_id, session_id, shell
+        );
+
+        let mut terminal = Terminal::new(&shell)
+            .await
+            .context("Failed to create terminal")?;
+
+        // Set initial terminal size
+        terminal
+            .set_winsize(24, 80)
+            .context("Failed to set terminal size")?;
+
+        // Get actual terminal size
+        let size = terminal.get_winsize().unwrap_or((24, 80));
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        Ok(Self {
+            session_id,
+            terminal,
+            sender,
+            decoder: encoding_rs::UTF_8.new_decoder(),
+            content: String::new(),
+            content_offset: 0,
+            sequence: 0,
+            last_activity: now,
+            current_size: size,
+        })
+    }
+
+    pub async fn run(mut self, mut command_rx: mpsc::Receiver<TerminalCommand>) -> Result<()> {
+        let mut buf = [0u8; BUFFER_SIZE];
+        let mut finished = false;
+
+        // Notify that terminal is ready
+        self.sender
+            .send_terminal_status(self.session_id.clone(), "ready".to_string())
+            .await?;
+
+        while !finished {
+            tokio::select! {
+                // Read from terminal
+                result = self.terminal.read(&mut buf) => {
+                    match result {
+                        Ok(0) => {
+                            // Terminal closed
+                            finished = true;
+                            self.sender.send_terminal_status(
+                                self.session_id.clone(),
+                                "closed".to_string()
+                            ).await?;
+                        }
+                        Ok(n) => {
+                            // Process terminal output
+                            self.process_terminal_output(&buf[..n]).await?;
+                        }
+                        Err(e) => {
+                            error!("Terminal read error: {}", e);
+                            self.sender.send_terminal_status(
+                                self.session_id.clone(),
+                                format!("error: {}", e)
+                            ).await?;
+                            finished = true;
+                        }
+                    }
+                }
+
+                // Handle commands
+                Some(command) = command_rx.recv() => {
+                    match command {
+                        TerminalCommand::Input(data) => {
+                            if let Err(e) = self.terminal.write_all(&data).await {
+                                error!("Failed to write to terminal: {}", e);
+                                self.sender.send_terminal_status(
+                                    self.session_id.clone(),
+                                    format!("write_error: {}", e)
+                                ).await?;
+                            }
+                        }
+                        TerminalCommand::Resize(rows, cols) => {
+                            if let Err(e) = self.terminal.set_winsize(rows, cols) {
+                                error!("Failed to resize terminal: {}", e);
+                            } else {
+                                debug!("Resized terminal {} to {}x{}", self.session_id, rows, cols);
+                                self.current_size = (rows, cols);
+                            }
+                        }
+                        TerminalCommand::Close => {
+                            info!("Closing terminal session {}", self.session_id);
+                            finished = true;
+                        }
+                        TerminalCommand::Rename(new_name) => {
+                            info!("Renaming terminal session '{}' to '{:?}'", self.session_id, new_name);
+                            // Update local name
+                            // Note: In a real implementation, you might want to send a rename event
+                            // For now, we just update the local state
+                            // The actual rename event is sent by the ChatSender
+                        }
+                    }
+                }
+
+                // Command channel closed
+                else => {
+                    info!("Command channel closed for terminal {}", self.session_id);
+                    finished = true;
+                }
+            }
+        }
+
+        // Send final status
+        self.sender
+            .send_terminal_status(self.session_id.clone(), "terminated".to_string())
+            .await?;
+
+        info!("Terminal session {} ended", self.session_id);
+        Ok(())
+    }
+
+    async fn process_terminal_output(&mut self, data: &[u8]) -> Result<()> {
+        // Update last activity time
+        self.last_activity = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Decode UTF-8
+        self.content
+            .reserve(self.decoder.max_utf8_buffer_length(data.len()).unwrap_or(0));
+        let (result, _, _) = self
+            .decoder
+            .decode_to_string(data, &mut self.content, false);
+
+        if result != CoderResult::InputEmpty {
+            warn!("UTF-8 decoding error in terminal output");
+        }
+
+        // Send output if we have new data
+        if (self.content_offset + self.content.len()) as u64 > self.sequence {
+            let start =
+                self.prev_char_boundary((self.sequence - self.content_offset as u64) as usize);
+            let end = self.prev_char_boundary((start + BUFFER_SIZE).min(self.content.len()));
+
+            if start < end {
+                let output_data = self.content.as_bytes()[start..end].to_vec();
+                self.sender
+                    .send_terminal_output(self.session_id.clone(), output_data)
+                    .await?;
+
+                self.sequence = (self.content_offset + end) as u64;
+            }
+        }
+
+        // Prune old content to prevent memory growth
+        if self.content.len() > CONTENT_ROLLING_BYTES
+            && self.sequence > (self.content_offset + CONTENT_ROLLING_BYTES) as u64
+        {
+            let prune_amount =
+                self.sequence - self.content_offset as u64 - CONTENT_ROLLING_BYTES as u64;
+            let pruned = self.prev_char_boundary(prune_amount as usize);
+            self.content.drain(..pruned);
+            self.content_offset += pruned;
+        }
+
+        Ok(())
+    }
+
+    fn prev_char_boundary(&self, index: usize) -> usize {
+        (0..=index)
+            .rev()
+            .find(|&i| self.content.is_char_boundary(i))
+            .unwrap_or(0)
+    }
+}
+
+/// Commands that can be sent to a terminal session
+pub enum TerminalCommand {
+    Input(Vec<u8>),
+    Resize(u16, u16),
+    Close,
+    Rename(Option<String>), // Add rename command
+}
+
+/// Manager for multiple terminal sessions
+pub struct TerminalManager {
+    sessions: HashMap<String, TerminalSessionInfo>, // session_id -> session info
+}
+
+/// Information about a terminal session
+#[derive(Clone)]
+struct TerminalSessionInfo {
+    sender: mpsc::Sender<TerminalCommand>,
+    name: Option<String>,
+    created_at: u64,
+    last_activity: u64,
+    size: (u16, u16),
+}
+
+impl TerminalManager {
+    pub fn new(_node_id: NodeId) -> Self {
+        Self {
+            sessions: HashMap::new(),
+        }
+    }
+
+    // Optimized state synchronization with minimal network overhead
+    pub async fn sync_state_optimized(&self, sender: ChatSender) -> Result<()> {
+        let terminal_infos = self.get_terminal_infos();
+
+        // Only send state if we have terminals
+        if !terminal_infos.is_empty() {
+            sender.send_terminal_state(terminal_infos).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn create_session(
+        &mut self,
+        session_id: String,
+        name: Option<String>,
+        shell_path: Option<String>,
+        sender: ChatSender,
+    ) -> Result<()> {
+        if self.sessions.contains_key(&session_id) {
+            return Err(anyhow::anyhow!("Session {} already exists", session_id));
+        }
+
+        let (command_tx, command_rx) = mpsc::channel(32);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let session =
+            TerminalSession::new(session_id.clone(), name.clone(), shell_path, sender.clone())
+                .await?;
+
+        // Spawn session task
+        let session_id_clone = session_id.clone();
+        tokio::spawn(async move {
+            if let Err(e) = session.run(command_rx).await {
+                error!("Terminal session {} failed: {}", session_id_clone, e);
+            }
+        });
+
+        self.sessions.insert(
+            session_id.clone(),
+            TerminalSessionInfo {
+                sender: command_tx,
+                name: name.clone(),
+                created_at: now,
+                last_activity: now,
+                size: (24, 80), // Default size
+            },
+        );
+
+        let display_name = name.as_deref().unwrap_or(&session_id);
+        info!("Created new terminal session: '{}'", display_name);
+        Ok(())
+    }
+
+    // Helper method to resolve session identifier (session_id or name)
+    // Returns all matching session_ids (supports duplicate names)
+    fn resolve_session_ids(&self, identifier: &str) -> Vec<String> {
+        let mut results = Vec::new();
+
+        // First try as session_id
+        if self.sessions.contains_key(identifier) {
+            results.push(identifier.to_string());
+        }
+
+        // Then try as name (find all terminals with this name)
+        for (session_id, session_info) in &self.sessions {
+            if session_info.name.as_deref() == Some(identifier) {
+                results.push(session_id.clone());
+            }
+        }
+
+        results
+    }
+
+    // Helper method to resolve single session identifier (for operations that expect uniqueness)
+    fn resolve_session_id(&self, identifier: &str) -> Option<String> {
+        let ids = self.resolve_session_ids(identifier);
+        ids.into_iter().next()
+    }
+
+    pub async fn send_input(&self, identifier: &str, data: Vec<u8>) -> Result<()> {
+        let session_id = self
+            .resolve_session_id(identifier)
+            .ok_or_else(|| anyhow::anyhow!("Terminal '{}' not found", identifier))?;
+
+        if let Some(session_info) = self.sessions.get(&session_id) {
+            session_info
+                .sender
+                .send(TerminalCommand::Input(data))
+                .await
+                .context("Failed to send input to terminal")?;
+        } else {
+            return Err(anyhow::anyhow!("Session {} not found", session_id));
+        }
+        Ok(())
+    }
+
+    pub async fn resize_terminal(&self, identifier: &str, rows: u16, cols: u16) -> Result<()> {
+        let session_id = self
+            .resolve_session_id(identifier)
+            .ok_or_else(|| anyhow::anyhow!("Terminal '{}' not found", identifier))?;
+
+        if let Some(session_info) = self.sessions.get(&session_id) {
+            session_info
+                .sender
+                .send(TerminalCommand::Resize(rows, cols))
+                .await
+                .context("Failed to send resize command")?;
+        } else {
+            return Err(anyhow::anyhow!("Session {} not found", session_id));
+        }
+        Ok(())
+    }
+
+    pub async fn close_session(&mut self, identifier: &str) -> Result<()> {
+        let session_id = self
+            .resolve_session_id(identifier)
+            .ok_or_else(|| anyhow::anyhow!("Terminal '{}' not found", identifier))?;
+
+        if let Some(session_info) = self.sessions.remove(&session_id) {
+            session_info
+                .sender
+                .send(TerminalCommand::Close)
+                .await
+                .context("Failed to send close command")?;
+
+            info!("Closed terminal session: {}", identifier);
+        } else {
+            return Err(anyhow::anyhow!("Session {} not found", session_id));
+        }
+        Ok(())
+    }
+
+    pub fn list_sessions(&self) -> Vec<String> {
+        self.sessions.keys().cloned().collect()
+    }
+
+    pub async fn rename_session(
+        &mut self,
+        identifier: &str,
+        new_name: Option<String>,
+    ) -> Result<()> {
+        let session_id = self
+            .resolve_session_id(identifier)
+            .ok_or_else(|| anyhow::anyhow!("Terminal '{}' not found", identifier))?;
+
+        if let Some(session_info) = self.sessions.get(&session_id) {
+            // Send rename command to terminal session
+            session_info
+                .sender
+                .send(TerminalCommand::Rename(new_name.clone()))
+                .await
+                .context("Failed to send rename command")?;
+
+            // Update local state
+            let mut updated_info = session_info.clone();
+            updated_info.name = new_name.clone();
+            self.sessions.insert(session_id.clone(), updated_info);
+
+            let display_name = new_name.as_deref().unwrap_or("no name");
+            info!(
+                "Renamed terminal session '{}' to '{}'",
+                identifier, display_name
+            );
+        } else {
+            return Err(anyhow::anyhow!("Session {} not found", session_id));
+        }
+        Ok(())
+    }
+
+    pub fn get_terminal_infos(&self) -> Vec<TerminalInfo> {
+        self.sessions
+            .iter()
+            .map(|(session_id, session_info)| TerminalInfo {
+                session_id: session_id.clone(),
+                name: session_info.name.clone(),
+                position: TerminalPosition { x: 0, y: 0 },
+                size: TerminalSize {
+                    rows: session_info.size.0 as u32,
+                    cols: session_info.size.1 as u32,
+                },
+                status: "active".to_string(),
+                created_at: session_info.created_at,
+                last_activity: session_info.last_activity,
+            })
+            .collect()
+    }
+
+    pub async fn close_all_sessions(&mut self) -> Result<()> {
+        let sessions: Vec<String> = self.sessions.keys().cloned().collect();
+        for session_id in sessions {
+            if let Err(e) = self.close_session(&session_id).await {
+                error!("Failed to close session {}: {}", session_id, e);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for TerminalManager {
+    fn drop(&mut self) {
+        // Note: This is a sync drop method, but we need to be async
+        // In practice, sessions should be explicitly closed before drop
+        if !self.sessions.is_empty() {
+            warn!(
+                "TerminalManager dropped with {} active sessions",
+                self.sessions.len()
+            );
+        }
+    }
+}
+
+================
+File: cli/src/terminal.rs
+================
+//! Terminal driver, which communicates with a shell subprocess through PTY.
+
+#![allow(unsafe_code)]
+
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        mod unix;
+        pub use unix::*;
+    } else if #[cfg(windows)] {
+        mod windows;
+        pub use windows::*;
+    } else {
+        compile_error!("unsupported platform for terminal driver");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+
+    use super::Terminal;
+
+    #[tokio::test]
+    async fn winsize() -> Result<()> {
+        let shell = if cfg!(unix) { "/bin/sh" } else { "cmd.exe" };
+        let mut terminal = Terminal::new(shell).await?;
+        assert_eq!(terminal.get_winsize()?, (0, 0));
+        terminal.set_winsize(120, 72)?;
+        assert_eq!(terminal.get_winsize()?, (120, 72));
+        Ok(())
+    }
+}
+
+================
+File: cli/src/web_proxy.rs
+================
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::{Context, Result};
+use bytes::Bytes;
+use http_body_util::{combinators::BoxBody, BodyExt, Full};
+use hyper::client::conn::http1::Builder;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper::{Request, Response, StatusCode};
+use hyper_util::client::legacy::Client;
+use hyper_util::rt::TokioIo;
+use iroh::{Endpoint, NodeAddr};
+use tokio::net::TcpListener;
+use tokio::sync::{RwLock, Semaphore};
+use tokio::time::timeout;
+use tracing::{error, info, warn};
+
+const ALPN: &[u8] = b"dumbpipe/0.1";
+const HANDSHAKE: &[u8] = b"dumbpipe-handshake";
+
+// Security constants
+const MIN_PORT: u16 = 1024;
+const MAX_PORT: u16 = 65535;
+const MAX_CONNECTIONS: usize = 100;
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+// const MAX_BODY_SIZE: usize = 10 * 1024 * 1024; // 10MB - Currently unused
+const API_KEY_HEADER: &str = "X-Proxy-API-Key";
+
+/// Web 代理服务器，用于转发 HTTP 请求到本地服务
+pub struct WebProxy {
+    local_port: u16,
+    public_port: u16,
+    node_addr: NodeAddr,
+    endpoint: Arc<Endpoint>,
+    running: Arc<RwLock<bool>>,
+    connection_semaphore: Arc<Semaphore>,
+    active_connections: Arc<RwLock<std::collections::HashSet<u64>>>,
+    api_key: Option<String>,
+}
+
+impl WebProxy {
+    pub async fn new(
+        local_port: u16,
+        public_port: u16,
+        node_addr: NodeAddr,
+        endpoint: Arc<Endpoint>,
+        api_key: Option<String>,
+    ) -> Result<Self> {
+        // Validate ports
+        if local_port < MIN_PORT || local_port > MAX_PORT {
+            return Err(anyhow::anyhow!(
+                "Invalid local port: {}. Must be between {} and {}",
+                local_port,
+                MIN_PORT,
+                MAX_PORT
+            ));
+        }
+
+        if public_port < MIN_PORT || public_port > MAX_PORT {
+            return Err(anyhow::anyhow!(
+                "Invalid public port: {}. Must be between {} and {}",
+                public_port,
+                MIN_PORT,
+                MAX_PORT
+            ));
+        }
+
+        if local_port == public_port {
+            return Err(anyhow::anyhow!(
+                "Local port and public port cannot be the same: {}",
+                local_port
+            ));
+        }
+
+        Ok(Self {
+            local_port,
+            public_port,
+            node_addr,
+            endpoint,
+            running: Arc::new(RwLock::new(false)),
+            connection_semaphore: Arc::new(Semaphore::new(MAX_CONNECTIONS)),
+            active_connections: Arc::new(RwLock::new(std::collections::HashSet::new())),
+            api_key,
+        })
+    }
+
+    pub async fn start(&self) -> Result<()> {
+        let running = self.running.read().await;
+        if *running {
+            return Ok(());
+        }
+
+        let listener = TcpListener::bind(&format!("0.0.0.0:{}", self.public_port))
+            .await
+            .context("Failed to bind to public port")?;
+
+        let local_addr = listener.local_addr()?;
+        info!("Web proxy listening on http://{}", local_addr);
+        info!("Forwarding to local port {}", self.local_port);
+
+        let endpoint = self.endpoint.clone();
+        let node_addr = self.node_addr.clone();
+        let running = self.running.clone();
+        let local_port = self.local_port;
+
+        {
+            let mut running_guard = running.write().await;
+            *running_guard = true;
+        }
+
+        let running_for_spawn = running.clone();
+        let semaphore_for_spawn = self.connection_semaphore.clone();
+        let active_connections_for_spawn = self.active_connections.clone();
+        let api_key_for_spawn = self.api_key.clone();
+
+        tokio::spawn(async move {
+            loop {
+                // Check if we should stop
+                {
+                    let running_guard = running_for_spawn.read().await;
+                    if !*running_guard {
+                        break;
+                    }
+                }
+
+                // Accept connection with timeout
+                let (stream, remote_addr) =
+                    match timeout(CONNECTION_TIMEOUT, listener.accept()).await {
+                        Ok(Ok(x)) => x,
+                        Ok(Err(err)) => {
+                            warn!("Failed to accept connection: {:?}", err);
+                            continue;
+                        }
+                        Err(_) => {
+                            warn!("Connection accept timeout");
+                            continue;
+                        }
+                    };
+
+                info!("Accepted web connection from {}", remote_addr);
+
+                // Acquire semaphore permit
+                let permit = match semaphore_for_spawn.clone().acquire_owned().await {
+                    Ok(permit) => permit,
+                    Err(err) => {
+                        warn!("Failed to acquire connection permit: {:?}", err);
+                        drop(stream);
+                        continue;
+                    }
+                };
+
+                let endpoint = endpoint.clone();
+                let node_addr = node_addr.clone();
+                let active_connections = active_connections_for_spawn.clone();
+                let api_key = api_key_for_spawn.clone();
+
+                // Spawn connection handler
+                let handle = tokio::spawn(async move {
+                    let result = timeout(
+                        REQUEST_TIMEOUT,
+                        handle_web_connection(stream, endpoint, node_addr, local_port, api_key),
+                    )
+                    .await;
+
+                    let _ = permit; // Keep permit alive for the duration of the connection
+
+                    match result {
+                        Ok(Ok(())) => {
+                            info!("Web connection from {} completed successfully", remote_addr);
+                        }
+                        Ok(Err(e)) => {
+                            warn!("Web connection from {} failed: {:?}", remote_addr, e);
+                        }
+                        Err(_) => {
+                            warn!("Web connection from {} timed out", remote_addr);
+                        }
+                    }
+                });
+
+                // Generate unique connection ID for tracking
+                let connection_id = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos() as u64;
+
+                // Track the connection ID for cleanup
+                {
+                    let mut connections = active_connections.write().await;
+                    connections.insert(connection_id);
+                }
+
+                // Spawn cleanup task
+                let cleanup_connections = active_connections.clone();
+                tokio::spawn(async move {
+                    let _ = handle.await;
+                    let mut connections = cleanup_connections.write().await;
+                    connections.remove(&connection_id);
+                });
+            }
+        });
+
+        Ok(())
+    }
+
+    pub async fn stop(&self) -> Result<()> {
+        let mut running = self.running.write().await;
+        *running = false;
+        drop(running);
+
+        // Clear connection tracking
+        let mut connections = self.active_connections.write().await;
+        connections.clear();
+        drop(connections);
+
+        info!("Web proxy stopped");
+        Ok(())
+    }
+
+    // Currently unused method
+    /*
+    pub fn get_info(&self) -> WebProxyInfo {
+        WebProxyInfo {
+            local_port: self.local_port,
+            public_port: self.public_port,
+            node_id: self.node_addr.node_id,
+            running: self.running.clone(),
+        }
+    }
+    */
+}
+
+/*
+#[derive(Clone)]
+pub struct WebProxyInfo {
+    pub local_port: u16,
+    pub public_port: u16,
+    pub node_id: iroh::NodeId,
+    pub running: Arc<RwLock<bool>>,
+}
+*/
+
+/// 管理多个 Web 代理实例
+pub struct WebProxyManager {
+    proxies: HashMap<u16, WebProxy>, // public_port -> WebProxy
+    endpoint: Arc<Endpoint>,
+}
+
+impl WebProxyManager {
+    pub fn new(endpoint: Arc<Endpoint>) -> Self {
+        Self {
+            proxies: HashMap::new(),
+            endpoint,
+        }
+    }
+
+    pub async fn start_proxy(
+        &mut self,
+        local_port: u16,
+        public_port: u16,
+        node_addr: NodeAddr,
+        api_key: Option<String>,
+    ) -> Result<()> {
+        if self.proxies.contains_key(&public_port) {
+            return Err(anyhow::anyhow!(
+                "Proxy for public port {} already exists",
+                public_port
+            ));
+        }
+
+        let proxy = WebProxy::new(
+            local_port,
+            public_port,
+            node_addr,
+            self.endpoint.clone(),
+            api_key,
+        )
+        .await?;
+        proxy.start().await?;
+
+        self.proxies.insert(public_port, proxy);
+        info!("Started web proxy: {} -> {}", public_port, local_port);
+        Ok(())
+    }
+
+    pub async fn stop_proxy(&mut self, public_port: u16) -> Result<()> {
+        if let Some(proxy) = self.proxies.remove(&public_port) {
+            proxy.stop().await?;
+            info!("Stopped web proxy on port {}", public_port);
+        }
+        Ok(())
+    }
+
+    pub async fn stop_all_proxies(&mut self) -> Result<()> {
+        let ports: Vec<u16> = self.proxies.keys().cloned().collect();
+        for port in ports {
+            self.stop_proxy(port).await?;
+        }
+        Ok(())
+    }
+
+    /// 获取所有活跃的代理信息用于状态同步
+    pub fn get_active_proxies(&self) -> Vec<shared::WebShareProxyInfo> {
+        self.proxies
+            .values()
+            .map(|proxy| shared::WebShareProxyInfo {
+                local_port: proxy.local_port,
+                public_port: proxy.public_port,
+                node_id: proxy.node_addr.node_id,
+                status: "active".to_string(), // 可以通过检查running状态来确定
+                created_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            })
+            .collect()
+    }
+}
+
+async fn handle_web_connection(
+    stream: tokio::net::TcpStream,
+    endpoint: Arc<Endpoint>,
+    node_addr: NodeAddr,
+    local_port: u16,
+    api_key: Option<String>,
+) -> Result<()> {
+    info!("Connecting to node {:?} for web proxy", node_addr);
+
+    let conn = endpoint.connect(node_addr, ALPN).await?;
+    info!("Opening bi stream for web proxy");
+
+    let (mut send, recv) = conn.open_bi().await?;
+    send.write_all(HANDSHAKE).await?;
+
+    // 使用 QuinnEndpoint 包装流
+    let quinn_endpoint = QuinnEndpoint { send, recv };
+    let io = TokioIo::new(quinn_endpoint);
+
+    let (_sender, conn) = Builder::new()
+        .preserve_header_case(true)
+        .title_case_headers(true)
+        .handshake::<TokioIo<QuinnEndpoint>, hyper::body::Incoming>(io)
+        .await?;
+
+    tokio::spawn(async move {
+        if let Err(err) = conn.await {
+            warn!("HTTP connection failed: {:?}", err);
+        }
+    });
+
+    // 创建一个简单的代理服务
+    let service = service_fn(move |req: Request<hyper::body::Incoming>| {
+        proxy_request(req, local_port, api_key.clone())
+    });
+
+    match http1::Builder::new()
+        .preserve_header_case(true)
+        .title_case_headers(true)
+        .serve_connection(TokioIo::new(stream), service)
+        .with_upgrades()
+        .await
+    {
+        Ok(_) => info!("Web proxy connection completed successfully"),
+        Err(err) => warn!("Web proxy connection failed: {:?}", err),
+    }
+
+    Ok(())
+}
+
+async fn proxy_request(
+    req: Request<hyper::body::Incoming>,
+    local_port: u16,
+    api_key: Option<String>,
+) -> Result<Response<BoxBody<Bytes, hyper::Error>>> {
+    // Validate the request method and URI
+    let method = req.method();
+    let uri = req.uri();
+
+    // Check API key authentication if required
+    if let Some(ref required_key) = api_key {
+        let provided_key = req
+            .headers()
+            .get(API_KEY_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .map(|s| s.to_string());
+
+        match provided_key {
+            Some(key) if key == *required_key => {
+                // API key is valid
+            }
+            Some(_) => {
+                return Ok(Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .body(full("Invalid API key"))
+                    .unwrap()
+                    .map(|b| b.boxed()));
+            }
+            None => {
+                return Ok(Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .body(full("API key required"))
+                    .unwrap()
+                    .map(|b| b.boxed()));
+            }
+        }
+    }
+
+    // Only allow safe methods by default
+    match *method {
+        hyper::Method::GET
+        | hyper::Method::POST
+        | hyper::Method::PUT
+        | hyper::Method::DELETE
+        | hyper::Method::HEAD
+        | hyper::Method::OPTIONS => {
+            // Safe methods
+        }
+        _ => {
+            return Ok(Response::builder()
+                .status(StatusCode::METHOD_NOT_ALLOWED)
+                .body(full("Method not allowed"))
+                .unwrap()
+                .map(|b| b.boxed()));
+        }
+    }
+
+    let target_url = format!("http://localhost:{}{}", local_port, uri);
+
+    let client =
+        Client::builder(hyper_util::rt::TokioExecutor::new()).build_http::<hyper::body::Incoming>();
+
+    // 构建转发请求
+    let mut forwarded_req = Request::builder()
+        .method(method)
+        .uri(&target_url)
+        .version(req.version());
+
+    // 安全地复制头部，过滤掉危险头部
+    for (name, value) in req.headers() {
+        let name_str = name.as_str().to_lowercase();
+        match name_str.as_str() {
+            // Skip security-sensitive headers
+            "authorization" | "cookie" | "set-cookie" | "proxy-authorization" => {
+                // Skip these headers for security
+            }
+            "host" => {
+                // Let the client set the Host header automatically
+            }
+            // Forward other headers
+            _ => {
+                forwarded_req = forwarded_req.header(name, value);
+            }
+        }
+    }
+
+    // 添加安全头部
+    forwarded_req = forwarded_req
+        .header("X-Forwarded-For", "127.0.0.1")
+        .header("X-Forwarded-Proto", "http")
+        .header("X-Proxy-By", "iroh-chat-web-proxy");
+
+    let forwarded_req = forwarded_req.body(req.into_body())?;
+
+    // 发送转发请求，带超时
+    let response = match timeout(REQUEST_TIMEOUT, client.request(forwarded_req)).await {
+        Ok(Ok(resp)) => resp,
+        Ok(Err(e)) => {
+            error!("Failed to forward request: {:?}", e);
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_GATEWAY)
+                .body(full("Bad Gateway"))
+                .unwrap()
+                .map(|b| b.boxed()));
+        }
+        Err(_) => {
+            warn!("Request timeout");
+            return Ok(Response::builder()
+                .status(StatusCode::GATEWAY_TIMEOUT)
+                .body(full("Gateway Timeout"))
+                .unwrap()
+                .map(|b| b.boxed()));
+        }
+    };
+
+    Ok(response.map(|b| b.boxed()))
+}
+
+fn full<T: Into<Bytes>>(chunk: T) -> BoxBody<Bytes, hyper::Error> {
+    Full::new(chunk.into())
+        .map_err(|never| match never {})
+        .boxed()
+}
+
+/// QuinnEndpoint 包装器，实现 AsyncRead 和 AsyncWrite
+pub struct QuinnEndpoint {
+    pub send: iroh::endpoint::SendStream,
+    pub recv: iroh::endpoint::RecvStream,
+}
+
+impl tokio::io::AsyncRead for QuinnEndpoint {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.recv).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for QuinnEndpoint {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<Result<usize, std::io::Error>> {
+        match std::pin::Pin::new(&mut self.send).poll_write(cx, buf) {
+            std::task::Poll::Ready(Ok(n)) => std::task::Poll::Ready(Ok(n)),
+            std::task::Poll::Ready(Err(e)) => {
+                std::task::Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e)))
+            }
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        }
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
+        match std::pin::Pin::new(&mut self.send).poll_flush(cx) {
+            std::task::Poll::Ready(Ok(())) => std::task::Poll::Ready(Ok(())),
+            std::task::Poll::Ready(Err(e)) => {
+                std::task::Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e)))
+            }
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        }
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
+        match std::pin::Pin::new(&mut self.send).poll_shutdown(cx) {
+            std::task::Poll::Ready(Ok(())) => std::task::Poll::Ready(Ok(())),
+            std::task::Poll::Ready(Err(e)) => {
+                std::task::Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e)))
+            }
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        }
+    }
+}
+
+================
+File: cli/.gitignore
+================
+/target
+
+================
+File: cli/Cargo.toml
+================
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.95"
+clap = { version = "4.0", features = ["derive"] }
+iroh = { workspace = true, default-features = false }
+n0-future = { workspace = true }
+rand = "0.8"
+shared = { version = "0.1.0", path = "../shared" }
+tokio = { version = "1.43.0", features = [
+  "rt",
+  "macros",
+  "io-util",
+  "process",
+  "fs",
+  "sync",
+  "time",
+  "net",
+] }
+tracing = "0.1.37"
+tracing-subscriber = "0.3.19"
+data-encoding = "2.9"
+encoding_rs = "0.8.31"
+pin-project = "1.1.3"
+cfg-if = "1.0.0"
+bytes = "1.5"
+http = "1.0"
+http-body-util = "0.1"
+hyper = { version = "1.0", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+
+[target.'cfg(unix)'.dependencies]
+close_fds = "0.3.2"
+libc = "0.2"
+nix = { version = "0.30", features = ["ioctl", "process", "signal", "term"] }
+rustix = { version = "0.38", features = ["pipe", "stdio", "termios", "fs"] }
+
+[target.'cfg(windows)'.dependencies]
+conpty = "0.7.0"
+rustix = { version = "0.38", features = ["process"] }
+windows = { version = "0.58", features = ["Win32_System_Power"] }
+
+================
+File: shared/src/lib.rs
+================
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, Mutex},
+};
+
+use anyhow::{Context, Result};
+use iroh::{protocol::Router, PublicKey};
+pub use iroh::{NodeId, SecretKey};
+use iroh_base::{ticket::Ticket, Signature};
+pub use iroh_gossip::proto::TopicId;
+use iroh_gossip::{
+    api::{Event as GossipEvent, GossipSender},
+    net::{Gossip, GOSSIP_ALPN},
+};
+use n0_future::{
+    boxed::BoxStream,
+    task::{self, AbortOnDropHandle},
+    time::{Duration, SystemTime},
+    StreamExt,
+};
+use serde::{Deserialize, Serialize};
+use tokio::sync::{Mutex as TokioMutex, Notify};
+use tracing::{debug, info, warn};
+
+pub const TOPIC_PREFIX: &str = "leetshell/0:";
+pub const PRESENCE_INTERVAL: Duration = Duration::from_secs(5);
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ChatTicket {
+    pub topic_id: TopicId,
+    pub bootstrap: BTreeSet<NodeId>,
+}
+
+impl ChatTicket {
+    pub fn new_random() -> Self {
+        let topic_id = TopicId::from_bytes(rand::random());
+        Self::new(topic_id)
+    }
+
+    pub fn new(topic_id: TopicId) -> Self {
+        Self {
+            topic_id,
+            bootstrap: Default::default(),
+        }
+    }
+    pub fn deserialize(input: &str) -> Result<Self> {
+        <Self as Ticket>::deserialize(input).map_err(Into::into)
+    }
+    pub fn serialize(&self) -> String {
+        <Self as Ticket>::serialize(self)
+    }
+}
+
+impl Ticket for ChatTicket {
+    const KIND: &'static str = "riterm";
+
+    fn to_bytes(&self) -> Vec<u8> {
+        postcard::to_stdvec(&self).unwrap()
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Result<Self, iroh_base::ticket::ParseError> {
+        let ticket = postcard::from_bytes(bytes)?;
+        Ok(ticket)
+    }
+}
+
+pub struct ChatNode {
+    secret_key: SecretKey,
+    router: Router,
+    gossip: Gossip,
+}
+
+impl ChatNode {
+    /// Spawns a gossip node.
+    pub async fn spawn(secret_key: Option<SecretKey>) -> Result<Self> {
+        let secret_key = secret_key.unwrap_or_else(|| {
+            let bytes = rand::random::<[u8; 32]>();
+            SecretKey::from_bytes(&bytes)
+        });
+        let endpoint = iroh::Endpoint::builder()
+            .secret_key(secret_key.clone())
+            .discovery_n0()
+            .alpns(vec![GOSSIP_ALPN.to_vec()])
+            .bind()
+            .await?;
+
+        let node_id = endpoint.node_id();
+        info!("endpoint bound");
+        info!("node id: {node_id:#?}");
+
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        info!("gossip spawned");
+        let router = Router::builder(endpoint)
+            .accept(GOSSIP_ALPN, gossip.clone())
+            .spawn();
+        info!("router spawned");
+        Ok(Self {
+            gossip,
+            router,
+            secret_key,
+        })
+    }
+
+    /// Returns the node id of this node.
+    pub fn node_id(&self) -> NodeId {
+        self.router.endpoint().node_id()
+    }
+
+    /// Returns information about all the remote nodes this [`Endpoint`] knows about.
+    /// TODO: Implement with new IROH API
+    pub fn remote_info(&self) -> Vec<()> {
+        Vec::new()
+    }
+
+    /// Returns the endpoint for direct access.
+    pub fn endpoint(&self) -> &iroh::Endpoint {
+        self.router.endpoint()
+    }
+
+    /// Joins a chat channel from a ticket.
+    ///
+    /// Returns a [`ChatSender`] to send messages or change our nickname
+    /// and a stream of [`Event`] items for incoming messages and other event.s
+    pub async fn join(
+        &self,
+        ticket: &ChatTicket,
+        nickname: String,
+    ) -> Result<(ChatSender, BoxStream<Result<Event>>)> {
+        let topic_id = ticket.topic_id;
+        let bootstrap = ticket.bootstrap.iter().cloned().collect();
+        info!(?bootstrap, "joining {topic_id}");
+        let gossip_topic = self.gossip.subscribe(topic_id, bootstrap).await?;
+        let (sender, receiver) = gossip_topic.split();
+
+        let nickname = Arc::new(Mutex::new(nickname));
+        let trigger_presence = Arc::new(Notify::new());
+
+        // We spawn a task that occasionally sens a Presence message with our nickname.
+        // This allows to track which peers are online currently.
+        let sender = Arc::new(TokioMutex::new(sender));
+        let presence_task = AbortOnDropHandle::new(task::spawn({
+            let secret_key = self.secret_key.clone();
+            let sender = sender.clone();
+            let trigger_presence = trigger_presence.clone();
+            let nickname = nickname.clone();
+
+            async move {
+                loop {
+                    let nickname = nickname.lock().expect("poisened").clone();
+                    let message = NetMessage::Chat {
+                        text: String::new(),
+                        nickname,
+                        timestamp: 0,
+                    };
+                    debug!("send presence {message:?}");
+                    let signed_message = SignedMessage::sign_and_encode(&secret_key, message)
+                        .expect("failed to encode message");
+                    if let Err(err) = sender.lock().await.broadcast(signed_message.into()).await {
+                        tracing::warn!("presence task failed to broadcast: {err}");
+                        break;
+                    }
+                    n0_future::future::race(
+                        n0_future::time::sleep(PRESENCE_INTERVAL),
+                        trigger_presence.notified(),
+                    )
+                    .await;
+                }
+            }
+        }));
+
+        // We create a stream of events, coming from the gossip topic event receiver.
+        // We'll want to map the events to our own event type, which includes parsing
+        // the messages and verifying the signatures, and trigger presence
+        // once the swarm is joined initially.
+        let receiver = n0_future::stream::try_unfold(receiver, {
+            let trigger_presence = trigger_presence.clone();
+            move |mut receiver| {
+                let trigger_presence = trigger_presence.clone();
+                async move {
+                    loop {
+                        // Store if we were joined before the next event comes in.
+                        let was_joined = receiver.is_joined();
+
+                        // Fetch the next event.
+                        let Some(event) = receiver.try_next().await? else {
+                            return Ok(None);
+                        };
+                        // Convert into our event type. this fails if we receive a message
+                        // that cannot be decoced into our event type. If that is the case,
+                        // we just keep and log the error.
+                        let event: Event = match event.try_into() {
+                            Ok(event) => event,
+                            Err(err) => {
+                                warn!("received invalid message: {err}");
+                                continue;
+                            }
+                        };
+                        // If we just joined, trigger sending our presence message.
+                        if !was_joined && receiver.is_joined() {
+                            trigger_presence.notify_waiters()
+                        };
+
+                        break Ok(Some((event, receiver)));
+                    }
+                }
+            }
+        });
+
+        let sender = ChatSender {
+            secret_key: self.secret_key.clone(),
+            nickname,
+            sender,
+            trigger_presence,
+            _presence_task: Arc::new(presence_task),
+        };
+        Ok((sender, Box::pin(receiver)))
+    }
+
+    pub async fn shutdown(&self) {
+        if let Err(err) = self.router.shutdown().await {
+            warn!("failed to shutdown router cleanly: {err}");
+        }
+        self.router.endpoint().close().await;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ChatSender {
+    nickname: Arc<Mutex<String>>,
+    secret_key: SecretKey,
+    sender: Arc<TokioMutex<GossipSender>>,
+    trigger_presence: Arc<Notify>,
+    _presence_task: Arc<AbortOnDropHandle<()>>,
+}
+
+impl ChatSender {
+    pub async fn send(&self, text: String) -> Result<()> {
+        let nickname = self.nickname.lock().expect("poisened").clone();
+        let message = NetMessage::Chat {
+            text,
+            nickname,
+            timestamp: 0,
+        };
+        let signed_message = SignedMessage::sign_and_encode(&self.secret_key, message)?;
+        self.sender
+            .lock()
+            .await
+            .broadcast(signed_message.into())
+            .await?;
+        Ok(())
+    }
+
+    pub fn set_nickname(&self, name: String) {
+        *self.nickname.lock().expect("poisened") = name;
+        self.trigger_presence.notify_waiters();
+    }
+
+    // Optimized batch terminal operations
+    pub async fn send_terminal_batch(&self, operations: Vec<TerminalOp>) -> Result<()> {
+        let message = NetMessage::TerminalBatch {
+            operations,
+            timestamp: 0,
+        };
+        let signed_message = SignedMessage::sign_and_encode(&self.secret_key, message)?;
+        self.sender
+            .lock()
+            .await
+            .broadcast(signed_message.into())
+            .await?;
+        Ok(())
+    }
+
+    // Convenience methods for single terminal operations
+    pub async fn create_terminal(
+        &self,
+        session_id: String,
+        shell_path: Option<String>,
+        name: Option<String>,
+    ) -> Result<()> {
+        let operation = TerminalOp::Create {
+            session_id,
+            shell_path,
+            name,
+        };
+        self.send_terminal_batch(vec![operation]).await
+    }
+
+    pub async fn send_terminal_input(&self, session_id: String, data: Vec<u8>) -> Result<()> {
+        let operation = TerminalOp::Input { session_id, data };
+        self.send_terminal_batch(vec![operation]).await
+    }
+
+    pub async fn resize_terminal(&self, session_id: String, rows: u32, cols: u32) -> Result<()> {
+        let operation = TerminalOp::Resize {
+            session_id,
+            rows,
+            cols,
+        };
+        self.send_terminal_batch(vec![operation]).await
+    }
+
+    pub async fn close_terminal(&self, session_id: String) -> Result<()> {
+        let operation = TerminalOp::Close { session_id };
+        self.send_terminal_batch(vec![operation]).await
+    }
+
+    /// Rename a terminal session - optimized batch operation
+    pub async fn rename_terminal(
+        &self,
+        session_id: String,
+        new_name: Option<String>,
+    ) -> Result<()> {
+        let operation = TerminalOp::Rename {
+            session_id,
+            new_name,
+        };
+        self.send_terminal_batch(vec![operation]).await
+    }
+
+    pub async fn send_terminal_output(&self, session_id: String, data: Vec<u8>) -> Result<()> {
+        let operation = TerminalOp::Output { session_id, data };
+        self.send_terminal_batch(vec![operation]).await
+    }
+
+    pub async fn send_terminal_status(&self, session_id: String, status: String) -> Result<()> {
+        let operation = TerminalOp::Status { session_id, status };
+        self.send_terminal_batch(vec![operation]).await
+    }
+
+    // Optimized terminal state synchronization
+    pub async fn send_terminal_state(&self, terminals: Vec<TerminalInfo>) -> Result<()> {
+        let message = NetMessage::TerminalState {
+            terminals,
+            timestamp: 0,
+        };
+        let signed_message = SignedMessage::sign_and_encode(&self.secret_key, message)?;
+        self.sender
+            .lock()
+            .await
+            .broadcast(signed_message.into())
+            .await?;
+        Ok(())
+    }
+
+    // Simplified web sharing
+    pub async fn send_web_share(&self, local_port: u16, public_port: u16) -> Result<()> {
+        let message = NetMessage::WebShare {
+            local_port,
+            public_port,
+            timestamp: 0,
+        };
+        let signed_message = SignedMessage::sign_and_encode(&self.secret_key, message)?;
+        self.sender
+            .lock()
+            .await
+            .broadcast(signed_message.into())
+            .await?;
+        Ok(())
+    }
+
+    pub async fn send_web_unshare(&self, public_port: u16) -> Result<()> {
+        let message = NetMessage::WebShareStop {
+            public_port,
+            timestamp: 0,
+        };
+        let signed_message = SignedMessage::sign_and_encode(&self.secret_key, message)?;
+        self.sender
+            .lock()
+            .await
+            .broadcast(signed_message.into())
+            .await?;
+        Ok(())
+    }
+
+    // WebShare state synchronization
+    pub async fn send_web_share_state(&self, proxies: Vec<WebShareProxyInfo>) -> Result<()> {
+        let message = NetMessage::WebShareState {
+            proxies,
+            timestamp: 0,
+        };
+        let signed_message = SignedMessage::sign_and_encode(&self.secret_key, message)?;
+        self.sender
+            .lock()
+            .await
+            .broadcast(signed_message.into())
+            .await?;
+        Ok(())
+    }
+
+    // Optimized batch method for multiple terminal operations
+    pub async fn send_terminal_operations_batch(&self, operations: Vec<TerminalOp>) -> Result<()> {
+        // Split into batches to avoid oversized messages
+        const BATCH_SIZE: usize = 10;
+
+        for chunk in operations.chunks(BATCH_SIZE) {
+            let batch = chunk.to_vec();
+            self.send_terminal_batch(batch).await?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum NetMessage {
+    // Network events
+    NodeJoin {
+        node_id: NodeId,
+        timestamp: u64,
+    },
+    NodeLeave {
+        node_id: NodeId,
+        timestamp: u64,
+    },
+
+    // Chat messages
+    Chat {
+        text: String,
+        nickname: String,
+        timestamp: u64,
+    },
+
+    // Terminal batch operations - combines multiple terminal operations
+    TerminalBatch {
+        operations: Vec<TerminalOp>,
+        timestamp: u64,
+    },
+
+    // Terminal state synchronization - complete state dump
+    TerminalState {
+        terminals: Vec<TerminalInfo>,
+        timestamp: u64,
+    },
+
+    // Web sharing
+    WebShare {
+        local_port: u16,
+        public_port: u16,
+        timestamp: u64,
+    },
+    WebShareStop {
+        public_port: u16,
+        timestamp: u64,
+    },
+
+    // WebShare state synchronization
+    WebShareState {
+        proxies: Vec<WebShareProxyInfo>,
+        timestamp: u64,
+    },
+
+    System {
+        timestamp: u64,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "camelCase")]
+pub enum TerminalOp {
+    Create {
+        session_id: String,
+        shell_path: Option<String>,
+        name: Option<String>,
+    },
+    Input {
+        session_id: String,
+        data: Vec<u8>,
+    },
+    Output {
+        session_id: String,
+        data: Vec<u8>,
+    },
+    Resize {
+        session_id: String,
+        rows: u32,
+        cols: u32,
+    },
+    Status {
+        session_id: String,
+        status: String,
+    },
+    Close {
+        session_id: String,
+    },
+    Rename {
+        session_id: String,
+        new_name: Option<String>,
+    },
+}
+
+// Simplified event wrapper for external consumers
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum Event {
+    #[serde(rename_all = "camelCase")]
+    NodeJoined {
+        node_id: NodeId,
+    },
+    #[serde(rename_all = "camelCase")]
+    NodeLeft {
+        node_id: NodeId,
+    },
+    #[serde(rename_all = "camelCase")]
+    MessageReceived {
+        from: NodeId,
+        text: String,
+        nickname: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    TerminalBatch {
+        from: NodeId,
+        operations: Vec<TerminalOp>,
+    },
+    #[serde(rename_all = "camelCase")]
+    TerminalState {
+        from: NodeId,
+        terminals: Vec<TerminalInfo>,
+    },
+    #[serde(rename_all = "camelCase")]
+    WebShare {
+        from: NodeId,
+        local_port: u16,
+        public_port: u16,
+    },
+    #[serde(rename_all = "camelCase")]
+    WebShareStop {
+        from: NodeId,
+        public_port: u16,
+    },
+    #[serde(rename_all = "camelCase")]
+    WebShareState {
+        from: NodeId,
+        proxies: Vec<WebShareProxyInfo>,
+    },
+    Lagged,
+}
+
+impl TryFrom<GossipEvent> for Event {
+    type Error = anyhow::Error;
+    fn try_from(event: GossipEvent) -> Result<Self, Self::Error> {
+        let converted = match event {
+            GossipEvent::NeighborUp(node_id) => Self::NodeJoined { node_id },
+            GossipEvent::NeighborDown(node_id) => Self::NodeLeft { node_id },
+            GossipEvent::Received(message) => {
+                let message = SignedMessage::verify_and_decode(&message.content)
+                    .context("failed to parse and verify signed message")?;
+                match message.message {
+                    NetMessage::NodeJoin {
+                        node_id,
+                        timestamp: _,
+                    } => Self::NodeJoined { node_id },
+                    NetMessage::NodeLeave {
+                        node_id,
+                        timestamp: _,
+                    } => Self::NodeLeft { node_id },
+                    NetMessage::Chat {
+                        text,
+                        nickname,
+                        timestamp: _,
+                    } => {
+                        if text.is_empty() {
+                            // Empty chat messages are used as presence indicators
+                            Self::MessageReceived {
+                                from: message.from,
+                                text: "".to_string(),
+                                nickname,
+                            }
+                        } else {
+                            Self::MessageReceived {
+                                from: message.from,
+                                text,
+                                nickname,
+                            }
+                        }
+                    }
+                    NetMessage::TerminalBatch {
+                        operations,
+                        timestamp: _,
+                    } => Self::TerminalBatch {
+                        from: message.from,
+                        operations,
+                    },
+                    NetMessage::TerminalState {
+                        terminals,
+                        timestamp: _,
+                    } => Self::TerminalState {
+                        from: message.from,
+                        terminals,
+                    },
+                    NetMessage::WebShare {
+                        local_port,
+                        public_port,
+                        timestamp: _,
+                    } => Self::WebShare {
+                        from: message.from,
+                        local_port,
+                        public_port,
+                    },
+                    NetMessage::WebShareStop {
+                        public_port,
+                        timestamp: _,
+                    } => Self::WebShareStop {
+                        from: message.from,
+                        public_port,
+                    },
+                    NetMessage::WebShareState {
+                        proxies,
+                        timestamp: _,
+                    } => Self::WebShareState {
+                        from: message.from,
+                        proxies,
+                    },
+                    NetMessage::System { timestamp: _ } => Self::Lagged,
+                }
+            }
+            GossipEvent::Lagged => Self::Lagged,
+        };
+        Ok(converted)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SignedMessage {
+    from: PublicKey,
+    data: Vec<u8>,
+    signature: Signature,
+}
+
+impl SignedMessage {
+    pub fn verify_and_decode(bytes: &[u8]) -> Result<ReceivedMessage> {
+        let signed_message: Self = postcard::from_bytes(bytes)?;
+        let key: PublicKey = signed_message.from;
+        key.verify(&signed_message.data, &signed_message.signature)?;
+        let message: WireMessage = postcard::from_bytes(&signed_message.data)?;
+        let WireMessage::VO { timestamp, message } = message;
+        Ok(ReceivedMessage {
+            from: signed_message.from,
+            timestamp,
+            message,
+        })
+    }
+
+    pub fn sign_and_encode(secret_key: &SecretKey, message: NetMessage) -> Result<Vec<u8>> {
+        let timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as u64;
+        let wire_message = WireMessage::VO { timestamp, message };
+        let data = postcard::to_stdvec(&wire_message)?;
+        let signature = secret_key.sign(&data);
+        let from: PublicKey = secret_key.public();
+        let signed_message = Self {
+            from,
+            data,
+            signature,
+        };
+        let encoded = postcard::to_stdvec(&signed_message)?;
+        Ok(encoded)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum WireMessage {
+    VO { timestamp: u64, message: NetMessage },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TerminalInfo {
+    pub session_id: String,
+    pub name: Option<String>,
+    pub position: TerminalPosition,
+    pub size: TerminalSize,
+    pub status: String,
+    pub created_at: u64,
+    pub last_activity: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TerminalPosition {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TerminalSize {
+    pub rows: u32,
+    pub cols: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WebShareProxyInfo {
+    pub local_port: u16,
+    pub public_port: u16,
+    pub node_id: NodeId,
+    pub status: String, // "active", "stopping", "error"
+    pub created_at: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReceivedMessage {
+    timestamp: u64,
+    from: NodeId,
+    message: NetMessage,
+}
+
+================
+File: shared/.gitignore
+================
+/target
+
+================
+File: shared/Cargo.toml
+================
+[package]
+name = "shared"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+blake3 = { version = "1", package = "iroh-blake3" }
+hex = "0.4"
+iroh = { workspace = true }
+iroh-base = { workspace = true, default-features = false, features = [
+  "ticket",
+] }
+iroh-gossip = { workspace = true, default-features = false, features = ["net"] }
+n0-future = { workspace = true }
+postcard = "1.1.1"
+rand = "0.8"
+rand_core = { version = "0.6", features = ["std"] }
+serde = "1"
+tokio = { version = "1", default-features = false, features = ["sync"] }
+tracing = "0.1"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["--enable-nontrapping-float-to-int", "--enable-bulk-memory"]
+
+================
+File: Cargo.toml
+================
+[workspace]
+resolver = "2"
+members = ["shared", "cli", "browser", "tauri"]
+
+[workspace.dependencies]
+# we define iroh dependencies here to make upgrading easier.
+iroh = { version = "0.93", default-features = false }
+iroh-base = { version = "0.93", default-features = false, features = [
+  "ticket",
+] }
+iroh-gossip = { version = "0.93", default-features = false, features = ["net"] }
+n0-future = "0.2"
+
+
+
+================================================================
+End of Codebase
+================================================================

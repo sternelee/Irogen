@@ -6,12 +6,14 @@ use uuid::Uuid;
 use crate::shell::{ShellConfig, ShellDetector};
 use crate::terminal::TerminalRecorder;
 use crate::terminal_config::TerminalConfigDetector;
+use crate::remote_controller::RemoteTerminalController;
 use riterm_shared::{P2PNetwork, SessionHeader};
 
 pub struct HostSession {
     network: P2PNetwork,
     ticket: Option<String>,
     auth_token: Option<String>,
+    enable_remote_control: bool,
 }
 
 impl HostSession {
@@ -20,7 +22,13 @@ impl HostSession {
             network,
             ticket: None,
             auth_token: None,
+            enable_remote_control: false,
         }
+    }
+
+    pub fn enable_remote_control(mut self) -> Self {
+        self.enable_remote_control = true;
+        self
     }
 
     pub async fn start(
@@ -104,6 +112,34 @@ impl HostSession {
         info!(
             "✅ History callback set successfully. New participants will receive session history automatically."
         );
+
+        // 如果启用了远程控制模式，启动远程控制器
+        if self.enable_remote_control {
+            println!("\n🤖 Remote Control Mode Enabled");
+            println!("📋 Starting remote terminal controller...");
+
+            let (mut controller, _command_receiver) = RemoteTerminalController::new(
+                self.network.clone(),
+                session_id.clone(),
+                sender.clone()
+            );
+
+            // 在后台启动控制器
+            let network_clone = self.network.clone();
+            let session_id_clone = session_id.clone();
+            let sender_clone = sender.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = controller.start_interactive_mode().await {
+                    error!("Remote controller error: {}", e);
+                }
+
+                // 控制器结束后，正常结束会话
+                if let Err(e) = network_clone.end_session(&session_id_clone, &sender_clone).await {
+                    error!("Failed to end session: {}", e);
+                }
+            });
+        }
 
         self.network.end_session(&session_id, &sender).await?;
 
@@ -221,7 +257,7 @@ impl HostSession {
                 match event.event_type {
                     riterm_shared::EventType::Output => {
                         if let Err(e) = network_clone
-                            .send_terminal_output(&session_id_clone_for_events, &sender, event.data)
+                            .send_terminal_output(&session_id_clone_for_events, &sender, session_id_clone_for_events.clone(), event.data)
                             .await
                         {
                             error!("Failed to send terminal output: {}", e);

@@ -1,9 +1,8 @@
 mod cli;
-mod host;
+mod local_terminal_manager;
+mod local_webshare;
 mod shell;
-mod shell_manager;
 mod terminal;
-mod terminal_config;
 
 use anyhow::Result;
 use clap::Parser;

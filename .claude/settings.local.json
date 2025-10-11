@@ -45,7 +45,9 @@
       "mcp__mcphub__context7-get-library-docs",
       "WebSearch",
       "Bash(find:*)",
-      "Bash(npm run tsc:*)"
+      "Bash(npm run tsc:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }

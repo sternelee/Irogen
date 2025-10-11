@@ -4,8 +4,9 @@ use bincode;
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use futures::StreamExt;
 use iroh::{Endpoint, NodeAddr, NodeId, Watcher, protocol::Router};
+pub use iroh_gossip::api::GossipSender;
 use iroh_gossip::{
-    api::{Event, GossipReceiver, GossipSender},
+    api::{Event, GossipReceiver},
     net::Gossip,
     proto::TopicId,
 };
@@ -71,6 +72,109 @@ pub enum TerminalMessageBody {
         shell_type: String,
         working_dir: String,
         history: Vec<String>,
+        timestamp: u64,
+    },
+
+    // === Terminal Management Messages ===
+    /// Create a new local terminal
+    TerminalCreate {
+        from: NodeId,
+        name: Option<String>,
+        shell_path: Option<String>,
+        working_dir: Option<String>,
+        size: Option<(u16, u16)>,
+        timestamp: u64,
+    },
+    /// Terminal status update
+    TerminalStatusUpdate {
+        from: NodeId,
+        terminal_id: String,
+        status: TerminalStatus,
+        timestamp: u64,
+    },
+    /// Terminal output data (for local terminal management)
+    TerminalOutput {
+        from: NodeId,
+        terminal_id: String,
+        data: String,
+        timestamp: u64,
+    },
+    /// Terminal input data
+    TerminalInput {
+        from: NodeId,
+        terminal_id: String,
+        data: String,
+        timestamp: u64,
+    },
+    /// Terminal resize
+    TerminalResize {
+        from: NodeId,
+        terminal_id: String,
+        rows: u16,
+        cols: u16,
+        timestamp: u64,
+    },
+    /// Terminal directory change
+    TerminalDirectoryChanged {
+        from: NodeId,
+        terminal_id: String,
+        new_dir: String,
+        timestamp: u64,
+    },
+    /// Stop terminal
+    TerminalStop {
+        from: NodeId,
+        terminal_id: String,
+        timestamp: u64,
+    },
+    /// List all terminals request
+    TerminalListRequest { from: NodeId, timestamp: u64 },
+    /// List all terminals response
+    TerminalListResponse {
+        from: NodeId,
+        terminals: Vec<TerminalInfo>,
+        timestamp: u64,
+    },
+
+    // === WebShare Management Messages ===
+    /// Create a new WebShare
+    WebShareCreate {
+        from: NodeId,
+        local_port: u16,
+        public_port: Option<u16>,
+        service_name: String,
+        terminal_id: Option<String>,
+        timestamp: u64,
+    },
+    /// WebShare status update
+    WebShareStatusUpdate {
+        from: NodeId,
+        public_port: u16,
+        status: WebShareStatus,
+        timestamp: u64,
+    },
+    /// Stop WebShare
+    WebShareStop {
+        from: NodeId,
+        public_port: u16,
+        timestamp: u64,
+    },
+    /// List all WebShares request
+    WebShareListRequest { from: NodeId, timestamp: u64 },
+    /// List all WebShares response
+    WebShareListResponse {
+        from: NodeId,
+        webshares: Vec<WebShareInfo>,
+        timestamp: u64,
+    },
+    /// System statistics request
+    StatsRequest { from: NodeId, timestamp: u64 },
+    /// System statistics response
+    StatsResponse {
+        from: NodeId,
+        terminal_stats: TerminalStats,
+        webshare_stats: WebShareStats,
+        node_id: String,
         timestamp: u64,
     },
 }
@@ -275,6 +379,67 @@ pub struct SessionInfo {
     pub cwd: String,
 }
 
+// === Terminal Management Types ===
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TerminalInfo {
+    pub id: String,
+    pub name: Option<String>,
+    pub shell_type: String,
+    pub current_dir: String,
+    pub status: TerminalStatus,
+    pub created_at: u64,
+    pub last_activity: u64,
+    pub size: (u16, u16), // (rows, cols)
+    pub process_id: Option<u32>,
+    pub associated_webshares: Vec<u16>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum TerminalStatus {
+    Starting,
+    Running,
+    Paused,
+    Stopped,
+    Error(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TerminalStats {
+    pub total: usize,
+    pub running: usize,
+    pub errors: usize,
+    pub stopped: usize,
+}
+
+// === WebShare Management Types ===
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebShareInfo {
+    pub local_port: u16,
+    pub public_port: u16,
+    pub service_name: String,
+    pub terminal_id: Option<String>,
+    pub status: WebShareStatus,
+    pub created_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum WebShareStatus {
+    Starting,
+    Active,
+    Error(String),
+    Stopped,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebShareStats {
+    pub total: usize,
+    pub active: usize,
+    pub errors: usize,
+    pub stopped: usize,
+}
+
 impl P2PNetwork {
     pub async fn new(relay_url: Option<String>) -> Result<Self> {
         info!("Initializing iroh P2P network with gossip...");
@@ -428,30 +593,6 @@ impl P2PNetwork {
         self.start_topic_listener(receiver, session_id).await?;
 
         Ok((sender, event_receiver))
-    }
-
-    pub async fn send_terminal_output(
-        &self,
-        session_id: &str,
-        sender: &GossipSender,
-        data: String,
-    ) -> Result<()> {
-        debug!("Sending terminal output");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for output"))?;
-
-        let body = TerminalMessageBody::Output {
-            from: self.endpoint.node_id(),
-            data,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
     }
 
     pub async fn send_input(
@@ -896,6 +1037,326 @@ impl P2PNetwork {
                         warn!("No active receivers for history separator event, skipping");
                     }
                 }
+
+                // === Terminal Management Messages ===
+                TerminalMessageBody::TerminalCreate {
+                    from,
+                    name,
+                    shell_path,
+                    working_dir,
+                    size,
+                    timestamp,
+                } => {
+                    info!("Received terminal create request from {}", from.fmt_short());
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: format!(
+                            "[Terminal Create Request] Name: {:?}, Shell: {:?}, Dir: {:?}, Size: {:?}",
+                            name, shell_path, working_dir, size
+                        ),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for terminal create event, skipping");
+                    }
+                }
+                TerminalMessageBody::TerminalStatusUpdate {
+                    from,
+                    terminal_id,
+                    status,
+                    timestamp,
+                } => {
+                    info!(
+                        "Received terminal status update from {} for terminal {}",
+                        from.fmt_short(),
+                        terminal_id
+                    );
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: format!("[Terminal Status Update] {}: {:?}", terminal_id, status),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for terminal status update event, skipping");
+                    }
+                }
+                TerminalMessageBody::TerminalOutput {
+                    from,
+                    terminal_id,
+                    data,
+                    timestamp,
+                } => {
+                    debug!(
+                        "Received terminal output from {} for terminal {}",
+                        from.fmt_short(),
+                        terminal_id
+                    );
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: format!("[Terminal Output: {}] {}", terminal_id, data),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for terminal output event, skipping");
+                    }
+                }
+                TerminalMessageBody::TerminalInput {
+                    from,
+                    terminal_id,
+                    data,
+                    timestamp,
+                } => {
+                    debug!(
+                        "Received terminal input from {} for terminal {}",
+                        from.fmt_short(),
+                        terminal_id
+                    );
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Input,
+                        data: format!("[Terminal Input: {}] {}", terminal_id, data),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for terminal input event, skipping");
+                    }
+                }
+                TerminalMessageBody::TerminalResize {
+                    from,
+                    terminal_id,
+                    rows,
+                    cols,
+                    timestamp,
+                } => {
+                    debug!(
+                        "Received terminal resize from {} for terminal {}",
+                        from.fmt_short(),
+                        terminal_id
+                    );
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Resize {
+                            width: cols,
+                            height: rows,
+                        },
+                        data: format!("[Terminal Resize: {}] {}x{}", terminal_id, cols, rows),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for terminal resize event, skipping");
+                    }
+                }
+                TerminalMessageBody::TerminalDirectoryChanged {
+                    from,
+                    terminal_id,
+                    new_dir,
+                    timestamp,
+                } => {
+                    info!(
+                        "Received terminal directory change from {} for terminal {}",
+                        from.fmt_short(),
+                        terminal_id
+                    );
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: format!("[Terminal Directory Change: {}] {}", terminal_id, new_dir),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for terminal directory change event, skipping");
+                    }
+                }
+                TerminalMessageBody::TerminalStop {
+                    from,
+                    terminal_id,
+                    timestamp,
+                } => {
+                    info!(
+                        "Received terminal stop request from {} for terminal {}",
+                        from.fmt_short(),
+                        terminal_id
+                    );
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: format!("[Terminal Stop Request] {}", terminal_id),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for terminal stop event, skipping");
+                    }
+                }
+                TerminalMessageBody::TerminalListRequest { from, timestamp } => {
+                    info!("Received terminal list request from {}", from.fmt_short());
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: "[Terminal List Request]".to_string(),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for terminal list request event, skipping");
+                    }
+                }
+                TerminalMessageBody::TerminalListResponse {
+                    from,
+                    terminals,
+                    timestamp,
+                } => {
+                    info!(
+                        "Received terminal list response from {} with {} terminals",
+                        from.fmt_short(),
+                        terminals.len()
+                    );
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: format!(
+                            "[Terminal List Response: {} terminals] {}",
+                            terminals.len(),
+                            serde_json::to_string(&terminals).unwrap_or_default()
+                        ),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for terminal list response event, skipping");
+                    }
+                }
+
+                // === WebShare Management Messages ===
+                TerminalMessageBody::WebShareCreate {
+                    from,
+                    local_port,
+                    public_port,
+                    service_name,
+                    terminal_id,
+                    timestamp,
+                } => {
+                    info!(
+                        "Received webshare create request from {} for port {}",
+                        from.fmt_short(),
+                        local_port
+                    );
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: format!(
+                            "[WebShare Create Request] {}:{} ({}) Terminal: {:?}",
+                            public_port.unwrap_or(0),
+                            local_port,
+                            service_name,
+                            terminal_id
+                        ),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for webshare create event, skipping");
+                    }
+                }
+                TerminalMessageBody::WebShareStatusUpdate {
+                    from,
+                    public_port,
+                    status,
+                    timestamp,
+                } => {
+                    info!(
+                        "Received webshare status update from {} for port {}",
+                        from.fmt_short(),
+                        public_port
+                    );
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: format!("[WebShare Status Update: {}] {:?}", public_port, status),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for webshare status update event, skipping");
+                    }
+                }
+                TerminalMessageBody::WebShareStop {
+                    from,
+                    public_port,
+                    timestamp,
+                } => {
+                    info!(
+                        "Received webshare stop request from {} for port {}",
+                        from.fmt_short(),
+                        public_port
+                    );
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: format!("[WebShare Stop Request] {}", public_port),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for webshare stop event, skipping");
+                    }
+                }
+                TerminalMessageBody::WebShareListRequest { from, timestamp } => {
+                    info!("Received webshare list request from {}", from.fmt_short());
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: "[WebShare List Request]".to_string(),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for webshare list request event, skipping");
+                    }
+                }
+                TerminalMessageBody::WebShareListResponse {
+                    from,
+                    webshares,
+                    timestamp,
+                } => {
+                    info!(
+                        "Received webshare list response from {} with {} webshares",
+                        from.fmt_short(),
+                        webshares.len()
+                    );
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: format!(
+                            "[WebShare List Response: {} webshares] {}",
+                            webshares.len(),
+                            serde_json::to_string(&webshares).unwrap_or_default()
+                        ),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for webshare list response event, skipping");
+                    }
+                }
+                TerminalMessageBody::StatsRequest { from, timestamp } => {
+                    info!("Received stats request from {}", from.fmt_short());
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: "[Stats Request]".to_string(),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for stats request event, skipping");
+                    }
+                }
+                TerminalMessageBody::StatsResponse {
+                    from,
+                    terminal_stats,
+                    webshare_stats,
+                    node_id,
+                    timestamp,
+                } => {
+                    info!(
+                        "Received stats response from {} (node: {})",
+                        from.fmt_short(),
+                        &node_id[..16]
+                    );
+                    let event = TerminalEvent {
+                        timestamp: timestamp as f64,
+                        event_type: EventType::Output,
+                        data: format!(
+                            "[Stats Response: {}] Terminals: {}, WebShares: {}",
+                            &node_id[..16],
+                            terminal_stats.total,
+                            webshare_stats.total
+                        ),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for stats response event, skipping");
+                    }
+                }
             }
         }
         Ok(())
@@ -972,5 +1433,394 @@ impl P2PNetwork {
     {
         let mut history_callback = self.history_callback.write().await;
         *history_callback = Some(Box::new(callback));
+    }
+
+    // === Terminal Management Methods ===
+
+    pub async fn send_terminal_create(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        name: Option<String>,
+        shell_path: Option<String>,
+        working_dir: Option<String>,
+        size: Option<(u16, u16)>,
+    ) -> Result<()> {
+        debug!("Sending terminal create request");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal create"))?;
+
+        let body = TerminalMessageBody::TerminalCreate {
+            from: self.endpoint.node_id(),
+            name,
+            shell_path,
+            working_dir,
+            size,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_terminal_stop(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        terminal_id: String,
+    ) -> Result<()> {
+        debug!("Sending terminal stop request");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal stop"))?;
+
+        let body = TerminalMessageBody::TerminalStop {
+            from: self.endpoint.node_id(),
+            terminal_id,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_terminal_list_request(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+    ) -> Result<()> {
+        debug!("Sending terminal list request");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal list"))?;
+
+        let body = TerminalMessageBody::TerminalListRequest {
+            from: self.endpoint.node_id(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_terminal_list_response(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        terminals: Vec<TerminalInfo>,
+    ) -> Result<()> {
+        debug!("Sending terminal list response");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal list response"))?;
+
+        let body = TerminalMessageBody::TerminalListResponse {
+            from: self.endpoint.node_id(),
+            terminals,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    // === WebShare Management Methods ===
+
+    pub async fn send_webshare_create(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        local_port: u16,
+        public_port: Option<u16>,
+        service_name: String,
+        terminal_id: Option<String>,
+    ) -> Result<()> {
+        debug!("Sending webshare create request");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for webshare create"))?;
+
+        let body = TerminalMessageBody::WebShareCreate {
+            from: self.endpoint.node_id(),
+            local_port,
+            public_port,
+            service_name,
+            terminal_id,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_webshare_stop(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        public_port: u16,
+    ) -> Result<()> {
+        debug!("Sending webshare stop request");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for webshare stop"))?;
+
+        let body = TerminalMessageBody::WebShareStop {
+            from: self.endpoint.node_id(),
+            public_port,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_webshare_list_request(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+    ) -> Result<()> {
+        debug!("Sending webshare list request");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for webshare list"))?;
+
+        let body = TerminalMessageBody::WebShareListRequest {
+            from: self.endpoint.node_id(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_webshare_list_response(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        webshares: Vec<WebShareInfo>,
+    ) -> Result<()> {
+        debug!("Sending webshare list response");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for webshare list response"))?;
+
+        let body = TerminalMessageBody::WebShareListResponse {
+            from: self.endpoint.node_id(),
+            webshares,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_stats_request(&self, session_id: &str, sender: &GossipSender) -> Result<()> {
+        debug!("Sending stats request");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for stats request"))?;
+
+        let body = TerminalMessageBody::StatsRequest {
+            from: self.endpoint.node_id(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_stats_response(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        terminal_stats: TerminalStats,
+        webshare_stats: WebShareStats,
+    ) -> Result<()> {
+        debug!("Sending stats response");
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for stats response"))?;
+
+        let body = TerminalMessageBody::StatsResponse {
+            from: self.endpoint.node_id(),
+            terminal_stats,
+            webshare_stats,
+            node_id: self.endpoint.node_id().to_string(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    // Additional terminal management methods
+
+    pub async fn send_terminal_output(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        terminal_id: String,
+        data: String,
+    ) -> Result<()> {
+        debug!("Sending terminal output for terminal {}", terminal_id);
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal output"))?;
+
+        let body = TerminalMessageBody::TerminalOutput {
+            from: self.endpoint.node_id(),
+            terminal_id,
+            data,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_terminal_input(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        terminal_id: String,
+        data: String,
+    ) -> Result<()> {
+        debug!("Sending terminal input for terminal {}", terminal_id);
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal input"))?;
+
+        let body = TerminalMessageBody::TerminalInput {
+            from: self.endpoint.node_id(),
+            terminal_id,
+            data,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_terminal_resize(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        terminal_id: String,
+        rows: u16,
+        cols: u16,
+    ) -> Result<()> {
+        debug!("Sending terminal resize for terminal {}", terminal_id);
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal resize"))?;
+
+        let body = TerminalMessageBody::TerminalResize {
+            from: self.endpoint.node_id(),
+            terminal_id,
+            rows,
+            cols,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_terminal_status_update(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        terminal_id: String,
+        status: TerminalStatus,
+    ) -> Result<()> {
+        debug!(
+            "Sending terminal status update for terminal {}",
+            terminal_id
+        );
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal status update"))?;
+
+        let body = TerminalMessageBody::TerminalStatusUpdate {
+            from: self.endpoint.node_id(),
+            terminal_id,
+            status,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    pub async fn send_terminal_directory_change(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        terminal_id: String,
+        new_dir: String,
+    ) -> Result<()> {
+        debug!(
+            "Sending terminal directory change for terminal {}",
+            terminal_id
+        );
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal directory change"))?;
+
+        let body = TerminalMessageBody::TerminalDirectoryChanged {
+            from: self.endpoint.node_id(),
+            terminal_id,
+            new_dir,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
     }
 }
