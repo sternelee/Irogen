@@ -1,0 +1,1892 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.github/
+  workflows/
+    ci.yml
+    release.yml
+src/
+  lib.rs
+  main.rs
+tests/
+  cli.rs
+.gitignore
+Cargo.toml
+LICENSE-APACHE
+LICENSE-MIT
+README.md
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".gitignore">
+/target
+</file>
+
+<file path="LICENSE-APACHE">
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+</file>
+
+<file path="LICENSE-MIT">
+The MIT License (MIT)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+</file>
+
+<file path=".github/workflows/release.yml">
+# The way this works is the following:
+#
+# The create-release job runs purely to initialize the GitHub release itself
+# and to output upload_url for the following job.
+#
+# The build-release job runs only once create-release is finished. It gets the
+# release upload URL from create-release job outputs, then builds the release
+# executables for each supported platform and attaches them as release assets
+# to the previously created release.
+#
+# The key here is that we create the release only once.
+#
+# Reference:
+# https://eugene-babichenko.github.io/blog/2020/05/09/github-actions-cross-platform-auto-releases/
+# https://github.com/crate-ci/cargo-release/blob/91549dbf9db9915ba5f121890ad0816c7d851679/.github/workflows/post-release.yml
+
+name: release
+on:
+  push:
+    tags:
+    - "v*"
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Release version"
+        required: true
+        default: ""
+      create_release:
+        description: "Create release"
+        required: true
+        default: "true"
+      upload_artifacts:
+        description: "Upload artifacts"
+        required: true
+        default: "true"
+
+env:
+  BIN_NAME: dumbpipe
+  IROH_FORCE_STAGING_RELAYS: "1"
+
+jobs:
+  create-release:
+    name: create-release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.release.outputs.upload_url }}
+      release_version: ${{ env.RELEASE_VERSION }}
+    steps:
+    - name: Get the release version from the tag (push)
+      shell: bash
+      if: env.RELEASE_VERSION == '' && github.event_name == 'push'
+      run: |
+        # See: https://github.community/t5/GitHub-Actions/How-to-get-just-the-tag-name/m-p/32167/highlight/true#M1027
+        echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        echo "version is: ${{ env.RELEASE_VERSION }}"
+    - name: Get the release version from the tag (dispatch)
+      shell: bash
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        echo "RELEASE_VERSION=${{ github.event.inputs.release_version }}" >> $GITHUB_ENV
+        echo "version is: ${{ env.RELEASE_VERSION }}"
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+    - name: Create GitHub release
+      id: release
+      if: github.event.inputs.create_release == 'true' || github.event_name == 'push'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ env.RELEASE_VERSION }}
+        release_name: ${{ env.RELEASE_VERSION }}
+  build-release:
+    name: build-release
+    needs: create-release
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        name: [ubuntu-latest, ubuntu-arm-latest, macOS-arm-latest, macOS-latest, windows-latest]
+        rust: [stable]
+        include:
+          - name: ubuntu-arm-latest
+            os: ubuntu-latest
+            target: linux-aarch64
+            cargo_targets: "aarch64-unknown-linux-musl"
+            runner: [self-hosted, linux, ARM64]
+          - name: ubuntu-latest
+            os: ubuntu-latest
+            target: linux-x86_64
+            cargo_targets: "x86_64-unknown-linux-musl"
+            runner: [self-hosted, linux, X64]
+          - name: macOS-latest
+            os: macOS-latest
+            target: darwin-x86_64
+            cargo_targets: "x86_64-apple-darwin"
+            runner: [self-hosted, macOS, ARM64]
+          - name: macOS-arm-latest
+            os: macOS-latest
+            target: darwin-aarch64
+            cargo_targets: "aarch64-apple-darwin"
+            runner: [self-hosted, macOS, ARM64]
+        # TODO: windows runner is not available on the org level
+          - name: windows-latest
+            os: windows-latest
+            target: windows-x86_64
+            cargo_targets: "x86_64-pc-windows-msvc"
+            runner: [windows-latest]
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ matrix.rust }}
+        targets: ${{ matrix.cargo_targets }}
+    - name: Ensure musl support
+      if: ${{ contains(matrix.cargo_targets, '-musl') }}
+      run: sudo apt-get install musl-tools -y
+    - name: Build release binary
+      shell: bash
+      run: |
+        if [ "${{ matrix.name }}" = "ubuntu-arm-latest" ]; then
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc
+          export CC=aarch64-linux-gnu-gcc
+        fi
+        cargo build --verbose --release --target ${{ matrix.cargo_targets }}
+    - name: Build archive
+      shell: bash
+      run: |
+        staging="${{ env.BIN_NAME }}-${{ needs.create-release.outputs.release_version }}-${{ matrix.target }}"
+        mkdir -p "$staging"
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cp "target/${{ matrix.cargo_targets }}/release/${{ env.BIN_NAME }}.exe" "$staging/"
+          cd "$staging"
+          7z a "../$staging.zip" .
+          echo "ASSET=$staging.zip" >> $GITHUB_ENV
+        else
+          cp "target/${{ matrix.cargo_targets }}/release/${{ env.BIN_NAME }}" "$staging/"
+          tar czf "$staging.tar.gz" -C "$staging" .
+          echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
+        fi
+    - name: Upload release archive
+      uses: actions/upload-release-asset@v1.0.2
+      if: github.event.inputs.upload_artifacts == 'true' || github.event_name == 'push'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ${{ env.ASSET }}
+        asset_name: ${{ env.ASSET }}
+        asset_content_type: application/octet-stream
+</file>
+
+<file path=".github/workflows/ci.yml">
+name: tests
+
+on:
+  push:
+    branches:
+      # This helps fill the caches properly, caches are not shared between PRs.
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  MSRV: "1.81"
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: -Dwarnings
+  IROH_FORCE_STAGING_RELAYS: "1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+      - name: cargo clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features
+
+  test:
+    runs-on: ${{ matrix.target.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - os: "ubuntu-latest"
+            toolchain: "x86_64-unknown-linux-gnu"
+            name: "Linux GNU"
+          - os: "macOS-latest"
+            toolchain: "aarch64-apple-darwin"
+            name: "macOS"
+          - os: "windows-latest"
+            toolchain: "x86_64-pc-windows-msvc"
+            name: "Windows MSVC"
+          - os: "windows-latest"
+            toolchain: "x86_64-pc-windows-gnu"
+            name: "Windows GNU"
+        channel:
+          - "stable"
+          - "beta"
+          - "nightly"
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.channel }}
+          targets: ${{ matrix.target.toolchain }}
+      - uses: swatinem/rust-cache@v2
+      - name: cargo test
+        run: cargo test --locked --workspace --all-features --bins --tests --examples
+
+  # Checks correct runtime deps and features are requested by not including dev-dependencies.
+  check-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+      - name: cargo check
+        run: cargo check --workspace --all-features --bins
+</file>
+
+<file path="src/lib.rs">
+/// The ALPN for dumbpipe.
+///
+/// It is basically just passing data through 1:1, except that the connecting
+/// side will send a fixed size handshake to make sure the stream is created.
+pub const ALPN: &[u8] = b"DUMBPIPEV0";
+
+/// The handshake to send when connecting.
+///
+/// The side that calls open_bi() first must send this handshake, the side that
+/// calls accept_bi() must consume it.
+pub const HANDSHAKE: [u8; 5] = *b"hello";
+
+pub use iroh_base::ticket::NodeTicket;
+</file>
+
+<file path="tests/cli.rs">
+#![cfg_attr(target_os = "windows", allow(unused_imports, dead_code))]
+use dumbpipe::NodeTicket;
+use rand::Rng;
+
+use std::{
+    io::{self, Read, Write},
+    net::{TcpListener, TcpStream},
+    str::FromStr,
+    sync::{Arc, Barrier},
+    time::Duration,
+};
+
+// binary path
+fn dumbpipe_bin() -> &'static str {
+    env!("CARGO_BIN_EXE_dumbpipe")
+}
+
+/// Read `n` lines from `reader`, returning the bytes read including the newlines.
+///
+/// This assumes that the header lines are ASCII and can be parsed byte by byte.
+fn read_ascii_lines(mut n: usize, reader: &mut impl Read) -> io::Result<Vec<u8>> {
+    let mut buf = [0u8; 1];
+    let mut res = Vec::new();
+    loop {
+        if reader.read(&mut buf)? != 1 {
+            break;
+        }
+        let char = buf[0];
+        res.push(char);
+        if char != b'\n' {
+            continue;
+        }
+        if n > 1 {
+            n -= 1;
+        } else {
+            break;
+        }
+    }
+    Ok(res)
+}
+
+fn wait2() -> Arc<Barrier> {
+    Arc::new(Barrier::new(2))
+}
+
+/// generate a random, non privileged port
+fn random_port() -> u16 {
+    rand::rng().random_range(10000u16..60000)
+}
+
+/// Tests the basic functionality of the connect and listen pair
+///
+/// Connect and listen both write a limited amount of data and then EOF.
+/// The interaction should stop when both sides have EOF'd.
+#[test]
+#[ignore = "flaky"]
+fn connect_listen_happy() {
+    // the bytes provided by the listen command
+    let listen_to_connect = b"hello from listen";
+    let connect_to_listen = b"hello from connect";
+    let mut listen = duct::cmd(dumbpipe_bin(), ["listen"])
+        .env_remove("RUST_LOG") // disable tracing
+        .stdin_bytes(listen_to_connect)
+        .stderr_to_stdout() //
+        .reader()
+        .unwrap();
+    // read the first 3 lines of the header, and parse the last token as a ticket
+    let header = read_ascii_lines(3, &mut listen).unwrap();
+    let header = String::from_utf8(header).unwrap();
+    let ticket = header.split_ascii_whitespace().last().unwrap();
+    let ticket = NodeTicket::from_str(ticket).unwrap();
+
+    let connect = duct::cmd(dumbpipe_bin(), ["connect", &ticket.to_string()])
+        .env_remove("RUST_LOG") // disable tracing
+        .stdin_bytes(connect_to_listen)
+        .stderr_null()
+        .stdout_capture()
+        .run()
+        .unwrap();
+
+    assert!(connect.status.success());
+    assert_eq!(&connect.stdout, listen_to_connect);
+
+    let mut listen_stdout = Vec::new();
+    listen.read_to_end(&mut listen_stdout).unwrap();
+    assert_eq!(&listen_stdout, connect_to_listen);
+}
+
+/// Tests the basic functionality of the connect and listen pair
+///
+/// Connect and listen both write a limited amount of data and then EOF.
+/// The interaction should stop when both sides have EOF'd.
+#[test]
+#[ignore = "flaky"]
+fn connect_listen_custom_alpn_happy() {
+    // the bytes provided by the listen command
+    let listen_to_connect = b"hello from listen";
+    let connect_to_listen = b"hello from connect";
+    let mut listen = duct::cmd(
+        dumbpipe_bin(),
+        ["listen", "--custom-alpn", "utf8:mysuperalpn/0.1.0"],
+    )
+    .env_remove("RUST_LOG") // disable tracing
+    .stdin_bytes(listen_to_connect)
+    .stderr_to_stdout() //
+    .reader()
+    .unwrap();
+    // read the first 3 lines of the header, and parse the last token as a ticket
+    let header = read_ascii_lines(3, &mut listen).unwrap();
+    let header = String::from_utf8(header).unwrap();
+    let ticket = header.split_ascii_whitespace().last().unwrap();
+    let ticket = NodeTicket::from_str(ticket).unwrap();
+
+    let connect = duct::cmd(
+        dumbpipe_bin(),
+        [
+            "connect",
+            &ticket.to_string(),
+            "--custom-alpn",
+            "utf8:mysuperalpn/0.1.0",
+        ],
+    )
+    .env_remove("RUST_LOG") // disable tracing
+    .stdin_bytes(connect_to_listen)
+    .stderr_null()
+    .stdout_capture()
+    .run()
+    .unwrap();
+
+    assert!(connect.status.success());
+    assert_eq!(&connect.stdout, listen_to_connect);
+
+    let mut listen_stdout = Vec::new();
+    listen.read_to_end(&mut listen_stdout).unwrap();
+    assert_eq!(&listen_stdout, connect_to_listen);
+}
+
+#[cfg(unix)]
+#[test]
+fn connect_listen_ctrlc_connect() {
+    use nix::{
+        sys::signal::{self, Signal},
+        unistd::Pid,
+    };
+    // the bytes provided by the listen command
+    let mut listen = duct::cmd(dumbpipe_bin(), ["listen"])
+        .env_remove("RUST_LOG") // disable tracing
+        .stdin_bytes(b"hello from listen\n")
+        .stderr_to_stdout() //
+        .reader()
+        .unwrap();
+    // read the first 3 lines of the header, and parse the last token as a ticket
+    let header = read_ascii_lines(3, &mut listen).unwrap();
+    let header = String::from_utf8(header).unwrap();
+    let ticket = header.split_ascii_whitespace().last().unwrap();
+    let ticket = NodeTicket::from_str(ticket).unwrap();
+
+    let mut connect = duct::cmd(dumbpipe_bin(), ["connect", &ticket.to_string()])
+        .env_remove("RUST_LOG") // disable tracing
+        .stderr_null()
+        .stdout_capture()
+        .reader()
+        .unwrap();
+    // wait until we get a line from the listen process
+    read_ascii_lines(1, &mut connect).unwrap();
+    for pid in connect.pids() {
+        signal::kill(Pid::from_raw(pid as i32), Signal::SIGINT).unwrap();
+    }
+
+    let mut tmp = Vec::new();
+    // we don't care about the results. This test is just to make sure that the
+    // listen command stops when the connect command stops.
+    listen.read_to_end(&mut tmp).ok();
+    connect.read_to_end(&mut tmp).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn connect_listen_ctrlc_listen() {
+    use std::time::Duration;
+
+    use nix::{
+        sys::signal::{self, Signal},
+        unistd::Pid,
+    };
+    // the bytes provided by the listen command
+    let mut listen = duct::cmd(dumbpipe_bin(), ["listen"])
+        .env_remove("RUST_LOG") // disable tracing
+        .stderr_to_stdout()
+        .reader()
+        .unwrap();
+    // read the first 3 lines of the header, and parse the last token as a ticket
+    let header = read_ascii_lines(3, &mut listen).unwrap();
+    let header = String::from_utf8(header).unwrap();
+    let ticket = header.split_ascii_whitespace().last().unwrap();
+    let ticket = NodeTicket::from_str(ticket).unwrap();
+
+    let mut connect = duct::cmd(dumbpipe_bin(), ["connect", &ticket.to_string()])
+        .env_remove("RUST_LOG") // disable tracing
+        .stderr_null()
+        .stdout_capture()
+        .reader()
+        .unwrap();
+    std::thread::sleep(Duration::from_secs(1));
+    for pid in listen.pids() {
+        signal::kill(Pid::from_raw(pid as i32), Signal::SIGINT).unwrap();
+    }
+
+    let mut tmp = Vec::new();
+    // we don't care about the results. This test is just to make sure that the
+    // listen command stops when the connect command stops.
+    listen.read_to_end(&mut tmp).ok();
+    connect.read_to_end(&mut tmp).ok();
+}
+
+// TODO: figure out why this is flaky on windows
+#[test]
+#[cfg(unix)]
+#[ignore = "flaky"]
+fn listen_tcp_happy() {
+    let b1 = wait2();
+    let b2 = b1.clone();
+    let port = random_port();
+    // start a dummy tcp server and wait for a single incoming connection
+    let host_port = format!("localhost:{port}");
+    let host_port_2 = host_port.clone();
+    std::thread::spawn(move || {
+        let server = TcpListener::bind(host_port_2).unwrap();
+        b1.wait();
+        let (mut stream, _addr) = server.accept().unwrap();
+        stream.write_all(b"hello from tcp").unwrap();
+        stream.flush().unwrap();
+        drop(stream);
+    });
+    // wait for the tcp listener to start
+    b2.wait();
+    // start a dumbpipe listen-tcp process
+    let mut listen_tcp = duct::cmd(dumbpipe_bin(), ["listen-tcp", "--host", &host_port])
+        .env_remove("RUST_LOG") // disable tracing
+        .stderr_to_stdout() //
+        .reader()
+        .unwrap();
+    let header = read_ascii_lines(4, &mut listen_tcp).unwrap();
+    let header = String::from_utf8(header).unwrap();
+    let ticket = header.split_ascii_whitespace().last().unwrap();
+    let ticket = NodeTicket::from_str(ticket).unwrap();
+    // poke the listen-tcp process with a connect command
+    let connect = duct::cmd(dumbpipe_bin(), ["connect", &ticket.to_string()])
+        .env_remove("RUST_LOG") // disable tracing
+        .stderr_null()
+        .stdout_capture()
+        .stdin_bytes(b"hello from connect")
+        .run()
+        .unwrap();
+    assert!(connect.status.success());
+    assert_eq!(&connect.stdout, b"hello from tcp");
+}
+
+#[test]
+fn connect_tcp_happy() {
+    let port = random_port();
+    let host_port = format!("localhost:{port}");
+    // start a dumbpipe listen process just so the connect-tcp command has something to connect to
+    let mut listen = duct::cmd(dumbpipe_bin(), ["listen"])
+        .env_remove("RUST_LOG") // disable tracing
+        .stdin_bytes(b"hello from listen\n")
+        .stderr_to_stdout() //
+        .reader()
+        .unwrap();
+    let header = read_ascii_lines(3, &mut listen).unwrap();
+    let header = String::from_utf8(header).unwrap();
+    let ticket = header.split_ascii_whitespace().last().unwrap();
+    let ticket = NodeTicket::from_str(ticket).unwrap();
+    let ticket = ticket.to_string();
+
+    // start a dumbpipe connect-tcp process
+    let _connect_tcp = duct::cmd(
+        dumbpipe_bin(),
+        ["connect-tcp", "--addr", &host_port, &ticket],
+    )
+    .env_remove("RUST_LOG") // disable tracing
+    .stderr_to_stdout() //
+    .reader()
+    .unwrap();
+    std::thread::sleep(Duration::from_secs(1));
+
+    //
+    let mut conn = TcpStream::connect(host_port).unwrap();
+    conn.write_all(b"hello from tcp").unwrap();
+    conn.flush().unwrap();
+    let mut buf = Vec::new();
+    conn.read_to_end(&mut buf).unwrap();
+    assert_eq!(&buf, b"hello from listen\n");
+}
+
+/// Integration test for Unix-domain socket tunneling.
+///
+/// Validates end-to-end operation between `listen-unix` and `connect-unix`:
+/// - A dummy backend server echoes a reply.
+/// - `listen-unix` connects to the backend and exposes a ticket.
+/// - `connect-unix` consumes the ticket and exposes a new Unix socket.
+/// - The test exchanges messages to assert correct data flow.
+#[cfg(all(test, unix))]
+mod unix_socket_tests {
+    use super::*;
+    use std::io::{BufRead, Read, Write};
+    use std::net::Shutdown;
+    use std::os::unix::net::{UnixListener, UnixStream};
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Barrier};
+    use std::time::{Duration, Instant};
+    use tempfile::TempDir;
+
+    /// Polls until the condition returns true or timeout is reached.
+    fn wait_until<F>(timeout: Duration, mut condition: F)
+    where
+        F: FnMut() -> bool,
+    {
+        let deadline = Instant::now() + timeout;
+        while !condition() {
+            if Instant::now() >= deadline {
+                panic!("timeout waiting for condition");
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    /// Waits until a filesystem path exists.
+    fn wait_for_path<P: AsRef<Path>>(path: P, timeout: Duration) {
+        let p = path.as_ref().to_path_buf();
+        wait_until(timeout, move || p.exists());
+    }
+
+    /// Generate a temp directory with a Unix socket path
+    fn temp_socket_path() -> (TempDir, PathBuf) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let socket_path = temp_dir.path().join("test.sock");
+        (temp_dir, socket_path)
+    }
+
+    /// Helper to drain stderr from a process in a background thread
+    fn drain_stderr(
+        stderr: std::process::ChildStderr,
+        prefix: &'static str,
+    ) -> std::thread::JoinHandle<()> {
+        std::thread::spawn(move || {
+            let reader = std::io::BufReader::new(stderr);
+            for line in reader.lines().map_while(Result::ok) {
+                eprintln!("[{prefix}] {line}");
+            }
+        })
+    }
+
+    /// A dummy unix server that accepts multiple connections and handles them properly.
+    fn dummy_unix_server(
+        socket_path: PathBuf,
+        barrier: Arc<Barrier>,
+    ) -> std::thread::JoinHandle<()> {
+        std::thread::spawn(move || {
+            let _ = std::fs::remove_file(&socket_path);
+            let listener = UnixListener::bind(&socket_path).unwrap();
+            barrier.wait();
+            // Accept connections in a loop
+            for stream in listener.incoming() {
+                if let Ok(mut stream) = stream {
+                    // Handle each connection in a new thread
+                    std::thread::spawn(move || {
+                        let mut buf = vec![0; 1024];
+                        // Block here waiting for data from the client via the proxy
+                        if let Ok(n) = stream.read(&mut buf) {
+                            if n > 0 {
+                                // once we get data, write a response
+                                if stream.write_all(b"hello from unix").is_ok() {
+                                    // cleanly shutdown the write side
+                                    stream.shutdown(Shutdown::Write).ok();
+                                }
+                            }
+                        }
+                        // now drain the read side to allow the client to close gracefully
+                        while stream.read(&mut buf).unwrap_or(0) > 0 {}
+                    });
+                } else {
+                    break;
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn unix_socket_roundtrip() {
+        // Create temp socket paths for the backend and the client-facing side.
+        let (_tmp_dir, backend_sock) = temp_socket_path();
+        let client_sock = backend_sock.with_extension("client");
+
+        // Barrier to sync backend server readiness.
+        let barrier = Arc::new(Barrier::new(2));
+
+        // Spawn a dummy backend server.
+        let _backend_thread = dummy_unix_server(backend_sock.clone(), barrier.clone());
+
+        // Wait for the backend to be ready.
+        barrier.wait();
+
+        // Actively probe the backend server to ensure it's accepting connections.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if UnixStream::connect(&backend_sock).is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        if UnixStream::connect(&backend_sock).is_err() {
+            panic!("backend server not connectable after 5s");
+        }
+
+        // Launch listen-unix targeting the backend.
+        let mut listen_proc = std::process::Command::new(dumbpipe_bin())
+            .args([
+                "listen-unix",
+                "--socket-path",
+                backend_sock.to_str().unwrap(),
+            ])
+            .env_remove("RUST_LOG")
+            .stdout(std::process::Stdio::null()) // We don't need stdout
+            .stderr(std::process::Stdio::piped()) // We must read stderr
+            .spawn()
+            .expect("spawn listen-unix");
+
+        // Extract the ticket from the stderr output.
+        let listen_stderr = listen_proc.stderr.take().unwrap();
+        let mut ticket = String::new();
+        let mut stderr_reader = std::io::BufReader::new(listen_stderr);
+        for line in stderr_reader.by_ref().lines() {
+            let line = line.unwrap();
+            eprintln!("[listen-unix-stderr] {line}");
+            if line.contains("connect-unix") {
+                ticket = line.split_whitespace().last().unwrap().to_owned();
+                break;
+            }
+        }
+        assert!(!ticket.is_empty(), "Failed to get ticket");
+
+        // Continue draining listen-unix stderr using helper
+        let listen_stderr_thread = std::thread::spawn(move || {
+            for line in stderr_reader.lines().map_while(Result::ok) {
+                eprintln!("[listen-unix-stderr] {line}");
+            }
+        });
+
+        // Launch connect-unix, exposing the client socket.
+        let mut connect_proc = std::process::Command::new(dumbpipe_bin())
+            .args([
+                "connect-unix",
+                "--socket-path",
+                client_sock.to_str().unwrap(),
+                &ticket,
+            ])
+            .env_remove("RUST_LOG")
+            .stdout(std::process::Stdio::null()) // We don't need stdout
+            .stderr(std::process::Stdio::piped()) // We must read stderr
+            .spawn()
+            .expect("spawn connect-unix");
+
+        // Drain the stderr of the connect process using helper
+        let connect_stderr = connect_proc.stderr.take().unwrap();
+        let connect_stderr_thread = drain_stderr(connect_stderr, "connect-unix-stderr");
+
+        // Wait for connect-unix to create its socket.
+        wait_for_path(&client_sock, Duration::from_secs(5));
+
+        // Perform the end-to-end exchange.
+        let mut client = UnixStream::connect(&client_sock).expect("connect to client socket");
+        client
+            .write_all(b"hello from client")
+            .expect("client write");
+
+        // Don't shutdown write immediately - let the backend respond first
+        let mut reply = Vec::new();
+        client.read_to_end(&mut reply).expect("client read");
+        assert_eq!(&reply, b"hello from unix");
+
+        // Clean up child processes.
+        listen_proc.kill().ok();
+        listen_proc.wait().ok();
+        connect_proc.kill().ok();
+        connect_proc.wait().ok();
+        listen_stderr_thread.join().ok();
+        connect_stderr_thread.join().ok();
+    }
+}
+</file>
+
+<file path="README.md">
+# Dumb pipe
+
+This is an example to use [iroh](https://crates.io/crates/iroh) to create a dumb pipe to connect two machines with a QUIC connection.
+
+Iroh will take care of hole punching and NAT traversal whenever possible, and fall back to a
+relay if hole punching does not succeed.
+
+It is also useful as a standalone tool for quick copy jobs.
+
+This is inspired by the unix tool [netcat](https://en.wikipedia.org/wiki/Netcat). While netcat
+works with IP addresses, dumbpipe works with 256 bit node ids and therefore is somewhat location transparent. In addition, connections are encrypted using TLS.
+
+# Installation
+
+With [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html):
+
+```
+cargo install dumbpipe
+```
+
+If you've installed [Homebrew](https://brew.sh), you can install it using the following command:
+
+```
+brew install dumbpipe
+```
+
+# Examples
+
+## Use dumbpipe to stream video using [ffmpeg / ffplay](https://ffmpeg.org/):
+
+This is using standard input and output.
+
+### Sender side
+
+On Mac OS:
+```
+ffmpeg -f avfoundation -r 30 -i "0" -pix_fmt yuv420p -f mpegts - | dumbpipe listen
+```
+On Linux:
+```
+ffmpeg -f v4l2 -i /dev/video0 -r 30 -preset ultrafast -vcodec libx264 -tune zerolatency -f mpegts - | dumbpipe listen
+```
+outputs ticket
+
+### Receiver side
+```
+dumbpipe connect nodeealvvv4nwa522qhznqrblv6jxcrgnvpapvakxw5i6mwltmm6ps2r4aicamaakdu5wtjasadei2qdfuqjadakqk3t2ieq | ffplay -f mpegts -fflags nobuffer -framedrop -
+```
+
+- Adjust the ffmpeg options according to your local platform and video capture devices.
+- Use ticket from sender side
+
+## Share a shell for pair- or ensemble programming with [tty-share](https://github.com/elisescu/tty-share):
+
+Sharing a terminal session over the internet is useful for collaboration between programmers, but the public [tty-share](https://github.com/elisescu/tty-share) server isn't very reliable and, more importantly, [it is not end-to-end encrypted](https://tty-share.com/how-it-works/#end-to-end-encryption).
+
+On the server:
+
+```
+$ dumbpipe listen-tcp --host localhost:8000 &
+$ tty-share
+```
+
+On the client(s):
+
+```
+$ dumbpipe connect-tcp --addr localhost:8000 <ticket> &
+$ tty-share http://localhost:8000/s/local/
+```
+
+## Forward development web server
+
+You have a development webserver running on port 3000, and want to share it with
+a colleague in another office or on the other side of the world.
+
+### The web server
+```
+npm run dev
+>    - Local:        http://localhost:3000
+```
+
+### The dumbpipe listener
+
+*Listens* on an endpoint and forwards all incoming requests to the dev web
+server that is listening on localhost on port 3000. Any number of connections can
+flow through a single dumb pipe, but they will be separate local tcp connections.
+
+```
+dumbpipe listen-tcp --host localhost:3000
+```
+This command will output a ticket that can be used to connect.
+
+### The dumbpipe connector
+
+*Listens* on a tcp interface and port on the local machine. In this case on port 3001.
+Forwards all incoming connections to the endpoint given in the ticket.
+
+```
+dumbpipe connect-tcp --addr 0.0.0.0:3001 <ticket>
+```
+
+### Testing it
+
+You can now browse the website on port 3001.
+
+## Forward a Unix Socket Application (e.g., Zellij)
+
+You can forward applications that communicate over Unix sockets, like the terminal multiplexer [Zellij](https://zellij.dev/).
+
+Note: Zellij keeps its session sockets under `$ZELLIJ_SOCKET_DIR/<VERSION>/session-name`
+
+![image](https://github.com/user-attachments/assets/b8fbb988-57db-40cd-95e2-208e01fbaad6)
+
+1. On the remote host (with Zellij running):
+
+```bash
+zellij --version
+# zellij 0.42.2
+# Forward the remote Zellij socket
+# Socket path follows pattern: /tmp/zellij-0/<VERSION>/<session-name>
+dumbpipe listen-unix --socket-path /tmp/zellij-0/0.42.2/remote-task-1234
+```
+
+This will give you a `<ticket>`.
+
+2. On your local machine:
+
+```bash
+zellij --version
+# zellij 0.42.1
+
+# Create the local socket directory structure
+mkdir -p /tmp/zj-remote/0.42.1
+
+# Create a local socket connected to the remote one
+dumbpipe connect-unix --socket-path /tmp/zj-remote/0.42.1/remote-task-1234 <ticket>
+```
+
+3. Attach your local Zellij client:
+
+```bash
+# In a new terminal window/tab, set the socket directory and attach
+ZELLIJ_SOCKET_DIR=/tmp/zj-remote zellij attach remote-task-1234
+```
+
+# Advanced features
+
+## Combining Listeners
+
+You can mix and match listeners. For example, forward from a remote Unix socket to a local TCP port:
+
+```bash
+# Machine A: Listen on a Unix socket
+dumbpipe listen-unix --socket-path /var/run/my-app.sock
+
+# Machine B: Connect to it via a local TCP port
+dumbpipe connect-tcp --addr 127.0.0.1:8080 <ticket>
+```
+
+## Custom ALPNs
+
+Dumbpipe has an expert feature to specify a custom [ALPN](https://en.wikipedia.org/wiki/Application-Layer_Protocol_Negotiation) string. You can use it to interact with
+existing iroh services.
+
+E.g. here is how to interact with the iroh-blobs
+protocol:
+
+```
+echo request1.bin | dumbpipe connect <ticket> --custom-alpn utf8:/iroh-bytes/2 > response1.bin
+```
+
+(`/iroh-bytes/2` is the ALPN string for the iroh-blobs protocol, which used to be called iroh-bytes.)
+
+if request1.bin contained a valid request for the `/iroh-bytes/2` protocol, response1.bin will
+now contain the response.
+</file>
+
+<file path="src/main.rs">
+//! Command line arguments.
+use clap::{Parser, Subcommand};
+use dumbpipe::NodeTicket;
+use iroh::{endpoint::Connecting, Endpoint, NodeAddr, SecretKey};
+use n0_snafu::{Result, ResultExt};
+use std::{
+    io,
+    net::{SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs},
+    str::FromStr,
+};
+use tokio::{
+    io::{AsyncRead, AsyncWrite, AsyncWriteExt},
+    select,
+};
+use tokio_util::sync::CancellationToken;
+
+#[cfg(unix)]
+use {
+    std::path::PathBuf,
+    tokio::net::{UnixListener, UnixStream},
+};
+
+/// Create a dumb pipe between two machines, using an iroh endpoint.
+///
+/// One side listens, the other side connects. Both sides are identified by a
+/// 32 byte node id.
+///
+/// Connecting to a node id is independent of its IP address. Dumbpipe will try
+/// to establish a direct connection even through NATs and firewalls. If that
+/// fails, it will fall back to using a relay server.
+///
+/// For all subcommands, you can specify a secret key using the IROH_SECRET
+/// environment variable. If you don't, a random one will be generated.
+///
+/// You can also specify a port for the endpoint. If you don't, a random one
+/// will be chosen.
+#[derive(Parser, Debug)]
+pub struct Args {
+    #[clap(subcommand)]
+    pub command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Listen on an endpoint and forward stdin/stdout to the first incoming
+    /// bidi stream.
+    ///
+    /// Will print a node ticket on stderr that can be used to connect.
+    Listen(ListenArgs),
+
+    /// Listen on an endpoint and forward incoming connections to the specified
+    /// host and port. Every incoming bidi stream is forwarded to a new connection.
+    ///
+    /// Will print a node ticket on stderr that can be used to connect.
+    ///
+    /// As far as the endpoint is concerned, this is listening. But it is
+    /// connecting to a TCP socket for which you have to specify the host and port.
+    ListenTcp(ListenTcpArgs),
+
+    /// Connect to an endpoint, open a bidi stream, and forward stdin/stdout.
+    ///
+    /// A node ticket is required to connect.
+    Connect(ConnectArgs),
+
+    /// Connect to an endpoint, open a bidi stream, and forward stdin/stdout
+    /// to it.
+    ///
+    /// A node ticket is required to connect.
+    ///
+    /// As far as the endpoint is concerned, this is connecting. But it is
+    /// listening on a TCP socket for which you have to specify the interface and port.
+    ConnectTcp(ConnectTcpArgs),
+
+    #[cfg(unix)]
+    /// Listen on an endpoint and forward incoming connections to the specified
+    /// Unix socket path. Every incoming bidi stream is forwarded to a new connection.
+    ///
+    /// Will print a node ticket on stderr that can be used to connect.
+    ///
+    /// As far as the endpoint is concerned, this is listening. But it is
+    /// connecting to a Unix socket for which you have to specify the path.
+    ListenUnix(ListenUnixArgs),
+
+    #[cfg(unix)]
+    /// Connect to an endpoint, open a bidi stream, and forward connections
+    /// from the specified Unix socket path.
+    ///
+    /// A node ticket is required to connect.
+    ///
+    /// As far as the endpoint is concerned, this is connecting. But it is
+    /// listening on a Unix socket for which you have to specify the path.
+    ConnectUnix(ConnectUnixArgs),
+}
+
+#[derive(Parser, Debug)]
+pub struct CommonArgs {
+    /// The IPv4 address that the endpoint will listen on.
+    ///
+    /// If None, defaults to a random free port, but it can be useful to specify a fixed
+    /// port, e.g. to configure a firewall rule.
+    #[clap(long, default_value = None)]
+    pub ipv4_addr: Option<SocketAddrV4>,
+
+    /// The IPv6 address that the endpoint will listen on.
+    ///
+    /// If None, defaults to a random free port, but it can be useful to specify a fixed
+    /// port, e.g. to configure a firewall rule.
+    #[clap(long, default_value = None)]
+    pub ipv6_addr: Option<SocketAddrV6>,
+
+    /// A custom ALPN to use for the endpoint.
+    ///
+    /// This is an expert feature that allows dumbpipe to be used to interact
+    /// with existing iroh protocols.
+    ///
+    /// When using this option, the connect side must also specify the same ALPN.
+    /// The listen side will not expect a handshake, and the connect side will
+    /// not send one.
+    ///
+    /// Alpns are byte strings. To specify an utf8 string, prefix it with `utf8:`.
+    /// Otherwise, it will be parsed as a hex string.
+    #[clap(long)]
+    pub custom_alpn: Option<String>,
+
+    /// The verbosity level. Repeat to increase verbosity.
+    #[clap(short = 'v', long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
+}
+
+impl CommonArgs {
+    fn alpn(&self) -> Result<Vec<u8>> {
+        Ok(match &self.custom_alpn {
+            Some(alpn) => parse_alpn(alpn)?,
+            None => dumbpipe::ALPN.to_vec(),
+        })
+    }
+
+    fn is_custom_alpn(&self) -> bool {
+        self.custom_alpn.is_some()
+    }
+}
+
+fn parse_alpn(alpn: &str) -> Result<Vec<u8>> {
+    Ok(if let Some(text) = alpn.strip_prefix("utf8:") {
+        text.as_bytes().to_vec()
+    } else {
+        hex::decode(alpn).e()?
+    })
+}
+
+#[derive(Parser, Debug)]
+pub struct ListenArgs {
+    /// Immediately close our sending side, indicating that we will not transmit any data
+    #[clap(long)]
+    pub recv_only: bool,
+
+    #[clap(flatten)]
+    pub common: CommonArgs,
+}
+
+#[derive(Parser, Debug)]
+pub struct ListenTcpArgs {
+    #[clap(long)]
+    pub host: String,
+
+    #[clap(flatten)]
+    pub common: CommonArgs,
+}
+
+#[derive(Parser, Debug)]
+pub struct ConnectTcpArgs {
+    /// The addresses to listen on for incoming tcp connections.
+    ///
+    /// To listen on all network interfaces, use 0.0.0.0:12345
+    #[clap(long)]
+    pub addr: String,
+
+    /// The node to connect to
+    pub ticket: NodeTicket,
+
+    #[clap(flatten)]
+    pub common: CommonArgs,
+}
+
+#[derive(Parser, Debug)]
+pub struct ConnectArgs {
+    /// The node to connect to
+    pub ticket: NodeTicket,
+
+    /// Immediately close our sending side, indicating that we will not transmit any data
+    #[clap(long)]
+    pub recv_only: bool,
+
+    #[clap(flatten)]
+    pub common: CommonArgs,
+}
+
+#[cfg(unix)]
+#[derive(Parser, Debug)]
+pub struct ListenUnixArgs {
+    /// Path to the Unix socket to connect to
+    #[clap(long)]
+    pub socket_path: PathBuf,
+
+    #[clap(flatten)]
+    pub common: CommonArgs,
+}
+
+#[cfg(unix)]
+#[derive(Parser, Debug)]
+pub struct ConnectUnixArgs {
+    /// Path to the Unix socket to listen on
+    #[clap(long)]
+    pub socket_path: PathBuf,
+
+    /// The node to connect to
+    pub ticket: NodeTicket,
+
+    #[clap(flatten)]
+    pub common: CommonArgs,
+}
+
+/// Copy from a reader to a quinn stream.
+///
+/// Will send a reset to the other side if the operation is cancelled, and fail
+/// with an error.
+///
+/// Returns the number of bytes copied in case of success.
+async fn copy_to_quinn(
+    mut from: impl AsyncRead + Unpin,
+    mut send: quinn::SendStream,
+    token: CancellationToken,
+) -> io::Result<u64> {
+    tracing::trace!("copying to quinn");
+    tokio::select! {
+        res = tokio::io::copy(&mut from, &mut send) => {
+            let size = res?;
+            send.finish()?;
+            Ok(size)
+        }
+        _ = token.cancelled() => {
+            // send a reset to the other side immediately
+            send.reset(0u8.into()).ok();
+            Err(io::Error::other("cancelled"))
+        }
+    }
+}
+
+/// Copy from a quinn stream to a writer.
+///
+/// Will send stop to the other side if the operation is cancelled, and fail
+/// with an error.
+///
+/// Returns the number of bytes copied in case of success.
+async fn copy_from_quinn(
+    mut recv: quinn::RecvStream,
+    mut to: impl AsyncWrite + Unpin,
+    token: CancellationToken,
+) -> io::Result<u64> {
+    tokio::select! {
+        res = tokio::io::copy(&mut recv, &mut to) => {
+            Ok(res?)
+        },
+        _ = token.cancelled() => {
+            recv.stop(0u8.into()).ok();
+            Err(io::Error::other("cancelled"))
+        }
+    }
+}
+
+/// Get the secret key or generate a new one.
+///
+/// Print the secret key to stderr if it was generated, so the user can save it.
+fn get_or_create_secret() -> Result<SecretKey> {
+    match std::env::var("IROH_SECRET") {
+        Ok(secret) => SecretKey::from_str(&secret).context("invalid secret"),
+        Err(_) => {
+            let key = SecretKey::generate(&mut rand::rng());
+            eprintln!(
+                "using secret key {}",
+                data_encoding::HEXLOWER.encode(&key.to_bytes())
+            );
+            Ok(key)
+        }
+    }
+}
+
+/// Create a new iroh endpoint.
+async fn create_endpoint(
+    secret_key: SecretKey,
+    common: &CommonArgs,
+    alpns: Vec<Vec<u8>>,
+) -> Result<Endpoint> {
+    let mut builder = Endpoint::builder().secret_key(secret_key).alpns(alpns);
+    if let Some(addr) = common.ipv4_addr {
+        builder = builder.bind_addr_v4(addr);
+    }
+    if let Some(addr) = common.ipv6_addr {
+        builder = builder.bind_addr_v6(addr);
+    }
+    let endpoint = builder.bind().await?;
+    Ok(endpoint)
+}
+
+fn cancel_token<T>(token: CancellationToken) -> impl Fn(T) -> T {
+    move |x| {
+        token.cancel();
+        x
+    }
+}
+
+/// Bidirectionally forward data from a quinn stream and an arbitrary tokio
+/// reader/writer pair, aborting both sides when either one forwarder is done,
+/// or when control-c is pressed.
+async fn forward_bidi(
+    from1: impl AsyncRead + Send + Sync + Unpin + 'static,
+    to1: impl AsyncWrite + Send + Sync + Unpin + 'static,
+    from2: quinn::RecvStream,
+    to2: quinn::SendStream,
+) -> Result<()> {
+    let token1 = CancellationToken::new();
+    let token2 = token1.clone();
+    let token3 = token1.clone();
+    let forward_from_stdin = tokio::spawn(async move {
+        copy_to_quinn(from1, to2, token1.clone())
+            .await
+            .map_err(cancel_token(token1))
+    });
+    let forward_to_stdout = tokio::spawn(async move {
+        copy_from_quinn(from2, to1, token2.clone())
+            .await
+            .map_err(cancel_token(token2))
+    });
+    let _control_c = tokio::spawn(async move {
+        tokio::signal::ctrl_c().await?;
+        token3.cancel();
+        io::Result::Ok(())
+    });
+    forward_to_stdout.await.e()?.e()?;
+    forward_from_stdin.await.e()?.e()?;
+    Ok(())
+}
+
+async fn listen_stdio(args: ListenArgs) -> Result<()> {
+    let secret_key = get_or_create_secret()?;
+    let endpoint = create_endpoint(secret_key, &args.common, vec![args.common.alpn()?]).await?;
+    // wait for the endpoint to figure out its home relay and addresses before making a ticket
+    endpoint.online().await;
+    let node = endpoint.node_addr();
+    let mut short = node.clone();
+    let ticket = NodeTicket::new(node);
+    short.direct_addresses.clear();
+    let short = NodeTicket::new(short);
+
+    // print the ticket on stderr so it doesn't interfere with the data itself
+    //
+    // note that the tests rely on the ticket being the last thing printed
+    eprintln!("Listening. To connect, use:\ndumbpipe connect {ticket}");
+    if args.common.verbose > 0 {
+        eprintln!("or:\ndumbpipe connect {short}");
+    }
+
+    loop {
+        let Some(connecting) = endpoint.accept().await else {
+            break;
+        };
+        let connection = match connecting.await {
+            Ok(connection) => connection,
+            Err(cause) => {
+                tracing::warn!("error accepting connection: {}", cause);
+                // if accept fails, we want to continue accepting connections
+                continue;
+            }
+        };
+        let remote_node_id = &connection.remote_node_id()?;
+        tracing::info!("got connection from {}", remote_node_id);
+        let (s, mut r) = match connection.accept_bi().await {
+            Ok(x) => x,
+            Err(cause) => {
+                tracing::warn!("error accepting stream: {}", cause);
+                // if accept_bi fails, we want to continue accepting connections
+                continue;
+            }
+        };
+        tracing::info!("accepted bidi stream from {}", remote_node_id);
+        if !args.common.is_custom_alpn() {
+            // read the handshake and verify it
+            let mut buf = [0u8; dumbpipe::HANDSHAKE.len()];
+            r.read_exact(&mut buf).await.e()?;
+            snafu::ensure_whatever!(buf == dumbpipe::HANDSHAKE, "invalid handshake");
+        }
+        if args.recv_only {
+            tracing::info!("forwarding stdout to {} (ignoring stdin)", remote_node_id);
+            forward_bidi(tokio::io::empty(), tokio::io::stdout(), r, s).await?;
+        } else {
+            tracing::info!("forwarding stdin/stdout to {}", remote_node_id);
+            forward_bidi(tokio::io::stdin(), tokio::io::stdout(), r, s).await?;
+        }
+        // stop accepting connections after the first successful one
+        break;
+    }
+    Ok(())
+}
+
+async fn connect_stdio(args: ConnectArgs) -> Result<()> {
+    let secret_key = get_or_create_secret()?;
+    let endpoint = create_endpoint(secret_key, &args.common, vec![]).await?;
+    let addr = args.ticket.node_addr();
+    let remote_node_id = addr.node_id;
+    // connect to the node, try only once
+    let connection = endpoint.connect(addr.clone(), &args.common.alpn()?).await?;
+    tracing::info!("connected to {}", remote_node_id);
+    // open a bidi stream, try only once
+    let (mut s, r) = connection.open_bi().await.e()?;
+    tracing::info!("opened bidi stream to {}", remote_node_id);
+    // send the handshake unless we are using a custom alpn
+    // when using a custom alpn, evertyhing is up to the user
+    if !args.common.is_custom_alpn() {
+        // the connecting side must write first. we don't know if there will be something
+        // on stdin, so just write a handshake.
+        s.write_all(&dumbpipe::HANDSHAKE).await.e()?;
+    }
+    if args.recv_only {
+        tracing::info!("forwarding stdout to {} (ignoring stdin)", remote_node_id);
+        forward_bidi(tokio::io::empty(), tokio::io::stdout(), r, s).await?;
+    } else {
+        tracing::info!("forwarding stdin/stdout to {}", remote_node_id);
+        forward_bidi(tokio::io::stdin(), tokio::io::stdout(), r, s).await?;
+    }
+    tokio::io::stdout().flush().await.e()?;
+    Ok(())
+}
+
+/// Listen on a tcp port and forward incoming connections to an endpoint.
+async fn connect_tcp(args: ConnectTcpArgs) -> Result<()> {
+    let addrs = args
+        .addr
+        .to_socket_addrs()
+        .context(format!("invalid host string {}", args.addr))?;
+    let secret_key = get_or_create_secret()?;
+    let endpoint = create_endpoint(secret_key, &args.common, vec![])
+        .await
+        .context("unable to bind endpoint")?;
+    tracing::info!("tcp listening on {:?}", addrs);
+
+    // Wait for our own endpoint to be ready before trying to connect.
+    endpoint.online().await;
+
+    let tcp_listener = match tokio::net::TcpListener::bind(addrs.as_slice()).await {
+        Ok(tcp_listener) => tcp_listener,
+        Err(cause) => {
+            tracing::error!("error binding tcp socket to {:?}: {}", addrs, cause);
+            return Ok(());
+        }
+    };
+    async fn handle_tcp_accept(
+        next: io::Result<(tokio::net::TcpStream, SocketAddr)>,
+        addr: NodeAddr,
+        endpoint: Endpoint,
+        handshake: bool,
+        alpn: &[u8],
+    ) -> Result<()> {
+        let (tcp_stream, tcp_addr) = next.context("error accepting tcp connection")?;
+        let (tcp_recv, tcp_send) = tcp_stream.into_split();
+        tracing::info!("got tcp connection from {}", tcp_addr);
+        let remote_node_id = addr.node_id;
+        let connection = endpoint
+            .connect(addr, alpn)
+            .await
+            .context(format!("error connecting to {remote_node_id}"))?;
+        let (mut endpoint_send, endpoint_recv) = connection
+            .open_bi()
+            .await
+            .context(format!("error opening bidi stream to {remote_node_id}"))?;
+        // send the handshake unless we are using a custom alpn
+        // when using a custom alpn, evertyhing is up to the user
+        if handshake {
+            // the connecting side must write first. we don't know if there will be something
+            // on stdin, so just write a handshake.
+            endpoint_send.write_all(&dumbpipe::HANDSHAKE).await.e()?;
+        }
+        forward_bidi(tcp_recv, tcp_send, endpoint_recv, endpoint_send).await?;
+        Ok::<_, n0_snafu::Error>(())
+    }
+    let addr = args.ticket.node_addr();
+    loop {
+        // also wait for ctrl-c here so we can use it before accepting a connection
+        let next = tokio::select! {
+            stream = tcp_listener.accept() => stream,
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("got ctrl-c, exiting");
+                break;
+            }
+        };
+        let endpoint = endpoint.clone();
+        let addr = addr.clone();
+        let handshake = !args.common.is_custom_alpn();
+        let alpn = args.common.alpn()?;
+        tokio::spawn(async move {
+            if let Err(cause) = handle_tcp_accept(next, addr, endpoint, handshake, &alpn).await {
+                // log error at warn level
+                //
+                // we should know about it, but it's not fatal
+                tracing::warn!("error handling connection: {}", cause);
+            }
+        });
+    }
+    Ok(())
+}
+
+/// Listen on an endpoint and forward incoming connections to a tcp socket.
+async fn listen_tcp(args: ListenTcpArgs) -> Result<()> {
+    let addrs = match args.host.to_socket_addrs() {
+        Ok(addrs) => addrs.collect::<Vec<_>>(),
+        Err(e) => snafu::whatever!("invalid host string {}: {}", args.host, e),
+    };
+    let secret_key = get_or_create_secret()?;
+    let endpoint = create_endpoint(secret_key, &args.common, vec![args.common.alpn()?]).await?;
+    // wait for the endpoint to figure out its address before making a ticket
+    endpoint.online().await;
+    let node_addr = endpoint.node_addr();
+    let mut short = node_addr.clone();
+    let ticket = NodeTicket::new(node_addr);
+    short.direct_addresses.clear();
+    let short = NodeTicket::new(short);
+
+    // print the ticket on stderr so it doesn't interfere with the data itself
+    //
+    // note that the tests rely on the ticket being the last thing printed
+    eprintln!("Forwarding incoming requests to '{}'.", args.host);
+    eprintln!("To connect, use e.g.:");
+    eprintln!("dumbpipe connect-tcp {ticket}");
+    if args.common.verbose > 0 {
+        eprintln!("or:\ndumbpipe connect-tcp {short}");
+    }
+    tracing::info!("node id is {}", ticket.node_addr().node_id);
+    tracing::info!("derp url is {:?}", ticket.node_addr().relay_url);
+
+    // handle a new incoming connection on the endpoint
+    async fn handle_endpoint_accept(
+        connecting: Connecting,
+        addrs: Vec<std::net::SocketAddr>,
+        handshake: bool,
+    ) -> Result<()> {
+        let connection = connecting.await.context("error accepting connection")?;
+        let remote_node_id = &connection.remote_node_id()?;
+        tracing::info!("got connection from {}", remote_node_id);
+        let (s, mut r) = connection
+            .accept_bi()
+            .await
+            .context("error accepting stream")?;
+        tracing::info!("accepted bidi stream from {}", remote_node_id);
+        if handshake {
+            // read the handshake and verify it
+            let mut buf = [0u8; dumbpipe::HANDSHAKE.len()];
+            r.read_exact(&mut buf).await.e()?;
+            snafu::ensure_whatever!(buf == dumbpipe::HANDSHAKE, "invalid handshake");
+        }
+        let connection = tokio::net::TcpStream::connect(addrs.as_slice())
+            .await
+            .context(format!("error connecting to {addrs:?}"))?;
+        let (read, write) = connection.into_split();
+        forward_bidi(read, write, r, s).await?;
+        Ok(())
+    }
+
+    loop {
+        let incoming = select! {
+            incoming = endpoint.accept() => incoming,
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("got ctrl-c, exiting");
+                break;
+            }
+        };
+        let Some(incoming) = incoming else {
+            break;
+        };
+        let Ok(connecting) = incoming.accept() else {
+            break;
+        };
+        let addrs = addrs.clone();
+        let handshake = !args.common.is_custom_alpn();
+        tokio::spawn(async move {
+            if let Err(cause) = handle_endpoint_accept(connecting, addrs, handshake).await {
+                // log error at warn level
+                //
+                // we should know about it, but it's not fatal
+                tracing::warn!("error handling connection: {}", cause);
+            }
+        });
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+/// Listen on an endpoint and forward incoming connections to a Unix socket.
+async fn listen_unix(args: ListenUnixArgs) -> Result<()> {
+    let socket_path = args.socket_path.clone();
+    let secret_key = get_or_create_secret()?;
+    let endpoint = create_endpoint(secret_key, &args.common, vec![args.common.alpn()?]).await?;
+    // wait for the endpoint to figure out its address before making a ticket
+    endpoint.online().await;
+    let node_addr = endpoint.node_addr();
+    let mut short = node_addr.clone();
+    let ticket = NodeTicket::new(node_addr);
+    short.direct_addresses.clear();
+    let short = NodeTicket::new(short);
+
+    // print the ticket on stderr so it doesn't interfere with the data itself
+    //
+    // note that the tests rely on the ticket being the last thing printed
+    eprintln!(
+        "Forwarding incoming requests to '{}'.",
+        socket_path.display()
+    );
+    eprintln!("To connect, use e.g.:");
+    eprintln!("dumbpipe connect-unix --socket-path /path/to/client.sock {ticket}");
+    eprintln!("dumbpipe connect-tcp --addr 127.0.0.1:8080 {ticket}");
+    if args.common.verbose > 0 {
+        eprintln!("or:\ndumbpipe connect-unix --socket-path /path/to/client.sock {short}");
+        eprintln!("dumbpipe connect-tcp --addr 127.0.0.1:8080 {short}");
+    }
+    tracing::info!("node id is {}", ticket.node_addr().node_id);
+    tracing::info!("derp url is {:?}", ticket.node_addr().relay_url);
+
+    // handle a new incoming connection on the endpoint
+    async fn handle_endpoint_accept(
+        connecting: Connecting,
+        socket_path: PathBuf,
+        handshake: bool,
+    ) -> Result<()> {
+        tracing::trace!("accepting connection");
+        let connection = connecting.await.context("error accepting connection")?;
+        let remote_node_id = &connection.remote_node_id()?;
+        tracing::info!("got connection from {}", remote_node_id);
+        let (s, mut r) = connection
+            .accept_bi()
+            .await
+            .context("error accepting stream")?;
+        tracing::info!("accepted bidi stream from {}", remote_node_id);
+        if handshake {
+            // read the handshake and verify it
+            tracing::trace!("reading handshake");
+            let mut buf = [0u8; dumbpipe::HANDSHAKE.len()];
+            r.read_exact(&mut buf).await.e()?;
+            snafu::ensure_whatever!(buf == dumbpipe::HANDSHAKE, "invalid handshake");
+            tracing::trace!("handshake verified");
+        }
+        tracing::trace!("connecting to backend socket {:?}", socket_path);
+        let connection = UnixStream::connect(&socket_path)
+            .await
+            .context(format!("error connecting to {socket_path:?}"))?;
+        tracing::trace!("connected to backend socket");
+        let (read, write) = connection.into_split();
+        tracing::trace!("starting forward_bidi");
+        forward_bidi(read, write, r, s).await?;
+        tracing::trace!("forward_bidi finished");
+        Ok(())
+    }
+
+    loop {
+        let incoming = select! {
+            incoming = endpoint.accept() => incoming,
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("got ctrl-c, exiting");
+                break;
+            }
+        };
+        let Some(incoming) = incoming else {
+            break;
+        };
+        let Ok(connecting) = incoming.accept() else {
+            break;
+        };
+        let socket_path = socket_path.clone();
+        let handshake = !args.common.is_custom_alpn();
+        tokio::spawn(async move {
+            if let Err(cause) = handle_endpoint_accept(connecting, socket_path, handshake).await {
+                // log error at warn level
+                //
+                // we should know about it, but it's not fatal
+                tracing::warn!("error handling connection: {}", cause);
+            }
+        });
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+/// A RAII guard to clean up a Unix socket file.
+struct UnixSocketGuard {
+    path: PathBuf,
+}
+
+#[cfg(unix)]
+impl Drop for UnixSocketGuard {
+    fn drop(&mut self) {
+        if let Err(e) = std::fs::remove_file(&self.path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::error!("failed to remove socket file {:?}: {}", self.path, e);
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+/// Listen on a Unix socket and forward connections to an endpoint.
+async fn connect_unix(args: ConnectUnixArgs) -> Result<()> {
+    let socket_path = args.socket_path.clone();
+    let secret_key = get_or_create_secret()?;
+    let endpoint = create_endpoint(secret_key, &args.common, vec![])
+        .await
+        .context("unable to bind endpoint")?;
+    tracing::info!("unix listening on {:?}", socket_path);
+
+    // Wait for our own endpoint to be ready before trying to connect.
+    endpoint.online().await;
+
+    // Remove existing socket file if it exists
+    if let Err(e) = tokio::fs::remove_file(&socket_path).await {
+        if e.kind() != io::ErrorKind::NotFound {
+            snafu::whatever!("failed to remove existing socket file: {}", e);
+        }
+    }
+
+    let addr = args.ticket.node_addr();
+    tracing::info!("connecting to remote node: {:?}", addr);
+    let connection = endpoint
+        .connect(addr.clone(), &args.common.alpn()?)
+        .await
+        .context("failed to connect to remote node")?;
+    tracing::info!("connected to remote node successfully");
+
+    let unix_listener = UnixListener::bind(&socket_path)
+        .with_context(|| format!("failed to bind Unix socket at {socket_path:?}"))?;
+    tracing::info!("bound local unix socket: {:?}", socket_path);
+
+    let _guard = UnixSocketGuard {
+        path: socket_path.clone(),
+    };
+
+    async fn handle_unix_accept(
+        next: io::Result<(UnixStream, tokio::net::unix::SocketAddr)>,
+        connection: iroh::endpoint::Connection,
+        handshake: bool,
+    ) -> Result<()> {
+        tracing::trace!("handling new local connection");
+        let (unix_stream, unix_addr) = next.context("error accepting unix connection")?;
+        let (unix_recv, unix_send) = unix_stream.into_split();
+        tracing::trace!("got unix connection from {:?}", unix_addr);
+
+        tracing::trace!("opening bidi stream");
+        let (mut endpoint_send, endpoint_recv) = connection
+            .open_bi()
+            .await
+            .context("error opening bidi stream")?;
+        tracing::trace!("bidi stream opened");
+
+        // send the handshake unless we are using a custom alpn
+        // when using a custom alpn, everything is up to the user
+        if handshake {
+            tracing::trace!("sending handshake");
+            // the connecting side must write first. we don't know if there will be something
+            // on stdin, so just write a handshake.
+            endpoint_send.write_all(&dumbpipe::HANDSHAKE).await.e()?;
+            tracing::trace!("handshake sent");
+        }
+
+        tracing::trace!("starting forward_bidi");
+        forward_bidi(unix_recv, unix_send, endpoint_recv, endpoint_send).await?;
+        tracing::trace!("forward_bidi finished");
+        Ok(())
+    }
+
+    tracing::info!("entering accept loop");
+    loop {
+        // also wait for ctrl-c here so we can use it before accepting a connection
+        let next = tokio::select! {
+            stream = unix_listener.accept() => stream,
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("got ctrl-c, exiting");
+                break;
+            }
+        };
+        tracing::trace!("accepted a local connection");
+        let connection = connection.clone();
+        let handshake = !args.common.is_custom_alpn();
+        tokio::spawn(async move {
+            tracing::trace!("spawning handler task");
+            if let Err(cause) = handle_unix_accept(next, connection, handshake).await {
+                // log error at warn level
+                //
+                // we should know about it, but it's not fatal
+                tracing::warn!("error handling connection: {}", cause);
+            }
+            tracing::trace!("handler task finished");
+        });
+    }
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
+    let args = Args::parse();
+    let res = match args.command {
+        Commands::Listen(args) => listen_stdio(args).await,
+        Commands::ListenTcp(args) => listen_tcp(args).await,
+        Commands::Connect(args) => connect_stdio(args).await,
+        Commands::ConnectTcp(args) => connect_tcp(args).await,
+
+        #[cfg(unix)]
+        Commands::ListenUnix(args) => listen_unix(args).await,
+
+        #[cfg(unix)]
+        Commands::ConnectUnix(args) => connect_unix(args).await,
+    };
+    match res {
+        Ok(()) => std::process::exit(0),
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1)
+        }
+    }
+}
+</file>
+
+<file path="Cargo.toml">
+[package]
+name = "dumbpipe"
+version = "0.31.0"
+edition = "2021"
+authors = ["Rüdiger Klaehn <rklaehn@protonmail.com>", "n0 team"]
+keywords = ["netcat", "cli", "network", "p2p", "holepunching"]
+categories = ["network-programming"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/n0-computer/dumbpipe"
+description = "A cli tool to pipe data over the network, with NAT hole punching"
+readme = "README.md"
+
+# Sadly this also needs to be updated in .github/workflows/ci.yml
+rust-version = "1.81"
+
+[dependencies]
+snafu = "0.8.6"
+clap = { version = "4.4.10", features = ["derive"] }
+hex = "0.4.3"
+iroh = { version = "0.93", default-features = false }
+iroh-base = { version = "0.93", features = ["ticket"] }
+quinn = { version = "0.14", package = "iroh-quinn" }
+rand = "0.9.2"
+tokio = { version = "1.34.0", features = ["full"] }
+tokio-util = "0.7.10"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+data-encoding = "2.9.0"
+n0-snafu = "0.2.2"
+
+[dev-dependencies]
+duct = "0.13.6"
+nix = { version = "0.29", features = ["signal", "process"] }
+tempfile = "3.8"
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+codegen-units = 1
+lto = true
+debug = "none"
+strip = true
+</file>
+
+</files>

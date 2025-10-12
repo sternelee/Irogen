@@ -523,7 +523,7 @@ async fn send_terminal_input(
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_secs_f64(),
+            .as_secs(),
         event_type: EventType::Input,
         data: input.clone(), // Clone for logging
     };
@@ -595,7 +595,7 @@ async fn execute_remote_command(
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_secs_f64(),
+            .as_secs(),
         event_type: EventType::Input,
         data: format!("{}\n", command),
     };
