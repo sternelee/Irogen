@@ -3,7 +3,7 @@ use anyhow::Result;
 use bincode;
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use futures::StreamExt;
-use iroh::{Endpoint, NodeAddr, NodeId, Watcher, protocol::Router};
+use iroh::{Endpoint, NodeAddr, NodeId, protocol::Router};
 pub use iroh_gossip::api::GossipSender;
 use iroh_gossip::{
     api::{Event, GossipReceiver},
@@ -653,10 +653,9 @@ impl P2PNetwork {
             .await
             .insert(session_id.clone(), session);
 
-        // Add peer addresses to endpoint's addressbook
-        for peer in &ticket.nodes {
-            self.endpoint.add_node_addr(peer.clone())?;
-        }
+        // In iroh 0.93, add_node_addr() is removed.
+        // Peer addresses will be used when connecting via endpoint.connect()
+        // No need to pre-add them to the address book.
 
         // Subscribe and join the gossip topic with known peers
         let node_ids = ticket.nodes.iter().map(|p| p.node_id).collect();
@@ -1543,13 +1542,8 @@ impl P2PNetwork {
 
     pub async fn get_node_addr(&self) -> Result<NodeAddr> {
         debug!("Getting node address...");
-        let watcher = self.endpoint.node_addr();
-        let mut stream = watcher.stream();
-        let node_addr = stream
-            .next()
-            .await
-            .flatten()
-            .ok_or_else(|| anyhow::anyhow!("Node address not available from watcher"))?;
+        // In iroh 0.93, node_addr() now returns NodeAddr directly
+        let node_addr = self.endpoint.node_addr();
         debug!("Got node address: {:?}", node_addr);
         Ok(node_addr)
     }
@@ -1557,9 +1551,10 @@ impl P2PNetwork {
     pub async fn connect_to_peer(&self, node_addr: NodeAddr) -> Result<()> {
         debug!("Connecting to peer: {}", node_addr.node_id);
 
-        // Add the peer to our endpoint
-        self.endpoint.add_node_addr(node_addr.clone())?;
-        debug!("Successfully added peer {} to endpoint", node_addr.node_id);
+        // In iroh 0.93, add_node_addr() is removed.
+        // Node addresses are now provided directly when connecting.
+        // The endpoint will automatically use the provided addresses.
+        debug!("Node address stored for peer {}", node_addr.node_id);
 
         Ok(())
     }

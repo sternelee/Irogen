@@ -19,8 +19,8 @@ uuid = { version = "1.17", features = ["v4"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
-iroh = "0.91"
-iroh-gossip = "0.91"
+iroh = "0.93"
+iroh-gossip = "0.93"
 bytes = "1.10"
 futures = "0.3"
 rand = "0.9"
