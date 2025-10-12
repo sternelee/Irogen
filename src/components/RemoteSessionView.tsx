@@ -50,8 +50,13 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     Map<string, TerminalSession>
   >(new Map());
   const [activeTerminalId, setActiveTerminalId] = createSignal<string | null>(
-    null,
+    null
   );
+
+  // 创建终端弹窗相关状态
+  const [showCreateDialog, setShowCreateDialog] = createSignal(false);
+  const [terminalName, setTerminalName] = createSignal("");
+  let containerRef: HTMLDivElement | undefined;
 
   // 获取终端列表
   const fetchTerminals = async () => {
@@ -69,6 +74,42 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     } catch (error) {
       console.error("Failed to fetch webshare list:", error);
     }
+  };
+
+  // 计算终端大小（基于容器宽度）
+  const calculateTerminalSize = () => {
+    if (!containerRef) {
+      return { rows: 24, cols: 80 }; // 默认值
+    }
+
+    const width = containerRef.offsetWidth - 32; // 减去 padding
+    const height = containerRef.offsetHeight - 100; // 减去标题栏等
+
+    // 假设每个字符约 9px 宽，14px 高
+    const cols = Math.floor(width / 9);
+    const rows = Math.floor(height / 14);
+
+    return {
+      rows: Math.max(rows, 24),
+      cols: Math.max(cols, 80),
+    };
+  };
+
+  // 打开创建终端对话框
+  const openCreateDialog = () => {
+    setTerminalName("");
+    setShowCreateDialog(true);
+  };
+
+  // 确认创建终端
+  const confirmCreateTerminal = async () => {
+    const size = calculateTerminalSize();
+    await createTerminal({
+      name: terminalName() || undefined,
+      rows: size.rows,
+      cols: size.cols,
+    });
+    setShowCreateDialog(false);
   };
 
   // 创建新终端
@@ -217,15 +258,23 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       console.log("Terminal event:", event.payload);
 
       // 处理终端列表响应 - 使用新的结构化数据
-      if (event.payload.event_type && typeof event.payload.event_type === 'object' && 'TerminalList' in event.payload.event_type) {
+      if (
+        event.payload.event_type &&
+        typeof event.payload.event_type === "object" &&
+        "TerminalList" in event.payload.event_type
+      ) {
         try {
           // 新的结构化格式直接从event_type中获取终端列表
           console.log("Received structured TerminalList event:", event.payload);
-          const terminalData = (event.payload.event_type as any).TerminalList || [];
+          const terminalData =
+            (event.payload.event_type as any).TerminalList || [];
           console.log("Parsed terminal list:", terminalData);
           setTerminals(terminalData);
         } catch (error) {
-          console.error("Failed to parse structured terminal list event:", error);
+          console.error(
+            "Failed to parse structured terminal list event:",
+            error
+          );
         }
       }
 
@@ -237,7 +286,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         try {
           // 解析终端列表响应格式: "[Terminal List Response: X terminals] [{\"id\":\"...\"}]"
           const match = event.payload.data.match(
-            /\[Terminal List Response: (\d+) terminals\] (.+)/,
+            /\[Terminal List Response: (\d+) terminals\] (.+)/
           );
           if (match && match[2]) {
             const terminalData = JSON.parse(match[2]);
@@ -245,18 +294,33 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
             setTerminals(terminalData);
           }
         } catch (error) {
-          console.error("Failed to parse legacy terminal list response:", error);
+          console.error(
+            "Failed to parse legacy terminal list response:",
+            error
+          );
         }
       }
 
       // 处理终端输出事件 - 使用新的结构化数据
-      if (event.payload.event_type && typeof event.payload.event_type === 'object' && 'TerminalOutput' in event.payload.event_type) {
+      if (
+        event.payload.event_type &&
+        typeof event.payload.event_type === "object" &&
+        "TerminalOutput" in event.payload.event_type
+      ) {
         try {
           // 新的结构化格式直接从event_type中提取数据
-          console.log("Received structured TerminalOutput event:", event.payload);
+          console.log(
+            "Received structured TerminalOutput event:",
+            event.payload
+          );
 
-          const terminalOutput = (event.payload.event_type as any).TerminalOutput;
-          if (terminalOutput && terminalOutput.terminal_id && terminalOutput.data) {
+          const terminalOutput = (event.payload.event_type as any)
+            .TerminalOutput;
+          if (
+            terminalOutput &&
+            terminalOutput.terminal_id &&
+            terminalOutput.data
+          ) {
             const terminalId = terminalOutput.terminal_id;
             const outputData = terminalOutput.data;
 
@@ -264,11 +328,11 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
               "🔥 Terminal output for terminal:",
               terminalId,
               "data:",
-              outputData,
+              outputData
             );
             console.log(
               "🔥 Available terminal sessions:",
-              Array.from(terminalSessions().keys()),
+              Array.from(terminalSessions().keys())
             );
 
             const sessions = terminalSessions();
@@ -280,18 +344,21 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
             } else {
               console.warn(
                 "⚠️ No active terminal session found for:",
-                terminalId,
+                terminalId
               );
               // 如果没有找到对应的终端会话，可能需要自动创建一个
               console.log(
                 "🔄 Attempting to auto-connect to terminal:",
-                terminalId,
+                terminalId
               );
               connectToTerminal(terminalId);
             }
           }
         } catch (error) {
-          console.error("Failed to parse structured terminal output event:", error);
+          console.error(
+            "Failed to parse structured terminal output event:",
+            error
+          );
         }
       }
 
@@ -307,7 +374,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
           console.log("Raw data (length):", rawData.length);
           console.log(
             "Raw data (contains Terminal Output):",
-            rawData.includes("[Terminal Output:"),
+            rawData.includes("[Terminal Output:")
           );
 
           // 尝试多种匹配方式
@@ -333,19 +400,22 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
               "🔥 Legacy terminal output for terminal:",
               terminalId,
               "data:",
-              outputData,
+              outputData
             );
 
             const sessions = terminalSessions();
             const session = sessions.get(terminalId);
 
             if (session && session.isActive) {
-              console.log("✅ Writing to terminal session (legacy):", terminalId);
+              console.log(
+                "✅ Writing to terminal session (legacy):",
+                terminalId
+              );
               session.terminal.write(outputData);
             } else {
               console.warn(
                 "⚠️ No active terminal session found for (legacy):",
-                terminalId,
+                terminalId
               );
             }
           }
@@ -355,15 +425,23 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       }
 
       // 处理WebShare列表响应 - 使用新的结构化数据
-      if (event.payload.event_type && typeof event.payload.event_type === 'object' && 'WebShareList' in event.payload.event_type) {
+      if (
+        event.payload.event_type &&
+        typeof event.payload.event_type === "object" &&
+        "WebShareList" in event.payload.event_type
+      ) {
         try {
           // 新的结构化格式直接从event_type中获取WebShare列表
           console.log("Received structured WebShareList event:", event.payload);
-          const webshareData = (event.payload.event_type as any).WebShareList || [];
+          const webshareData =
+            (event.payload.event_type as any).WebShareList || [];
           console.log("Parsed webshare list:", webshareData);
           setWebshares(webshareData);
         } catch (error) {
-          console.error("Failed to parse structured webshare list event:", error);
+          console.error(
+            "Failed to parse structured webshare list event:",
+            error
+          );
         }
       }
 
@@ -375,7 +453,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         try {
           // 解析WebShare列表响应格式: "[WebShare List Response: X webshares] [{\"local_port\":...}]"
           const match = event.payload.data.match(
-            /\[WebShare List Response: (\d+) webshares\] (.+)/,
+            /\[WebShare List Response: (\d+) webshares\] (.+)/
           );
           if (match && match[2]) {
             const webshareData = JSON.parse(match[2]);
@@ -383,7 +461,10 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
             setWebshares(webshareData);
           }
         } catch (error) {
-          console.error("Failed to parse legacy webshare list response:", error);
+          console.error(
+            "Failed to parse legacy webshare list response:",
+            error
+          );
         }
       }
     });
@@ -419,7 +500,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         <h3 class="text-lg font-semibold">终端列表</h3>
         <button
           class="btn btn-primary btn-sm"
-          onClick={() => createTerminal()}
+          onClick={openCreateDialog}
           title="创建新终端"
         >
           ➕ 新建终端
@@ -477,7 +558,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
           <div>暂无终端</div>
           <button
             class="btn btn-primary btn-sm mt-4"
-            onClick={() => createTerminal()}
+            onClick={openCreateDialog}
           >
             创建第一个终端
           </button>
@@ -524,7 +605,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
                   class="btn btn-ghost btn-sm"
                   onClick={() => {
                     navigator.clipboard.writeText(
-                      `http://localhost:${webshare.public_port}`,
+                      `http://localhost:${webshare.public_port}`
                     );
                   }}
                   title="复制URL"
@@ -586,6 +667,54 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
   return (
     <div class="h-full flex flex-col">
+      {/* 创建终端对话框 */}
+      <Show when={showCreateDialog()}>
+        <div class="modal modal-open">
+          <div class="modal-box">
+            <h3 class="font-bold text-lg mb-4">创建新终端</h3>
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">终端名称（可选）</span>
+              </label>
+              <input
+                type="text"
+                placeholder="例如：开发环境、生产服务器"
+                class="input input-bordered"
+                value={terminalName()}
+                onInput={(e) => setTerminalName(e.currentTarget.value)}
+                onKeyPress={(e) => {
+                  if (e.key === "Enter") {
+                    confirmCreateTerminal();
+                  }
+                }}
+              />
+            </div>
+            <div class="mt-4 text-sm text-base-content/70">
+              <p>终端大小将自动适配当前页面宽度</p>
+              <p class="mt-1">
+                预计大小: {calculateTerminalSize().cols} 列 ×{" "}
+                {calculateTerminalSize().rows} 行
+              </p>
+            </div>
+            <div class="modal-action">
+              <button
+                class="btn btn-ghost"
+                onClick={() => setShowCreateDialog(false)}
+              >
+                取消
+              </button>
+              <button class="btn btn-primary" onClick={confirmCreateTerminal}>
+                创建
+              </button>
+            </div>
+          </div>
+          <div
+            class="modal-backdrop"
+            onClick={() => setShowCreateDialog(false)}
+          />
+        </div>
+      </Show>
+
       {/* 头部 */}
       <div class="navbar bg-base-100 border-b">
         <div class="flex-1">
@@ -613,7 +742,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       </div>
 
       {/* 主内容 */}
-      <div class="flex-1 flex overflow-hidden">
+      <div ref={containerRef} class="flex-1 flex overflow-hidden">
         {/* 侧边栏 - 终端和WebShare列表 */}
         <div class="w-80 bg-base-100 border-r overflow-y-auto p-4">
           {loading() ? (
