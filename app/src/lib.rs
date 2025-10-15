@@ -7,7 +7,9 @@ use tauri::Manager;
 use tauri::{Emitter, State};
 use tokio::sync::{RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
+use tracing::{info, error};
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
+use base64::Engine;
 
 use riterm_shared::{EventType, P2PNetwork, TerminalEvent, NodeTicket, p2p::NetworkMessage};
 
@@ -151,6 +153,47 @@ fn parse_structured_event(data: &str) -> Result<serde_json::Value, Box<dyn std::
                     "node_info": stats_part
                 }));
             }
+        }
+    }
+
+    // Handle TCP Forward messages
+    if data.starts_with("[TCP Forward Create Request]") {
+        let parts: Vec<&str> = data.splitn(2, ']').collect();
+        if parts.len() >= 2 {
+            let config_part = parts[1].trim();
+            return Ok(serde_json::json!({
+                "type": "tcp_forward_create",
+                "config": config_part
+            }));
+        }
+    }
+
+    if data.starts_with("[TCP Forward Connected]") {
+        if let Some(port_str) = data.split(' ').last() {
+            return Ok(serde_json::json!({
+                "type": "tcp_forward_connected",
+                "port": port_str.trim().parse::<u16>().unwrap_or(0)
+            }));
+        }
+    }
+
+    if data.starts_with("[TCP Forward Data:") {
+        let parts: Vec<&str> = data.splitn(2, ']').collect();
+        if parts.len() >= 2 {
+            let data_part = parts[1].trim();
+            return Ok(serde_json::json!({
+                "type": "tcp_forward_data",
+                "data": data_part
+            }));
+        }
+    }
+
+    if data.starts_with("[TCP Forward Stopped]") {
+        if let Some(port_str) = data.split(' ').last() {
+            return Ok(serde_json::json!({
+                "type": "tcp_forward_stopped",
+                "port": port_str.trim().parse::<u16>().unwrap_or(0)
+            }));
         }
     }
 
@@ -1125,6 +1168,102 @@ async fn get_session_stats(state: State<'_, AppState>) -> Result<serde_json::Val
     }))
 }
 
+// === TCP Forwarding Commands ===
+
+/// Create TCP forwarding connection (like dumbpipe connect-tcp)
+#[tauri::command]
+async fn create_tcp_forward(
+    local_port: u16,
+    remote_port: u16,
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let network = {
+        let network_guard = state.network.read().await;
+        match network_guard.as_ref() {
+            Some(n) => n.clone(),
+            None => return Err("Network not initialized".to_string()),
+        }
+    };
+
+    // Send TCP forward create request
+    if let Err(e) = network.create_tcp_forward(
+        &session_id,
+        local_port,
+        remote_port,
+        format!("TCP Forward {} -> {}", local_port, remote_port),
+    ).await {
+        return Err(format!("Failed to create TCP forward: {}", e));
+    }
+
+    // Start TCP forward client
+    let client = riterm_shared::TcpForwardClient::new(local_port, remote_port);
+    tokio::spawn(async move {
+        if let Err(e) = client.start().await {
+            error!("TCP forward client error: {}", e);
+        }
+    });
+
+    Ok(())
+}
+
+/// Handle TCP forward connected event
+#[tauri::command]
+async fn handle_tcp_forward_connected(
+    remote_port: u16,
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    // This would be called when the TCP forward connection is established
+    // For now, we just log the event
+    info!("TCP forward connected on port {} for session {}", remote_port, session_id);
+    Ok(())
+}
+
+/// Handle TCP forward data event
+#[tauri::command]
+async fn handle_tcp_forward_data(
+    remote_port: u16,
+    data: String, // base64 encoded data
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    // Decode base64 data and forward it to the local TCP connection
+    use base64::Engine;
+
+    match base64::engine::general_purpose::STANDARD.decode(&data) {
+        Ok(decoded_data) => {
+            info!("Received {} bytes of TCP data for port {} in session {}",
+                  decoded_data.len(), remote_port, session_id);
+            // TODO: Forward data to the actual TCP connection
+            Ok(())
+        }
+        Err(e) => Err(format!("Failed to decode TCP data: {}", e))
+    }
+}
+
+/// Stop TCP forwarding
+#[tauri::command]
+async fn stop_tcp_forward(
+    remote_port: u16,
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let network = {
+        let network_guard = state.network.read().await;
+        match network_guard.as_ref() {
+            Some(n) => n.clone(),
+            None => return Err("Network not initialized".to_string()),
+        }
+    };
+
+    if let Err(e) = network.send_tcp_forward_stopped(&session_id, remote_port).await {
+        return Err(format!("Failed to stop TCP forward: {}", e));
+    }
+
+    Ok(())
+}
+
 /// Initialize tracing with conditional log levels based on build configuration
 fn init_tracing() {
     // Set different log levels based on build profile and features
@@ -1194,7 +1333,12 @@ pub fn run() {
             stop_webshare,
             list_webshares,
             get_webshare_list,
-            get_system_stats
+            get_system_stats,
+            // TCP Forwarding
+            create_tcp_forward,
+            handle_tcp_forward_connected,
+            handle_tcp_forward_data,
+            stop_tcp_forward
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())

@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, mpsc};
 use tokio::io::AsyncWriteExt;
 use tracing::{debug, error, info, warn};
+use base64::Engine;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionHeader {
@@ -141,8 +142,41 @@ pub enum NetworkMessage {
         timestamp: u64,
     },
 
+    // === TCP Port Forwarding ===
+    /// TCP forwarding request (like dumbpipe listen-tcp)
+    TcpForwardCreate {
+        from: NodeId,
+        session_id: String,
+        local_port: u16,
+        remote_port: u16,
+        service_name: String,
+        timestamp: u64,
+    },
+    /// TCP forwarding connection established
+    TcpForwardConnected {
+        from: NodeId,
+        session_id: String,
+        remote_port: u16,
+        timestamp: u64,
+    },
+    /// TCP forwarding data
+    TcpForwardData {
+        from: NodeId,
+        session_id: String,
+        remote_port: u16,
+        data: Vec<u8>,
+        timestamp: u64,
+    },
+    /// TCP forwarding stopped
+    TcpForwardStopped {
+        from: NodeId,
+        session_id: String,
+        remote_port: u16,
+        timestamp: u64,
+    },
+
     // === WebShare Management ===
-    /// Create WebShare request
+    /// Create WebShare request (deprecated, use TcpForwardCreate)
     WebShareCreate {
         from: NodeId,
         local_port: u16,
@@ -1474,6 +1508,97 @@ impl P2PNetwork {
                         warn!("No active receivers for stats response event, skipping");
                     }
                 }
+                // === TCP Port Forwarding Messages ===
+                NetworkMessage::TcpForwardCreate {
+                    from,
+                    session_id,
+                    local_port,
+                    remote_port,
+                    service_name,
+                    timestamp,
+                } => {
+                    info!(
+                        "Received TCP forward create request from {} (port {} -> {})",
+                        from.fmt_short(),
+                        local_port,
+                        remote_port
+                    );
+                    let event = TerminalEvent {
+                        timestamp,
+                        event_type: EventType::Output,
+                        data: format!(
+                            "[TCP Forward Create Request] {} -> {} ({})",
+                            local_port, remote_port, service_name
+                        ),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for TCP forward create event, skipping");
+                    }
+                }
+                NetworkMessage::TcpForwardConnected {
+                    from,
+                    session_id,
+                    remote_port,
+                    timestamp,
+                } => {
+                    info!(
+                        "Received TCP forward connected notification from {} for port {}",
+                        from.fmt_short(),
+                        remote_port
+                    );
+                    let event = TerminalEvent {
+                        timestamp,
+                        event_type: EventType::Output,
+                        data: format!("[TCP Forward Connected] Port {}", remote_port),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for TCP forward connected event, skipping");
+                    }
+                }
+                NetworkMessage::TcpForwardData {
+                    from,
+                    session_id,
+                    remote_port,
+                    data,
+                    timestamp,
+                } => {
+                    debug!(
+                        "Received TCP forward data from {} for port {} ({} bytes)",
+                        from.fmt_short(),
+                        remote_port,
+                        data.len()
+                    );
+                    // Convert binary data to base64 for transmission in events
+                    let data_str = base64::engine::general_purpose::STANDARD.encode(&data);
+                    let event = TerminalEvent {
+                        timestamp,
+                        event_type: EventType::Output,
+                        data: format!("[TCP Forward Data:{}] {}", remote_port, data_str),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for TCP forward data event, skipping");
+                    }
+                }
+                NetworkMessage::TcpForwardStopped {
+                    from,
+                    session_id,
+                    remote_port,
+                    timestamp,
+                } => {
+                    info!(
+                        "Received TCP forward stopped notification from {} for port {}",
+                        from.fmt_short(),
+                        remote_port
+                    );
+                    let event = TerminalEvent {
+                        timestamp,
+                        event_type: EventType::Output,
+                        data: format!("[TCP Forward Stopped] Port {}", remote_port),
+                    };
+                    if session.event_sender.send(event).is_err() {
+                        warn!("No active receivers for TCP forward stopped event, skipping");
+                    }
+                }
             }
         }
         Ok(())
@@ -1825,5 +1950,105 @@ impl P2PNetwork {
                 .as_secs(),
         };
         self.send_message(session_id, message).await
+    }
+
+    // === TCP Port Forwarding Methods ===
+
+    pub async fn create_tcp_forward(
+        &self,
+        session_id: &str,
+        local_port: u16,
+        remote_port: u16,
+        service_name: String,
+    ) -> Result<()> {
+        debug!("Creating TCP forward from port {} to remote port {}", local_port, remote_port);
+        let message = NetworkMessage::TcpForwardCreate {
+            from: self.endpoint.node_id(),
+            session_id: session_id.to_string(),
+            local_port,
+            remote_port,
+            service_name,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        self.send_message(session_id, message).await
+    }
+
+    pub async fn send_tcp_forward_connected(
+        &self,
+        session_id: &str,
+        remote_port: u16,
+    ) -> Result<()> {
+        debug!("Notifying TCP forward connected for remote port {}", remote_port);
+        let message = NetworkMessage::TcpForwardConnected {
+            from: self.endpoint.node_id(),
+            session_id: session_id.to_string(),
+            remote_port,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        self.send_message(session_id, message).await
+    }
+
+    pub async fn send_tcp_forward_data(
+        &self,
+        session_id: &str,
+        remote_port: u16,
+        data: Vec<u8>,
+    ) -> Result<()> {
+        debug!("Sending TCP forward data for remote port {} ({} bytes)", remote_port, data.len());
+        let message = NetworkMessage::TcpForwardData {
+            from: self.endpoint.node_id(),
+            session_id: session_id.to_string(),
+            remote_port,
+            data,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        self.send_message(session_id, message).await
+    }
+
+    pub async fn send_tcp_forward_stopped(
+        &self,
+        session_id: &str,
+        remote_port: u16,
+    ) -> Result<()> {
+        debug!("Notifying TCP forward stopped for remote port {}", remote_port);
+        let message = NetworkMessage::TcpForwardStopped {
+            from: self.endpoint.node_id(),
+            session_id: session_id.to_string(),
+            remote_port,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        self.send_message(session_id, message).await
+    }
+
+    /// Get a receiver for all network messages (for CLI message handlers)
+    pub async fn get_message_receiver(&self) -> Result<mpsc::UnboundedReceiver<NetworkMessage>> {
+        let (sender, receiver) = mpsc::unbounded_channel();
+
+        // Create a new message receiver task that monitors all active connections
+        let connections = self.active_connections.clone();
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
+
+            loop {
+                interval.tick().await;
+
+                // This is a simplified implementation
+                // In a real implementation, we would need to monitor all active connections
+                // and forward their messages to the sender
+                // For now, this serves as a placeholder
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        });
+
+        Ok(receiver)
     }
 }
