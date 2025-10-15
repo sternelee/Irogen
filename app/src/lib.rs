@@ -7,7 +7,7 @@ use tauri::Manager;
 use tauri::{Emitter, State};
 use tokio::sync::{RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
-use tracing::{info, error};
+use tracing::{info, error, warn};
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use base64::Engine;
 
@@ -205,6 +205,7 @@ pub struct AppState {
     sessions: RwLock<HashMap<String, TerminalSession>>,
     network: RwLock<Option<P2PNetwork>>,
     cleanup_token: RwLock<Option<CancellationToken>>,
+    tcp_clients: RwLock<HashMap<String, Arc<riterm_shared::TcpForwardClient>>>,
 }
 
 #[derive(Clone)]
@@ -1186,6 +1187,15 @@ async fn create_tcp_forward(
         }
     };
 
+    // Create TCP forward client
+    let client = Arc::new(riterm_shared::TcpForwardClient::new(local_port, remote_port));
+
+    // Store client in state for later use
+    {
+        let mut tcp_clients = state.tcp_clients.write().await;
+        tcp_clients.insert(session_id.clone(), client.clone());
+    }
+
     // Send TCP forward create request
     if let Err(e) = network.create_tcp_forward(
         &session_id,
@@ -1197,10 +1207,31 @@ async fn create_tcp_forward(
     }
 
     // Start TCP forward client
-    let client = riterm_shared::TcpForwardClient::new(local_port, remote_port);
+    let client_clone = client.clone();
+    let session_id_clone = session_id.clone();
+    let network_clone = network.clone();
+    let state_clone = state.inner().clone();
+
     tokio::spawn(async move {
-        if let Err(e) = client.start().await {
+        if let Err(e) = client_clone.start().await {
             error!("TCP forward client error: {}", e);
+            return;
+        }
+
+        info!("TCP forward client started successfully for session {}", session_id_clone);
+
+        // Monitor for incoming data from P2P network and forward to local TCP connections
+        // This is a simplified approach - in a real implementation, we'd need to properly
+        // integrate with the P2P message handling system
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
+
+        loop {
+            interval.tick().await;
+
+            // This is a placeholder for receiving P2P messages
+            // In a proper implementation, we'd receive actual TcpForwardData messages
+            // from the network and forward them to the client
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
     });
 
@@ -1235,7 +1266,21 @@ async fn handle_tcp_forward_data(
         Ok(decoded_data) => {
             info!("Received {} bytes of TCP data for port {} in session {}",
                   decoded_data.len(), remote_port, session_id);
-            // TODO: Forward data to the actual TCP connection
+
+            // Get the TCP client for this session
+            let tcp_clients = state.tcp_clients.read().await;
+            if let Some(client) = tcp_clients.get(&session_id) {
+                // Forward data to the local TCP connections
+                if let Err(e) = client.forward_data(&decoded_data).await {
+                    error!("Failed to forward data to TCP client: {}", e);
+                    return Err(format!("Failed to forward TCP data: {}", e));
+                }
+                info!("Successfully forwarded {} bytes to TCP client", decoded_data.len());
+            } else {
+                warn!("No TCP client found for session {}", session_id);
+                return Err("TCP client not found".to_string());
+            }
+
             Ok(())
         }
         Err(e) => Err(format!("Failed to decode TCP data: {}", e))
@@ -1257,10 +1302,17 @@ async fn stop_tcp_forward(
         }
     };
 
+    // Remove TCP client from state
+    {
+        let mut tcp_clients = state.tcp_clients.write().await;
+        tcp_clients.remove(&session_id);
+    }
+
     if let Err(e) = network.send_tcp_forward_stopped(&session_id, remote_port).await {
         return Err(format!("Failed to stop TCP forward: {}", e));
     }
 
+    info!("TCP forwarding stopped for session {} on port {}", session_id, remote_port);
     Ok(())
 }
 
