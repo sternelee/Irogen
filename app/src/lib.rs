@@ -7,10 +7,11 @@ use tauri::Manager;
 use tauri::{Emitter, State};
 use tokio::sync::{RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
+use tracing::{info, error, warn};
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
+use base64::Engine;
 
-use iroh_gossip::api::GossipSender;
-use riterm_shared::{EventType, P2PNetwork, SessionTicket, TerminalEvent};
+use riterm_shared::{EventType, P2PNetwork, TerminalEvent, NodeTicket, p2p::NetworkMessage};
 
 /// Maximum number of concurrent sessions to prevent memory exhaustion
 const MAX_CONCURRENT_SESSIONS: usize = 50;
@@ -23,7 +24,8 @@ const CLEANUP_INTERVAL_SECS: u64 = 300; // 5 minutes
 
 // Helper function to validate session ticket format
 fn is_valid_session_ticket(ticket: &str) -> bool {
-    ticket.parse::<SessionTicket>().is_ok()
+    // Check if it's a valid NodeTicket
+    ticket.parse::<NodeTicket>().is_ok()
 }
 
 // Parse structured events from terminal data
@@ -154,6 +156,47 @@ fn parse_structured_event(data: &str) -> Result<serde_json::Value, Box<dyn std::
         }
     }
 
+    // Handle TCP Forward messages
+    if data.starts_with("[TCP Forward Create Request]") {
+        let parts: Vec<&str> = data.splitn(2, ']').collect();
+        if parts.len() >= 2 {
+            let config_part = parts[1].trim();
+            return Ok(serde_json::json!({
+                "type": "tcp_forward_create",
+                "config": config_part
+            }));
+        }
+    }
+
+    if data.starts_with("[TCP Forward Connected]") {
+        if let Some(port_str) = data.split(' ').last() {
+            return Ok(serde_json::json!({
+                "type": "tcp_forward_connected",
+                "port": port_str.trim().parse::<u16>().unwrap_or(0)
+            }));
+        }
+    }
+
+    if data.starts_with("[TCP Forward Data:") {
+        let parts: Vec<&str> = data.splitn(2, ']').collect();
+        if parts.len() >= 2 {
+            let data_part = parts[1].trim();
+            return Ok(serde_json::json!({
+                "type": "tcp_forward_data",
+                "data": data_part
+            }));
+        }
+    }
+
+    if data.starts_with("[TCP Forward Stopped]") {
+        if let Some(port_str) = data.split(' ').last() {
+            return Ok(serde_json::json!({
+                "type": "tcp_forward_stopped",
+                "port": port_str.trim().parse::<u16>().unwrap_or(0)
+            }));
+        }
+    }
+
     Err("No structured event found".into())
 }
 
@@ -162,12 +205,13 @@ pub struct AppState {
     sessions: RwLock<HashMap<String, TerminalSession>>,
     network: RwLock<Option<P2PNetwork>>,
     cleanup_token: RwLock<Option<CancellationToken>>,
+    tcp_clients: RwLock<HashMap<String, Arc<riterm_shared::TcpForwardClient>>>,
 }
 
 #[derive(Clone)]
 pub struct TerminalSession {
     pub id: String,
-    pub sender: GossipSender,
+    pub sender: mpsc::UnboundedSender<NetworkMessage>,
     pub event_sender: mpsc::UnboundedSender<TerminalEvent>,
     pub last_activity: Arc<RwLock<Instant>>,
     pub cancellation_token: CancellationToken,
@@ -284,7 +328,7 @@ async fn connect_to_peer(
 
     // Parse session ticket
     let ticket = session_ticket
-        .parse::<SessionTicket>()
+        .parse::<NodeTicket>()
         .map_err(|e| format!("Invalid session ticket format: {}", e))?;
 
     let network = {
@@ -297,7 +341,8 @@ async fn connect_to_peer(
         }
     };
 
-    let session_id = format!("session_{}", ticket.topic_id);
+    // Generate unique session ID using the node address
+    let session_id = format!("session_{}", ticket.node_addr().node_id);
 
     // Check session limits before creating new session
     {
@@ -347,7 +392,7 @@ async fn connect_to_peer(
 
     // Join session
     let (sender, mut event_receiver) = network
-        .join_session_with_buffer_limit(ticket, MAX_EVENTS_PER_SESSION)
+        .join_session(ticket)
         .await
         .map_err(|e| format!("Failed to join session: {}", e))?;
 
@@ -399,6 +444,27 @@ async fn connect_to_peer(
 
                             // Parse structured events for terminal and WebShare management
                             if let Ok(structured_event) = parse_structured_event(&event.data) {
+                                // Handle TCP forwarding events - emit to frontend for processing
+                                if let Some(event_type) = structured_event.get("type").and_then(|v| v.as_str()) {
+                                    match event_type {
+                                        "tcp_forward_connected" => {
+                                            info!("TCP forward connected event for session {}", session_id_clone_events);
+                                            let _ = app_handle_clone.emit("tcp-forward-connected", &structured_event);
+                                        }
+                                        "tcp_forward_data" => {
+                                            info!("TCP forward data event for session {}", session_id_clone_events);
+                                            let _ = app_handle_clone.emit("tcp-forward-data", &structured_event);
+                                        }
+                                        "tcp_forward_stopped" => {
+                                            info!("TCP forward stopped event for session {}", session_id_clone_events);
+                                            let _ = app_handle_clone.emit("tcp-forward-stopped", &structured_event);
+                                        }
+                                        _ => {
+                                            // Other structured events
+                                        }
+                                    }
+                                }
+
                                 let structured_event_name = format!("structured-event-{}", session_id_clone_events);
                                 let _ = app_handle_clone.emit(&structured_event_name, &structured_event);
                             }
@@ -722,13 +788,19 @@ async fn create_terminal(
     };
 
     network
-        .send_terminal_create(
+        .send_message(
             &request.session_id,
-            &session_sender,
-            request.name,
-            request.shell_path,
-            request.working_dir,
-            request.size,
+            NetworkMessage::TerminalCreate {
+                from: network.local_node_id(),
+                name: request.name,
+                shell_path: request.shell_path,
+                working_dir: request.working_dir,
+                size: request.size,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
         )
         .await
         .map_err(|e| format!("Failed to create terminal: {}", e))?;
@@ -758,7 +830,17 @@ async fn stop_terminal(
     };
 
     network
-        .send_terminal_stop(&request.session_id, &session_sender, request.terminal_id)
+        .send_message(
+            &request.session_id,
+            NetworkMessage::TerminalStop {
+                from: network.local_node_id(),
+                terminal_id: request.terminal_id,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
+        )
         .await
         .map_err(|e| format!("Failed to stop terminal: {}", e))?;
 
@@ -784,7 +866,16 @@ async fn list_terminals(session_id: String, state: State<'_, AppState>) -> Resul
     };
 
     network
-        .send_terminal_list_request(&session_id, &session_sender)
+        .send_message(
+            &session_id,
+            NetworkMessage::TerminalListRequest {
+                from: network.local_node_id(),
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
+        )
         .await
         .map_err(|e| format!("Failed to list terminals: {}", e))?;
 
@@ -815,7 +906,6 @@ async fn send_terminal_input_to_terminal(
     network
         .send_terminal_input(
             &request.session_id,
-            &session_sender,
             request.terminal_id,
             request.input,
         )
@@ -849,7 +939,6 @@ async fn resize_terminal(
     network
         .send_terminal_resize(
             &request.session_id,
-            &session_sender,
             request.terminal_id,
             request.rows,
             request.cols,
@@ -884,13 +973,19 @@ async fn create_webshare(
     };
 
     network
-        .send_webshare_create(
+        .send_message(
             &request.session_id,
-            &session_sender,
-            request.local_port,
-            request.public_port,
-            request.service_name,
-            request.terminal_id,
+            NetworkMessage::WebShareCreate {
+                from: network.local_node_id(),
+                local_port: request.local_port,
+                public_port: request.public_port,
+                service_name: request.service_name,
+                terminal_id: request.terminal_id,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
         )
         .await
         .map_err(|e| format!("Failed to create webshare: {}", e))?;
@@ -920,7 +1015,17 @@ async fn stop_webshare(
     };
 
     network
-        .send_webshare_stop(&request.session_id, &session_sender, request.public_port)
+        .send_message(
+            &request.session_id,
+            NetworkMessage::WebShareStop {
+                from: network.local_node_id(),
+                public_port: request.public_port,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
+        )
         .await
         .map_err(|e| format!("Failed to stop webshare: {}", e))?;
 
@@ -946,7 +1051,16 @@ async fn list_webshares(session_id: String, state: State<'_, AppState>) -> Resul
     };
 
     network
-        .send_webshare_list_request(&session_id, &session_sender)
+        .send_message(
+            &session_id,
+            NetworkMessage::WebShareListRequest {
+                from: network.local_node_id(),
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
+        )
         .await
         .map_err(|e| format!("Failed to list webshares: {}", e))?;
 
@@ -972,7 +1086,16 @@ async fn get_system_stats(request: StatsRequest, state: State<'_, AppState>) -> 
     };
 
     network
-        .send_stats_request(&request.session_id, &session_sender)
+        .send_message(
+            &request.session_id,
+            NetworkMessage::StatsRequest {
+                from: network.local_node_id(),
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
+        )
         .await
         .map_err(|e| format!("Failed to get system stats: {}", e))?;
 
@@ -1017,15 +1140,17 @@ async fn connect_to_terminal(
     let connect_message = format!("CONNECT_TO_TERMINAL:{}", terminal_id);
 
     network
-        .send_directed_message(
+        .send_message(
             &session_id,
-            &session_sender,
-            network
-                .get_node_id()
-                .await
-                .parse()
-                .map_err(|e| format!("Failed to parse node ID: {}", e))?,
-            connect_message,
+            NetworkMessage::DirectedMessage {
+                from: network.local_node_id(),
+                to: network.local_node_id(),
+                data: connect_message,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
         )
         .await
         .map_err(|e| format!("Failed to connect to terminal: {}", e))?;
@@ -1063,6 +1188,146 @@ async fn get_session_stats(state: State<'_, AppState>) -> Result<serde_json::Val
         "session_timeout_secs": SESSION_TIMEOUT_SECS,
         "sessions": session_details
     }))
+}
+
+// === TCP Forwarding Commands ===
+
+/// Create TCP forwarding connection (like dumbpipe connect-tcp)
+#[tauri::command]
+async fn create_tcp_forward(
+    local_port: u16,
+    remote_port: u16,
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let network = {
+        let network_guard = state.network.read().await;
+        match network_guard.as_ref() {
+            Some(n) => n.clone(),
+            None => return Err("Network not initialized".to_string()),
+        }
+    };
+
+    // Create TCP forward client
+    let client = Arc::new(riterm_shared::TcpForwardClient::new(local_port, remote_port));
+
+    // Store client in state for later use
+    {
+        let mut tcp_clients = state.tcp_clients.write().await;
+        tcp_clients.insert(session_id.clone(), client.clone());
+    }
+
+    // Send TCP forward create request
+    if let Err(e) = network.create_tcp_forward(
+        &session_id,
+        local_port,
+        remote_port,
+        format!("TCP Forward {} -> {}", local_port, remote_port),
+    ).await {
+        return Err(format!("Failed to create TCP forward: {}", e));
+    }
+
+    // Don't start the TCP client immediately
+    // Wait for CLI to send TcpForwardConnected notification
+    info!("TCP forward client created for session {}, waiting for CLI confirmation", session_id);
+
+    Ok(())
+}
+
+/// Handle TCP forward connected event
+#[tauri::command]
+async fn handle_tcp_forward_connected(
+    remote_port: u16,
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    info!("TCP forward connected on port {} for session {}", remote_port, session_id);
+
+    // Get the TCP client for this session and start it
+    let tcp_clients = state.tcp_clients.read().await;
+    if let Some(client) = tcp_clients.get(&session_id) {
+        let client_clone = client.clone();
+        let session_id_clone = session_id.clone();
+
+        // Start the TCP forward client to listen for local connections
+        tokio::spawn(async move {
+            info!("Starting TCP forward client for session {} on local port", session_id_clone);
+            if let Err(e) = client_clone.start().await {
+                error!("TCP forward client error for session {}: {}", session_id_clone, e);
+            } else {
+                info!("TCP forward client started successfully for session {}", session_id_clone);
+            }
+        });
+
+        Ok(())
+    } else {
+        Err(format!("No TCP client found for session {}", session_id))
+    }
+}
+
+/// Handle TCP forward data event
+#[tauri::command]
+async fn handle_tcp_forward_data(
+    remote_port: u16,
+    data: String, // base64 encoded data
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    // Decode base64 data and forward it to the local TCP connection
+    use base64::Engine;
+
+    match base64::engine::general_purpose::STANDARD.decode(&data) {
+        Ok(decoded_data) => {
+            info!("Received {} bytes of TCP data for port {} in session {}",
+                  decoded_data.len(), remote_port, session_id);
+
+            // Get the TCP client for this session
+            let tcp_clients = state.tcp_clients.read().await;
+            if let Some(client) = tcp_clients.get(&session_id) {
+                // Forward data to the local TCP connections
+                if let Err(e) = client.forward_data(&decoded_data).await {
+                    error!("Failed to forward data to TCP client: {}", e);
+                    return Err(format!("Failed to forward TCP data: {}", e));
+                }
+                info!("Successfully forwarded {} bytes to TCP client", decoded_data.len());
+            } else {
+                warn!("No TCP client found for session {}", session_id);
+                return Err("TCP client not found".to_string());
+            }
+
+            Ok(())
+        }
+        Err(e) => Err(format!("Failed to decode TCP data: {}", e))
+    }
+}
+
+/// Stop TCP forwarding
+#[tauri::command]
+async fn stop_tcp_forward(
+    remote_port: u16,
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let network = {
+        let network_guard = state.network.read().await;
+        match network_guard.as_ref() {
+            Some(n) => n.clone(),
+            None => return Err("Network not initialized".to_string()),
+        }
+    };
+
+    // Remove TCP client from state
+    {
+        let mut tcp_clients = state.tcp_clients.write().await;
+        tcp_clients.remove(&session_id);
+    }
+
+    if let Err(e) = network.send_tcp_forward_stopped(&session_id, remote_port).await {
+        return Err(format!("Failed to stop TCP forward: {}", e));
+    }
+
+    info!("TCP forwarding stopped for session {} on port {}", session_id, remote_port);
+    Ok(())
 }
 
 /// Initialize tracing with conditional log levels based on build configuration
@@ -1134,7 +1399,12 @@ pub fn run() {
             stop_webshare,
             list_webshares,
             get_webshare_list,
-            get_system_stats
+            get_system_stats,
+            // TCP Forwarding
+            create_tcp_forward,
+            handle_tcp_forward_connected,
+            handle_tcp_forward_data,
+            stop_tcp_forward
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())

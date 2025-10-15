@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use tracing::{error, info, warn};
+use tokio::sync::mpsc;
 
 use crate::terminal_manager::TerminalManager;
-use riterm_shared::P2PNetwork;
+use riterm_shared::{P2PNetwork, p2p::NetworkMessage};
 
 #[derive(Parser)]
 #[command(name = "iroh-code-remote")]
@@ -22,6 +23,7 @@ pub struct Cli {
 pub struct CliApp {
     network: P2PNetwork,
     terminal_manager: TerminalManager,
+    tcp_forward_manager: Option<riterm_shared::TcpForwardManager>,
 }
 
 impl CliApp {
@@ -35,10 +37,14 @@ impl CliApp {
         Ok(Self {
             network,
             terminal_manager,
+            tcp_forward_manager: None,
         })
     }
 
-    pub async fn run(&mut self, _cli: Cli) -> Result<()> {
+    pub async fn run(&mut self, cli: Cli) -> Result<()> {
+        // 设置TCP转发消息处理器
+        self.setup_tcp_forward_message_handler().await?;
+
         self.start_terminal_host().await
     }
 
@@ -168,13 +174,19 @@ impl CliApp {
             );
 
             tokio::spawn(async move {
-                // 使用保存的 gossip sender 发送终端输出
+                // 发送终端输出
                 if let Err(e) = network
-                    .send_terminal_output(
+                    .send_message(
                         &session_id,
-                        &gossip_sender,
-                        terminal_id.clone(),
-                        data.clone(),
+                        riterm_shared::p2p::NetworkMessage::TerminalOutput {
+                            from: network.local_node_id(),
+                            terminal_id: terminal_id.clone(),
+                            data: data.clone(),
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                        },
                     )
                     .await
                 {
@@ -333,12 +345,18 @@ impl CliApp {
                                         terminal_list.len()
                                     );
 
-                                    // 直接使用保存的gossip sender发送终端列表响应
+                                    // 发送终端列表响应
                                     if let Err(e) = network_for_events
-                                        .send_terminal_list_response(
+                                        .send_message(
                                             &session_id_for_events,
-                                            &gossip_sender_for_events,
-                                            terminal_list,
+                                            riterm_shared::p2p::NetworkMessage::TerminalListResponse {
+                                                from: network_for_events.local_node_id(),
+                                                terminals: terminal_list,
+                                                timestamp: std::time::SystemTime::now()
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .unwrap_or_default()
+                                                    .as_secs(),
+                                            },
                                         )
                                         .await
                                     {
@@ -398,5 +416,161 @@ impl CliApp {
             Print("\n")
         )
         .ok();
+    }
+
+    /// 启动 TCP 转发模式 (like dumbpipe listen-tcp)
+    async fn start_tcp_forward(&mut self, local_port: u16, remote_port: u16, service_name: String) -> Result<()> {
+        use riterm_shared::SessionHeader;
+
+        println!("🌐 Starting TCP Forward Mode...");
+        println!("📡 Local port: {}", local_port);
+        println!("🔌 Remote port: {}", remote_port);
+        println!("🏷️  Service: {}", service_name);
+
+        // Create P2P session for TCP forwarding
+        let header = SessionHeader {
+            version: 2,
+            width: 80,
+            height: 24,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+            title: Some(format!("TCP Forward: {} -> {}", local_port, remote_port)),
+            command: None,
+            session_id: format!("tcp_forward_{}_{}", local_port, remote_port),
+        };
+
+        let (ticket, _connection_sender, mut _event_receiver) = self.network
+            .create_shared_session(header.clone())
+            .await
+            .context("Failed to create TCP forwarding session")?;
+
+        println!("\n✅ TCP Forward Session Created!");
+        println!("🎫 Share this ticket with the client:");
+        println!("📋 {}", ticket);
+
+        // Create TCP forward manager
+        let config = riterm_shared::TcpForwardConfig {
+            local_port,
+            remote_port,
+            service_name: service_name.clone(),
+            session_id: header.session_id.clone(),
+            network_sender: _connection_sender.clone(),
+        };
+
+        let tcp_manager = riterm_shared::TcpForwardManager::new(config);
+
+        // Start TCP forwarding
+        tcp_manager.start().await
+            .context("Failed to start TCP forwarding")?;
+
+        self.tcp_forward_manager = Some(tcp_manager);
+
+        // Keep the session alive
+        println!("🔄 TCP forwarding is active... Press Ctrl+C to stop");
+
+        // Handle shutdown signal
+        tokio::signal::ctrl_c().await?;
+        println!("\n🛑 Shutting down TCP forwarding...");
+
+        if let Some(manager) = self.tcp_forward_manager.take() {
+            manager.stop().await?;
+        }
+
+        Ok(())
+    }
+
+    /// 设置TCP转发消息处理器
+    async fn setup_tcp_forward_message_handler(&mut self) -> Result<()> {
+        let network = self.network.clone();
+        let mut message_receiver = network.get_message_receiver().await
+            .context("Failed to get message receiver")?;
+
+        // 启动TCP转发消息处理任务
+        tokio::spawn(async move {
+            info!("TCP forward message handler started");
+
+            while let Some(message) = message_receiver.recv().await {
+                match message {
+                    NetworkMessage::TcpForwardCreate { session_id, local_port, remote_port, service_name, .. } => {
+                        info!("Received TCP forward create request: {}:{}:{} for session {}",
+                              local_port, remote_port, service_name, session_id);
+
+                        // 创建TCP转发配置
+                        let (tcp_sender, tcp_receiver) = mpsc::unbounded_channel();
+                        let config = riterm_shared::TcpForwardConfig {
+                            local_port,
+                            remote_port,
+                            service_name: service_name.clone(),
+                            session_id: session_id.clone(),
+                            network_sender: tcp_sender,
+                        };
+
+                        // 启动TCP转发管理器
+                        let tcp_manager = riterm_shared::TcpForwardManager::new(config);
+                        if let Err(e) = tcp_manager.start().await {
+                            error!("Failed to start TCP forwarding for {}: {}", service_name, e);
+                            continue;
+                        }
+
+                        info!("TCP forwarding started for {} ({} -> {})", service_name, local_port, remote_port);
+
+                        // 启动消息转发任务
+                        let network_clone = network.clone();
+                        let session_id_clone = session_id.clone();
+                        tokio::spawn(async move {
+                            Self::handle_tcp_forward_messages(
+                                network_clone,
+                                session_id_clone,
+                                tcp_manager,
+                                tcp_receiver
+                            ).await;
+                        });
+                    }
+                    _ => {
+                        // 其他消息类型暂时忽略
+                    }
+                }
+            }
+
+            info!("TCP forward message handler ended");
+        });
+
+        Ok(())
+    }
+
+    /// 处理TCP转发的消息
+    async fn handle_tcp_forward_messages(
+        network: P2PNetwork,
+        session_id: String,
+        tcp_manager: riterm_shared::TcpForwardManager,
+        mut message_receiver: mpsc::UnboundedReceiver<NetworkMessage>,
+    ) {
+        info!("Starting TCP forward message handler for session: {}", session_id);
+
+        while let Some(message) = message_receiver.recv().await {
+            match message {
+                NetworkMessage::TcpForwardData { session_id: msg_session_id, data, remote_port, .. }
+                    if msg_session_id == session_id => {
+                    // 将接收到的数据转发到本地TCP连接
+                    if let Err(e) = tcp_manager.forward_data(&data).await {
+                        error!("Failed to forward TCP data: {}", e);
+                    }
+                }
+                NetworkMessage::TcpForwardStopped { session_id: msg_session_id, .. }
+                    if msg_session_id == session_id => {
+                    info!("TCP forward stopped for session: {}", session_id);
+                    if let Err(e) = tcp_manager.stop().await {
+                        error!("Failed to stop TCP forwarding: {}", e);
+                    }
+                    break;
+                }
+                _ => {
+                    // 其他消息类型忽略
+                }
+            }
+        }
+
+        info!("TCP forward message handler ended for session: {}", session_id);
     }
 }
