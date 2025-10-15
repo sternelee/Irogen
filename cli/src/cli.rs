@@ -168,13 +168,19 @@ impl CliApp {
             );
 
             tokio::spawn(async move {
-                // 使用保存的 gossip sender 发送终端输出
+                // 发送终端输出
                 if let Err(e) = network
-                    .send_terminal_output(
+                    .send_message(
                         &session_id,
-                        &gossip_sender,
-                        terminal_id.clone(),
-                        data.clone(),
+                        riterm_shared::p2p::NetworkMessage::TerminalOutput {
+                            from: network.local_node_id(),
+                            terminal_id: terminal_id.clone(),
+                            data: data.clone(),
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                        },
                     )
                     .await
                 {
@@ -333,12 +339,18 @@ impl CliApp {
                                         terminal_list.len()
                                     );
 
-                                    // 直接使用保存的gossip sender发送终端列表响应
+                                    // 发送终端列表响应
                                     if let Err(e) = network_for_events
-                                        .send_terminal_list_response(
+                                        .send_message(
                                             &session_id_for_events,
-                                            &gossip_sender_for_events,
-                                            terminal_list,
+                                            riterm_shared::p2p::NetworkMessage::TerminalListResponse {
+                                                from: network_for_events.local_node_id(),
+                                                terminals: terminal_list,
+                                                timestamp: std::time::SystemTime::now()
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .unwrap_or_default()
+                                                    .as_secs(),
+                                            },
                                         )
                                         .await
                                     {

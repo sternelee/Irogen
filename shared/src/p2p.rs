@@ -1,23 +1,13 @@
-use aead::{Aead, KeyInit};
 use anyhow::Result;
-use bincode;
-use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use futures::StreamExt;
-use iroh::{Endpoint, NodeAddr, NodeId, protocol::Router};
-pub use iroh_gossip::api::GossipSender;
-use iroh_gossip::{
-    api::{Event, GossipReceiver},
-    net::Gossip,
-    proto::TopicId,
-};
+use iroh::{Endpoint, NodeAddr, NodeId};
+use iroh_base::ticket::NodeTicket;
+use iroh_gossip::api::GossipSender; // Keep for backward compatibility
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, mpsc};
+use tokio::io::AsyncWriteExt;
 use tracing::{debug, error, info, warn};
-use url::Url;
-
-use crate::string_compressor::StringCompressor;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionHeader {
@@ -30,10 +20,17 @@ pub struct SessionHeader {
     pub session_id: String,
 }
 
-pub type EncryptionKey = [u8; 32];
+/// ALPN for riterm protocol
+pub const ALPN: &[u8] = b"RITERMV0";
+
+/// Handshake for terminal connections
+pub const HANDSHAKE: &[u8] = b"riterm_hello";
+
+/// Forward compatibility with dumbpipe
+// NodeTicket is already imported and available
 
 // === Network Layer Messages ===
-// These are encrypted and transmitted over P2P network
+// These are transmitted over direct P2P connections
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NetworkMessage {
@@ -189,135 +186,32 @@ pub enum NetworkMessage {
     },
 }
 
+/// Simple message wrapper for direct P2P transmission
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EncryptedTerminalMessage {
-    pub nonce: [u8; 12],
-    pub ciphertext: Vec<u8>,
+pub struct P2PMessage {
+    pub body: NetworkMessage,
 }
 
-impl EncryptedTerminalMessage {
-    pub fn new(body: NetworkMessage, key: &EncryptionKey) -> Result<Self> {
-        let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
-        let nonce_bytes: [u8; 12] = rand::random();
-        let nonce = Nonce::from_slice(&nonce_bytes);
-
-        let plaintext = bincode::serialize(&body)?;
-        let ciphertext = cipher
-            .encrypt(nonce, plaintext.as_ref())
-            .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
-
-        Ok(Self {
-            nonce: nonce_bytes,
-            ciphertext,
-        })
+impl P2PMessage {
+    pub fn new(body: NetworkMessage) -> Self {
+        Self { body }
     }
 
-    pub fn decrypt(&self, key: &EncryptionKey) -> Result<NetworkMessage> {
-        let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
-        let nonce = Nonce::from_slice(&self.nonce);
-
-        let plaintext = cipher
-            .decrypt(nonce, self.ciphertext.as_ref())
-            .map_err(|e| anyhow::anyhow!("Decryption failed: {}", e))?;
-
-        let body: NetworkMessage = bincode::deserialize(&plaintext)?;
-        Ok(body)
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        bincode::serialize(self).map_err(Into::into)
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         bincode::deserialize(bytes).map_err(Into::into)
     }
-
-    pub fn to_vec(&self) -> Result<Vec<u8>> {
-        bincode::serialize(self).map_err(Into::into)
-    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionTicket {
-    pub topic_id: TopicId,
-    pub nodes: Vec<NodeAddr>,
-    pub key: EncryptionKey,
-}
+/// Forward compatibility alias
+pub type SessionTicket = NodeTicket;
 
-impl std::fmt::Display for SessionTicket {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // First serialize to bytes
-        let bytes = bincode::serialize(self).map_err(|_| std::fmt::Error)?;
-
-        // Convert to BASE32 string for compression
-        let base32_string = data_encoding::BASE32.encode(&bytes);
-
-        // Compress the BASE32 string to make QR codes smaller
-        match StringCompressor::compress_hybrid(&base32_string) {
-            Ok(compressed) => {
-                // Add a prefix to indicate this is a compressed ticket
-                write!(f, "CT_{}", compressed)
-            }
-            Err(_) => {
-                // Fallback to original encoding if compression fails
-                write!(f, "{}", base32_string)
-            }
-        }
-    }
-}
-
-impl std::str::FromStr for SessionTicket {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // 清理输入：移除空白字符和换行符
-        let cleaned = s.trim().replace([' ', '\n', '\r', '\t'], "");
-
-        if cleaned.is_empty() {
-            return Err(anyhow::anyhow!("Empty ticket"));
-        }
-
-        // Check if this is a compressed ticket (starts with "CT_")
-        let base32_string = if cleaned.starts_with("CT_") {
-            // This is a compressed ticket, decompress it
-            let compressed_part = &cleaned[3..]; // Remove "CT_" prefix
-            StringCompressor::decompress(compressed_part)
-                .map_err(|e| anyhow::anyhow!("Failed to decompress ticket: {}", e))?
-        } else {
-            // This is an uncompressed ticket, use as-is
-            cleaned
-        };
-
-        // 验证BASE32字符集（A-Z, 2-7, =）
-        if !base32_string
-            .chars()
-            .all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c) || c == '=')
-        {
-            return Err(anyhow::anyhow!(
-                "Invalid BASE32 characters in ticket. Only A-Z, 2-7, and = are allowed"
-            ));
-        }
-
-        // BASE32解码
-        let bytes = data_encoding::BASE32
-            .decode(base32_string.as_bytes())
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to decode ticket (length: {}): {}",
-                    base32_string.len(),
-                    e
-                )
-            })?;
-
-        // 验证解码后的数据长度是否合理
-        if bytes.len() < 32 {
-            // 至少需要包含topic_id和key
-            return Err(anyhow::anyhow!(
-                "Decoded ticket too short: {} bytes",
-                bytes.len()
-            ));
-        }
-
-        let ticket: SessionTicket = bincode::deserialize(&bytes)
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize ticket: {}", e))?;
-        Ok(ticket)
-    }
+/// Create a session ticket from node address and session info
+pub fn create_session_ticket(node_addr: NodeAddr, _session_id: &str) -> Result<NodeTicket> {
+    Ok(NodeTicket::new(node_addr))
 }
 
 #[derive(Debug)]
@@ -326,17 +220,15 @@ pub struct SharedSession {
     pub participants: Vec<String>,
     pub is_host: bool,
     pub event_sender: broadcast::Sender<TerminalEvent>,
-    pub node_id: NodeId, // Store the node ID for this session
-    pub key: EncryptionKey,
+    pub node_id: NodeId,
     pub input_sender: Option<mpsc::UnboundedSender<String>>,
-    pub gossip_sender: Option<GossipSender>,
+    pub connection_sender: Option<mpsc::UnboundedSender<NetworkMessage>>,
 }
 
 pub struct P2PNetwork {
     endpoint: Endpoint,
-    gossip: Gossip,
-    router: Router,
     sessions: Arc<RwLock<HashMap<String, SharedSession>>>,
+    active_connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<NetworkMessage>>>>,
     // 历史记录发送回调
     history_callback: Arc<
         RwLock<
@@ -371,9 +263,8 @@ impl Clone for P2PNetwork {
     fn clone(&self) -> Self {
         Self {
             endpoint: self.endpoint.clone(),
-            gossip: self.gossip.clone(),
-            router: self.router.clone(),
             sessions: Arc::clone(&self.sessions),
+            active_connections: Arc::clone(&self.active_connections),
             history_callback: self.history_callback.clone(),
             terminal_input_callback: self.terminal_input_callback.clone(),
         }
@@ -518,39 +409,25 @@ pub struct WebShareStats {
 
 impl P2PNetwork {
     pub async fn new(relay_url: Option<String>) -> Result<Self> {
-        info!("Initializing iroh P2P network with gossip...");
+        info!("Initializing iroh P2P network with direct connections...");
 
-        // Create iroh endpoint with optional custom relay
-        let endpoint_builder = Endpoint::builder();
-        let endpoint = if let Some(relay) = relay_url {
+        // Create iroh endpoint with riterm ALPN
+        let endpoint_builder = Endpoint::builder().alpns(vec![ALPN.to_vec()]);
+
+        // Set custom relay if provided
+        if let Some(relay) = relay_url {
             info!("Using custom relay server: {}", relay);
-            // Parse the relay URL and use it for discovery
-            let _relay_url: Url = relay.parse()?;
-            endpoint_builder
-                .discovery_n0() // Use default discovery for now, custom relay setup is more complex
-                .bind()
-                .await?
-        } else {
-            info!("Using default n0 relay server");
-            endpoint_builder.discovery_n0().bind().await?
-        };
+            // For now, use default discovery. Custom relay setup would require more configuration.
+        }
 
+        let endpoint = endpoint_builder.discovery_n0().bind().await?;
         let node_id = endpoint.node_id();
         info!("Node ID: {}", node_id);
 
-        // Create gossip instance
-        let gossip = Gossip::builder().spawn(endpoint.clone());
-
-        // Create router with gossip protocol
-        let router = Router::builder(endpoint.clone())
-            .accept(iroh_gossip::ALPN, gossip.clone())
-            .spawn();
-
         let network = Self {
             endpoint,
-            gossip,
-            router,
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            active_connections: Arc::new(RwLock::new(HashMap::new())),
             history_callback: Arc::new(RwLock::new(None)),
             terminal_input_callback: Arc::new(RwLock::new(None)),
         };
@@ -558,23 +435,22 @@ impl P2PNetwork {
         Ok(network)
     }
 
+    /// Create a listening session (host mode)
     pub async fn create_shared_session(
         &self,
         header: SessionHeader,
-    ) -> Result<(TopicId, GossipSender, mpsc::UnboundedReceiver<String>)> {
+    ) -> Result<(NodeTicket, mpsc::UnboundedSender<NetworkMessage>, mpsc::UnboundedReceiver<String>)> {
         let session_id = header.session_id.clone();
         info!("Creating shared session: {}", session_id);
 
-        // Create topic for this session using random bytes
-        let topic_id = TopicId::from_bytes(rand::random());
-        let key: EncryptionKey = rand::random();
+        // Wait for endpoint to be ready
+        self.endpoint.online().await;
+        let node_addr = self.endpoint.node_addr();
+        let ticket = NodeTicket::new(node_addr);
 
         let (event_sender, _event_receiver) = broadcast::channel(1000);
         let (input_sender, input_receiver) = mpsc::unbounded_channel();
-
-        // Subscribe to the gossip topic (empty node_ids means we're creating a new topic)
-        let topic = self.gossip.subscribe(topic_id, vec![]).await?;
-        let (sender, receiver) = topic.split();
+        let (connection_sender, _connection_receiver) = mpsc::unbounded_channel::<NetworkMessage>();
 
         let session = SharedSession {
             header: header.clone(),
@@ -582,9 +458,8 @@ impl P2PNetwork {
             is_host: true,
             event_sender: event_sender.clone(),
             node_id: self.endpoint.node_id(),
-            key,
             input_sender: Some(input_sender),
-            gossip_sender: Some(sender.clone()),
+            connection_sender: Some(connection_sender.clone()),
         };
 
         self.sessions
@@ -592,39 +467,32 @@ impl P2PNetwork {
             .await
             .insert(session_id.clone(), session);
 
-        // Start listening for messages on this topic
-        self.start_topic_listener(receiver, session_id).await?;
+        let connection_sender_clone = connection_sender.clone();
+        self.active_connections
+            .write()
+            .await
+            .insert(session_id.clone(), connection_sender_clone);
 
-        // Send session info message
-        let body = TerminalMessageBody::SessionInfo {
-            from: self.endpoint.node_id(),
-            header,
-        };
-        let message = EncryptedTerminalMessage::new(body, &key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
+        // Start accepting connections
+        let network_clone = self.clone();
+        let session_id_clone = session_id.clone();
+        tokio::spawn(async move {
+            network_clone.accept_connections(session_id_clone).await;
+        });
 
-        Ok((topic_id, sender, input_receiver))
+        Ok((ticket, connection_sender, input_receiver))
     }
 
+    /// Join an existing session (client mode)
     pub async fn join_session(
         &self,
-        ticket: SessionTicket,
-    ) -> Result<(GossipSender, broadcast::Receiver<TerminalEvent>)> {
-        self.join_session_with_buffer_limit(ticket, 1000).await
-    }
+        ticket: NodeTicket,
+    ) -> Result<(mpsc::UnboundedSender<NetworkMessage>, broadcast::Receiver<TerminalEvent>)> {
+        info!("Joining session with node: {}", ticket.node_addr().node_id);
 
-    pub async fn join_session_with_buffer_limit(
-        &self,
-        ticket: SessionTicket,
-        buffer_size: usize,
-    ) -> Result<(GossipSender, broadcast::Receiver<TerminalEvent>)> {
-        info!(
-            "Joining session with topic: {} (buffer size: {})",
-            ticket.topic_id, buffer_size
-        );
-
-        let session_id = format!("session_{}", ticket.topic_id);
-        let (event_sender, event_receiver) = broadcast::channel(buffer_size.min(10000)); // Cap at 10k events
+        let session_id = format!("session_{}", uuid::Uuid::new_v4());
+        let (event_sender, event_receiver) = broadcast::channel(1000);
+        let (connection_sender, _connection_receiver) = mpsc::unbounded_channel();
 
         // Create session entry for this joined session
         let session = SharedSession {
@@ -643,9 +511,8 @@ impl P2PNetwork {
             is_host: false,
             event_sender: event_sender.clone(),
             node_id: self.endpoint.node_id(),
-            key: ticket.key,
             input_sender: None,
-            gossip_sender: None,
+            connection_sender: Some(connection_sender.clone()),
         };
 
         self.sessions
@@ -653,62 +520,235 @@ impl P2PNetwork {
             .await
             .insert(session_id.clone(), session);
 
-        // In iroh 0.93, add_node_addr() is removed.
-        // Peer addresses will be used when connecting via endpoint.connect()
-        // No need to pre-add them to the address book.
+        let connection_sender_clone = connection_sender.clone();
+        self.active_connections
+            .write()
+            .await
+            .insert(session_id.clone(), connection_sender_clone);
 
-        // Subscribe and join the gossip topic with known peers
-        let node_ids = ticket.nodes.iter().map(|p| p.node_id).collect();
-        let topic = self
-            .gossip
-            .subscribe_and_join(ticket.topic_id, node_ids)
-            .await?;
-        let (sender, receiver) = topic.split();
+        // Connect to the host
+        self.connect_to_host(ticket.node_addr().clone(), session_id.clone()).await?;
 
-        // Start listening for messages on this topic
-        self.start_topic_listener(receiver, session_id).await?;
+        // Start handling incoming messages
+        let network_clone = self.clone();
+        let session_id_clone = session_id.clone();
+        tokio::spawn(async move {
+            // TODO: Implement connection message handling
+        });
 
-        Ok((sender, event_receiver))
+        Ok((connection_sender, event_receiver))
+    }
+
+    /// Accept incoming connections (host mode)
+    async fn accept_connections(&self, session_id: String) {
+        info!("Accepting connections for session: {}", session_id);
+
+        loop {
+            let Some(connecting) = self.endpoint.accept().await else {
+                info!("No more incoming connections for session: {}", session_id);
+                break;
+            };
+
+            let connection = match connecting.await {
+                Ok(conn) => conn,
+                Err(e) => {
+                    warn!("Error accepting connection: {}", e);
+                    continue;
+                }
+            };
+
+            let remote_node_id = connection.remote_node_id();
+            match remote_node_id {
+                Ok(node_id) => info!("Accepted connection from: {}", node_id),
+                Err(e) => warn!("Accepted connection with invalid node ID: {}", e),
+            };
+
+            // Handle this connection in a separate task
+            let network_clone = self.clone();
+            let session_id_clone = session_id.clone();
+            tokio::spawn(async move {
+                network_clone.handle_connection(connection, session_id_clone).await;
+            });
+        }
+    }
+
+    /// Handle a single connection
+    async fn handle_connection(&self, connection: iroh::endpoint::Connection, session_id: String) {
+        // Accept the first bidirectional stream
+        let (mut send, mut recv) = match connection.accept_bi().await {
+            Ok(stream) => stream,
+            Err(e) => {
+                warn!("Error accepting stream: {}", e);
+                return;
+            }
+        };
+
+        // Perform handshake
+        let mut handshake_buf = [0u8; HANDSHAKE.len()];
+        if let Err(e) = recv.read_exact(&mut handshake_buf).await {
+            warn!("Error reading handshake: {}", e);
+            return;
+        }
+
+        if handshake_buf != HANDSHAKE {
+            warn!("Invalid handshake received");
+            return;
+        }
+
+        // Send handshake response
+        if let Err(e) = send.write_all(HANDSHAKE).await {
+            warn!("Error sending handshake: {}", e);
+            return;
+        }
+
+        // Handle message exchange
+        let network_clone = self.clone();
+        let session_id_clone = session_id.clone();
+        tokio::spawn(async move {
+            network_clone.handle_message_exchange(send, recv, session_id_clone).await;
+        });
+    }
+
+    /// Connect to a host (client mode)
+    async fn connect_to_host(&self, node_addr: NodeAddr, session_id: String) -> Result<()> {
+        info!("Connecting to host: {}", node_addr.node_id);
+
+        let connection = self.endpoint.connect(node_addr, ALPN).await?;
+        info!("Connected to host successfully");
+
+        let (mut send, mut recv) = connection.open_bi().await?;
+
+        // Send handshake
+        send.write_all(HANDSHAKE).await?;
+        send.flush().await?;
+
+        // Wait for handshake response
+        let mut handshake_buf = [0u8; HANDSHAKE.len()];
+        recv.read_exact(&mut handshake_buf).await?;
+
+        if handshake_buf != HANDSHAKE {
+            return Err(anyhow::anyhow!("Invalid handshake response"));
+        }
+
+        // Handle message exchange
+        let network_clone = self.clone();
+        let session_id_clone = session_id.clone();
+        tokio::spawn(async move {
+            network_clone.handle_message_exchange(send, recv, session_id_clone).await;
+        });
+
+        Ok(())
+    }
+
+    /// Handle message exchange for a connection
+    async fn handle_message_exchange(
+        &self,
+        _send: iroh::endpoint::SendStream,
+        mut recv: iroh::endpoint::RecvStream,
+        session_id: String,
+    ) {
+        let network_clone = self.clone();
+
+        // Handle outgoing messages - simplified for now
+        let _network_clone = network_clone.clone();
+        tokio::spawn(async move {
+            // TODO: Implement proper message sending
+            // For now, messages will be handled via direct calls
+        });
+
+        // Handle incoming messages
+        let network_clone = self.clone();
+        tokio::spawn(async move {
+            loop {
+                // Read message length
+                let mut len_buf = [0u8; 4];
+                match recv.read_exact(&mut len_buf).await {
+                    Ok(_) => {},
+                    Err(e) => {
+                        debug!("Connection closed: {}", e);
+                        break;
+                    }
+                }
+
+                let len = u32::from_be_bytes(len_buf) as usize;
+                let mut data = vec![0u8; len];
+
+                // Read message data
+                match recv.read_exact(&mut data).await {
+                    Ok(_) => {},
+                    Err(e) => {
+                        warn!("Error reading message data: {}", e);
+                        break;
+                    }
+                }
+
+                // Parse message
+                match P2PMessage::from_bytes(&data) {
+                    Ok(p2p_msg) => {
+                        if let Err(e) = network_clone.handle_network_message(&session_id, p2p_msg.body).await {
+                            error!("Error handling network message: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Error parsing message: {}", e);
+                    }
+                }
+            }
+        });
+    }
+
+    /// Handle incoming messages from connection queue
+    async fn handle_connection_messages(&self, session_id: String, mut receiver: mpsc::UnboundedReceiver<NetworkMessage>) {
+        while let Some(message) = receiver.recv().await {
+            if let Err(e) = self.handle_network_message(&session_id, message).await {
+                error!("Error handling connection message: {}", e);
+            }
+        }
+    }
+
+    /// Send a message over the P2P connection
+    pub async fn send_message(
+        &self,
+        session_id: &str,
+        message: NetworkMessage,
+    ) -> Result<()> {
+        let connections = self.active_connections.read().await;
+        if let Some(sender) = connections.get(session_id) {
+            if let Err(_) = sender.send(message) {
+                return Err(anyhow::anyhow!("Failed to send message - connection closed"));
+            }
+        } else {
+            return Err(anyhow::anyhow!("No active connection for session"));
+        }
+        Ok(())
     }
 
     pub async fn send_input(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &mpsc::UnboundedSender<NetworkMessage>, // This parameter is kept for compatibility
         data: String,
     ) -> Result<()> {
         debug!("Sending input data");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for input"))?;
-
-        let body = TerminalMessageBody::Input {
+        let message = NetworkMessage::Input {
             from: self.endpoint.node_id(),
             data,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
     pub async fn send_directed_message(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &mpsc::UnboundedSender<NetworkMessage>, // Kept for compatibility
         to: NodeId,
         data: String,
     ) -> Result<()> {
         debug!("Sending directed message to node: {}", to.fmt_short());
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for directed message"))?;
-
-        let body = TerminalMessageBody::DirectedMessage {
+        let message = NetworkMessage::DirectedMessage {
             from: self.endpoint.node_id(),
             to,
             data,
@@ -716,25 +756,18 @@ impl P2PNetwork {
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
     pub async fn send_resize_event(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &mpsc::UnboundedSender<NetworkMessage>, // Kept for compatibility
         width: u16,
         height: u16,
     ) -> Result<()> {
         debug!("Sending resize event");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for resize"))?;
-
-        let body = TerminalMessageBody::Resize {
+        let message = NetworkMessage::Resize {
             from: self.endpoint.node_id(),
             width,
             height,
@@ -742,68 +775,53 @@ impl P2PNetwork {
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
-    pub async fn end_session(&self, session_id: &str, sender: &GossipSender) -> Result<()> {
+    pub async fn end_session(&self, session_id: &str, _sender: &mpsc::UnboundedSender<NetworkMessage>) -> Result<()> {
         info!("Ending session: {}", session_id);
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for ending"))?;
-
-        let body = TerminalMessageBody::SessionEnd {
+        let message = NetworkMessage::SessionEnd {
             from: self.endpoint.node_id(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        drop(sessions); // Release read lock
+
+        // Send end session message
+        if let Err(e) = self.send_message(session_id, message).await {
+            warn!("Failed to send session end message: {}", e);
+        }
+
+        // Clean up session
         self.sessions.write().await.remove(session_id);
+        self.active_connections.write().await.remove(session_id);
         Ok(())
     }
 
     pub async fn send_participant_joined(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &mpsc::UnboundedSender<NetworkMessage>, // Kept for compatibility
     ) -> Result<()> {
         debug!("Sending participant joined notification");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for participant joined"))?;
-
-        let body = TerminalMessageBody::ParticipantJoined {
+        let message = NetworkMessage::ParticipantJoined {
             from: self.endpoint.node_id(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
     pub async fn send_history_data(
         &self,
         session_id: &str,
-        sender: &GossipSender,
         shell_type: String,
         working_dir: String,
         history: Vec<String>,
     ) -> Result<()> {
         debug!("Sending history data");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for history data"))?;
-
-        let body = TerminalMessageBody::HistoryData {
+        let message = NetworkMessage::HistoryData {
             from: self.endpoint.node_id(),
             shell_type,
             working_dir,
@@ -812,98 +830,28 @@ impl P2PNetwork {
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
-    async fn start_topic_listener(
+    /// Handle network messages (replaces gossip message handling)
+    async fn handle_network_message(
         &self,
-        mut receiver: GossipReceiver,
-        session_id: String,
+        session_id: &str,
+        body: NetworkMessage,
     ) -> Result<()> {
-        let network_clone = self.clone();
-
-        tokio::spawn(async move {
-            debug!("Starting gossip message listener");
-
-            loop {
-                match receiver.next().await {
-                    Some(Ok(Event::Received(msg))) => {
-                        debug!("Received gossip message: {} bytes", msg.content.len());
-
-                        match EncryptedTerminalMessage::from_bytes(&msg.content) {
-                            Ok(encrypted_msg) => {
-                                let sessions_guard = network_clone.sessions.read().await;
-                                if let Some(session) = sessions_guard.get(&session_id) {
-                                    let key = session.key;
-                                    drop(sessions_guard); // 释放锁
-
-                                    match encrypted_msg.decrypt(&key) {
-                                        Ok(body) => {
-                                            if let Err(e) = network_clone
-                                                .handle_gossip_message(&session_id, body)
-                                                .await
-                                            {
-                                                error!("Failed to handle gossip message: {}", e);
-                                            }
-                                        }
-                                        Err(e) => error!("Failed to decrypt message: {}", e),
-                                    }
-                                } else {
-                                    warn!("Session not found for incoming message");
-                                }
-                            }
-                            Err(e) => error!("Failed to deserialize encrypted message: {}", e),
-                        }
-                    }
-                    Some(Ok(Event::NeighborUp(peer_id))) => {
-                        debug!(
-                            "Peer connected: {} to session {}",
-                            peer_id.fmt_short(),
-                            session_id
-                        );
-                    }
-                    Some(Ok(Event::NeighborDown(peer_id))) => {
-                        debug!(
-                            "Peer disconnected: {} from session {}",
-                            peer_id.fmt_short(),
-                            session_id
-                        );
-                    }
-                    Some(Ok(Event::Lagged)) => {
-                        warn!(
-                            "Gossip topic is lagged for session {} (events may have been missed)",
-                            session_id
-                        );
-                    }
-                    Some(Err(e)) => {
-                        error!("Error in gossip receiver for session {}: {}", session_id, e);
-                        // Try to continue instead of breaking
-                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                    }
-                    None => {
-                        warn!("Gossip receiver stream ended for session {}", session_id);
-                        break;
-                    }
-                }
-            }
-
-            debug!("Gossip listener for session {} has ended", session_id);
-        });
-
-        Ok(())
+        // Use the existing gossip message handler logic but without encryption
+        self.handle_gossip_message(session_id, body).await
     }
 
     async fn handle_gossip_message(
         &self,
         session_id: &str,
-        body: TerminalMessageBody,
+        body: NetworkMessage,
     ) -> Result<()> {
         let sessions_guard = self.sessions.read().await;
         if let Some(session) = sessions_guard.get(session_id) {
             match body {
-                TerminalMessageBody::Output {
+                NetworkMessage::Output {
                     from: _,
                     data,
                     timestamp,
@@ -917,7 +865,7 @@ impl P2PNetwork {
                         warn!("No active receivers for output event, skipping");
                     }
                 }
-                TerminalMessageBody::Input {
+                NetworkMessage::Input {
                     from,
                     data,
                     timestamp,
@@ -940,7 +888,7 @@ impl P2PNetwork {
                         // warn!("Failed to broadcast input event");
                     }
                 }
-                TerminalMessageBody::Resize {
+                NetworkMessage::Resize {
                     from: _,
                     width,
                     height,
@@ -955,7 +903,7 @@ impl P2PNetwork {
                         warn!("Failed to send resize event to subscribers");
                     }
                 }
-                TerminalMessageBody::SessionEnd { from: _, timestamp } => {
+                NetworkMessage::SessionEnd { from: _, timestamp } => {
                     let event = TerminalEvent {
                         timestamp,
                         event_type: EventType::End,
@@ -965,7 +913,7 @@ impl P2PNetwork {
                         warn!("Failed to send end event to subscribers");
                     }
                 }
-                TerminalMessageBody::DirectedMessage {
+                NetworkMessage::DirectedMessage {
                     from,
                     to,
                     data,
@@ -983,7 +931,7 @@ impl P2PNetwork {
                         }
                     }
                 }
-                TerminalMessageBody::SessionInfo { from, header } => {
+                NetworkMessage::SessionInfo { from, header } => {
                     info!(
                         "Received session info from {} for session: {}",
                         from.fmt_short(),
@@ -996,7 +944,7 @@ impl P2PNetwork {
                         session.header = header;
                     }
                 }
-                TerminalMessageBody::ParticipantJoined { from, timestamp } => {
+                NetworkMessage::ParticipantJoined { from, timestamp } => {
                     info!("Participant {} joined session", from.fmt_short());
                     let event = TerminalEvent {
                         timestamp,
@@ -1011,65 +959,58 @@ impl P2PNetwork {
                     if session.is_host {
                         info!("We are the host, attempting to send history data");
 
-                        // 获取 gossip_sender 的克隆
-                        let gossip_sender = session.gossip_sender.clone();
                         drop(sessions_guard); // 释放锁
 
-                        if let Some(sender) = gossip_sender {
-                            // 获取历史记录回调
-                            let callback = {
-                                let history_callback_guard = self.history_callback.read().await;
-                                history_callback_guard.as_ref().map(|cb| cb(session_id))
-                            };
+                        // 获取历史记录回调
+                        let callback = {
+                            let history_callback_guard = self.history_callback.read().await;
+                            history_callback_guard.as_ref().map(|cb| cb(session_id))
+                        };
 
-                            if let Some(receiver) = callback {
-                                // 在新的任务中处理历史记录发送，避免阻塞消息处理
-                                let network_clone = self.clone();
-                                let session_id_clone = session_id.to_string();
+                        if let Some(receiver) = callback {
+                            // 在新的任务中处理历史记录发送，避免阻塞消息处理
+                            let network_clone = self.clone();
+                            let session_id_clone = session_id.to_string();
 
-                                tokio::spawn(async move {
-                                    match receiver.await {
-                                        Ok(Some(session_info)) => {
-                                            info!("Got history data, sending to new participant");
+                            tokio::spawn(async move {
+                                match receiver.await {
+                                    Ok(Some(session_info)) => {
+                                        info!("Got history data, sending to new participant");
 
-                                            if let Err(e) = network_clone
-                                                .send_history_data(
-                                                    &session_id_clone,
-                                                    &sender,
-                                                    session_info.shell,
-                                                    session_info.cwd,
-                                                    session_info
-                                                        .logs
-                                                        .lines()
-                                                        .map(|s| s.to_string())
-                                                        .collect(),
-                                                )
-                                                .await
-                                            {
-                                                error!("Failed to send history data: {}", e);
-                                            } else {
-                                                info!(
-                                                    "✅ Successfully sent history data to new participant"
-                                                );
-                                            }
-                                        }
-                                        Ok(None) => {
-                                            info!("No history data available to send");
-                                        }
-                                        Err(_e) => {
-                                            error!("Failed to get history data");
+                                        if let Err(e) = network_clone
+                                            .send_history_data(
+                                                &session_id_clone,
+                                                session_info.shell,
+                                                session_info.cwd,
+                                                session_info
+                                                    .logs
+                                                    .lines()
+                                                    .map(|s| s.to_string())
+                                                    .collect(),
+                                            )
+                                            .await
+                                        {
+                                            error!("Failed to send history data: {}", e);
+                                        } else {
+                                            info!(
+                                                "✅ Successfully sent history data to new participant"
+                                            );
                                         }
                                     }
-                                });
-                            } else {
-                                warn!("No history callback set, cannot send history data");
-                            }
+                                    Ok(None) => {
+                                        info!("No history data available to send");
+                                    }
+                                    Err(_e) => {
+                                        error!("Failed to get history data");
+                                    }
+                                }
+                            });
                         } else {
-                            warn!("No gossip sender available for sending history data");
+                            warn!("No history callback set, cannot send history data");
                         }
                     }
                 }
-                TerminalMessageBody::HistoryData {
+                NetworkMessage::HistoryData {
                     from,
                     shell_type,
                     working_dir,
@@ -1115,7 +1056,7 @@ impl P2PNetwork {
                 }
 
                 // === Terminal Management Messages ===
-                TerminalMessageBody::TerminalCreate {
+                NetworkMessage::TerminalCreate {
                     from,
                     name,
                     shell_path,
@@ -1136,7 +1077,7 @@ impl P2PNetwork {
                         warn!("No active receivers for terminal create event, skipping");
                     }
                 }
-                TerminalMessageBody::TerminalStatusUpdate {
+                NetworkMessage::TerminalStatusUpdate {
                     from,
                     terminal_id,
                     status,
@@ -1156,7 +1097,7 @@ impl P2PNetwork {
                         warn!("No active receivers for terminal status update event, skipping");
                     }
                 }
-                TerminalMessageBody::TerminalOutput {
+                NetworkMessage::TerminalOutput {
                     from,
                     terminal_id,
                     data,
@@ -1176,7 +1117,7 @@ impl P2PNetwork {
                         warn!("No active receivers for terminal output event, skipping");
                     }
                 }
-                TerminalMessageBody::TerminalInput {
+                NetworkMessage::TerminalInput {
                     from,
                     terminal_id,
                     data,
@@ -1194,9 +1135,6 @@ impl P2PNetwork {
 
                     // 如果我们是主机，处理终端输入并发送输出响应
                     if session.is_host {
-                        // 获取 gossip_sender 的克隆
-                        let gossip_sender = session.gossip_sender.clone();
-
                         // 获取终端输入处理回调
                         let input_callback = {
                             let callback_guard = self.terminal_input_callback.read().await;
@@ -1212,31 +1150,30 @@ impl P2PNetwork {
                             let network_clone = self.clone();
                             let session_id_clone = session_id.to_string();
                             let terminal_id_for_output = terminal_id_clone.clone();
-                            let gossip_sender_clone = gossip_sender.clone();
 
                             tokio::spawn(async move {
                                 // 等待输入处理完成
                                 match input_handler.await {
                                     Ok(Ok(Some(response_data))) => {
                                         // 发送终端输出响应
-                                        if let Some(sender) = &gossip_sender_clone {
-                                            if let Err(e) = network_clone
-                                                .send_terminal_output(
-                                                    &session_id_clone,
-                                                    sender,
-                                                    terminal_id_for_output,
-                                                    response_data,
-                                                )
-                                                .await
-                                            {
-                                                error!(
-                                                    "Failed to send terminal output response: {}",
-                                                    e
-                                                );
-                                            }
-                                        } else {
+                                        if let Err(e) = network_clone
+                                            .send_message(
+                                                &session_id_clone,
+                                                NetworkMessage::TerminalOutput {
+                                                    from: network_clone.endpoint.node_id(),
+                                                    terminal_id: terminal_id_for_output,
+                                                    data: response_data,
+                                                    timestamp: std::time::SystemTime::now()
+                                                        .duration_since(std::time::UNIX_EPOCH)
+                                                        .unwrap_or_default()
+                                                        .as_secs(),
+                                                },
+                                            )
+                                            .await
+                                        {
                                             error!(
-                                                "No gossip sender available for terminal output response"
+                                                "Failed to send terminal output response: {}",
+                                                e
                                             );
                                         }
                                     }
@@ -1252,7 +1189,7 @@ impl P2PNetwork {
                                     }
                                 }
                             });
-                        } else if let Some(sender) = gossip_sender {
+                        } else {
                             // 没有设置回调，使用模拟输出（向后兼容）
                             warn!("No terminal input callback set, using simulated output");
                             let network_clone = self.clone();
@@ -1274,11 +1211,17 @@ impl P2PNetwork {
 
                                 // 发送终端输出响应
                                 if let Err(e) = network_clone
-                                    .send_terminal_output(
+                                    .send_message(
                                         &session_id_clone,
-                                        &sender,
-                                        terminal_id_clone,
-                                        response_data,
+                                        NetworkMessage::TerminalOutput {
+                                            from: network_clone.endpoint.node_id(),
+                                            terminal_id: terminal_id_clone,
+                                            data: response_data,
+                                            timestamp: std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default()
+                                                .as_secs(),
+                                        },
                                     )
                                     .await
                                 {
@@ -1304,7 +1247,7 @@ impl P2PNetwork {
                         }
                     }
                 }
-                TerminalMessageBody::TerminalResize {
+                NetworkMessage::TerminalResize {
                     from,
                     terminal_id,
                     rows,
@@ -1329,7 +1272,7 @@ impl P2PNetwork {
                         warn!("No active receivers for terminal resize event, skipping");
                     }
                 }
-                TerminalMessageBody::TerminalDirectoryChanged {
+                NetworkMessage::TerminalDirectoryChanged {
                     from,
                     terminal_id,
                     new_dir,
@@ -1349,7 +1292,7 @@ impl P2PNetwork {
                         warn!("No active receivers for terminal directory change event, skipping");
                     }
                 }
-                TerminalMessageBody::TerminalStop {
+                NetworkMessage::TerminalStop {
                     from,
                     terminal_id,
                     timestamp,
@@ -1368,7 +1311,7 @@ impl P2PNetwork {
                         warn!("No active receivers for terminal stop event, skipping");
                     }
                 }
-                TerminalMessageBody::TerminalListRequest { from, timestamp } => {
+                NetworkMessage::TerminalListRequest { from, timestamp } => {
                     info!("Received terminal list request from {}", from.fmt_short());
                     let event = TerminalEvent {
                         timestamp,
@@ -1379,7 +1322,7 @@ impl P2PNetwork {
                         warn!("No active receivers for terminal list request event, skipping");
                     }
                 }
-                TerminalMessageBody::TerminalListResponse {
+                NetworkMessage::TerminalListResponse {
                     from,
                     terminals,
                     timestamp,
@@ -1400,7 +1343,7 @@ impl P2PNetwork {
                 }
 
                 // === WebShare Management Messages ===
-                TerminalMessageBody::WebShareCreate {
+                NetworkMessage::WebShareCreate {
                     from,
                     local_port,
                     public_port,
@@ -1427,7 +1370,7 @@ impl P2PNetwork {
                         warn!("No active receivers for webshare create event, skipping");
                     }
                 }
-                TerminalMessageBody::WebShareStatusUpdate {
+                NetworkMessage::WebShareStatusUpdate {
                     from,
                     public_port,
                     status,
@@ -1447,7 +1390,7 @@ impl P2PNetwork {
                         warn!("No active receivers for webshare status update event, skipping");
                     }
                 }
-                TerminalMessageBody::WebShareStop {
+                NetworkMessage::WebShareStop {
                     from,
                     public_port,
                     timestamp,
@@ -1466,7 +1409,7 @@ impl P2PNetwork {
                         warn!("No active receivers for webshare stop event, skipping");
                     }
                 }
-                TerminalMessageBody::WebShareListRequest { from, timestamp } => {
+                NetworkMessage::WebShareListRequest { from, timestamp } => {
                     info!("Received webshare list request from {}", from.fmt_short());
                     let event = TerminalEvent {
                         timestamp,
@@ -1477,7 +1420,7 @@ impl P2PNetwork {
                         warn!("No active receivers for webshare list request event, skipping");
                     }
                 }
-                TerminalMessageBody::WebShareListResponse {
+                NetworkMessage::WebShareListResponse {
                     from,
                     webshares,
                     timestamp,
@@ -1496,7 +1439,7 @@ impl P2PNetwork {
                         warn!("No active receivers for webshare list response event, skipping");
                     }
                 }
-                TerminalMessageBody::StatsRequest { from, timestamp } => {
+                NetworkMessage::StatsRequest { from, timestamp } => {
                     info!("Received stats request from {}", from.fmt_short());
                     let event = TerminalEvent {
                         timestamp,
@@ -1507,7 +1450,7 @@ impl P2PNetwork {
                         warn!("No active receivers for stats request event, skipping");
                     }
                 }
-                TerminalMessageBody::StatsResponse {
+                NetworkMessage::StatsResponse {
                     from,
                     terminal_stats,
                     webshare_stats,
@@ -1540,6 +1483,11 @@ impl P2PNetwork {
         self.endpoint.node_id().to_string()
     }
 
+    /// Get the endpoint node ID for use in messages
+    pub fn local_node_id(&self) -> NodeId {
+        self.endpoint.node_id()
+    }
+
     pub async fn get_node_addr(&self) -> Result<NodeAddr> {
         debug!("Getting node address...");
         // In iroh 0.93, node_addr() now returns NodeAddr directly
@@ -1561,23 +1509,12 @@ impl P2PNetwork {
 
     pub async fn create_session_ticket(
         &self,
-        topic_id: TopicId,
-        session_id: &str,
-    ) -> Result<SessionTicket> {
+        _ticket: NodeTicket, // Parameter kept for compatibility
+        _session_id: &str,
+    ) -> Result<NodeTicket> {
         // Get the actual node address with network information
-        let me = self.get_node_addr().await?;
-        let nodes = vec![me];
-
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
-
-        Ok(SessionTicket {
-            topic_id,
-            nodes,
-            key: session.key,
-        })
+        let node_addr = self.get_node_addr().await?;
+        Ok(NodeTicket::new(node_addr))
     }
 
     pub async fn get_active_sessions(&self) -> Vec<String> {
@@ -1602,7 +1539,10 @@ impl P2PNetwork {
     }
 
     pub async fn shutdown(&self) -> Result<()> {
-        self.router.shutdown().await.map_err(Into::into)
+        // Close all active connections
+        self.active_connections.write().await.clear();
+        self.sessions.write().await.clear();
+        Ok(())
     }
 
     /// 设置历史记录获取回调函数
@@ -1631,19 +1571,14 @@ impl P2PNetwork {
     pub async fn send_terminal_create(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &mpsc::UnboundedSender<NetworkMessage>, // Kept for compatibility
         name: Option<String>,
         shell_path: Option<String>,
         working_dir: Option<String>,
         size: Option<(u16, u16)>,
     ) -> Result<()> {
         debug!("Sending terminal create request");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal create"))?;
-
-        let body = TerminalMessageBody::TerminalCreate {
+        let message = NetworkMessage::TerminalCreate {
             from: self.endpoint.node_id(),
             name,
             shell_path,
@@ -1653,79 +1588,138 @@ impl P2PNetwork {
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
     pub async fn send_terminal_stop(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &GossipSender, // Kept for compatibility
         terminal_id: String,
     ) -> Result<()> {
         debug!("Sending terminal stop request");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal stop"))?;
-
-        let body = TerminalMessageBody::TerminalStop {
+        let message = NetworkMessage::TerminalStop {
             from: self.endpoint.node_id(),
             terminal_id,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
     pub async fn send_terminal_list_request(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &GossipSender, // Kept for compatibility
     ) -> Result<()> {
         debug!("Sending terminal list request");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal list"))?;
-
-        let body = TerminalMessageBody::TerminalListRequest {
+        let message = NetworkMessage::TerminalListRequest {
             from: self.endpoint.node_id(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
     pub async fn send_terminal_list_response(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &GossipSender, // Kept for compatibility
         terminals: Vec<TerminalInfo>,
     ) -> Result<()> {
         debug!("Sending terminal list response");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal list response"))?;
-
-        let body = TerminalMessageBody::TerminalListResponse {
+        let message = NetworkMessage::TerminalListResponse {
             from: self.endpoint.node_id(),
             terminals,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
+    }
+
+    // === Additional terminal management methods ===
+
+    pub async fn send_terminal_input(
+        &self,
+        session_id: &str,
+        terminal_id: String,
+        data: String,
+    ) -> Result<()> {
+        debug!("Sending terminal input for terminal {}", terminal_id);
+        let message = NetworkMessage::TerminalInput {
+            from: self.endpoint.node_id(),
+            terminal_id,
+            data,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        self.send_message(session_id, message).await
+    }
+
+    pub async fn send_terminal_resize(
+        &self,
+        session_id: &str,
+        terminal_id: String,
+        rows: u16,
+        cols: u16,
+    ) -> Result<()> {
+        debug!("Sending terminal resize for terminal {}", terminal_id);
+        let message = NetworkMessage::TerminalResize {
+            from: self.endpoint.node_id(),
+            terminal_id,
+            rows,
+            cols,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        self.send_message(session_id, message).await
+    }
+
+    pub async fn send_terminal_status_update(
+        &self,
+        session_id: &str,
+        terminal_id: String,
+        status: TerminalStatus,
+    ) -> Result<()> {
+        debug!(
+            "Sending terminal status update for terminal {}",
+            terminal_id
+        );
+        let message = NetworkMessage::TerminalStatusUpdate {
+            from: self.endpoint.node_id(),
+            terminal_id,
+            status,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        self.send_message(session_id, message).await
+    }
+
+    pub async fn send_terminal_directory_change(
+        &self,
+        session_id: &str,
+        terminal_id: String,
+        new_dir: String,
+    ) -> Result<()> {
+        debug!(
+            "Sending terminal directory change for terminal {}",
+            terminal_id
+        );
+        let message = NetworkMessage::TerminalDirectoryChanged {
+            from: self.endpoint.node_id(),
+            terminal_id,
+            new_dir,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+        self.send_message(session_id, message).await
     }
 
     // === WebShare Management Methods ===
@@ -1733,19 +1727,14 @@ impl P2PNetwork {
     pub async fn send_webshare_create(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &GossipSender, // Kept for compatibility
         local_port: u16,
         public_port: Option<u16>,
         service_name: String,
         terminal_id: Option<String>,
     ) -> Result<()> {
         debug!("Sending webshare create request");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for webshare create"))?;
-
-        let body = TerminalMessageBody::WebShareCreate {
+        let message = NetworkMessage::WebShareCreate {
             from: self.endpoint.node_id(),
             local_port,
             public_port,
@@ -1755,113 +1744,78 @@ impl P2PNetwork {
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
     pub async fn send_webshare_stop(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &GossipSender, // Kept for compatibility
         public_port: u16,
     ) -> Result<()> {
         debug!("Sending webshare stop request");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for webshare stop"))?;
-
-        let body = TerminalMessageBody::WebShareStop {
+        let message = NetworkMessage::WebShareStop {
             from: self.endpoint.node_id(),
             public_port,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
     pub async fn send_webshare_list_request(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &GossipSender, // Kept for compatibility
     ) -> Result<()> {
         debug!("Sending webshare list request");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for webshare list"))?;
-
-        let body = TerminalMessageBody::WebShareListRequest {
+        let message = NetworkMessage::WebShareListRequest {
             from: self.endpoint.node_id(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
     pub async fn send_webshare_list_response(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &GossipSender, // Kept for compatibility
         webshares: Vec<WebShareInfo>,
     ) -> Result<()> {
         debug!("Sending webshare list response");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for webshare list response"))?;
-
-        let body = TerminalMessageBody::WebShareListResponse {
+        let message = NetworkMessage::WebShareListResponse {
             from: self.endpoint.node_id(),
             webshares,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
-    pub async fn send_stats_request(&self, session_id: &str, sender: &GossipSender) -> Result<()> {
+    pub async fn send_stats_request(&self, session_id: &str, _sender: &GossipSender) -> Result<()> {
         debug!("Sending stats request");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for stats request"))?;
-
-        let body = TerminalMessageBody::StatsRequest {
+        let message = NetworkMessage::StatsRequest {
             from: self.endpoint.node_id(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 
     pub async fn send_stats_response(
         &self,
         session_id: &str,
-        sender: &GossipSender,
+        _sender: &GossipSender, // Kept for compatibility
         terminal_stats: TerminalStats,
         webshare_stats: WebShareStats,
     ) -> Result<()> {
         debug!("Sending stats response");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for stats response"))?;
-
-        let body = TerminalMessageBody::StatsResponse {
+        let message = NetworkMessage::StatsResponse {
             from: self.endpoint.node_id(),
             terminal_stats,
             webshare_stats,
@@ -1870,148 +1824,6 @@ impl P2PNetwork {
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
-    }
-
-    // Additional terminal management methods
-
-    pub async fn send_terminal_output(
-        &self,
-        session_id: &str,
-        sender: &GossipSender,
-        terminal_id: String,
-        data: String,
-    ) -> Result<()> {
-        debug!("Sending terminal output for terminal {}", terminal_id);
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal output"))?;
-
-        let body = TerminalMessageBody::TerminalOutput {
-            from: self.endpoint.node_id(),
-            terminal_id,
-            data,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
-    }
-
-    pub async fn send_terminal_input(
-        &self,
-        session_id: &str,
-        sender: &GossipSender,
-        terminal_id: String,
-        data: String,
-    ) -> Result<()> {
-        debug!("Sending terminal input for terminal {}", terminal_id);
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal input"))?;
-
-        let body = TerminalMessageBody::TerminalInput {
-            from: self.endpoint.node_id(),
-            terminal_id,
-            data,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
-    }
-
-    pub async fn send_terminal_resize(
-        &self,
-        session_id: &str,
-        sender: &GossipSender,
-        terminal_id: String,
-        rows: u16,
-        cols: u16,
-    ) -> Result<()> {
-        debug!("Sending terminal resize for terminal {}", terminal_id);
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal resize"))?;
-
-        let body = TerminalMessageBody::TerminalResize {
-            from: self.endpoint.node_id(),
-            terminal_id,
-            rows,
-            cols,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
-    }
-
-    pub async fn send_terminal_status_update(
-        &self,
-        session_id: &str,
-        sender: &GossipSender,
-        terminal_id: String,
-        status: TerminalStatus,
-    ) -> Result<()> {
-        debug!(
-            "Sending terminal status update for terminal {}",
-            terminal_id
-        );
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal status update"))?;
-
-        let body = TerminalMessageBody::TerminalStatusUpdate {
-            from: self.endpoint.node_id(),
-            terminal_id,
-            status,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
-    }
-
-    pub async fn send_terminal_directory_change(
-        &self,
-        session_id: &str,
-        sender: &GossipSender,
-        terminal_id: String,
-        new_dir: String,
-    ) -> Result<()> {
-        debug!(
-            "Sending terminal directory change for terminal {}",
-            terminal_id
-        );
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal directory change"))?;
-
-        let body = TerminalMessageBody::TerminalDirectoryChanged {
-            from: self.endpoint.node_id(),
-            terminal_id,
-            new_dir,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_message(session_id, message).await
     }
 }

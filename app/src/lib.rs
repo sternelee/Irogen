@@ -9,8 +9,7 @@ use tokio::sync::{RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
-use iroh_gossip::api::GossipSender;
-use riterm_shared::{EventType, P2PNetwork, SessionTicket, TerminalEvent};
+use riterm_shared::{EventType, P2PNetwork, TerminalEvent, NodeTicket, p2p::NetworkMessage};
 
 /// Maximum number of concurrent sessions to prevent memory exhaustion
 const MAX_CONCURRENT_SESSIONS: usize = 50;
@@ -23,7 +22,8 @@ const CLEANUP_INTERVAL_SECS: u64 = 300; // 5 minutes
 
 // Helper function to validate session ticket format
 fn is_valid_session_ticket(ticket: &str) -> bool {
-    ticket.parse::<SessionTicket>().is_ok()
+    // Check if it's a valid NodeTicket
+    ticket.parse::<NodeTicket>().is_ok()
 }
 
 // Parse structured events from terminal data
@@ -167,7 +167,7 @@ pub struct AppState {
 #[derive(Clone)]
 pub struct TerminalSession {
     pub id: String,
-    pub sender: GossipSender,
+    pub sender: mpsc::UnboundedSender<NetworkMessage>,
     pub event_sender: mpsc::UnboundedSender<TerminalEvent>,
     pub last_activity: Arc<RwLock<Instant>>,
     pub cancellation_token: CancellationToken,
@@ -284,7 +284,7 @@ async fn connect_to_peer(
 
     // Parse session ticket
     let ticket = session_ticket
-        .parse::<SessionTicket>()
+        .parse::<NodeTicket>()
         .map_err(|e| format!("Invalid session ticket format: {}", e))?;
 
     let network = {
@@ -297,7 +297,8 @@ async fn connect_to_peer(
         }
     };
 
-    let session_id = format!("session_{}", ticket.topic_id);
+    // Generate unique session ID using the node address
+    let session_id = format!("session_{}", ticket.node_addr().node_id);
 
     // Check session limits before creating new session
     {
@@ -347,7 +348,7 @@ async fn connect_to_peer(
 
     // Join session
     let (sender, mut event_receiver) = network
-        .join_session_with_buffer_limit(ticket, MAX_EVENTS_PER_SESSION)
+        .join_session(ticket)
         .await
         .map_err(|e| format!("Failed to join session: {}", e))?;
 
@@ -722,13 +723,19 @@ async fn create_terminal(
     };
 
     network
-        .send_terminal_create(
+        .send_message(
             &request.session_id,
-            &session_sender,
-            request.name,
-            request.shell_path,
-            request.working_dir,
-            request.size,
+            NetworkMessage::TerminalCreate {
+                from: network.local_node_id(),
+                name: request.name,
+                shell_path: request.shell_path,
+                working_dir: request.working_dir,
+                size: request.size,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
         )
         .await
         .map_err(|e| format!("Failed to create terminal: {}", e))?;
@@ -758,7 +765,17 @@ async fn stop_terminal(
     };
 
     network
-        .send_terminal_stop(&request.session_id, &session_sender, request.terminal_id)
+        .send_message(
+            &request.session_id,
+            NetworkMessage::TerminalStop {
+                from: network.local_node_id(),
+                terminal_id: request.terminal_id,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
+        )
         .await
         .map_err(|e| format!("Failed to stop terminal: {}", e))?;
 
@@ -784,7 +801,16 @@ async fn list_terminals(session_id: String, state: State<'_, AppState>) -> Resul
     };
 
     network
-        .send_terminal_list_request(&session_id, &session_sender)
+        .send_message(
+            &session_id,
+            NetworkMessage::TerminalListRequest {
+                from: network.local_node_id(),
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
+        )
         .await
         .map_err(|e| format!("Failed to list terminals: {}", e))?;
 
@@ -815,7 +841,6 @@ async fn send_terminal_input_to_terminal(
     network
         .send_terminal_input(
             &request.session_id,
-            &session_sender,
             request.terminal_id,
             request.input,
         )
@@ -849,7 +874,6 @@ async fn resize_terminal(
     network
         .send_terminal_resize(
             &request.session_id,
-            &session_sender,
             request.terminal_id,
             request.rows,
             request.cols,
@@ -884,13 +908,19 @@ async fn create_webshare(
     };
 
     network
-        .send_webshare_create(
+        .send_message(
             &request.session_id,
-            &session_sender,
-            request.local_port,
-            request.public_port,
-            request.service_name,
-            request.terminal_id,
+            NetworkMessage::WebShareCreate {
+                from: network.local_node_id(),
+                local_port: request.local_port,
+                public_port: request.public_port,
+                service_name: request.service_name,
+                terminal_id: request.terminal_id,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
         )
         .await
         .map_err(|e| format!("Failed to create webshare: {}", e))?;
@@ -920,7 +950,17 @@ async fn stop_webshare(
     };
 
     network
-        .send_webshare_stop(&request.session_id, &session_sender, request.public_port)
+        .send_message(
+            &request.session_id,
+            NetworkMessage::WebShareStop {
+                from: network.local_node_id(),
+                public_port: request.public_port,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
+        )
         .await
         .map_err(|e| format!("Failed to stop webshare: {}", e))?;
 
@@ -946,7 +986,16 @@ async fn list_webshares(session_id: String, state: State<'_, AppState>) -> Resul
     };
 
     network
-        .send_webshare_list_request(&session_id, &session_sender)
+        .send_message(
+            &session_id,
+            NetworkMessage::WebShareListRequest {
+                from: network.local_node_id(),
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
+        )
         .await
         .map_err(|e| format!("Failed to list webshares: {}", e))?;
 
@@ -972,7 +1021,16 @@ async fn get_system_stats(request: StatsRequest, state: State<'_, AppState>) -> 
     };
 
     network
-        .send_stats_request(&request.session_id, &session_sender)
+        .send_message(
+            &request.session_id,
+            NetworkMessage::StatsRequest {
+                from: network.local_node_id(),
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
+        )
         .await
         .map_err(|e| format!("Failed to get system stats: {}", e))?;
 
@@ -1017,15 +1075,17 @@ async fn connect_to_terminal(
     let connect_message = format!("CONNECT_TO_TERMINAL:{}", terminal_id);
 
     network
-        .send_directed_message(
+        .send_message(
             &session_id,
-            &session_sender,
-            network
-                .get_node_id()
-                .await
-                .parse()
-                .map_err(|e| format!("Failed to parse node ID: {}", e))?,
-            connect_message,
+            NetworkMessage::DirectedMessage {
+                from: network.local_node_id(),
+                to: network.local_node_id(),
+                data: connect_message,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            },
         )
         .await
         .map_err(|e| format!("Failed to connect to terminal: {}", e))?;
