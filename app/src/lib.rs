@@ -313,9 +313,8 @@ async fn connect_to_peer(
         }
     };
 
-    // Use temporary session ID for P2P layer
-    let temp_session_id = format!("session_{}", uuid::Uuid::new_v4());
-    let session_id = temp_session_id; // Store temp session_id for app use
+    // Generate a single session ID for both P2P layer and app use
+    let session_id = format!("session_{}", uuid::Uuid::new_v4());
 
     // Check session limits before creating new session
     {
