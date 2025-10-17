@@ -2103,7 +2103,25 @@ impl P2PNetwork {
                     }
                 }
                 SessionMessage::ParticipantJoined => {
-                    info!("Participant joined");
+                    info!("Participant joined - sending SessionInfo response");
+
+                    // Send SessionInfo response with the correct session ID
+                    let session_info_message = MessageBuilder::new()
+                        .from_node(self.endpoint.node_id())
+                        .for_session(session.header.session_id.clone())
+                        .with_domain(MessageDomain::Session)
+                        .build(StructuredPayload::Session(SessionMessage::SessionInfo {
+                            header: session.header.clone()
+                        }));
+
+                    // Get the connection sender for this session and send the response
+                    if let Some(connection_sender) = &session.connection_sender {
+                        if let Err(e) = connection_sender.send(session_info_message) {
+                            error!("Failed to send SessionInfo response: {}", e);
+                        } else {
+                            info!("✅ SessionInfo response sent successfully");
+                        }
+                    }
                 }
                 SessionMessage::HistoryData { shell_type, working_dir, history } => {
                     debug!("Received history data: {} entries", history.len());

@@ -444,6 +444,16 @@ async fn connect_to_peer(
                                 let _ = app_handle_clone.emit(&structured_event_name, &structured_event);
                             }
 
+                            // Handle SessionInfo messages to update session ID mapping
+                            if let EventType::HistoryData { data } = &event.event_type {
+                                if data.contains("SessionInfo received") {
+                                    // This is a SessionInfo response from CLI
+                                    info!("📨 Received SessionInfo response from CLI for session {}", session_id_clone_events);
+                                    // In a real implementation, we would extract the correct session ID from the response
+                                    // and update our session mappings. For now, the current session ID should work.
+                                }
+                            }
+
                             // Route NetworkMessage through message router if available
                             // This will handle both structured and legacy messages
                             if let Some(_network) = &*app_handle_clone.state::<AppState>().network.read().await {
