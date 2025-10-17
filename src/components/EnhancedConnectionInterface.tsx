@@ -6,7 +6,8 @@
 import { createSignal, createEffect, onMount, onCleanup, Show, For } from "solid-js";
 import { createConnectionHandler } from "../hooks/useConnection";
 import { createMessageHandler } from "../utils/messageHandler";
-import { createApiClient, ConnectionApi } from "../utils/api";
+import { createApiClient } from "../utils/api";
+import { invoke } from "@tauri-apps/api/core";
 import {
   NetworkMessage,
   StructuredEvent,
@@ -68,8 +69,12 @@ export function EnhancedConnectionInterface(props: EnhancedConnectionInterfacePr
 
   const loadConnectionHistory = async () => {
     try {
-      const history = await ConnectionApi.getSessionHistory();
-      setConnectionHistory(history);
+      // For now, we'll use localStorage for connection history
+      // This could be enhanced with backend storage in the future
+      const stored = localStorage.getItem("connectionHistory");
+      if (stored) {
+        setConnectionHistory(JSON.parse(stored));
+      }
     } catch (error) {
       console.error("Failed to load connection history:", error);
     }
@@ -100,7 +105,9 @@ export function EnhancedConnectionInterface(props: EnhancedConnectionInterfacePr
       await setupMessageHandler(newSessionId);
 
       // Add to history
-      setConnectionHistory(prev => [newSessionId, ...prev.slice(0, 9)]);
+      const newHistory = [newSessionId, ...connectionHistory().slice(0, 9)];
+      setConnectionHistory(newHistory);
+      localStorage.setItem("connectionHistory", JSON.stringify(newHistory));
 
       // Notify parent
       props.onConnectionEstablished?.(newSessionId);
@@ -117,7 +124,7 @@ export function EnhancedConnectionInterface(props: EnhancedConnectionInterfacePr
     if (!currentSessionId) return;
 
     try {
-      await ConnectionApi.disconnect(currentSessionId);
+      await invoke("disconnect_session", { sessionId: currentSessionId });
 
       // Cleanup message handler
       const handlers = messageHandlers();
@@ -208,17 +215,10 @@ export function EnhancedConnectionInterface(props: EnhancedConnectionInterfacePr
 
   const connectToHistorySession = async (historySessionId: string) => {
     try {
-      const status = await ConnectionApi.getConnectionStatus(historySessionId);
-      if (status && status.connected) {
-        setSessionId(historySessionId);
-        setConnected(true);
-        await setupMessageHandler(historySessionId);
-        props.onConnectionEstablished?.(historySessionId);
-      } else {
-        setError("Session no longer active");
-        // Remove from history
-        setConnectionHistory(prev => prev.filter(id => id !== historySessionId));
-      }
+      // For now, we'll just try to reconnect using the stored session ID
+      // In a real implementation, you'd need to store and reuse the original ticket
+      setError("Reconnect to history sessions not implemented yet");
+      // TODO: Implement proper session reconnection with stored tickets
     } catch (error) {
       setError("Failed to reconnect to session");
       props.onError?.(error as Error);

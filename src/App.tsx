@@ -8,6 +8,7 @@ import {
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 import {
   createConnectionHistory,
@@ -31,7 +32,7 @@ import { getLayoutCalculator } from "./utils/mobile/LayoutCalculator";
 import type { ViewportDimensions } from "./utils/mobile/ViewportManager";
 import { createConnectionHandler } from "./hooks/useConnection";
 import { createMessageHandler } from "./utils/messageHandler";
-import { createApiClient, ConnectionApi } from "./utils/api";
+import { createApiClient } from "./utils/api";
 import { TerminalEvent, PortForwardEvent, FileTransferEvent, SystemEvent } from "./types/messages";
 
 function App() {
@@ -155,12 +156,19 @@ function App() {
 
   const initializeNetwork = async () => {
     try {
-      // The network is now initialized automatically in the Rust backend
+      setStatus("Initializing P2P Network...");
+      setNetworkStrength(2); // Initializing state
+
+      // Call the backend network initialization command
+      const nodeId = await invoke<string>("initialize_network");
+
+      console.log("P2P Network initialized successfully with node ID:", nodeId);
       setStatus("Ready - P2P Network Initialized");
-      setNetworkStrength(4); // Full network strength when connected
+      setNetworkStrength(3); // Ready state (not connected to peer yet)
+
     } catch (error) {
       console.error("Failed to initialize network:", error);
-      setStatus("Failed to initialize network");
+      setStatus("Failed to initialize network: " + String(error));
       setNetworkStrength(0); // No network when failed
     }
   };
@@ -319,7 +327,7 @@ function App() {
     const currentSessionId = sessionId();
     if (currentSessionId) {
       try {
-        await ConnectionApi.disconnect(currentSessionId);
+        await invoke("disconnect_session", { sessionId: currentSessionId });
         await cleanupMessageHandler(currentSessionId);
       } catch (error) {
         console.error("Failed to disconnect:", error);
