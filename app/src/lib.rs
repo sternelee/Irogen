@@ -376,6 +376,26 @@ async fn connect_to_peer(
     info!("✅ Connected to host successfully");
     info!("🔗 Using session ID based on node_id: {}", session_id);
 
+    // Wait a moment for the connection to be established in the P2P network layer
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Verify the connection is properly established
+    let connected_nodes = network.get_active_node_ids().await;
+    info!("P2P network active connections: {:?}", connected_nodes);
+
+    // Check if the CLI's Node ID is in active_connections
+    if !connected_nodes.contains(&host_node_id) {
+        warn!("CLI Node ID not found in active_connections, checking again...");
+        // Give it a bit more time
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let connected_nodes_retry = network.get_active_node_ids().await;
+        info!("P2P network active connections (retry): {:?}", connected_nodes_retry);
+
+        if !connected_nodes_retry.contains(&host_node_id) {
+            return Err(format!("P2P connection to CLI (Node ID: {}) was not established", host_node_id));
+        }
+    }
+
     // Create terminal session with simplified tracking
     let (tx, mut rx) = mpsc::unbounded_channel();
     let cancellation_token = CancellationToken::new();

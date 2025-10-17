@@ -1610,11 +1610,13 @@ impl P2PNetwork {
             .await
             .insert(client_node_id, session);
 
+        // Store the CLI's Node ID in active_connections for outgoing messages
+        // This is the node we want to send messages to
         let connection_sender_clone = connection_sender.clone();
         self.active_connections
             .write()
             .await
-            .insert(client_node_id, connection_sender_clone);
+            .insert(host_node_id, connection_sender_clone);
 
         // Connect to the host - no need to pass session_id anymore
         self.connect_to_host(ticket.node_addr().clone(), client_node_id)
