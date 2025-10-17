@@ -1279,10 +1279,9 @@ pub struct SharedSession {
 
 pub struct P2PNetwork {
     endpoint: Endpoint,
-    sessions: Arc<RwLock<HashMap<String, SharedSession>>>,
-    active_connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<NetworkMessage>>>>,
-    // Session remapping tracking
-    session_mappings: Arc<RwLock<HashMap<String, String>>>, // temp_id -> host_id
+    // Node ID based session management
+    node_sessions: Arc<RwLock<HashMap<NodeId, SharedSession>>>,
+    active_connections: Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<NetworkMessage>>>>,
     // 历史记录发送回调
     history_callback: Arc<
         RwLock<
@@ -1317,9 +1316,8 @@ impl Clone for P2PNetwork {
     fn clone(&self) -> Self {
         Self {
             endpoint: self.endpoint.clone(),
-            sessions: Arc::clone(&self.sessions),
+            node_sessions: Arc::clone(&self.node_sessions),
             active_connections: Arc::clone(&self.active_connections),
-            session_mappings: Arc::clone(&self.session_mappings),
             history_callback: self.history_callback.clone(),
             terminal_input_callback: self.terminal_input_callback.clone(),
         }
@@ -1504,9 +1502,8 @@ impl P2PNetwork {
 
         let network = Self {
             endpoint,
-            sessions: Arc::new(RwLock::new(HashMap::new())),
+            node_sessions: Arc::new(RwLock::new(HashMap::new())),
             active_connections: Arc::new(RwLock::new(HashMap::new())),
-            session_mappings: Arc::new(RwLock::new(HashMap::new())),
             history_callback: Arc::new(RwLock::new(None)),
             terminal_input_callback: Arc::new(RwLock::new(None)),
         };
@@ -1514,7 +1511,7 @@ impl P2PNetwork {
         Ok(network)
     }
 
-    /// Create a listening session (host mode)
+    /// Create a listening session (host mode) - simplified with Node ID
     pub async fn create_shared_session(
         &self,
         header: SessionHeader,
@@ -1523,8 +1520,8 @@ impl P2PNetwork {
         mpsc::UnboundedSender<NetworkMessage>,
         mpsc::UnboundedReceiver<String>,
     )> {
-        let session_id = header.session_id.clone();
-        info!("Creating shared session: {}", session_id);
+        let host_node_id = self.endpoint.node_id();
+        info!("Creating shared session for host: {}", host_node_id);
 
         // Wait for endpoint to be ready
         self.endpoint.online().await;
@@ -1537,38 +1534,38 @@ impl P2PNetwork {
 
         let session = SharedSession {
             header: header.clone(),
-            participants: vec![self.endpoint.node_id().to_string()],
+            participants: vec![host_node_id.to_string()],
             is_host: true,
             event_sender: event_sender.clone(),
-            node_id: self.endpoint.node_id(),
+            node_id: host_node_id,
             input_sender: Some(input_sender),
             connection_sender: Some(connection_sender.clone()),
             history_callback: None,
             terminal_input_callback: None,
         };
 
-        self.sessions
+        // Store session by Node ID instead of session_id
+        self.node_sessions
             .write()
             .await
-            .insert(session_id.clone(), session);
+            .insert(host_node_id, session);
 
         let connection_sender_clone = connection_sender.clone();
         self.active_connections
             .write()
             .await
-            .insert(session_id.clone(), connection_sender_clone);
+            .insert(host_node_id, connection_sender_clone);
 
         // Start accepting connections
         let network_clone = self.clone();
-        let session_id_clone = session_id.clone();
         tokio::spawn(async move {
-            network_clone.accept_connections(session_id_clone).await;
+            network_clone.accept_connections().await;
         });
 
         Ok((ticket, connection_sender, input_receiver))
     }
 
-    /// Join an existing session (client mode)
+    /// Join an existing session (client mode) - simplified with Node ID
     pub async fn join_session(
         &self,
         ticket: NodeTicket,
@@ -1576,14 +1573,15 @@ impl P2PNetwork {
         mpsc::UnboundedSender<NetworkMessage>,
         broadcast::Receiver<TerminalEvent>,
     )> {
-        info!("Joining session with node: {}", ticket.node_addr().node_id);
+        let host_node_id = ticket.node_addr().node_id;
+        let client_node_id = self.endpoint.node_id();
 
-        // Create a temporary session ID that will be replaced when we receive SessionInfo from host
-        let temp_session_id = format!("session_{}", uuid::Uuid::new_v4());
+        info!("Joining session with host: {}", host_node_id);
+
         let (event_sender, event_receiver) = broadcast::channel(1000);
         let (connection_sender, _connection_receiver) = mpsc::unbounded_channel();
 
-        // Create session entry for this joined session with temporary session_id
+        // Create session entry for this client - no need for temporary session_id
         let session = SharedSession {
             header: SessionHeader {
                 version: 2,
@@ -1594,59 +1592,58 @@ impl P2PNetwork {
                     .as_secs(),
                 title: None,
                 command: None,
-                session_id: temp_session_id.clone(),
+                session_id: format!("session_with_{}", host_node_id), // Simple reference
             },
-            participants: vec![],
+            participants: vec![client_node_id.to_string(), host_node_id.to_string()],
             is_host: false,
             event_sender: event_sender.clone(),
-            node_id: self.endpoint.node_id(),
+            node_id: client_node_id,
             input_sender: None,
             connection_sender: Some(connection_sender.clone()),
             history_callback: None,
             terminal_input_callback: None,
         };
 
-        self.sessions
+        // Store session by client's Node ID
+        self.node_sessions
             .write()
             .await
-            .insert(temp_session_id.clone(), session);
+            .insert(client_node_id, session);
 
         let connection_sender_clone = connection_sender.clone();
         self.active_connections
             .write()
             .await
-            .insert(temp_session_id.clone(), connection_sender_clone);
+            .insert(client_node_id, connection_sender_clone);
 
-        // Connect to the host
-        self.connect_to_host(ticket.node_addr().clone(), temp_session_id.clone())
+        // Connect to the host - no need to pass session_id anymore
+        self.connect_to_host(ticket.node_addr().clone(), client_node_id)
             .await?;
 
-        // Send ParticipantJoined message to host
-        info!(
-            "Sending ParticipantJoined message to host for session: {}",
-            temp_session_id
-        );
-        self.send_participant_joined(&temp_session_id, &connection_sender)
-            .await?;
-        info!("✅ ParticipantJoined message sent successfully");
+        // Send simple connection notification - no complex session mapping needed
+        info!("Establishing connection with host: {}", host_node_id);
+        let message = MessageBuilder::new()
+            .from_node(client_node_id)
+            .with_domain(MessageDomain::Session)
+            .build(StructuredPayload::Session(SessionMessage::ParticipantJoined));
 
-        // Start handling incoming messages
-        let _network_clone = self.clone();
-        let _session_id_clone = temp_session_id.clone();
-        tokio::spawn(async move {
-            // TODO: Implement connection message handling
-        });
+        if let Err(e) = connection_sender.send(message) {
+            error!("Failed to send participant joined message: {}", e);
+        } else {
+            info!("✅ Connection request sent successfully");
+        }
 
         Ok((connection_sender, event_receiver))
     }
 
-    /// Accept incoming connections (host mode)
-    async fn accept_connections(&self, session_id: String) {
-        info!("Accepting connections for session: {}", session_id);
+    /// Accept incoming connections (host mode) - simplified with Node ID
+    async fn accept_connections(&self) {
+        let host_node_id = self.endpoint.node_id();
+        info!("Accepting connections for host: {}", host_node_id);
 
         loop {
             let Some(connecting) = self.endpoint.accept().await else {
-                info!("No more incoming connections for session: {}", session_id);
+                info!("No more incoming connections");
                 break;
             };
 
@@ -1666,17 +1663,27 @@ impl P2PNetwork {
 
             // Handle this connection in a separate task
             let network_clone = self.clone();
-            let session_id_clone = session_id.clone();
             tokio::spawn(async move {
                 network_clone
-                    .handle_connection(connection, session_id_clone)
+                    .handle_connection(connection)
                     .await;
             });
         }
     }
 
-    /// Handle a single connection
-    async fn handle_connection(&self, connection: iroh::endpoint::Connection, session_id: String) {
+    /// Handle a single connection - simplified with Node ID
+    async fn handle_connection(&self, connection: iroh::endpoint::Connection) {
+        // Get the remote node ID for this connection
+        let remote_node_id = match connection.remote_node_id() {
+            Ok(node_id) => node_id,
+            Err(e) => {
+                warn!("Invalid node ID for connection: {}", e);
+                return;
+            }
+        };
+
+        info!("Handling connection from: {}", remote_node_id);
+
         // Accept the first bidirectional stream
         let (mut send, mut recv) = match connection.accept_bi().await {
             Ok(stream) => stream,
@@ -1704,18 +1711,17 @@ impl P2PNetwork {
             return;
         }
 
-        // Handle message exchange
+        // Handle message exchange using Node ID
         let network_clone = self.clone();
-        let session_id_clone = session_id.clone();
         tokio::spawn(async move {
             network_clone
-                .handle_message_exchange(send, recv, session_id_clone)
+                .handle_message_exchange(send, recv, remote_node_id)
                 .await;
         });
     }
 
-    /// Connect to a host (client mode)
-    async fn connect_to_host(&self, node_addr: NodeAddr, session_id: String) -> Result<()> {
+    /// Connect to a host (client mode) - simplified with Node ID
+    async fn connect_to_host(&self, node_addr: NodeAddr, client_node_id: NodeId) -> Result<()> {
         info!("Connecting to host: {}", node_addr.node_id);
 
         let connection = self.endpoint.connect(node_addr, ALPN).await?;
@@ -1735,49 +1741,33 @@ impl P2PNetwork {
             return Err(anyhow::anyhow!("Invalid handshake response"));
         }
 
-        // Handle message exchange
+        // Handle message exchange using Node ID
         let network_clone = self.clone();
-        let session_id_clone = session_id.clone();
         tokio::spawn(async move {
             network_clone
-                .handle_message_exchange(send, recv, session_id_clone)
+                .handle_message_exchange(send, recv, client_node_id)
                 .await;
         });
 
         Ok(())
     }
 
-    /// Resolve the actual session ID (handles session remapping)
-    pub async fn resolve_session_id(&self, session_id: &str) -> String {
-        let mappings = self.session_mappings.read().await;
-        if let Some(mapped_id) = mappings.get(session_id) {
-            mapped_id.clone()
-        } else {
-            session_id.to_string()
-        }
-    }
-
-    /// Get the remapped session ID for a temporary session ID (if any)
-    pub async fn get_remapped_session_id(&self, temp_session_id: &str) -> Option<String> {
-        let mappings = self.session_mappings.read().await;
-        mappings.get(temp_session_id).cloned()
-    }
-
-    /// Handle message exchange for a connection
+    
+    /// Handle message exchange for a connection - simplified with Node ID
     async fn handle_message_exchange(
         &self,
         send: iroh::endpoint::SendStream,
         recv: iroh::endpoint::RecvStream,
-        session_id: String,
+        remote_node_id: NodeId,
     ) {
         let network_clone = self.clone();
 
         // Create a channel for outgoing messages
         let (outgoing_tx, mut outgoing_rx) = mpsc::unbounded_channel::<NetworkMessage>();
 
-        // Store the outgoing sender for this session
+        // Store the outgoing sender for this Node ID
         let mut connections = self.active_connections.write().await;
-        connections.insert(session_id.clone(), outgoing_tx.clone());
+        connections.insert(remote_node_id, outgoing_tx.clone());
         drop(connections);
 
         // Handle outgoing messages in a separate task
@@ -1844,14 +1834,11 @@ impl P2PNetwork {
                     }
                 }
 
-                // Resolve the actual session ID (in case of remapping)
-                let actual_session_id = network_clone.resolve_session_id(&session_id).await;
-
-                // Parse and handle message
+                // Parse and handle message directly using Node ID
                 match P2PMessage::from_bytes(&data) {
                     Ok(p2p_msg) => {
                         if let Err(e) = network_clone
-                            .handle_network_message(&actual_session_id, p2p_msg.body)
+                            .handle_network_message(&remote_node_id, p2p_msg.body)
                             .await
                         {
                             error!("Error handling network message: {}", e);
@@ -1863,46 +1850,40 @@ impl P2PNetwork {
                 }
             }
 
-            // Clean up connection when done - check both original and remapped session IDs
-            let remapped_id = network_clone.get_remapped_session_id(&session_id).await;
+            // Clean up connection when done - simple Node ID based cleanup
             let mut connections = network_clone.active_connections.write().await;
-
-            // Try to remove by original session ID first
-            let removed = connections.remove(&session_id).is_some();
-
-            // If not found and we have a remapped ID, try removing by that too
-            if !removed {
-                if let Some(mapped_id) = remapped_id {
-                    connections.remove(&mapped_id);
-                    debug!(
-                        "Connection cleaned up for remapped session: {} (original: {})",
-                        mapped_id, session_id
-                    );
-                } else {
-                    debug!("Connection cleaned up for session: {}", session_id);
-                }
-            } else {
-                debug!("Connection cleaned up for session: {}", session_id);
+            if connections.remove(&remote_node_id).is_some() {
+                debug!("Connection cleaned up for node: {}", remote_node_id);
             }
         });
     }
 
   
-    /// Send a message over the P2P connection
-    pub async fn send_message(&self, session_id: &str, message: NetworkMessage) -> Result<()> {
-        // Resolve the actual session ID (in case of remapping)
-        let actual_session_id = self.resolve_session_id(session_id).await;
+    /// Send a message over the P2P connection - simplified with Node ID routing
+    pub async fn send_message(&self, target_node_id: NodeId, message: NetworkMessage) -> Result<()> {
         let connections = self.active_connections.read().await;
-        if let Some(sender) = connections.get(&actual_session_id) {
+        if let Some(sender) = connections.get(&target_node_id) {
             if let Err(_) = sender.send(message) {
                 return Err(anyhow::anyhow!(
-                    "Failed to send message - connection closed"
+                    "Failed to send message to {} - connection closed", target_node_id
                 ));
             }
         } else {
-            return Err(anyhow::anyhow!("No active connection for session"));
+            return Err(anyhow::anyhow!("No active connection for node: {}", target_node_id));
         }
         Ok(())
+    }
+
+    /// Legacy method for backward compatibility - converts session_id to Node ID
+    pub async fn send_message_to_session(&self, session_id: &str, message: NetworkMessage) -> Result<()> {
+        // For backward compatibility, try to find a Node ID for this session
+        let sessions = self.node_sessions.read().await;
+        for (node_id, session) in sessions.iter() {
+            if session.header.session_id == session_id {
+                return self.send_message(*node_id, message).await;
+            }
+        }
+        Err(anyhow::anyhow!("No active session found for session_id: {}", session_id))
     }
 
     pub async fn send_input(
@@ -1913,7 +1894,7 @@ impl P2PNetwork {
     ) -> Result<()> {
         debug!("Sending input data");
         let message = MessageFactory::terminal_input(self.endpoint.node_id(), data);
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_directed_message(
@@ -1928,7 +1909,7 @@ impl P2PNetwork {
             .from_node(self.endpoint.node_id())
             .for_session(session_id.to_string())
             .build(StructuredPayload::Session(SessionMessage::DirectedMessage { to, data }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_resize_event(
@@ -1945,7 +1926,7 @@ impl P2PNetwork {
             height,
             width
         );
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn end_session(
@@ -1960,23 +1941,30 @@ impl P2PNetwork {
             .build(StructuredPayload::Session(SessionMessage::SessionEnd));
 
         // Send end session message
-        if let Err(e) = self.send_message(session_id, message).await {
+        if let Err(e) = self.send_message_to_session(session_id, message).await {
             warn!("Failed to send session end message: {}", e);
         }
 
-        // Clean up session - check both original and remapped session IDs
-        let actual_session_id = self.resolve_session_id(session_id).await;
-        self.sessions.write().await.remove(&actual_session_id);
-        self.active_connections
-            .write()
-            .await
-            .remove(&actual_session_id);
-
-        // Also try to remove by original session ID if different
-        if session_id != actual_session_id {
-            self.sessions.write().await.remove(session_id);
-            self.active_connections.write().await.remove(session_id);
+        // Clean up session - find and remove the session by session_id
+        let mut node_id_to_remove = None;
+        {
+            let sessions = self.node_sessions.read().await;
+            for (node_id, session) in sessions.iter() {
+                if session.header.session_id == session_id {
+                    node_id_to_remove = Some(*node_id);
+                    break;
+                }
+            }
         }
+
+        if let Some(node_id) = node_id_to_remove {
+            self.node_sessions.write().await.remove(&node_id);
+            self.active_connections.write().await.remove(&node_id);
+            info!("Successfully cleaned up session for node: {}", node_id);
+        } else {
+            warn!("No session found to end with session_id: {}", session_id);
+        }
+
         Ok(())
     }
 
@@ -1990,7 +1978,7 @@ impl P2PNetwork {
             .from_node(self.endpoint.node_id())
             .for_session(session_id.to_string())
             .build(StructuredPayload::Session(SessionMessage::ParticipantJoined));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_history_data(
@@ -2009,18 +1997,14 @@ impl P2PNetwork {
                 working_dir,
                 history
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
-    /// Handle network messages (replaces gossip message handling)
-    async fn handle_network_message(&self, session_id: &str, body: NetworkMessage) -> Result<()> {
-        // Use the existing gossip message handler logic but without encryption
-        self.handle_gossip_message(session_id, body).await
-    }
-
-    async fn handle_gossip_message(&self, session_id: &str, body: NetworkMessage) -> Result<()> {
-        let sessions_guard = self.sessions.read().await;
-        if let Some(session) = sessions_guard.get(session_id) {
+    /// Handle network messages (replaces gossip message handling) - simplified with Node ID
+    async fn handle_network_message(&self, sender_node_id: &NodeId, body: NetworkMessage) -> Result<()> {
+        // Find the session for this node
+        let sessions_guard = self.node_sessions.read().await;
+        if let Some(session) = sessions_guard.get(sender_node_id) {
             match body {
                 NetworkMessage::Structured { header, payload } => {
                     // Handle structured messages based on domain
@@ -2034,7 +2018,7 @@ impl P2PNetwork {
                 }
             }
         } else {
-            warn!("Received message for unknown session: {}", session_id);
+            warn!("Received message for unknown node: {}", sender_node_id);
         }
         Ok(())
     }
@@ -2210,7 +2194,7 @@ impl P2PNetwork {
     }
 
     /// Get the endpoint node ID (alias for local_node_id)
-    pub async fn get_node_id(&self) -> NodeId {
+    pub fn get_node_id(&self) -> NodeId {
         self.local_node_id()
     }
 
@@ -2244,7 +2228,12 @@ impl P2PNetwork {
     }
 
     pub async fn get_active_sessions(&self) -> Vec<String> {
-        self.sessions.read().await.keys().cloned().collect()
+        self.node_sessions.read().await.values().map(|s| s.header.session_id.clone()).collect()
+    }
+
+    /// Get active Node IDs (new method for Node ID based management)
+    pub async fn get_active_node_ids(&self) -> Vec<NodeId> {
+        self.node_sessions.read().await.keys().cloned().collect()
     }
 
     /// 为指定会话创建新的事件接收器
@@ -2252,12 +2241,22 @@ impl P2PNetwork {
         &self,
         session_id: &str,
     ) -> Option<broadcast::Receiver<TerminalEvent>> {
-        let sessions = self.sessions.read().await;
-        sessions.get(session_id).map(|s| s.event_sender.subscribe())
+        let sessions = self.node_sessions.read().await;
+        sessions.values().find(|s| s.header.session_id == session_id).map(|s| s.event_sender.subscribe())
+    }
+
+    /// 为指定Node ID创建新的事件接收器 (新方法)
+    pub async fn create_event_receiver_for_node(
+        &self,
+        node_id: NodeId,
+    ) -> Option<broadcast::Receiver<TerminalEvent>> {
+        let sessions = self.node_sessions.read().await;
+        sessions.get(&node_id).map(|s| s.event_sender.subscribe())
     }
 
     pub async fn is_session_host(&self, session_id: &str) -> bool {
-        if let Some(session) = self.sessions.read().await.get(session_id) {
+        let sessions = self.node_sessions.read().await;
+        if let Some(session) = sessions.values().find(|s| s.header.session_id == session_id) {
             session.is_host
         } else {
             false
@@ -2267,7 +2266,7 @@ impl P2PNetwork {
     pub async fn shutdown(&self) -> Result<()> {
         // Close all active connections
         self.active_connections.write().await.clear();
-        self.sessions.write().await.clear();
+        self.node_sessions.write().await.clear();
         Ok(())
     }
 
@@ -2312,7 +2311,7 @@ impl P2PNetwork {
             working_dir,
             size,
         );
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_terminal_stop(
@@ -2327,7 +2326,7 @@ impl P2PNetwork {
             session_id.to_string(),
             terminal_id,
         );
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_terminal_list_request(
@@ -2340,7 +2339,7 @@ impl P2PNetwork {
             self.endpoint.node_id(),
             session_id.to_string(),
         );
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_terminal_list_response(
@@ -2355,7 +2354,7 @@ impl P2PNetwork {
             session_id.to_string(),
             terminals,
         );
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     // === Additional terminal management methods ===
@@ -2375,7 +2374,7 @@ impl P2PNetwork {
                 terminal_id,
                 data,
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_terminal_resize(
@@ -2395,7 +2394,7 @@ impl P2PNetwork {
                 rows,
                 cols,
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_terminal_status_update(
@@ -2416,7 +2415,7 @@ impl P2PNetwork {
                 terminal_id,
                 status,
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_terminal_directory_change(
@@ -2437,7 +2436,7 @@ impl P2PNetwork {
                 terminal_id,
                 new_dir,
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     // === WebShare Management Methods ===
@@ -2461,7 +2460,7 @@ impl P2PNetwork {
             service_name,
             terminal_id,
         );
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_webshare_stop(
@@ -2480,7 +2479,7 @@ impl P2PNetwork {
                 service_id,
                 reason: Some("WebShare stopped by request".to_string()),
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_webshare_list_request(
@@ -2494,7 +2493,7 @@ impl P2PNetwork {
             .for_session(session_id.to_string())
             .with_domain(MessageDomain::PortForward)
             .build(StructuredPayload::PortForward(PortForwardMessage::ListRequest));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_webshare_list_response(
@@ -2529,7 +2528,7 @@ impl P2PNetwork {
             .for_session(session_id.to_string())
             .with_domain(MessageDomain::PortForward)
             .build(StructuredPayload::PortForward(PortForwardMessage::ListResponse { services }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_stats_request(&self, session_id: &str, _sender: &GossipSender) -> Result<()> {
@@ -2539,7 +2538,7 @@ impl P2PNetwork {
             .for_session(session_id.to_string())
             .with_domain(MessageDomain::System)
             .build(StructuredPayload::System(SystemMessage::StatsRequest));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_stats_response(
@@ -2573,7 +2572,7 @@ impl P2PNetwork {
                     .unwrap_or_default()
                     .as_secs(),
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     // === TCP Port Forwarding Methods ===
@@ -2598,7 +2597,7 @@ impl P2PNetwork {
             PortForwardType::Tcp,
             service_name,
         );
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_tcp_forward_connected(
@@ -2620,7 +2619,7 @@ impl P2PNetwork {
                 assigned_remote_port: remote_port,
                 access_url: None,
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_tcp_forward_data(
@@ -2643,7 +2642,7 @@ impl P2PNetwork {
                 service_id,
                 data,
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_tcp_forward_stopped(&self, session_id: &str, remote_port: u16) -> Result<()> {
@@ -2660,7 +2659,7 @@ impl P2PNetwork {
                 service_id,
                 reason: Some("TCP forward stopped".to_string()),
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     // === File Transfer Methods ===
@@ -2683,7 +2682,7 @@ impl P2PNetwork {
             file_name.clone(),
             file_size,
         );
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_file_transfer_progress(
@@ -2708,7 +2707,7 @@ impl P2PNetwork {
                 bytes_transferred,
                 total_bytes,
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_file_transfer_complete(
@@ -2732,7 +2731,7 @@ impl P2PNetwork {
                 file_path,
                 file_hash: None,
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     pub async fn send_file_transfer_error(
@@ -2756,7 +2755,7 @@ impl P2PNetwork {
                 error_message,
                 error_code: None,
             }));
-        self.send_message(session_id, message).await
+        self.send_message_to_session(session_id, message).await
     }
 
     /// Get a receiver for all network messages (for CLI message handlers)

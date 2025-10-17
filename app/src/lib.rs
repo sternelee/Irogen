@@ -276,7 +276,7 @@ async fn initialize_network_with_relay(
         .await
         .map_err(|e| format!("Failed to initialize P2P network: {}", e))?;
 
-    let node_id = network.get_node_id().await.to_string();
+    let node_id = network.get_node_id().to_string();
 
     let mut network_guard = state.network.write().await;
     *network_guard = Some(network);
@@ -725,7 +725,7 @@ async fn get_node_info(state: State<'_, AppState>) -> Result<String, String> {
             None => return Err("Network not initialized".to_string()),
         }
     };
-    Ok(network.get_node_id().await.to_string())
+    Ok(network.get_node_id().to_string())
 }
 
 #[tauri::command]
@@ -797,7 +797,7 @@ async fn create_terminal(
         }));
 
     network
-        .send_message(&request.session_id, terminal_message)
+        .send_message_to_session(&request.session_id, terminal_message)
         .await
         .map_err(|e| format!("Failed to create terminal: {}", e))?;
 
@@ -835,7 +835,7 @@ async fn stop_terminal(
         }));
 
     network
-        .send_message(&request.session_id, terminal_message)
+        .send_message_to_session(&request.session_id, terminal_message)
         .await
         .map_err(|e| format!("Failed to stop terminal: {}", e))?;
 
@@ -868,7 +868,7 @@ async fn list_terminals(session_id: String, state: State<'_, AppState>) -> Resul
         .build(StructuredPayload::TerminalManagement(TerminalManagementMessage::ListRequest));
 
     network
-        .send_message(&session_id, terminal_message)
+        .send_message_to_session(&session_id, terminal_message)
         .await
         .map_err(|e| format!("Failed to list terminals: {}", e))?;
 
@@ -973,7 +973,7 @@ async fn create_webshare(
     );
 
     network
-        .send_message(&request.session_id, port_forward_message)
+        .send_message_to_session(&request.session_id, port_forward_message)
         .await
         .map_err(|e| format!("Failed to create webshare: {}", e))?;
 
@@ -1013,7 +1013,7 @@ async fn stop_webshare(
         }));
 
     network
-        .send_message(&request.session_id, port_forward_message)
+        .send_message_to_session(&request.session_id, port_forward_message)
         .await
         .map_err(|e| format!("Failed to stop webshare: {}", e))?;
 
@@ -1046,7 +1046,7 @@ async fn list_webshares(session_id: String, state: State<'_, AppState>) -> Resul
         .build(StructuredPayload::PortForward(PortForwardMessage::ListRequest));
 
     network
-        .send_message(&session_id, port_forward_message)
+        .send_message_to_session(&session_id, port_forward_message)
         .await
         .map_err(|e| format!("Failed to list webshares: {}", e))?;
 
@@ -1087,7 +1087,7 @@ async fn get_system_stats(request: StatsRequest, state: State<'_, AppState>) -> 
         .build(StructuredPayload::System(SystemMessage::StatsRequest));
 
     network
-        .send_message(&request.session_id, system_message)
+        .send_message_to_session(&request.session_id, system_message)
         .await
         .map_err(|e| format!("Failed to get system stats: {}", e))?;
 
@@ -1142,7 +1142,7 @@ async fn connect_to_terminal(
         }));
 
     network
-        .send_message(&session_id, terminal_message)
+        .send_message_to_session(&session_id, terminal_message)
         .await
         .map_err(|e| format!("Failed to connect to terminal: {}", e))?;
 

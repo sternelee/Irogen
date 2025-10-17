@@ -125,7 +125,7 @@ impl CliApp {
         println!("✅ Session ticket generated successfully");
         println!();
         println!("📊 Host Status:");
-        println!("   🔗 Node ID: {}", &self.network.get_node_id().await.to_string()[..16]);
+        println!("   🔗 Node ID: {}", &self.network.get_node_id().to_string()[..16]);
         println!("   📡 Session ID: {}", header.session_id);
         println!("   🛠️  Local terminal management capabilities enabled");
         println!();
@@ -218,10 +218,7 @@ impl CliApp {
 
                 // 发送终端输出
                 if let Err(e) = network
-                    .send_message(
-                        &session_id,
-                        terminal_message,
-                    )
+                    .send_message_to_session(&session_id, terminal_message)
                     .await
                 {
                     error!("Failed to send terminal output to P2P network: {}", e);
@@ -389,10 +386,7 @@ impl CliApp {
 
                                     // 发送终端列表响应
                                     if let Err(e) = network_for_events
-                                        .send_message(
-                                            &session_id_for_events,
-                                            terminal_list_message,
-                                        )
+                                        .send_message_to_session(&session_id_for_events, terminal_list_message)
                                         .await
                                     {
                                         error!("Failed to send terminal list response: {}", e);
