@@ -304,9 +304,9 @@ impl CliApp {
             if let Some(mut event_receiver) = session {
                 while let Ok(event) = event_receiver.recv().await {
                     match event.event_type {
-                        riterm_shared::p2p::EventType::Output => {
+                        riterm_shared::p2p::EventType::Output { data } => {
                             // 检查是否是终端创建请求
-                            if event.data.contains("[Terminal Create Request]") {
+                            if data.contains("[Terminal Create Request]") {
                                 info!(
                                     "Detected terminal create request in event, creating terminal..."
                                 );

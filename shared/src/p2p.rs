@@ -352,9 +352,9 @@ impl Clone for P2PNetwork {
 pub enum EventType {
     // === Virtual Terminal Events ===
     /// Terminal output (for virtual terminals)
-    Output,
+    Output { data: String },
     /// User input (for virtual terminals)
-    Input,
+    Input { data: String },
     /// Terminal resize (for virtual terminals)
     Resize { width: u16, height: u16 },
     /// Session started
@@ -362,11 +362,11 @@ pub enum EventType {
     /// Session ended
     End,
     /// History data
-    HistoryData,
+    HistoryData { data: String },
 
     // === Real Terminal Management Events ===
     /// Terminal list updated
-    TerminalList(Vec<TerminalInfo>),
+    TerminalList { terminals: Vec<TerminalInfo> },
     /// Terminal output received
     TerminalOutput { terminal_id: String, data: String },
     /// Terminal input sent
@@ -387,7 +387,7 @@ pub enum EventType {
         terminal_id: Option<String>,
     },
     /// WebShare list updated
-    WebShareList(Vec<WebShareInfo>),
+    WebShareList { webshares: Vec<WebShareInfo> },
 
     // === System Events ===
     /// System statistics
@@ -395,16 +395,39 @@ pub enum EventType {
         terminal_stats: TerminalStats,
         webshare_stats: WebShareStats,
     },
+
+    // === File Transfer Events ===
+    /// File transfer started
+    FileTransferStart {
+        terminal_id: String,
+        file_name: String,
+        file_size: u64,
+    },
+    /// File transfer progress update
+    FileTransferProgress {
+        terminal_id: String,
+        file_name: String,
+        progress: u8,
+    },
+    /// File transfer completed successfully
+    FileTransferComplete {
+        terminal_id: String,
+        file_name: String,
+        file_path: String,
+    },
+    /// File transfer failed with error
+    FileTransferError {
+        terminal_id: String,
+        file_name: String,
+        error: String,
+    },
 }
 
-/// Frontend event with timestamp, event type, and optional data
+/// Frontend event with timestamp and event type
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalEvent {
     pub timestamp: u64,
     pub event_type: EventType,
-    /// Data field used for simple events (Output, Input, HistoryData)
-    /// For structured events, this is typically empty
-    pub data: String,
 }
 
 // === Type Aliases for Backward Compatibility ===
@@ -1049,8 +1072,7 @@ impl P2PNetwork {
                 } => {
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data,
+                        event_type: EventType::Output { data },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for output event, skipping");
@@ -1064,8 +1086,7 @@ impl P2PNetwork {
                     debug!("Received input event from {}: {:?}", from.fmt_short(), data);
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Input,
-                        data: data.clone(),
+                        event_type: EventType::Input { data: data.clone() },
                     };
 
                     if session.is_host {
@@ -1088,7 +1109,6 @@ impl P2PNetwork {
                     let event = TerminalEvent {
                         timestamp,
                         event_type: EventType::Resize { width, height },
-                        data: format!("{}x{}", width, height),
                     };
                     if let Err(_e) = session.event_sender.send(event) {
                         warn!("Failed to send resize event to subscribers");
@@ -1098,7 +1118,6 @@ impl P2PNetwork {
                     let event = TerminalEvent {
                         timestamp,
                         event_type: EventType::End,
-                        data: "Session ended".to_string(),
                     };
                     if let Err(_e) = session.event_sender.send(event) {
                         warn!("Failed to send end event to subscribers");
@@ -1114,8 +1133,9 @@ impl P2PNetwork {
                     if to == my_node_id {
                         let event = TerminalEvent {
                             timestamp,
-                            event_type: EventType::Output,
-                            data: format!("[DM from {}] {}", from.fmt_short(), data),
+                            event_type: EventType::Output {
+                                data: format!("[DM from {}] {}", from.fmt_short(), data),
+                            },
                         };
                         if session.event_sender.send(event).is_err() {
                             warn!("No active receivers for directed message, skipping");
@@ -1177,8 +1197,9 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!("Participant {} joined the session", from.fmt_short()),
+                        event_type: EventType::Output {
+                            data: format!("Participant {} joined the session", from.fmt_short()),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for participant joined event, skipping");
@@ -1250,11 +1271,12 @@ impl P2PNetwork {
                     // Send session info event
                     let info_event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!(
-                            "=== Session History ===\nShell: {}\nWorking Directory: {}\n",
-                            shell_type, working_dir
-                        ),
+                        event_type: EventType::Output {
+                            data: format!(
+                                "=== Session History ===\nShell: {}\nWorking Directory: {}\n",
+                                shell_type, working_dir
+                            ),
+                        },
                     };
                     if session.event_sender.send(info_event).is_err() {
                         warn!("No active receivers for history info event, skipping");
@@ -1264,8 +1286,7 @@ impl P2PNetwork {
                     for (i, line) in history.iter().enumerate() {
                         let history_event = TerminalEvent {
                             timestamp: timestamp + (i as u64), // Slight time offset for ordering
-                            event_type: EventType::HistoryData,
-                            data: line.clone(),
+                            event_type: EventType::HistoryData { data: line.clone() },
                         };
                         if session.event_sender.send(history_event).is_err() {
                             warn!("No active receivers for history data event, skipping");
@@ -1275,8 +1296,9 @@ impl P2PNetwork {
                     // Send separator
                     let separator_event = TerminalEvent {
                         timestamp: timestamp + (history.len() as u64) + 1,
-                        event_type: EventType::Output,
-                        data: "=== End of History ===\n".to_string(),
+                        event_type: EventType::Output {
+                            data: "=== End of History ===\n".to_string(),
+                        },
                     };
                     if session.event_sender.send(separator_event).is_err() {
                         warn!("No active receivers for history separator event, skipping");
@@ -1295,11 +1317,12 @@ impl P2PNetwork {
                     info!("Received terminal create request from {}", from.fmt_short());
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!(
-                            "[Terminal Create Request] Name: {:?}, Shell: {:?}, Dir: {:?}, Size: {:?}",
-                            name, shell_path, working_dir, size
-                        ),
+                        event_type: EventType::Output {
+                            data: format!(
+                                "[Terminal Create Request] Name: {:?}, Shell: {:?}, Dir: {:?}, Size: {:?}",
+                                name, shell_path, working_dir, size
+                            ),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for terminal create event, skipping");
@@ -1318,8 +1341,9 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!("[Terminal Status Update] {}: {:?}", terminal_id, status),
+                        event_type: EventType::Output {
+                            data: format!("[Terminal Status Update] {}: {:?}", terminal_id, status),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for terminal status update event, skipping");
@@ -1339,7 +1363,6 @@ impl P2PNetwork {
                     let event = TerminalEvent {
                         timestamp,
                         event_type: EventType::TerminalOutput { terminal_id, data },
-                        data: String::new(),
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for terminal output event, skipping");
@@ -1464,7 +1487,6 @@ impl P2PNetwork {
                     let event = TerminalEvent {
                         timestamp,
                         event_type: EventType::TerminalInput { terminal_id, data },
-                        data: String::new(),
                     };
                     // 重新获取会话来发送事件
                     let network_clone = self.clone();
@@ -1494,7 +1516,6 @@ impl P2PNetwork {
                             rows,
                             cols,
                         },
-                        data: String::new(),
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for terminal resize event, skipping");
@@ -1513,8 +1534,9 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!("[Terminal Directory Change: {}] {}", terminal_id, new_dir),
+                        event_type: EventType::Output {
+                            data: format!("[Terminal Directory Change: {}] {}", terminal_id, new_dir),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for terminal directory change event, skipping");
@@ -1532,8 +1554,9 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!("[Terminal Stop Request] {}", terminal_id),
+                        event_type: EventType::Output {
+                            data: format!("[Terminal Stop Request] {}", terminal_id),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for terminal stop event, skipping");
@@ -1543,8 +1566,9 @@ impl P2PNetwork {
                     info!("Received terminal list request from {}", from.fmt_short());
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: "[Terminal List Request]".to_string(),
+                        event_type: EventType::Output {
+                            data: "[Terminal List Request]".to_string(),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for terminal list request event, skipping");
@@ -1562,8 +1586,7 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::TerminalList(terminals),
-                        data: String::new(),
+                        event_type: EventType::TerminalList { terminals },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for terminal list response event, skipping");
@@ -1592,7 +1615,6 @@ impl P2PNetwork {
                             service_name,
                             terminal_id,
                         },
-                        data: String::new(),
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for webshare create event, skipping");
@@ -1611,8 +1633,9 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!("[WebShare Status Update: {}] {:?}", public_port, status),
+                        event_type: EventType::Output {
+                            data: format!("[WebShare Status Update: {}] {:?}", public_port, status),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for webshare status update event, skipping");
@@ -1630,8 +1653,9 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!("[WebShare Stop Request] {}", public_port),
+                        event_type: EventType::Output {
+                            data: format!("[WebShare Stop Request] {}", public_port),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for webshare stop event, skipping");
@@ -1641,8 +1665,9 @@ impl P2PNetwork {
                     info!("Received webshare list request from {}", from.fmt_short());
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: "[WebShare List Request]".to_string(),
+                        event_type: EventType::Output {
+                            data: "[WebShare List Request]".to_string(),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for webshare list request event, skipping");
@@ -1660,8 +1685,7 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::WebShareList(webshares),
-                        data: String::new(),
+                        event_type: EventType::WebShareList { webshares },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for webshare list response event, skipping");
@@ -1671,8 +1695,9 @@ impl P2PNetwork {
                     info!("Received stats request from {}", from.fmt_short());
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: "[Stats Request]".to_string(),
+                        event_type: EventType::Output {
+                            data: "[Stats Request]".to_string(),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for stats request event, skipping");
@@ -1696,7 +1721,6 @@ impl P2PNetwork {
                             terminal_stats,
                             webshare_stats,
                         },
-                        data: String::new(),
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for stats response event, skipping");
@@ -1719,11 +1743,12 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!(
-                            "[TCP Forward Create Request] {} -> {} ({})",
-                            local_port, remote_port, service_name
-                        ),
+                        event_type: EventType::Output {
+                            data: format!(
+                                "[TCP Forward Create Request] {} -> {} ({})",
+                                local_port, remote_port, service_name
+                            ),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for TCP forward create event, skipping");
@@ -1742,8 +1767,9 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!("[TCP Forward Connected] Port {}", remote_port),
+                        event_type: EventType::Output {
+                            data: format!("[TCP Forward Connected] Port {}", remote_port),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for TCP forward connected event, skipping");
@@ -1766,8 +1792,9 @@ impl P2PNetwork {
                     let data_str = base64::engine::general_purpose::STANDARD.encode(&data);
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!("[TCP Forward Data:{}] {}", remote_port, data_str),
+                        event_type: EventType::Output {
+                            data: format!("[TCP Forward Data:{}] {}", remote_port, data_str),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for TCP forward data event, skipping");
@@ -1786,8 +1813,9 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!("[TCP Forward Stopped] Port {}", remote_port),
+                        event_type: EventType::Output {
+                            data: format!("[TCP Forward Stopped] Port {}", remote_port),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for TCP forward stopped event, skipping");
@@ -1811,11 +1839,11 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!(
-                            "[File Transfer Start] {} -> {} ({} bytes)",
-                            file_name, terminal_id, file_size
-                        ),
+                        event_type: EventType::FileTransferStart {
+                            terminal_id: terminal_id.clone(),
+                            file_name: file_name.clone(),
+                            file_size,
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for file transfer start event, skipping");
@@ -1844,11 +1872,11 @@ impl P2PNetwork {
                     };
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!(
-                            "[File Transfer Progress] {} -> {} ({}%)",
-                            file_name, terminal_id, progress
-                        ),
+                        event_type: EventType::FileTransferProgress {
+                            terminal_id: terminal_id.clone(),
+                            file_name: file_name.clone(),
+                            progress: progress as u8,
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for file transfer progress event, skipping");
@@ -1870,11 +1898,11 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!(
-                            "[File Transfer Complete] {} saved to {} in terminal {}",
-                            file_name, file_path, terminal_id
-                        ),
+                        event_type: EventType::FileTransferComplete {
+                            terminal_id: terminal_id.clone(),
+                            file_name: file_name.clone(),
+                            file_path: file_path.clone(),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for file transfer complete event, skipping");
@@ -1896,11 +1924,11 @@ impl P2PNetwork {
                     );
                     let event = TerminalEvent {
                         timestamp,
-                        event_type: EventType::Output,
-                        data: format!(
-                            "[File Transfer Error] {} in terminal {}: {}",
-                            file_name, terminal_id, error_message
-                        ),
+                        event_type: EventType::FileTransferError {
+                            terminal_id: terminal_id.clone(),
+                            file_name: file_name.clone(),
+                            error: error_message.clone(),
+                        },
                     };
                     if session.event_sender.send(event).is_err() {
                         warn!("No active receivers for file transfer error event, skipping");

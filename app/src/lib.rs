@@ -28,244 +28,148 @@ fn is_valid_session_ticket(ticket: &str) -> bool {
     ticket.parse::<NodeTicket>().is_ok()
 }
 
-// Parse structured events from terminal data
-fn parse_structured_event(data: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    // Handle session info
-    if data.starts_with("[SessionInfo:") {
-        if let Some(start) = data.find('[') {
-            if let Some(end) = data.find(']') {
-                let info_part = &data[start + 1..end];
-                let parts: Vec<&str> = info_part.split(':').collect();
+// Parse structured events from EventType enum
+fn parse_structured_event(event_type: &EventType) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    match event_type {
+        // Terminal management events
+        EventType::TerminalList { terminals } => {
+            Ok(serde_json::json!({
+                "type": "terminal_list_response",
+                "data": terminals
+            }))
+        }
+        EventType::TerminalOutput { terminal_id, data } => {
+            Ok(serde_json::json!({
+                "type": "terminal_output",
+                "terminal_id": terminal_id,
+                "data": data
+            }))
+        }
+        EventType::TerminalInput { terminal_id, data } => {
+            Ok(serde_json::json!({
+                "type": "terminal_input",
+                "terminal_id": terminal_id,
+                "data": data
+            }))
+        }
+        EventType::TerminalResize { terminal_id, rows, cols } => {
+            Ok(serde_json::json!({
+                "type": "terminal_resize",
+                "terminal_id": terminal_id,
+                "rows": rows,
+                "cols": cols
+            }))
+        }
+
+        // WebShare management events
+        EventType::WebShareCreate { local_port, public_port, service_name, terminal_id } => {
+            Ok(serde_json::json!({
+                "type": "webshare_create",
+                "local_port": local_port,
+                "public_port": public_port,
+                "service_name": service_name,
+                "terminal_id": terminal_id
+            }))
+        }
+        EventType::WebShareList { webshares } => {
+            Ok(serde_json::json!({
+                "type": "webshare_list_response",
+                "data": webshares
+            }))
+        }
+
+        // System events
+        EventType::Stats { terminal_stats, webshare_stats } => {
+            Ok(serde_json::json!({
+                "type": "stats_response",
+                "terminal_stats": terminal_stats,
+                "webshare_stats": webshare_stats
+            }))
+        }
+
+        // File transfer events
+        EventType::FileTransferStart { terminal_id, file_name, file_size } => {
+            Ok(serde_json::json!({
+                "type": "file_transfer_start",
+                "terminal_id": terminal_id,
+                "file_name": file_name,
+                "file_size": file_size
+            }))
+        }
+        EventType::FileTransferProgress { terminal_id, file_name, progress } => {
+            Ok(serde_json::json!({
+                "type": "file_transfer_progress",
+                "terminal_id": terminal_id,
+                "file_name": file_name,
+                "progress": progress
+            }))
+        }
+        EventType::FileTransferComplete { terminal_id, file_name, file_path } => {
+            Ok(serde_json::json!({
+                "type": "file_transfer_complete",
+                "terminal_id": terminal_id,
+                "file_name": file_name,
+                "file_path": file_path
+            }))
+        }
+        EventType::FileTransferError { terminal_id, file_name, error } => {
+            Ok(serde_json::json!({
+                "type": "file_transfer_error",
+                "terminal_id": terminal_id,
+                "file_name": file_name,
+                "error": error
+            }))
+        }
+
+        // Handle Output events that might contain structured data
+        EventType::Output { data } => {
+            // Parse TCP forward messages from Output events
+            if data.starts_with("[TCP Forward Connected]") {
+                if let Some(port_str) = data.split(' ').last() {
+                    return Ok(serde_json::json!({
+                        "type": "tcp_forward_connected",
+                        "port": port_str.trim().parse::<u16>().unwrap_or(0)
+                    }));
+                }
+            }
+
+            if data.starts_with("[TCP Forward Data:") {
+                let parts: Vec<&str> = data.splitn(2, ']').collect();
                 if parts.len() >= 2 {
-                    let session_id = parts[1].trim().to_string();
+                    let data_part = parts[1].trim();
                     return Ok(serde_json::json!({
-                        "type": "session_info",
-                        "data": {
-                            "session_id": session_id
-                        }
+                        "type": "tcp_forward_data",
+                        "data": data_part
                     }));
                 }
             }
-        }
-    }
 
-    // Handle terminal list response
-    if data.starts_with("[Terminal List Response:") {
-        if let Some(start) = data.find('[') {
-            if let Some(json_part) = data.get(start..) {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_part) {
+            if data.starts_with("[TCP Forward Stopped]") {
+                if let Some(port_str) = data.split(' ').last() {
                     return Ok(serde_json::json!({
-                        "type": "terminal_list_response",
-                        "data": parsed
+                        "type": "tcp_forward_stopped",
+                        "port": port_str.trim().parse::<u16>().unwrap_or(0)
                     }));
                 }
             }
+
+            // Return generic output event
+            Ok(serde_json::json!({
+                "type": "output",
+                "data": data
+            }))
+        }
+
+        // Input events are handled internally, no need to expose to frontend
+        EventType::Input { .. } => {
+            Err("Input event not exposed to frontend".into())
+        }
+
+        // Other events that don't need special handling
+        _ => {
+            Err("No structured event found".into())
         }
     }
-
-    // Handle webshare list response
-    if data.starts_with("[WebShare List Response:") {
-        if let Some(start) = data.find('[') {
-            if let Some(json_part) = data.get(start..) {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_part) {
-                    return Ok(serde_json::json!({
-                        "type": "webshare_list_response",
-                        "data": parsed
-                    }));
-                }
-            }
-        }
-    }
-
-    // Handle terminal status updates
-    if data.starts_with("[Terminal Status Update:") {
-        if let Some(start) = data.find('[') {
-            if let Some(end) = data.find(']') {
-                let status_part = &data[start + 1..end];
-                let parts: Vec<&str> = status_part.split(": ").collect();
-                if parts.len() >= 2 {
-                    return Ok(serde_json::json!({
-                        "type": "terminal_status_update",
-                        "terminal_id": parts.get(0).unwrap_or(&"unknown"),
-                        "status": parts.get(1).unwrap_or(&"unknown")
-                    }));
-                }
-            }
-        }
-    }
-
-    // Handle terminal output
-    if data.starts_with("[Terminal Output:") {
-        if let Some(start) = data.find('[') {
-            if let Some(end) = data.find(']') {
-                let output_part = &data[start + 1..end];
-                let parts: Vec<&str> = output_part.split("] ").collect();
-                if parts.len() >= 2 {
-                    return Ok(serde_json::json!({
-                        "type": "terminal_output",
-                        "terminal_id": parts.get(0).unwrap_or(&"unknown"),
-                        "data": parts.get(1).unwrap_or(&"")
-                    }));
-                }
-            }
-        }
-    }
-
-    // Handle terminal input
-    if data.starts_with("[Terminal Input:") {
-        if let Some(start) = data.find('[') {
-            if let Some(end) = data.find(']') {
-                let input_part = &data[start + 1..end];
-                let parts: Vec<&str> = input_part.split("] ").collect();
-                if parts.len() >= 2 {
-                    return Ok(serde_json::json!({
-                        "type": "terminal_input",
-                        "terminal_id": parts.get(0).unwrap_or(&"unknown"),
-                        "data": parts.get(1).unwrap_or(&"")
-                    }));
-                }
-            }
-        }
-    }
-
-    // Handle terminal resize
-    if data.starts_with("[Terminal Resize:") {
-        if let Some(start) = data.find('[') {
-            if let Some(end) = data.find(']') {
-                let resize_part = &data[start + 1..end];
-                let parts: Vec<&str> = resize_part.split("] ").collect();
-                if parts.len() >= 2 {
-                    return Ok(serde_json::json!({
-                        "type": "terminal_resize",
-                        "terminal_id": parts.get(0).unwrap_or(&"unknown"),
-                        "size": parts.get(1).unwrap_or(&"")
-                    }));
-                }
-            }
-        }
-    }
-
-    // Handle WebShare status updates
-    if data.starts_with("[WebShare Status Update:") {
-        if let Some(start) = data.find('[') {
-            if let Some(end) = data.find(']') {
-                let status_part = &data[start + 1..end];
-                let parts: Vec<&str> = status_part.split(": ").collect();
-                if parts.len() >= 2 {
-                    return Ok(serde_json::json!({
-                        "type": "webshare_status_update",
-                        "public_port": parts.get(0).unwrap_or(&"0"),
-                        "status": parts.get(1).unwrap_or(&"unknown")
-                    }));
-                }
-            }
-        }
-    }
-
-    // Handle stats response
-    if data.starts_with("[Stats Response:") {
-        if let Some(start) = data.find('[') {
-            if let Some(end) = data.find(']') {
-                let stats_part = &data[start + 1..end];
-                return Ok(serde_json::json!({
-                    "type": "stats_response",
-                    "node_info": stats_part
-                }));
-            }
-        }
-    }
-
-    // Handle TCP Forward messages
-    if data.starts_with("[TCP Forward Create Request]") {
-        let parts: Vec<&str> = data.splitn(2, ']').collect();
-        if parts.len() >= 2 {
-            let config_part = parts[1].trim();
-            return Ok(serde_json::json!({
-                "type": "tcp_forward_create",
-                "config": config_part
-            }));
-        }
-    }
-
-    if data.starts_with("[TCP Forward Connected]") {
-        if let Some(port_str) = data.split(' ').last() {
-            return Ok(serde_json::json!({
-                "type": "tcp_forward_connected",
-                "port": port_str.trim().parse::<u16>().unwrap_or(0)
-            }));
-        }
-    }
-
-    if data.starts_with("[TCP Forward Data:") {
-        let parts: Vec<&str> = data.splitn(2, ']').collect();
-        if parts.len() >= 2 {
-            let data_part = parts[1].trim();
-            return Ok(serde_json::json!({
-                "type": "tcp_forward_data",
-                "data": data_part
-            }));
-        }
-    }
-
-    if data.starts_with("[TCP Forward Stopped]") {
-        if let Some(port_str) = data.split(' ').last() {
-            return Ok(serde_json::json!({
-                "type": "tcp_forward_stopped",
-                "port": port_str.trim().parse::<u16>().unwrap_or(0)
-            }));
-        }
-    }
-
-    // Handle file transfer messages
-    if data.starts_with("[File Transfer Start]") {
-        if let Some(start) = data.find('[') {
-            if let Some(end) = data.find(']') {
-                let info_part = &data[start + 1..end];
-                return Ok(serde_json::json!({
-                    "type": "file_transfer_start",
-                    "info": info_part
-                }));
-            }
-        }
-    }
-
-    if data.starts_with("[File Transfer Progress]") {
-        if let Some(start) = data.find('[') {
-            if let Some(end) = data.find(']') {
-                let info_part = &data[start + 1..end];
-                return Ok(serde_json::json!({
-                    "type": "file_transfer_progress",
-                    "info": info_part
-                }));
-            }
-        }
-    }
-
-    if data.starts_with("[File Transfer Complete]") {
-        if let Some(start) = data.find('[') {
-            if let Some(end) = data.find(']') {
-                let info_part = &data[start + 1..end];
-                return Ok(serde_json::json!({
-                    "type": "file_transfer_complete",
-                    "info": info_part
-                }));
-            }
-        }
-    }
-
-    if data.starts_with("[File Transfer Error]") {
-        if let Some(start) = data.find('[') {
-            if let Some(end) = data.find(']') {
-                let info_part = &data[start + 1..end];
-                return Ok(serde_json::json!({
-                    "type": "file_transfer_error",
-                    "info": info_part
-                }));
-            }
-        }
-    }
-
-    Err("No structured event found".into())
 }
 
 #[derive(Default)]
@@ -515,7 +419,7 @@ async fn connect_to_peer(
                             }
 
                             // Parse structured events for terminal and WebShare management
-                            if let Ok(structured_event) = parse_structured_event(&event.data) {
+                            if let Ok(structured_event) = parse_structured_event(&event.event_type) {
                                 // Handle TCP forwarding events - emit to frontend for processing
                                 if let Some(event_type) = structured_event.get("type").and_then(|v| v.as_str()) {
                                     match event_type {
@@ -581,9 +485,9 @@ async fn connect_to_peer(
                                 *activity = Instant::now();
                             }
 
-                            if let EventType::Input = event.event_type {
+                            if let EventType::Input { data } = &event.event_type {
                                 if let Err(e) = network_clone
-                                    .send_input(&session_id_clone_input, &sender_clone, event.data)
+                                    .send_input(&session_id_clone_input, &sender_clone, data.clone())
                                     .await
                                 {
                                     #[cfg(any(debug_assertions, not(feature = "release-logging")))]
@@ -662,8 +566,7 @@ async fn send_terminal_input(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
-        event_type: EventType::Input,
-        data: input.clone(), // Clone for logging
+        event_type: EventType::Input { data: input.clone() },
     };
 
     #[cfg(any(debug_assertions, not(feature = "release-logging")))]
@@ -734,8 +637,7 @@ async fn execute_remote_command(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
-        event_type: EventType::Input,
-        data: format!("{}\n", command),
+        event_type: EventType::Input { data: format!("{}\n", command) },
     };
 
     session
