@@ -220,8 +220,11 @@ impl CliApp {
                 let connected_nodes = {
                     let all_nodes = network.get_active_node_ids().await;
                     let own_node_id = network.get_node_id();
+                    info!("🔍 All nodes: {:?}, Own node: {}", all_nodes, own_node_id);
                     // Filter out our own node ID, keep only connected clients
-                    all_nodes.into_iter().filter(|&node_id| node_id != own_node_id).collect::<Vec<_>>()
+                    let filtered = all_nodes.into_iter().filter(|&node_id| node_id != own_node_id).collect::<Vec<_>>();
+                    info!("🔍 Filtered connected nodes: {:?}", filtered);
+                    filtered
                 };
 
                 // Only send if there are connected clients

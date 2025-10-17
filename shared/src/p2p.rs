@@ -1,7 +1,9 @@
 use anyhow::Result;
 use iroh::{Endpoint, NodeAddr, NodeId};
-use iroh_base::ticket::NodeTicket;
 use iroh_gossip::api::GossipSender; // Keep for backward compatibility
+
+// Re-export NodeTicket for external use
+pub use iroh_base::ticket::NodeTicket;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -1610,29 +1612,66 @@ impl P2PNetwork {
             .await
             .insert(client_node_id, session);
 
-        // Store the CLI's Node ID in active_connections for outgoing messages
-        // This is the node we want to send messages to
-        let connection_sender_clone = connection_sender.clone();
-        self.active_connections
-            .write()
-            .await
-            .insert(host_node_id, connection_sender_clone);
-
-        // Connect to the host - no need to pass session_id anymore
-        self.connect_to_host(ticket.node_addr().clone(), client_node_id)
-            .await?;
-
-        // Send simple connection notification - no complex session mapping needed
+    
+        // Connect to the host using the correct iroh pattern (like dumbpipe)
         info!("Establishing connection with host: {}", host_node_id);
-        let message = MessageBuilder::new()
-            .from_node(client_node_id)
-            .with_domain(MessageDomain::Session)
-            .build(StructuredPayload::Session(SessionMessage::ParticipantJoined));
+        match self.endpoint.connect(ticket.node_addr().clone(), ALPN).await {
+            Ok(connection) => {
+                info!("Connected to host successfully");
 
-        if let Err(e) = connection_sender.send(message) {
-            error!("Failed to send participant joined message: {}", e);
-        } else {
-            info!("✅ Connection request sent successfully");
+                // Open a bidirectional stream
+                match connection.open_bi().await {
+                    Ok((mut send, mut recv)) => {
+                        // Send handshake
+                        if let Err(e) = send.write_all(HANDSHAKE).await {
+                            error!("Failed to send handshake: {}", e);
+                            return Err(anyhow::anyhow!("Failed to send handshake: {}", e));
+                        }
+
+                        // Wait for handshake response
+                        let mut handshake_buf = [0u8; HANDSHAKE.len()];
+                        if let Err(e) = recv.read_exact(&mut handshake_buf).await {
+                            error!("Failed to read handshake response: {}", e);
+                            return Err(anyhow::anyhow!("Failed to read handshake response: {}", e));
+                        }
+
+                        if handshake_buf != HANDSHAKE {
+                            error!("Invalid handshake response from host");
+                            return Err(anyhow::anyhow!("Invalid handshake response from host"));
+                        }
+
+                        info!("Handshake completed successfully");
+
+                        // Start message exchange for this connection
+                        let network_clone = self.clone();
+                        tokio::spawn(async move {
+                            network_clone
+                                .handle_message_exchange(send, recv, client_node_id)
+                                .await;
+                        });
+
+                        // Send participant joined message
+                        let message = MessageBuilder::new()
+                            .from_node(client_node_id)
+                            .with_domain(MessageDomain::Session)
+                            .build(StructuredPayload::Session(SessionMessage::ParticipantJoined));
+
+                        if let Err(e) = connection_sender.send(message) {
+                            error!("Failed to send participant joined message: {}", e);
+                        } else {
+                            info!("✅ Connection request sent successfully");
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to open bidirectional stream: {}", e);
+                        return Err(anyhow::anyhow!("Failed to open bidirectional stream: {}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to connect to host: {}", e);
+                return Err(anyhow::anyhow!("Failed to connect to host: {}", e));
+            }
         }
 
         Ok((connection_sender, event_receiver))
@@ -1722,38 +1761,7 @@ impl P2PNetwork {
         });
     }
 
-    /// Connect to a host (client mode) - simplified with Node ID
-    async fn connect_to_host(&self, node_addr: NodeAddr, client_node_id: NodeId) -> Result<()> {
-        info!("Connecting to host: {}", node_addr.node_id);
-
-        let connection = self.endpoint.connect(node_addr, ALPN).await?;
-        info!("Connected to host successfully");
-
-        let (mut send, mut recv) = connection.open_bi().await?;
-
-        // Send handshake
-        send.write_all(HANDSHAKE).await?;
-        send.flush().await?;
-
-        // Wait for handshake response
-        let mut handshake_buf = [0u8; HANDSHAKE.len()];
-        recv.read_exact(&mut handshake_buf).await?;
-
-        if handshake_buf != HANDSHAKE {
-            return Err(anyhow::anyhow!("Invalid handshake response"));
-        }
-
-        // Handle message exchange using Node ID
-        let network_clone = self.clone();
-        tokio::spawn(async move {
-            network_clone
-                .handle_message_exchange(send, recv, client_node_id)
-                .await;
-        });
-
-        Ok(())
-    }
-
+  
     
     /// Handle message exchange for a connection - simplified with Node ID
     async fn handle_message_exchange(
@@ -1768,6 +1776,7 @@ impl P2PNetwork {
         let (outgoing_tx, mut outgoing_rx) = mpsc::unbounded_channel::<NetworkMessage>();
 
         // Store the outgoing sender for this Node ID
+        // This allows CLI to send messages back to the connected App
         let mut connections = self.active_connections.write().await;
         connections.insert(remote_node_id, outgoing_tx.clone());
         drop(connections);
