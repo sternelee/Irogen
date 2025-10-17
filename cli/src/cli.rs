@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use std::sync::Arc;
 
 use crate::terminal_manager::TerminalManager;
@@ -216,25 +216,31 @@ impl CliApp {
                     data.clone(),
                 );
 
-                // Get the connected node ID for this session
-                let connected_node_id = {
-                    let sessions = network.get_active_node_ids().await;
-                    // In CLI, we need to find the connected node for this session
-                    // For now, we'll use the first active node (this is a simplification)
-                    sessions.into_iter().next().unwrap_or_else(|| network.get_node_id())
+                // Get connected client nodes (exclude our own Node ID)
+                let connected_nodes = {
+                    let all_nodes = network.get_active_node_ids().await;
+                    let own_node_id = network.get_node_id();
+                    // Filter out our own node ID, keep only connected clients
+                    all_nodes.into_iter().filter(|&node_id| node_id != own_node_id).collect::<Vec<_>>()
                 };
 
-                // 发送终端输出
-                if let Err(e) = network
-                    .send_message(connected_node_id, terminal_message)
-                    .await
-                {
-                    error!("Failed to send terminal output to P2P network: {}", e);
+                // Only send if there are connected clients
+                if !connected_nodes.is_empty() {
+                    for client_node_id in connected_nodes {
+                        if let Err(e) = network
+                            .send_message(client_node_id, terminal_message.clone())
+                            .await
+                        {
+                            error!("Failed to send terminal output to client {}: {}", client_node_id, e);
+                        } else {
+                            info!(
+                                "✅ Successfully sent terminal output from {} to client {}",
+                                terminal_id, client_node_id
+                            );
+                        }
+                    }
                 } else {
-                    info!(
-                        "✅ Successfully sent terminal output from {} to P2P network: '{}'",
-                        terminal_id, data
-                    );
+                    debug!("No connected clients, skipping terminal output transmission");
                 }
             });
         };
@@ -392,22 +398,28 @@ impl CliApp {
                                             TerminalManagementMessage::ListResponse { terminals: terminal_list }
                                         ));
 
-                                    // Get the connected node ID for this session
-                                    let connected_node_id = {
-                                        let sessions = network_for_events.get_active_node_ids().await;
-                                        // In CLI, we need to find the connected node for this session
-                                        // For now, we'll use the first active node (this is a simplification)
-                                        sessions.into_iter().next().unwrap_or_else(|| network_for_events.get_node_id())
+                                    // Get connected client nodes (exclude our own Node ID)
+                                    let connected_nodes = {
+                                        let all_nodes = network_for_events.get_active_node_ids().await;
+                                        let own_node_id = network_for_events.get_node_id();
+                                        // Filter out our own node ID, keep only connected clients
+                                        all_nodes.into_iter().filter(|&node_id| node_id != own_node_id).collect::<Vec<_>>()
                                     };
 
-                                    // 发送终端列表响应
-                                    if let Err(e) = network_for_events
-                                        .send_message(connected_node_id, terminal_list_message)
-                                        .await
-                                    {
-                                        error!("Failed to send terminal list response: {}", e);
+                                    // Send terminal list response to all connected clients
+                                    if !connected_nodes.is_empty() {
+                                        for client_node_id in connected_nodes {
+                                            if let Err(e) = network_for_events
+                                                .send_message(client_node_id, terminal_list_message.clone())
+                                                .await
+                                            {
+                                                error!("Failed to send terminal list response to client {}: {}", client_node_id, e);
+                                            } else {
+                                                info!("✅ Terminal list response sent to client {}", client_node_id);
+                                            }
+                                        }
                                     } else {
-                                        info!("✅ Terminal list response sent successfully");
+                                        warn!("No connected clients to send terminal list response");
                                     }
                                 } else {
                                     info!("❌ Failed to create terminal from event");
