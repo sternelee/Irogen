@@ -42,5 +42,8 @@
       "mcp__jean-memory__jean_memory"
     ],
     "deny": []
-  }
+  },
+  "disabledMcpjsonServers": [
+    "mcp_box"
+  ]
 }

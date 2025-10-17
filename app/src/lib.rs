@@ -1544,7 +1544,7 @@ pub fn run() {
             // Register message handlers in background task
             let terminal_handler = Arc::new(AppTerminalMessageHandler::new(app_handle.clone()));
             let app_handle1 = app_handle.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 // Get the message router from the app handle state
                 if let Some(state) = app_handle1.try_state::<AppState>() {
                     state.message_router.register_handler(terminal_handler).await;
@@ -1553,7 +1553,7 @@ pub fn run() {
 
             let port_forward_handler = Arc::new(AppPortForwardMessageHandler::new(app_handle.clone()));
             let app_handle2 = app_handle.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 // Get the message router from the app handle state
                 if let Some(state) = app_handle2.try_state::<AppState>() {
                     state.message_router.register_handler(port_forward_handler).await;
@@ -1562,7 +1562,7 @@ pub fn run() {
 
             let file_transfer_handler = Arc::new(AppFileTransferMessageHandler::new(app_handle.clone()));
             let app_handle3 = app_handle.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 // Get the message router from the app handle state
                 if let Some(state) = app_handle3.try_state::<AppState>() {
                     state.message_router.register_handler(file_transfer_handler).await;
@@ -1571,7 +1571,7 @@ pub fn run() {
 
             let system_handler = Arc::new(AppSystemMessageHandler::new(app_handle.clone()));
             let app_handle4 = app_handle.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 // Get the message router from the app handle state
                 if let Some(state) = app_handle4.try_state::<AppState>() {
                     state.message_router.register_handler(system_handler).await;
