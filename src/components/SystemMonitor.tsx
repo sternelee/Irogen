@@ -1,6 +1,7 @@
-import { createSignal, createEffect, onMount, Show } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { createSignal, createEffect, onMount, Show, onCleanup } from "solid-js";
+import { createMessageHandler } from "../utils/messageHandler";
+import { createApiClient } from "../utils/api";
+import { SystemEvent } from "../types/messages";
 
 interface TerminalStats {
   total: number;
@@ -9,15 +10,28 @@ interface TerminalStats {
   stopped: number;
 }
 
-interface WebShareStats {
+interface PortForwardStats {
   total: number;
   active: number;
   errors: number;
   stopped: number;
+  // New fields from enhanced stats
+  activeServices: number;
+  totalServicesCreated: number;
+  totalConnections: number;
+  totalBytesTransferred: number;
 }
 
-interface StatsRequest {
-  session_id: string;
+interface SystemStatsResponse {
+  terminal_stats: {
+    active_terminals: number;
+    total_terminals_created: number;
+    total_commands_executed: number;
+    average_session_duration: number;
+  };
+  port_forward_stats: PortForwardStats;
+  node_id: string;
+  timestamp: number;
 }
 
 export function SystemMonitor(props: {
@@ -35,35 +49,63 @@ export function SystemMonitor(props: {
     stopped: 0,
   });
 
-  const [webshareStats, setWebshareStats] = createSignal<WebShareStats>({
+  const [portForwardStats, setPortForwardStats] = createSignal<PortForwardStats>({
     total: 0,
     active: 0,
     errors: 0,
     stopped: 0,
+    activeServices: 0,
+    totalServicesCreated: 0,
+    totalConnections: 0,
+    totalBytesTransferred: 0,
   });
+
+  // Message handler for real-time stats
+  let messageHandler: ReturnType<typeof createMessageHandler> | null = null;
+  let apiClient: ReturnType<typeof createApiClient> | null = null;
 
   // Load stats on mount and set up auto-refresh
   onMount(() => {
-    loadStats();
-    setupEventListeners();
+    apiClient = createApiClient(props.sessionId);
 
-    // Auto-refresh every 10 seconds
+    // Setup message handler for real-time updates
+    messageHandler = createMessageHandler(props.sessionId, {
+      onSystemEvent: handleSystemEvent,
+      onError: (error) => {
+        console.error("System monitor message handler error:", error);
+      }
+    });
+
+    messageHandler.startListening().then(() => {
+      console.log("System monitor message handler started");
+    });
+
+    // Initial stats load
+    loadStats();
+
+    // Auto-refresh every 30 seconds
     const interval = setInterval(() => {
       loadStats();
-    }, 10000);
+    }, 30000);
 
     onCleanup(() => {
       clearInterval(interval);
+      if (messageHandler) {
+        messageHandler.stopListening();
+      }
     });
   });
 
   const loadStats = async () => {
+    if (!apiClient) return;
+
     setLoading(true);
     try {
-      const request: StatsRequest = {
-        session_id: props.sessionId,
-      };
-      await invoke("get_system_stats", { request });
+      const response = await apiClient.getSystemStats();
+      if (!response.success) {
+        throw new Error(response.error || "Failed to get system stats");
+      }
+      // Stats will be received via system events
     } catch (error) {
       console.error("Failed to load system stats:", error);
     } finally {
@@ -71,46 +113,35 @@ export function SystemMonitor(props: {
     }
   };
 
-  const setupEventListeners = async () => {
-    // Listen for structured stats events
-    await listen(`structured-event-${props.sessionId}`, (event) => {
-      const structuredEvent = event.payload;
-      console.log("Received structured stats event:", structuredEvent);
+  const handleSystemEvent = (event: SystemEvent) => {
+    if (event.type === "stats_response") {
+      const data = event.data;
 
-      if (structuredEvent.type === "stats_response") {
-        setNodeInfo(structuredEvent.node_info);
-        setLastUpdate(new Date());
+      console.log("Received system stats:", data);
 
-        // Parse stats from the node_info string
-        try {
-          // The node_info contains a summary like "Terminals: X, WebShares: Y"
-          const match = structuredEvent.node_info.match(/Terminals:\s*(\d+).*WebShares:\s*(\d+)/);
-          if (match) {
-            const terminalCount = parseInt(match[1]);
-            const webshareCount = parseInt(match[2]);
+      setNodeInfo(data.node_id);
+      setLastUpdate(new Date(data.timestamp));
 
-            // Update stats with available information
-            setTerminalStats(prev => ({
-              ...prev,
-              total: terminalCount,
-              running: Math.floor(terminalCount * 0.7), // Estimate
-              errors: Math.floor(terminalCount * 0.1),   // Estimate
-              stopped: Math.floor(terminalCount * 0.2), // Estimate
-            }));
+      // Update terminal stats
+      setTerminalStats(prev => ({
+        total: data.terminal_stats.total_terminals_created,
+        running: data.terminal_stats.active_terminals,
+        errors: 0, // Error tracking could be added later
+        stopped: Math.max(0, data.terminal_stats.total_terminals_created - data.terminal_stats.active_terminals),
+      }));
 
-            setWebshareStats(prev => ({
-              ...prev,
-              total: webshareCount,
-              active: Math.floor(webshareCount * 0.8),   // Estimate
-              errors: Math.floor(webshareCount * 0.05),  // Estimate
-              stopped: Math.floor(webshareCount * 0.15), // Estimate
-            }));
-          }
-        } catch (error) {
-          console.error("Failed to parse stats:", error);
-        }
-      }
-    });
+      // Update port forward stats (unified for TCP + WebShare)
+      setPortForwardStats(prev => ({
+        total: data.port_forward_stats.totalServicesCreated,
+        active: data.port_forward_stats.activeServices,
+        errors: 0, // Error tracking could be added later
+        stopped: Math.max(0, data.port_forward_stats.totalServicesCreated - data.port_forward_stats.activeServices),
+        activeServices: data.port_forward_stats.activeServices,
+        totalServicesCreated: data.port_forward_stats.totalServicesCreated,
+        totalConnections: data.port_forward_stats.total_connections,
+        totalBytesTransferred: data.port_forward_stats.total_bytes_transferred,
+      }));
+    }
   };
 
   const getStatPercentage = (count: number, total: number) => {
@@ -126,6 +157,13 @@ export function SystemMonitor(props: {
         case "errors": return "bg-red-500";
         default: return "bg-gray-300";
       }
+    } else if (type === "portforward") {
+      switch (status) {
+        case "active": return "bg-green-500";
+        case "stopped": return "bg-gray-400";
+        case "errors": return "bg-red-500";
+        default: return "bg-gray-300";
+      }
     } else {
       switch (status) {
         case "active": return "bg-green-500";
@@ -134,6 +172,14 @@ export function SystemMonitor(props: {
         default: return "bg-gray-300";
       }
     }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
   const formatTimeAgo = (date: Date) => {
@@ -251,30 +297,45 @@ export function SystemMonitor(props: {
               </div>
             </div>
 
-            {/* WebShare Stats */}
+            {/* Port Forward Statistics (Unified for TCP + WebShare) */}
             <div class="bg-white border rounded-lg p-4 shadow-sm">
               <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold">WebShare Statistics</h3>
-                <div class="text-2xl">🌐</div>
+                <h3 class="text-lg font-semibold">Port Forward Services</h3>
+                <div class="text-2xl">🔌</div>
               </div>
 
               <div class="space-y-3">
                 <div class="flex justify-between items-center">
                   <span class="text-sm text-gray-600">Total Services</span>
-                  <span class="font-semibold">{webshareStats().total}</span>
+                  <span class="font-semibold">{portForwardStats().total}</span>
                 </div>
 
-                {/* Progress bars for webshare stats */}
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600">Active Services</span>
+                  <span class="font-semibold text-green-600">{portForwardStats().activeServices}</span>
+                </div>
+
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600">Total Connections</span>
+                  <span class="font-semibold">{portForwardStats().totalConnections}</span>
+                </div>
+
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600">Data Transferred</span>
+                  <span class="font-semibold">{formatBytes(portForwardStats().totalBytesTransferred)}</span>
+                </div>
+
+                {/* Progress bars for service stats */}
                 <div class="space-y-2">
                   <div>
                     <div class="flex justify-between items-center mb-1">
                       <span class="text-sm text-green-600">Active</span>
-                      <span class="text-sm">{webshareStats().active}</span>
+                      <span class="text-sm">{portForwardStats().active}</span>
                     </div>
                     <div class="w-full bg-gray-200 rounded-full h-2">
                       <div
-                        class={`h-2 rounded-full transition-all duration-300 ${getStatusColor("webshare", "active")}`}
-                        style={`width: ${getStatPercentage(webshareStats().active, webshareStats().total)}%`}
+                        class={`h-2 rounded-full transition-all duration-300 ${getStatusColor("portforward", "active")}`}
+                        style={`width: ${getStatPercentage(portForwardStats().active, portForwardStats().total)}%`}
                       />
                     </div>
                   </div>
@@ -282,12 +343,12 @@ export function SystemMonitor(props: {
                   <div>
                     <div class="flex justify-between items-center mb-1">
                       <span class="text-sm text-gray-600">Stopped</span>
-                      <span class="text-sm">{webshareStats().stopped}</span>
+                      <span class="text-sm">{portForwardStats().stopped}</span>
                     </div>
                     <div class="w-full bg-gray-200 rounded-full h-2">
                       <div
-                        class={`h-2 rounded-full transition-all duration-300 ${getStatusColor("webshare", "stopped")}`}
-                        style={`width: ${getStatPercentage(webshareStats().stopped, webshareStats().total)}%`}
+                        class={`h-2 rounded-full transition-all duration-300 ${getStatusColor("portforward", "stopped")}`}
+                        style={`width: ${getStatPercentage(portForwardStats().stopped, portForwardStats().total)}%`}
                       />
                     </div>
                   </div>
@@ -295,12 +356,12 @@ export function SystemMonitor(props: {
                   <div>
                     <div class="flex justify-between items-center mb-1">
                       <span class="text-sm text-red-600">Errors</span>
-                      <span class="text-sm">{webshareStats().errors}</span>
+                      <span class="text-sm">{portForwardStats().errors}</span>
                     </div>
                     <div class="w-full bg-gray-200 rounded-full h-2">
                       <div
-                        class={`h-2 rounded-full transition-all duration-300 ${getStatusColor("webshare", "errors")}`}
-                        style={`width: ${getStatPercentage(webshareStats().errors, webshareStats().total)}%`}
+                        class={`h-2 rounded-full transition-all duration-300 ${getStatusColor("portforward", "errors")}`}
+                        style={`width: ${getStatPercentage(portForwardStats().errors, portForwardStats().total)}%`}
                       />
                     </div>
                   </div>
@@ -315,8 +376,8 @@ export function SystemMonitor(props: {
               <div class="font-semibold mb-2">💡 System Information:</div>
               <div class="space-y-1">
                 <div>• Terminal statistics show the current state of all managed terminals</div>
-                <div>• WebShare statistics display active port forwarding services</div>
-                <div>• Data updates automatically every 10 seconds</div>
+                <div>• Port Forward services display unified TCP and HTTP forwarding services</div>
+                <div>• Data updates automatically every 30 seconds with real-time events</div>
                 <div>• Click refresh to manually update the statistics</div>
               </div>
             </div>

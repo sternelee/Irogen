@@ -5,17 +5,9 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import {
-  MessageDomain,
   PortForwardType,
   TerminalInfo,
-  PortForwardInfo,
-  CreateTerminalRequest,
-  TerminalInputRequest,
-  TerminalResizeRequest,
-  TerminalStopRequest,
-  CreateWebShareRequest,
-  WebShareStopRequest,
-  StatsRequest
+  PortForwardInfo
 } from "../types/messages";
 
 // API Request interfaces (these match the Tauri command interfaces)

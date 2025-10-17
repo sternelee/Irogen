@@ -329,7 +329,10 @@ export async function promiseAllWithTimeout<T>(
     });
 
     if (errors.length > 0) {
-      throw new AggregateError(errors, `${errors.length} promises failed`);
+      // Use a custom error if AggregateError is not available
+      const error = new Error(`${errors.length} promises failed: ${errors.map(e => e.message).join(', ')}`) as any;
+      error.errors = errors;
+      throw error;
     }
 
     return values;

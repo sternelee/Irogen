@@ -7,7 +7,6 @@ import {
 } from "solid-js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 import {
@@ -19,6 +18,7 @@ import { SettingsModal } from "./components/SettingsModal";
 import { HomeView } from "./components/HomeView";
 import { RemoteSessionView } from "./components/RemoteSessionView";
 import { P2PBackground } from "./components/P2PBackground";
+import { EnhancedConnectionInterface } from "./components/EnhancedConnectionInterface";
 import { t } from "./stores/settingsStore";
 import {
   initializeMobileUtils,
@@ -29,6 +29,10 @@ import {
 import { getViewportManager } from "./utils/mobile/ViewportManager";
 import { getLayoutCalculator } from "./utils/mobile/LayoutCalculator";
 import type { ViewportDimensions } from "./utils/mobile/ViewportManager";
+import { createConnectionHandler } from "./hooks/useConnection";
+import { createMessageHandler } from "./utils/messageHandler";
+import { createApiClient, ConnectionApi } from "./utils/api";
+import { TerminalEvent, PortForwardEvent, FileTransferEvent, SystemEvent } from "./types/messages";
 
 function App() {
   const [sessionTicket, setSessionTicket] = createSignal("");
@@ -42,7 +46,7 @@ function App() {
   const [activeTicket, setActiveTicket] = createSignal<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = createSignal(false);
   const [networkStrength, setNetworkStrength] = createSignal(3);
-  const [currentView, setCurrentView] = createSignal<"home" | "remote" | "terminal">(
+  const [currentView, setCurrentView] = createSignal<"home" | "remote" | "terminal" | "connection">(
     "home",
   );
   const [currentTime, setCurrentTime] = createSignal(
@@ -51,6 +55,24 @@ function App() {
       minute: "2-digit",
     }),
   );
+
+  // New message architecture state
+  const [sessionId, setSessionId] = createSignal<string | null>(null);
+  const [showEnhancedConnection, setShowEnhancedConnection] = createSignal(false);
+
+  // Enhanced connection handler
+  const connectionHandler = createConnectionHandler();
+
+  // Message handlers for different sessions
+  const [messageHandlers, setMessageHandlers] = createSignal<Map<string, any>>(new Map());
+
+  // Session stats
+  const [sessionStats, setSessionStats] = createSignal({
+    activeTerminals: 0,
+    activePortForwards: 0,
+    messagesReceived: 0,
+    lastMessageTime: 0
+  });
 
   // Enhanced mobile keyboard state management
   const [keyboardVisible, setKeyboardVisible] = createSignal(false);
@@ -121,18 +143,63 @@ function App() {
       clearInterval(timer);
       unsubscribeViewport();
       unsubscribeKeyboard();
+
+      // Cleanup all message handlers
+      messageHandlers().forEach(async (handler) => {
+        if (handler && handler.isActive()) {
+          await handler.stopListening();
+        }
+      });
     });
   });
 
   const initializeNetwork = async () => {
     try {
-      const nodeId = await invoke<string>("initialize_network");
-      setStatus(`Ready - Node ID: ${nodeId.substring(0, 8)}...`);
+      // The network is now initialized automatically in the Rust backend
+      setStatus("Ready - P2P Network Initialized");
       setNetworkStrength(4); // Full network strength when connected
     } catch (error) {
       console.error("Failed to initialize network:", error);
       setStatus("Failed to initialize network");
       setNetworkStrength(0); // No network when failed
+    }
+  };
+
+  const setupMessageHandler = async (sessionId: string) => {
+    try {
+      const handler = createMessageHandler(sessionId, {
+        onTerminalEvent: handleTerminalEvent,
+        onPortForwardEvent: handlePortForwardEvent,
+        onFileTransferEvent: handleFileTransferEvent,
+        onSystemEvent: handleSystemEvent,
+        onRawMessage: handleRawMessage,
+        onError: (error) => {
+          console.error("Message handler error:", error);
+          setConnectionError(error.message);
+        }
+      });
+
+      await handler.startListening();
+
+      // Store handler
+      const newHandlers = new Map(messageHandlers());
+      newHandlers.set(sessionId, handler);
+      setMessageHandlers(newHandlers);
+
+    } catch (error) {
+      console.error("Failed to setup message handler:", error);
+      setConnectionError(error.message);
+    }
+  };
+
+  const cleanupMessageHandler = async (sessionId: string) => {
+    const handlers = messageHandlers();
+    const handler = handlers.get(sessionId);
+    if (handler) {
+      await handler.stopListening();
+      const newHandlers = new Map(handlers);
+      newHandlers.delete(sessionId);
+      setMessageHandlers(newHandlers);
     }
   };
 
@@ -162,10 +229,13 @@ function App() {
   };
 
   const handleTerminalInput = (data: string) => {
-    if (isConnected() && sessionIdRef) {
-      invoke("send_terminal_input", {
-        sessionId: sessionIdRef,
-        input: data,
+    const currentSessionId = sessionId();
+    if (currentSessionId) {
+      const apiClient = createApiClient(currentSessionId);
+      apiClient.sendTerminalInput({
+        session_id: currentSessionId,
+        terminal_id: "default", // This should be dynamic
+        input: data
       }).catch((error) => {
         console.error("Failed to send input:", error);
         if (terminalInstance && !(terminalInstance as any)._isDisposed) {
@@ -173,6 +243,62 @@ function App() {
         }
       });
     }
+  };
+
+  // New message architecture event handlers
+  const handleTerminalEvent = (event: TerminalEvent) => {
+    console.log("Terminal event:", event);
+
+    if (terminalInstance && !(terminalInstance as any)._isDisposed) {
+      switch (event.type) {
+        case "output":
+          terminalInstance.write(event.data.data);
+          break;
+        case "status_update":
+          console.log(`Terminal ${event.terminal_id} status: ${event.data.status}`);
+          break;
+        case "directory_changed":
+          setTerminalInfo(prev => ({
+            ...prev,
+            workingDirectory: event.data.new_dir
+          }));
+          break;
+        default:
+          console.log(`Unhandled terminal event: ${event.type}`);
+      }
+    }
+
+    updateSessionStats();
+  };
+
+  const handlePortForwardEvent = (event: PortForwardEvent) => {
+    console.log("Port forward event:", event);
+    updateSessionStats();
+  };
+
+  const handleFileTransferEvent = (event: FileTransferEvent) => {
+    console.log("File transfer event:", event);
+  };
+
+  const handleSystemEvent = (event: SystemEvent) => {
+    console.log("System event:", event);
+
+    if (event.type === "stats_response") {
+      updateSessionStats(event.data);
+    }
+  };
+
+  const handleRawMessage = (message: any) => {
+    updateSessionStats();
+  };
+
+  const updateSessionStats = (systemData?: any) => {
+    setSessionStats(prev => ({
+      messagesReceived: prev.messagesReceived + 1,
+      lastMessageTime: Date.now(),
+      activeTerminals: systemData?.terminal_stats?.active_terminals || prev.activeTerminals,
+      activePortForwards: systemData?.port_forward_stats?.active_services || prev.activePortForwards
+    }));
   };
 
   const handleDisconnect = async () => {
@@ -190,9 +316,11 @@ function App() {
       });
     }
 
-    if (sessionIdRef) {
+    const currentSessionId = sessionId();
+    if (currentSessionId) {
       try {
-        await invoke("disconnect_session", { sessionId: sessionIdRef });
+        await ConnectionApi.disconnect(currentSessionId);
+        await cleanupMessageHandler(currentSessionId);
       } catch (error) {
         console.error("Failed to disconnect:", error);
       }
@@ -204,11 +332,17 @@ function App() {
     }
 
     setIsConnected(false);
-    sessionIdRef = null;
+    setSessionId(null);
     setActiveTicket(null);
     setCurrentView("home");
     setStatus(t("connection.status.disconnected"));
     setNetworkStrength(3);
+    setSessionStats({
+      activeTerminals: 0,
+      activePortForwards: 0,
+      messagesReceived: 0,
+      lastMessageTime: 0
+    });
   };
 
   // 处理会话清理
@@ -250,30 +384,27 @@ function App() {
     setConnectionError(null);
 
     try {
-      const connectPromise = invoke<string>("connect_to_peer", {
-        sessionTicket: ticket,
+      // Use the enhanced connection handler
+      const newSessionId = await connectionHandler.connect(ticket, {
+        timeout: 15000,
+        retries: 3,
+        onProgressUpdate: (progress) => {
+          setStatus(`Connecting... ${Math.round(progress.percentage)}%`);
+        }
       });
 
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Connection timed out after 5 seconds")),
-          5000,
-        ),
-      );
-
-      const actualSessionId = await Promise.race([
-        connectPromise,
-        timeoutPromise,
-      ]);
-
-      sessionIdRef = actualSessionId;
+      setSessionId(newSessionId);
       setActiveTicket(ticket);
       setIsConnected(true);
       setCurrentView("remote");
       updateHistoryEntry(ticket, { description: "Connected to remote CLI host." });
 
+      // Setup message handler for this session
+      await setupMessageHandler(newSessionId);
+
+      // Setup legacy terminal event listener for backward compatibility
       const unlisten = await listen<any>(
-        `terminal-event-${actualSessionId}`,
+        `terminal-event-${newSessionId}`,
         (event) => {
           const termEvent = event.payload;
           if (terminalInstance && !(terminalInstance as any)._isDisposed) {
@@ -359,7 +490,6 @@ function App() {
       console.error("Connection failed:", error);
       const errorMessage = String(error);
 
-      // 其他错误正常处理
       setStatus(t("connection.status.failed"));
       updateHistoryEntry(ticket, {
         status: "Failed",
@@ -370,6 +500,12 @@ function App() {
     } finally {
       setConnecting(false);
     }
+  };
+
+  // Enhanced connection using the new interface
+  const handleEnhancedConnection = async (ticket: string) => {
+    setSessionTicket(ticket);
+    await handleConnect(ticket);
   };
 
   const handleLogin = (username: string, password: string) => {
@@ -444,6 +580,7 @@ function App() {
               onTicketInput={setSessionTicket}
               onConnect={handleConnect}
               onShowSettings={() => setIsSettingsOpen(true)}
+              onShowEnhancedConnection={() => setShowEnhancedConnection(true)}
               connecting={connecting()}
               connectionError={connectionError()}
               history={history()}
@@ -455,12 +592,13 @@ function App() {
               onReturnToSession={() => setCurrentView("remote")}
               onDeleteHistory={deleteHistoryEntry}
               onDisconnect={handleDisconnect}
+              sessionStats={sessionStats()}
             />
           )}
 
-          {currentView() === "remote" && isConnected() && sessionIdRef && (
+          {currentView() === "remote" && isConnected() && sessionId() && (
             <RemoteSessionView
-              sessionId={sessionIdRef}
+              sessionId={sessionId()}
               onDisconnect={handleDisconnect}
               onBack={() => setCurrentView("home")}
             />
@@ -485,7 +623,7 @@ function App() {
                 console.log("Terminal internal keyboard toggled:", visible);
               }}
               onShowSettings={() => setIsSettingsOpen(true)}
-              sessionId={sessionIdRef}
+              sessionId={sessionId()}
             />
           )}
         </div>
@@ -498,6 +636,47 @@ function App() {
         entry={activeHistoryEntry() || null}
         onSave={(ticket, updates) => updateHistoryEntry(ticket, updates)}
       />
+
+      {/* Enhanced Connection Modal */}
+      {showEnhancedConnection() && (
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div class="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <div class="flex justify-between items-center p-4 border-b">
+              <h2 class="text-xl font-semibold">Enhanced P2P Connection</h2>
+              <button
+                onClick={() => setShowEnhancedConnection(false)}
+                class="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+            <div class="p-4">
+              <EnhancedConnectionInterface
+                onConnectionEstablished={(newSessionId) => {
+                  setSessionId(newSessionId);
+                  setIsConnected(true);
+                  setShowEnhancedConnection(false);
+                  setCurrentView("remote");
+                }}
+                onConnectionLost={(lostSessionId) => {
+                  if (sessionId() === lostSessionId) {
+                    setIsConnected(false);
+                    setSessionId(null);
+                    setCurrentView("home");
+                  }
+                }}
+                onTerminalEvent={handleTerminalEvent}
+                onPortForwardEvent={handlePortForwardEvent}
+                onFileTransferEvent={handleFileTransferEvent}
+                onSystemEvent={handleSystemEvent}
+                onError={(error) => {
+                  setConnectionError(error.message);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -386,3 +386,48 @@ export interface SystemEvent {
   data: any;
   timestamp: number;
 }
+
+// API Request types for frontend components
+export interface CreateTerminalRequest {
+  session_id: string;
+  name?: string;
+  shell_path?: string;
+  working_dir?: string;
+  size?: [number, number];
+}
+
+export interface TerminalInputRequest {
+  session_id: string;
+  terminal_id: string;
+  input: string;
+}
+
+export interface TerminalResizeRequest {
+  session_id: string;
+  terminal_id: string;
+  rows: number;
+  cols: number;
+}
+
+export interface TerminalStopRequest {
+  session_id: string;
+  terminal_id: string;
+}
+
+export interface CreateWebShareRequest {
+  session_id: string;
+  service_name: string;
+  terminal_id?: string;
+  local_port?: number;
+  metadata?: Record<string, string>;
+}
+
+export interface WebShareStopRequest {
+  session_id: string;
+  service_id: string;
+}
+
+export interface StatsRequest {
+  session_id: string;
+  node_id?: string;
+}

@@ -7,6 +7,7 @@ interface HomeViewProps {
   onTicketInput: (value: string) => void;
   onConnect: (ticket?: string) => void;
   onShowSettings: () => void;
+  onShowEnhancedConnection: () => void;
   connecting: boolean;
   connectionError: string | null;
   history: HistoryEntry[];
@@ -18,6 +19,12 @@ interface HomeViewProps {
   onReturnToSession: () => void;
   onDeleteHistory: (ticket: string) => void;
   onDisconnect: () => void;
+  sessionStats?: {
+    activeTerminals: number;
+    activePortForwards: number;
+    messagesReceived: number;
+    lastMessageTime: number;
+  };
 }
 
 export function HomeView(props: HomeViewProps) {
@@ -172,6 +179,15 @@ export function HomeView(props: HomeViewProps) {
                   return date.toLocaleDateString();
                 };
 
+  const formatLastActivity = (timestamp: number) => {
+    if (timestamp === 0) return "无活动";
+    const diff = Date.now() - timestamp;
+    if (diff < 1000) return "刚刚";
+    if (diff < 60000) return `${Math.floor(diff / 1000)}秒前`;
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
+    return `${Math.floor(diff / 3600000)}小时前`;
+  };
+
                 return (
                   <div class="flex items-center justify-between p-4 bg-base-200 rounded-lg hover:bg-base-300 transition-colors">
                     <div class="flex items-center space-x-3 flex-1 min-w-0">
@@ -287,14 +303,69 @@ export function HomeView(props: HomeViewProps) {
         {/*   帐号登录 */}
         {/* </EnhancedButton> */}
 
-        {/* 历史连接按钮 */}
-        <Show when={props.history.length > 0}>
+        {/* 连接按钮组 */}
+        <div class="flex flex-col space-y-3 max-w-md w-full">
+          {/* 标准连接按钮 */}
           <button
-            class="btn btn-ghost w-full max-w-md md:mt-4"
-            onClick={() => setShowHistoryModal(true)}
+            class="btn btn-primary w-full"
+            onClick={() => props.onConnect()}
+            disabled={props.connecting || !props.sessionTicket.trim()}
           >
-            📚 历史连接
+            {props.connecting ? (
+              <>
+                <span class="loading loading-spinner loading-sm"></span>
+                连接中...
+              </>
+            ) : (
+              <>
+                🚀 快速连接
+              </>
+            )}
           </button>
+
+          {/* 增强连接按钮 */}
+          <button
+            class="btn btn-secondary w-full"
+            onClick={props.onShowEnhancedConnection}
+          >
+            🔧 增强连接
+          </button>
+
+          {/* 历史连接按钮 */}
+          <Show when={props.history.length > 0}>
+            <button
+              class="btn btn-ghost w-full"
+              onClick={() => setShowHistoryModal(true)}
+            >
+              📚 历史连接
+            </button>
+          </Show>
+        </div>
+
+        {/* 会话统计信息 */}
+        <Show when={props.sessionStats && props.isConnected}>
+          <div class="w-full max-w-md mt-6">
+            <div class="stats stats-vertical lg:stats-horizontal shadow">
+              <div class="stat">
+                <div class="stat-title">活跃终端</div>
+                <div class="stat-value text-primary">{props.sessionStats?.activeTerminals || 0}</div>
+              </div>
+
+              <div class="stat">
+                <div class="stat-title">端口转发</div>
+                <div class="stat-value text-secondary">{props.sessionStats?.activePortForwards || 0}</div>
+              </div>
+
+              <div class="stat">
+                <div class="stat-title">消息数</div>
+                <div class="stat-value text-accent">{props.sessionStats?.messagesReceived || 0}</div>
+              </div>
+            </div>
+
+            <div class="text-center text-sm opacity-70 mt-2">
+              最后活动: {formatLastActivity(props.sessionStats?.lastMessageTime || 0)}
+            </div>
+          </div>
         </Show>
       </div>
     </div>
