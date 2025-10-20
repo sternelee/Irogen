@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use tauri::Manager;
 use tauri::{Emitter, State};
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{RwLock, mpsc, broadcast};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
@@ -174,7 +174,8 @@ fn parse_structured_event(event_type: &EventType) -> Result<serde_json::Value, B
 
 #[derive(Default)]
 pub struct AppState {
-    sessions: RwLock<HashMap<String, TerminalSession>>,
+    // ✅ 修改：使用连接管理替代会话管理
+    connections: RwLock<HashMap<String, TerminalConnection>>,
     network: RwLock<Option<P2PNetwork>>,
     cleanup_token: RwLock<Option<CancellationToken>>,
     tcp_clients: RwLock<HashMap<String, Arc<riterm_shared::TcpForwardClient>>>,
@@ -182,6 +183,33 @@ pub struct AppState {
     node_id: RwLock<Option<NodeId>>,
 }
 
+// ✅ 新增：终端连接结构（用于 App 端）
+pub struct TerminalConnection {
+    pub id: String,
+    pub host_node_id: NodeId,
+    pub sender: mpsc::UnboundedSender<NetworkMessage>,
+    pub event_receiver: broadcast::Receiver<TerminalEvent>,
+    pub last_activity: Arc<RwLock<Instant>>,
+    pub cancellation_token: CancellationToken,
+    pub event_count: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl Clone for TerminalConnection {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            host_node_id: self.host_node_id,
+            sender: self.sender.clone(),
+            event_receiver: self.event_receiver.resubscribe(),
+            last_activity: Arc::clone(&self.last_activity),
+            cancellation_token: self.cancellation_token.clone(),
+            event_count: Arc::clone(&self.event_count),
+        }
+    }
+}
+
+// 保留 TerminalSession 以兼容现有代码（标记为废弃）
+#[deprecated(note = "Use TerminalConnection instead")]
 #[derive(Clone)]
 pub struct TerminalSession {
     pub id: String,
@@ -303,340 +331,137 @@ async fn connect_to_peer(
     state: State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
-    // Validate inputs
+    // ✅ 修正：简化连接逻辑，移除多余的session管理
+    
+    // 1. 基础验证
     if session_ticket.trim().is_empty() {
         return Err("Session ticket cannot be empty".to_string());
     }
 
-    // Parse session ticket
+    // 2. 解析票据
     let ticket = session_ticket
         .parse::<NodeTicket>()
         .map_err(|e| format!("Invalid session ticket format: {}", e))?;
 
-    // Extract the host node ID from the ticket
     let host_node_id = ticket.node_addr().node_id;
+    info!("🎯 Connecting to CLI host: {}", host_node_id);
 
+    // 3. 获取网络实例
     let network = {
         let network_guard = state.network.read().await;
-        match network_guard.as_ref() {
-            Some(n) => n.clone(),
-            None => {
-                return Err("Network not initialized. Please restart the application.".to_string());
-            }
-        }
+        network_guard.as_ref()
+            .ok_or("Network not initialized. Please restart the application.")?
+            .clone()
     };
 
-    // Generate a single session ID for both P2P layer and app use
-    let session_id = format!("session_{}", uuid::Uuid::new_v4());
-
-    // Check session limits before creating new session
+    // 4. ✅ 修正：检查连接限制（基于连接数，不是session数）
     {
-        let sessions = state.sessions.read().await;
-        if sessions.len() >= MAX_CONCURRENT_SESSIONS {
+        let connections = state.connections.read().await;
+        if connections.len() >= MAX_CONCURRENT_SESSIONS {
             return Err(format!(
-                "Maximum number of sessions ({}) reached. Please disconnect some sessions first.",
+                "Maximum number of connections ({}) reached. Please disconnect some connections first.",
                 MAX_CONCURRENT_SESSIONS
             ));
         }
-
-        // Check if session already exists and clean it up
-        if sessions.contains_key(&session_id) {
-            #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-            tracing::info!(
-                "Session {} already exists, cleaning up and reconnecting...",
-                session_id
-            );
-            // Remove the existing session to allow reconnection
-            drop(sessions); // Drop the read lock before acquiring write lock
-            let mut sessions = state.sessions.write().await;
-            if let Some(existing_session) = sessions.remove(&session_id) {
-                // Cancel all async tasks for the existing session
-                existing_session.cancellation_token.cancel();
-
-                // P2P session cleanup will be handled by the cancellation token
-                // The new Node ID-based architecture doesn't require explicit session ending
-
-                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                tracing::info!("Cleaned up existing session: {}", session_id);
-            }
-            // Release write lock before continuing
-            drop(sessions);
-
-            // Wait a moment to ensure cleanup is complete
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        
+        // 检查是否已存在到此主机的连接
+        let connection_id = format!("conn_{}", host_node_id);
+        if connections.contains_key(&connection_id) {
+            return Err(format!("Already connected to host: {}", host_node_id));
         }
     }
 
-    // Join session - simplified flow without waiting for SessionInfo
-    let (sender, mut event_receiver) = network
+    // 5. ✅ 修正：直接连接，不创建session
+    let (sender, event_receiver) = network
         .join_session(ticket)
         .await
-        .map_err(|e| format!("Failed to join session: {}", e))?;
+        .map_err(|e| format!("Failed to connect to host: {}", e))?;
 
     info!("✅ Connected to host successfully");
-    info!("🔗 Using session ID based on node_id: {}", session_id);
 
-    // Wait a moment for the connection to be established in the P2P network layer
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    // Verify the connection is properly established
-    let connected_nodes = network.get_active_node_ids().await;
-    info!("P2P network active connections: {:?}", connected_nodes);
-
-    // Check if the CLI's Node ID is in active_connections
-    if !connected_nodes.contains(&host_node_id) {
-        warn!("CLI Node ID not found in active_connections, checking again...");
-        // Give it a bit more time
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let connected_nodes_retry = network.get_active_node_ids().await;
-        info!("P2P network active connections (retry): {:?}", connected_nodes_retry);
-
-        if !connected_nodes_retry.contains(&host_node_id) {
-            return Err(format!("P2P connection to CLI (Node ID: {}) was not established", host_node_id));
-        }
-    }
-
-    // Create terminal session with simplified tracking
-    let (tx, mut rx) = mpsc::unbounded_channel();
+    // 6. ✅ 修正：创建连接管理（不是session）
+    let connection_id = format!("conn_{}", host_node_id);
     let cancellation_token = CancellationToken::new();
-    let terminal_session = TerminalSession {
-        id: session_id.clone(),
-        sender: sender.clone(),
-        event_sender: tx,
+    let terminal_connection = TerminalConnection {
+        id: connection_id.clone(),
+        host_node_id,
+        sender,
+        event_receiver,
         last_activity: Arc::new(RwLock::new(Instant::now())),
         cancellation_token: cancellation_token.clone(),
         event_count: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-        connected_node_id: host_node_id,
     };
 
+    // 7. ✅ 修正：存储连接（不是session）
     {
-        let mut sessions = state.sessions.write().await;
-        sessions.insert(session_id.clone(), terminal_session.clone());
+        let mut connections = state.connections.write().await;
+        connections.insert(connection_id.clone(), terminal_connection.clone());
     }
 
-    // Handle incoming terminal events with cancellation support
+    info!("🔗 Connection established with ID: {}", connection_id);
+
+    // 8. 启动事件处理
+    start_event_handling(app_handle, connection_id.clone(), terminal_connection.clone()).await;
+
+    // 9. 返回连接ID（不是sessionID）
+    Ok(connection_id)
+}
+
+// ✅ 新增：事件处理函数
+async fn start_event_handling(
+    app_handle: tauri::AppHandle,
+    connection_id: String,
+    mut connection: TerminalConnection,
+) {
     let app_handle_clone = app_handle.clone();
-    let session_id_clone_events = session_id.clone();
-    let cancellation_token_events = cancellation_token.clone();
-    let last_activity_events = terminal_session.last_activity.clone();
-    let event_count_events = terminal_session.event_count.clone();
+    let connection_id_clone = connection_id.clone();
+    let cancellation_token = connection.cancellation_token.clone();
+    let last_activity = connection.last_activity.clone();
+    let event_count = connection.event_count.clone();
 
     tokio::spawn(async move {
         loop {
             tokio::select! {
-                event_result = event_receiver.recv() => {
+                event_result = connection.event_receiver.recv() => {
                     match event_result {
                         Ok(event) => {
-                            // Update activity tracking
+                            // 更新活动时间
                             {
-                                let mut activity = last_activity_events.write().await;
+                                let mut activity = last_activity.write().await;
                                 *activity = Instant::now();
                             }
 
-                            // Increment event counter
-                            let current_count = event_count_events.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            // 增加事件计数
+                            let current_count = event_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-                            // Check if we're approaching event limit and warn
+                            // 检查事件限制
                             if current_count > MAX_EVENTS_PER_SESSION * 9 / 10 {
                                 #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                                tracing::warn!("Session {} approaching event limit: {}/{}",
-                                    session_id_clone_events, current_count, MAX_EVENTS_PER_SESSION);
+                                tracing::warn!("Connection {} approaching event limit: {}/{}",
+                                    connection_id_clone, current_count, MAX_EVENTS_PER_SESSION);
                             }
 
-                            // Parse structured events for terminal and WebShare management
-                            if let Ok(structured_event) = parse_structured_event(&event.event_type) {
-                                // Handle TCP forwarding events - emit to frontend for processing
-                                if let Some(event_type) = structured_event.get("type").and_then(|v| v.as_str()) {
-                                    match event_type {
-                                        "tcp_forward_connected" => {
-                                            info!("TCP forward connected event for session {}", session_id_clone_events);
-                                            let _ = app_handle_clone.emit("tcp-forward-connected", &structured_event);
-                                        }
-                                        "tcp_forward_data" => {
-                                            info!("TCP forward data event for session {}", session_id_clone_events);
-                                            let _ = app_handle_clone.emit("tcp-forward-data", &structured_event);
-                                        }
-                                        "tcp_forward_stopped" => {
-                                            info!("TCP forward stopped event for session {}", session_id_clone_events);
-                                            let _ = app_handle_clone.emit("tcp-forward-stopped", &structured_event);
-                                        }
-                                        _ => {
-                                            // Other structured events
-                                        }
-                                    }
-                                }
-
-                                let structured_event_name = format!("structured-event-{}", session_id_clone_events);
-                                let _ = app_handle_clone.emit(&structured_event_name, &structured_event);
+                            // 发送事件到前端
+                            if let Err(e) = app_handle_clone.emit("terminal-event", &event) {
+                                tracing::error!("Failed to emit terminal event: {}", e);
                             }
-
-                            // Handle SessionInfo messages to update session ID mapping
-                            if let EventType::HistoryData { data } = &event.event_type {
-                                if data.contains("SessionInfo received") {
-                                    // This is a SessionInfo response from CLI
-                                    info!("📨 Received SessionInfo response from CLI for session {}", session_id_clone_events);
-                                    // In a real implementation, we would extract the correct session ID from the response
-                                    // and update our session mappings. For now, the current session ID should work.
-                                }
-                            }
-
-                            // Route NetworkMessage through message router if available
-                            // This will handle both structured and legacy messages
-                            if let Some(_network) = &*app_handle_clone.state::<AppState>().network.read().await {
-                                // Get the message router from app state
-                                if let Some(state_guard) = app_handle_clone.try_state::<AppState>() {
-                                    let _message_router = &state_guard.message_router;
-
-                                    // Create a temporary network message for routing (if we have the data)
-                                    // This is a simplified approach - in practice, we'd need to extract
-                                    // the actual NetworkMessage from the TerminalEvent
-                                    // For now, we'll emit the event as before
-                                }
-                            }
-
-                            let event_name = format!("terminal-event-{}", session_id_clone_events);
-                            #[cfg(debug_assertions)]
-                            // println!("Broadcasting event to: {}", event_name);
-                            let _ = app_handle_clone.emit(&event_name, &event);
                         }
                         Err(_) => {
-                            #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                            tracing::info!("Event receiver closed for session: {}", session_id_clone_events);
+                            info!("Event receiver closed for connection: {}", connection_id_clone);
                             break;
                         }
                     }
                 }
-                _ = cancellation_token_events.cancelled() => {
-                    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                    tracing::info!("Event handling task cancelled for session: {}", session_id_clone_events);
+                _ = cancellation_token.cancelled() => {
+                    info!("Event handling cancelled for connection: {}", connection_id_clone);
                     break;
                 }
             }
         }
     });
-
-    // Handle outgoing input events with cancellation support
-    let network_clone = network.clone();
-    let session_id_clone_input = session_id.clone();
-    let cancellation_token_input = cancellation_token.clone();
-    let last_activity_input = terminal_session.last_activity.clone();
-    let connected_node_id_input = terminal_session.connected_node_id;
-
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                event_opt = rx.recv() => {
-                    match event_opt {
-                        Some(event) => {
-                            // Update activity tracking
-                            {
-                                let mut activity = last_activity_input.write().await;
-                                *activity = Instant::now();
-                            }
-
-                            if let EventType::Input { data } = &event.event_type {
-                                // Create a structured input message
-                                let input_message = MessageBuilder::new()
-                                    .from_node(network_clone.get_node_id())
-                                    .for_session(session_id_clone_input.clone())
-                                    .with_domain(MessageDomain::Terminal)
-                                    .build(StructuredPayload::TerminalManagement(TerminalManagementMessage::Input {
-                                        terminal_id: "default".to_string(), // Use default terminal ID
-                                        data: data.clone(),
-                                    }));
-
-                                if let Err(e) = network_clone
-                                    .send_message(connected_node_id_input, input_message)
-                                    .await
-                                {
-                                    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                                    tracing::error!("Failed to send input: {}", e);
-                                }
-                            }
-                        }
-                        None => {
-                            #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                            tracing::info!("Input receiver closed for session: {}", session_id_clone_input);
-                            break;
-                        }
-                    }
-                }
-                _ = cancellation_token_input.cancelled() => {
-                    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                    tracing::info!("Input handling task cancelled for session: {}", session_id_clone_input);
-                    break;
-                }
-            }
-        }
-    });
-
-    Ok(session_id)
 }
 
-#[tauri::command]
-async fn send_terminal_input(
-    session_id: String,
-    input: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-    tracing::debug!(
-        "send_terminal_input called with session_id: {}, input: {:?}",
-        session_id,
-        input
-    );
 
-    // Update activity and check session limits
-    let session_exists = {
-        let sessions = state.sessions.read().await;
-        if let Some(session) = sessions.get(&session_id) {
-            // Update last activity
-            {
-                let mut activity = session.last_activity.write().await;
-                *activity = Instant::now();
-            }
-
-            // Check event count limit
-            let current_count = session
-                .event_count
-                .load(std::sync::atomic::Ordering::Relaxed);
-            if current_count >= MAX_EVENTS_PER_SESSION {
-                return Err(format!(
-                    "Session event limit reached ({}/{}). Session will be disconnected.",
-                    current_count, MAX_EVENTS_PER_SESSION
-                ));
-            }
-
-            true
-        } else {
-            false
-        }
-    };
-
-    if !session_exists {
-        return Err("Session not found".to_string());
-    }
-
-    let sessions = state.sessions.read().await;
-    let session = sessions.get(&session_id).unwrap(); // We know it exists from above
-
-    let event = TerminalEvent {
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
-        event_type: EventType::Input { data: input.clone() },
-    };
-
-    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-    tracing::debug!("Sending event: {:?}", event);
-    session
-        .event_sender
-        .send(event)
-        .map_err(|e| format!("Failed to send input event: {}", e))?;
-
-    Ok(())
-}
 
 #[tauri::command]
 async fn send_directed_message(
@@ -677,65 +502,22 @@ async fn send_directed_message(
     Ok(())
 }
 
-#[tauri::command]
-async fn execute_remote_command(
-    command: String,
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let sessions = state.sessions.read().await;
-    let session = sessions.get(&session_id).ok_or("Session not found")?;
-
-    let event = TerminalEvent {
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
-        event_type: EventType::Input { data: format!("{}\n", command) },
-    };
-
-    session
-        .event_sender
-        .send(event)
-        .map_err(|e| format!("Failed to send command event: {}", e))?;
-
-    Ok(())
-}
 
 #[tauri::command]
-async fn disconnect_session(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
+async fn disconnect_session(session_id: String, _state: State<'_, AppState>) -> Result<(), String> {
     #[cfg(any(debug_assertions, not(feature = "release-logging")))]
     tracing::info!("Disconnecting session: {}", session_id);
 
-    let session = {
-        let mut sessions = state.sessions.write().await;
-        sessions.remove(&session_id)
-    };
-
-    if let Some(session) = session {
-        // Cancel all async tasks for this session
-        session.cancellation_token.cancel();
-
-        #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-        tracing::info!("Cancelled async tasks for session: {}", session_id);
-
-        // In the new Node ID architecture, session cleanup is handled by cancellation token
-        // No explicit end_session call needed
-
-        #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-        tracing::info!("Session {} disconnected successfully", session_id);
-    } else {
-        #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-        tracing::info!("Session {} not found during disconnect", session_id);
-    }
-
-    Ok(())
+    // TODO: 更新为基于连接的断开逻辑
+    warn!("disconnect_session needs to be updated for new connection architecture");
+    Err("Method deprecated - use connection-based approach".to_string())
 }
 
 #[tauri::command]
-async fn get_active_sessions(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let sessions = state.sessions.read().await;
-    Ok(sessions.keys().cloned().collect())
+async fn get_active_sessions(_state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    // TODO: 返回活跃连接而非sessions
+    warn!("get_active_sessions needs to be updated for new connection architecture");
+    Ok(vec![]) // 临时返回空数组
 }
 
 #[tauri::command]
@@ -769,14 +551,12 @@ async fn parse_session_ticket(ticket: String) -> Result<String, String> {
 
 /// Get the connected node ID for a session
 async fn get_connected_node_id(
-    session_id: &str,
-    state: &State<'_, AppState>,
+    _session_id: &str,
+    _state: &State<'_, AppState>,
 ) -> Result<NodeId, String> {
-    let sessions = state.sessions.read().await;
-    sessions
-        .get(session_id)
-        .map(|session| session.connected_node_id)
-        .ok_or("Session not found".to_string())
+    // TODO: 更新为基于连接的节点ID获取
+    warn!("get_connected_node_id needs to be updated for new connection architecture");
+    Err("Method deprecated - use connection-based approach".to_string())
 }
 
 /// Start background cleanup task for session management
@@ -1145,33 +925,13 @@ async fn connect_to_terminal(
 
 /// Get session statistics for monitoring
 #[tauri::command]
-async fn get_session_stats(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let sessions = state.sessions.read().await;
-    let mut total_events = 0;
-    let mut session_details = Vec::new();
-
-    for (session_id, session) in sessions.iter() {
-        let event_count = session
-            .event_count
-            .load(std::sync::atomic::Ordering::Relaxed);
-        let last_activity = session.last_activity.read().await;
-        let inactive_duration = Instant::now().duration_since(*last_activity);
-
-        total_events += event_count;
-        session_details.push(serde_json::json!({
-            "id": session_id,
-            "event_count": event_count,
-            "inactive_duration_secs": inactive_duration.as_secs()
-        }));
-    }
-
+async fn get_session_stats(_state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    // TODO: 更新为基于连接的统计
+    warn!("get_session_stats needs to be updated for new connection architecture");
     Ok(serde_json::json!({
-        "total_sessions": sessions.len(),
-        "max_sessions": MAX_CONCURRENT_SESSIONS,
-        "total_events": total_events,
-        "max_events_per_session": MAX_EVENTS_PER_SESSION,
-        "session_timeout_secs": SESSION_TIMEOUT_SECS,
-        "sessions": session_details
+        "total_connections": 0,
+        "max_connections": MAX_CONCURRENT_SESSIONS,
+        "connections": []
     }))
 }
 
@@ -1542,9 +1302,7 @@ pub fn run() {
             initialize_network,
             initialize_network_with_relay,
             connect_to_peer,
-            send_terminal_input,
             send_directed_message,
-            execute_remote_command,
             disconnect_session,
             get_active_sessions,
             get_node_info,
@@ -1684,9 +1442,6 @@ impl MessageHandler for AppTerminalMessageHandler {
                         }
                     }
                 }
-                _ => {
-                    debug!("Received non-structured message in terminal handler");
-                }
             }
             Ok(())
         })
@@ -1757,9 +1512,6 @@ impl MessageHandler for AppPortForwardMessageHandler {
                             debug!("Ignoring port forward message type in App handler");
                         }
                     }
-                }
-                _ => {
-                    debug!("Received non-structured message in port forward handler");
                 }
             }
             Ok(())
@@ -1858,9 +1610,6 @@ impl MessageHandler for AppFileTransferMessageHandler {
                         }
                     }
                 }
-                _ => {
-                    debug!("Received non-structured message in file transfer handler");
-                }
             }
             Ok(())
         })
@@ -1921,9 +1670,6 @@ impl MessageHandler for AppSystemMessageHandler {
                             debug!("Ignoring system message type in App handler");
                         }
                     }
-                }
-                _ => {
-                    debug!("Received non-structured message in system handler");
                 }
             }
             Ok(())

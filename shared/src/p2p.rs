@@ -1567,7 +1567,7 @@ impl P2PNetwork {
         Ok((ticket, connection_sender, input_receiver))
     }
 
-    /// Join an existing session (client mode) - simplified with Node ID
+    /// Join an existing session (client mode) - ✅ 修正：简化连接逻辑，移除错误的session创建
     pub async fn join_session(
         &self,
         ticket: NodeTicket,
@@ -1578,46 +1578,19 @@ impl P2PNetwork {
         let host_node_id = ticket.node_addr().node_id;
         let client_node_id = self.endpoint.node_id();
 
-        info!("Joining session with host: {}", host_node_id);
+        info!("Connecting to host: {}", host_node_id);
 
         let (event_sender, event_receiver) = broadcast::channel(1000);
         let (connection_sender, _connection_receiver) = mpsc::unbounded_channel();
 
-        // Create session entry for this client - no need for temporary session_id
-        let session = SharedSession {
-            header: SessionHeader {
-                version: 2,
-                width: 80,
-                height: 24,
-                timestamp: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)?
-                    .as_secs(),
-                title: None,
-                command: None,
-                session_id: format!("session_with_{}", host_node_id), // Simple reference
-            },
-            participants: vec![client_node_id.to_string(), host_node_id.to_string()],
-            is_host: false,
-            event_sender: event_sender.clone(),
-            node_id: client_node_id,
-            input_sender: None,
-            connection_sender: Some(connection_sender.clone()),
-            history_callback: None,
-            terminal_input_callback: None,
-        };
+        // ✅ 修正：客户端不创建session条目，只建立连接
+        debug!("Client {} connecting to host {}", client_node_id, host_node_id);
 
-        // Store session by client's Node ID
-        self.node_sessions
-            .write()
-            .await
-            .insert(client_node_id, session);
-
-    
         // Connect to the host using the correct iroh pattern (like dumbpipe)
-        info!("Establishing connection with host: {}", host_node_id);
+        info!("Establishing P2P connection with host: {}", host_node_id);
         match self.endpoint.connect(ticket.node_addr().clone(), ALPN).await {
             Ok(connection) => {
-                info!("Connected to host successfully");
+                info!("✅ Connected to host successfully");
 
                 // Open a bidirectional stream
                 match connection.open_bi().await {
@@ -1640,7 +1613,7 @@ impl P2PNetwork {
                             return Err(anyhow::anyhow!("Invalid handshake response from host"));
                         }
 
-                        info!("Handshake completed successfully");
+                        info!("✅ Handshake completed successfully");
 
                         // Start message exchange for this connection
                         let network_clone = self.clone();
@@ -1712,7 +1685,7 @@ impl P2PNetwork {
         }
     }
 
-    /// Handle a single connection - simplified with Node ID
+    /// Handle a single connection - ✅ 修正：正确创建session以客户端NodeID为key
     async fn handle_connection(&self, connection: iroh::endpoint::Connection) {
         // Get the remote node ID for this connection
         let remote_node_id = match connection.remote_node_id() {
@@ -1723,7 +1696,7 @@ impl P2PNetwork {
             }
         };
 
-        info!("Handling connection from: {}", remote_node_id);
+        info!("✅ Handling connection from client: {}", remote_node_id);
 
         // Accept the first bidirectional stream
         let (mut send, mut recv) = match connection.accept_bi().await {
@@ -1751,6 +1724,37 @@ impl P2PNetwork {
             warn!("Error sending handshake: {}", e);
             return;
         }
+
+        // ✅ 修正：创建以客户端NodeID为key的session
+        let host_node_id = self.endpoint.node_id();
+        let session_id = format!("hosted_for_{}", remote_node_id);
+        
+        let session = SharedSession {
+            header: SessionHeader {
+                version: 2,
+                width: 80,
+                height: 24,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                title: Some(format!("Session for {}", remote_node_id)),
+                command: None,
+                session_id: session_id.clone(),
+            },
+            participants: vec![host_node_id.to_string(), remote_node_id.to_string()],
+            is_host: true,
+            event_sender: broadcast::channel(1000).0,
+            node_id: host_node_id,
+            input_sender: None,
+            connection_sender: None, // Will be set in handle_message_exchange
+            history_callback: None,
+            terminal_input_callback: None,
+        };
+
+        // ✅ 修正：以客户端NodeID存储session（这是关键修复）
+        self.node_sessions.write().await.insert(remote_node_id, session);
+        info!("✅ Created session for client: {} (session_id: {})", remote_node_id, session_id);
 
         // Handle message exchange using Node ID
         let network_clone = self.clone();
