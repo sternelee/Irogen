@@ -76,7 +76,7 @@ export interface ApiError {
  * Enhanced API client with better error handling and type safety
  */
 export class RitermApiClient {
-  constructor(private sessionId: string) {}
+  constructor(private sessionId: string) { }
 
   /**
    * Create a new terminal
@@ -332,7 +332,7 @@ export function createWebShareAdapter(sessionId: string): WebShareLegacyAdapter 
  */
 export class ConnectionApi {
   /**
-   * Connect to a peer using a session ticket
+   * Connect to a peer using a session ticket (Legacy - use DumbPipe instead)
    */
   static async connectToPeer(sessionTicket: string): Promise<string> {
     try {
@@ -342,6 +342,92 @@ export class ConnectionApi {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to connect to peer: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Connect to a dumbpipe host using NodeTicket (NEW - use this for CLI connections)
+   */
+  static async connectToDumbPipeHost(nodeTicketStr: string): Promise<string> {
+    try {
+      return await invoke<string>("connect_to_dumbpipe_host", {
+        nodeTicketStr
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to connect to dumbpipe host: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Send shell command to connected dumbpipe host
+   */
+  static async sendDumbPipeCommand(nodeTicketStr: string, command: string): Promise<string> {
+    try {
+      return await invoke<string>("send_dumbpipe_command", {
+        nodeTicketStr,
+        command
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to send dumbpipe command: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Resize dumbpipe terminal
+   */
+  static async resizeDumbPipeTerminal(nodeTicketStr: string, rows: number, cols: number): Promise<string> {
+    try {
+      return await invoke<string>("resize_dumbpipe_terminal", {
+        nodeTicketStr,
+        rows,
+        cols
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to resize dumbpipe terminal: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Create a new dumbpipe terminal
+   */
+  static async createDumbPipeTerminal(
+    nodeTicketStr: string,
+    name?: string,
+    shellPath?: string,
+    workingDir?: string,
+    rows?: number,
+    cols?: number
+  ): Promise<string> {
+    try {
+      return await invoke<string>("create_dumbpipe_terminal", {
+        nodeTicketStr,
+        name,
+        shellPath,
+        workingDir,
+        rows,
+        cols
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to create dumbpipe terminal: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Send input to dumbpipe terminal
+   */
+  static async sendDumbPipeInput(nodeTicketStr: string, input: string): Promise<string> {
+    try {
+      return await invoke<string>("send_dumbpipe_input", {
+        nodeTicketStr,
+        input
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to send dumbpipe input: ${errorMessage}`);
     }
   }
 
@@ -400,9 +486,9 @@ export class ApiValidators {
 
   static validateTerminalSize(size: [number, number]): boolean {
     return Array.isArray(size) &&
-           size.length === 2 &&
-           Number.isInteger(size[0]) && size[0] > 0 &&
-           Number.isInteger(size[1]) && size[1] > 0;
+      size.length === 2 &&
+      Number.isInteger(size[0]) && size[0] > 0 &&
+      Number.isInteger(size[1]) && size[1] > 0;
   }
 
   static validateServiceName(serviceName: string): boolean {

@@ -1,9 +1,6 @@
 mod cli;
-mod shell;
-mod terminal;
-mod terminal_driver;
+mod dumbpipe_host;
 mod terminal_manager;
-mod terminal_runner;
 
 use anyhow::Result;
 use clap::Parser;

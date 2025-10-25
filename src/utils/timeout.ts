@@ -237,10 +237,17 @@ export class ConnectionManager {
   }
 
   private async createConnectionPromise(ticket: string): Promise<string> {
-    // Use the enhanced connection API
+    // Use the new DumbPipe connection API for CLI connections
     const { ConnectionApi } = await import("./api");
 
-    return ConnectionApi.connectToPeer(ticket);
+    try {
+      // First try the new DumbPipe API (for CLI hosts)
+      return await ConnectionApi.connectToDumbPipeHost(ticket);
+    } catch (error) {
+      // Fall back to legacy peer connection for backward compatibility
+      console.warn("DumbPipe connection failed, falling back to legacy peer connection:", error);
+      return ConnectionApi.connectToPeer(ticket);
+    }
   }
 
   abort(): void {
@@ -267,6 +274,148 @@ export interface ConnectionProgress {
   percentage: number;
   attempt?: number;
   error?: string;
+}
+
+/**
+ * DumbPipe Connection Manager for CLI connections
+ */
+export class DumbPipeConnectionManager {
+  private connectionPromise: Promise<string> | null = null;
+  private abortController: AbortController | null = null;
+  private progressCallback: ((progress: ConnectionProgress) => void) | null = null;
+  private connectedNodeTickets: Map<string, any> = new Map(); // sessionId -> connection info
+  private timeout: number;
+
+  constructor(timeout: number = 10000) {
+    this.timeout = timeout;
+  }
+
+  async connect(nodeTicket: string, options: {
+    timeout?: number;
+    retries?: number;
+    progressInterval?: number;
+  } = {}): Promise<string> {
+    const {
+      timeout = this.timeout,
+      retries = 2,
+      progressInterval = 500
+    } = options;
+
+    // Check if already connected to this host
+    const existingConnection = this.connectedNodeTickets.get(nodeTicket);
+    if (existingConnection) {
+      return existingConnection.sessionId;
+    }
+
+    if (this.connectionPromise) {
+      throw new Error("Connection already in progress");
+    }
+
+    this.abortController = new AbortController();
+
+    const startTime = Date.now();
+    this.updateProgress('connecting', 0, timeout);
+
+    try {
+      this.connectionPromise = this.createDumbPipeConnectionPromise(nodeTicket, startTime, timeout, retries, progressInterval);
+      const sessionId = await this.connectionPromise;
+      
+      // Store the connection using nodeTicket as sessionId
+      this.connectedNodeTickets.set(nodeTicket, {
+        sessionId: nodeTicket, // Use nodeTicket as the sessionId for consistency
+        connectedAt: Date.now()
+      });
+
+      this.updateProgress('connected', timeout, timeout);
+      return sessionId;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.updateProgress('failed', timeout, timeout, undefined, errorMessage);
+      throw error;
+    } finally {
+      this.connectionPromise = null;
+      this.abortController = null;
+    }
+  }
+
+  private async createDumbPipeConnectionPromise(
+    nodeTicket: string,
+    startTime: number,
+    timeout: number,
+    retries: number,
+    progressInterval: number
+  ): Promise<string> {
+    const { ConnectionApi } = await import("./api");
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        // Connect using DumbPipe
+        const result = await ConnectionApi.connectToDumbPipeHost(nodeTicket);
+        
+        // For DumbPipe, we don't get a persistent session ID
+        // Instead, we return the nodeTicket itself as the session ID
+        // This allows us to identify which nodeTicket is "connected"
+        return nodeTicket;
+      } catch (error) {
+        if (attempt === retries) {
+          throw error;
+        }
+        
+        // Wait before retry
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        this.updateProgress('retrying', Date.now() - startTime, timeout, attempt + 1);
+      }
+    }
+
+    throw new Error('Failed to connect after retries');
+  }
+
+  disconnect(nodeTicket: string): void {
+    const connection = this.connectedNodeTickets.get(nodeTicket);
+    if (connection) {
+      this.connectedNodeTickets.delete(nodeTicket);
+    }
+  }
+
+  abort(): void {
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
+    this.connectionPromise = null;
+  }
+
+  onProgress(callback: (progress: ConnectionProgress) => void): void {
+    this.progressCallback = callback;
+  }
+
+  isConnecting(): boolean {
+    return this.connectionPromise !== null;
+  }
+
+  getConnectedNodes(): Map<string, any> {
+    return new Map(this.connectedNodeTickets);
+  }
+
+  private updateProgress(
+    phase: ConnectionProgress['phase'],
+    elapsed: number,
+    total: number,
+    attempt?: number,
+    error?: string
+  ): void {
+    if (this.progressCallback) {
+      const percentage = Math.min((elapsed / total) * 100, 99);
+      this.progressCallback({
+        phase,
+        elapsed,
+        total,
+        percentage,
+        attempt,
+        error
+      });
+    }
+  }
 }
 
 /**

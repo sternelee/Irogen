@@ -1,6 +1,6 @@
 use anyhow::Result;
 use iroh::{Endpoint, NodeAddr, NodeId};
-use iroh_gossip::api::GossipSender; // Keep for backward compatibility
+// use iroh_gossip::api::GossipSender; // Keep for backward compatibility
 
 // Re-export NodeTicket for external use
 pub use iroh_base::ticket::NodeTicket;
@@ -1580,7 +1580,7 @@ impl P2PNetwork {
 
         info!("Connecting to host: {}", host_node_id);
 
-        let (event_sender, event_receiver) = broadcast::channel(1000);
+        let (_event_sender, event_receiver) = broadcast::channel(1000);
         let (connection_sender, _connection_receiver) = mpsc::unbounded_channel();
 
         // ✅ 修正：客户端不创建session条目，只建立连接

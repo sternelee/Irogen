@@ -1,5 +1,5 @@
 import { render } from "solid-js/web";
-import VConsole from 'vconsole';
+// import VConsole from 'vconsole';
 
 import App from "./App";
 import "./index.css";
@@ -11,7 +11,7 @@ import { getAdaptiveLayoutManager } from "./utils/mobile/AdaptiveLayoutManager";
 import { initializeTheme } from "./utils/theme";
 import { initializePerformanceOptimizations } from "./utils/performance";
 
-new VConsole();
+// new VConsole();
 
 // Initialize mobile utilities and optimizations with ViewportManager integration
 initializeMobileUtils({ integrateViewportManager: true });

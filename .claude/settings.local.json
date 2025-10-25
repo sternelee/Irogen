@@ -39,7 +39,11 @@
       "Bash(rustc:*)",
       "Bash(RUST_LOG=debug ./target/debug/iroh-code-remote:*)",
       "WebFetch(domain:docs.tauri.app)",
-      "mcp__jean-memory__jean_memory"
+      "mcp__jean-memory__jean_memory",
+      "Bash(./test_dumbpipe_architecture.sh:*)",
+      "Bash(./target/release/riterm-cli:*)",
+      "Bash(./target/release/cli:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   },

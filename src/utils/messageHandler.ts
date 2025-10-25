@@ -52,18 +52,6 @@ export class StructuredMessageHandler {
     }
 
     try {
-      // Listen for structured events
-      const unlistenStructured = await listen(
-        `structured-event-${this.config.sessionId}`,
-        (event) => {
-          try {
-            this.handleStructuredEvent(event.payload as StructuredEvent);
-          } catch (error) {
-            this.config.onError?.(error as Error);
-          }
-        }
-      );
-
       // Listen for terminal-specific events
       const unlistenTerminal = await listen(
         `terminal-output`,
@@ -113,7 +101,6 @@ export class StructuredMessageHandler {
       );
 
       this.unlistenFunctions = [
-        unlistenStructured,
         unlistenTerminal,
         unlistenTerminalStatus,
         unlistenTerminalList,

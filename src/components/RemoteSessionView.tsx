@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { ConnectionApi } from "../utils/api";
+import { createConnectionHandler } from "../hooks/useConnection";
 // Import types from the shared library
 interface TerminalInfo {
   id: string;
@@ -27,7 +29,7 @@ interface WebShareInfo {
 }
 
 interface RemoteSessionViewProps {
-  sessionId: string;
+  nodeTicket: string;
   onDisconnect: () => void;
   onBack: () => void;
 }
@@ -110,82 +112,31 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
   let containerRef: HTMLDivElement | undefined;
 
-  // 带重试机制的获取终端列表
+  // 带重试机制的获取终端列表 (简化为 DumbPipe 模式)
   const fetchTerminalsWithRetry = async (retryCount = 3, delay = 1000) => {
     setIsLoading(true);
-    for (let attempt = 0; attempt < retryCount; attempt++) {
-      try {
-        await invoke("get_terminal_list", { sessionId: props.sessionId });
-        updateConnectionStatus('connected');
-        setIsLoading(false);
-        return; // 成功则退出
-      } catch (error) {
-        console.error(`Failed to fetch terminal list (attempt ${attempt + 1}/${retryCount}):`, error);
-
-        // 如果是最后一次尝试，显示错误
-        if (attempt === retryCount - 1) {
-          let userMessage = "获取终端列表失败";
-          if (error && typeof error === 'string') {
-            if (error.includes("No active connection for session")) {
-              userMessage = "会话连接尚未建立，请稍后重试或重新连接";
-            } else {
-              userMessage = `获取终端列表失败: ${error}`;
-            }
-          }
-          showErrorMessage(userMessage);
-        } else if (error && typeof error === 'string' && error.includes("No active connection for session")) {
-          // 如果是连接问题，等待后重试
-          console.log(`Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          delay *= 2; // 指数退避
-        } else {
-          // 其他类型的错误不重试
-          let userMessage = "获取终端列表失败";
-          if (error && typeof error === 'string') {
-            userMessage = `获取终端列表失败: ${error}`;
-          }
-          showErrorMessage(userMessage);
-          return;
-        }
-      }
+    try {
+      // For DumbPipe, we don't have a traditional list command
+      // Terminals are created and managed on demand
+      setTerminals([]);
+      updateConnectionStatus('connected');
+    } catch (error) {
+      console.error("Failed to initialize terminal state:", error);
+      showErrorMessage("Failed to initialize terminal management");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // 带重试机制的获取WebShare列表
+  // 带重试机制的获取WebShare列表 (简化为 DumbPipe 模式)
   const fetchWebSharesWithRetry = async (retryCount = 3, delay = 1000) => {
-    for (let attempt = 0; attempt < retryCount; attempt++) {
-      try {
-        await invoke("get_webshare_list", { sessionId: props.sessionId });
-        return; // 成功则退出
-      } catch (error) {
-        console.error(`Failed to fetch webshare list (attempt ${attempt + 1}/${retryCount}):`, error);
-
-        // 如果是最后一次尝试，显示错误
-        if (attempt === retryCount - 1) {
-          let userMessage = "获取WebShare列表失败";
-          if (error && typeof error === 'string') {
-            if (error.includes("No active connection for session")) {
-              userMessage = "会话连接尚未建立，请稍后重试或重新连接";
-            } else {
-              userMessage = `获取WebShare列表失败: ${error}`;
-            }
-          }
-          showErrorMessage(userMessage);
-        } else if (error && typeof error === 'string' && error.includes("No active connection for session")) {
-          // 如果是连接问题，等待后重试
-          console.log(`Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          delay *= 2; // 指数退避
-        } else {
-          // 其他类型的错误不重试
-          let userMessage = "获取WebShare列表失败";
-          if (error && typeof error === 'string') {
-            userMessage = `获取WebShare列表失败: ${error}`;
-          }
-          showErrorMessage(userMessage);
-          return;
-        }
-      }
+    try {
+      // For DumbPipe, WebShares are managed differently
+      // We'll start with an empty list and manage them manually
+      setWebshares([]);
+    } catch (error) {
+      console.error("Failed to initialize WebShare state:", error);
+      showErrorMessage("Failed to initialize WebShare management");
     }
   };
 
@@ -239,15 +190,16 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   }, retryCount = 2, delay = 1000) => {
     for (let attempt = 0; attempt < retryCount; attempt++) {
       try {
-        const request = {
-          session_id: props.sessionId,
-          name: config?.name,
-          shell_path: config?.shell_path,
-          working_dir: config?.working_dir,
-          size:
-            config?.rows && config?.cols ? [config.rows, config.cols] : undefined,
-        };
-        await invoke("create_terminal", { request });
+        // Use DumbPipe API for terminal creation
+        const result = await ConnectionApi.createDumbPipeTerminal(
+          props.nodeTicket,
+          config?.name,
+          config?.shell_path,
+          config?.working_dir,
+          config?.rows,
+          config?.cols
+        );
+        console.log("Terminal created:", result);
         return; // 成功则退出
       } catch (error) {
         console.error(`Failed to create terminal (attempt ${attempt + 1}/${retryCount}):`, error);
@@ -305,11 +257,9 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     terminal_id?: string;
   }) => {
     try {
-      const request = {
-        session_id: props.sessionId,
-        ...config,
-      };
-      await invoke("create_webshare", { request });
+      // For DumbPipe, WebShare creation is handled differently
+      // TODO: Implement DumbPipe WebShare creation
+      console.log("WebShare creation not yet implemented for DumbPipe");
     } catch (error) {
       console.error("Failed to create webshare:", error);
 
@@ -330,10 +280,13 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   // 停止终端
   const stopTerminal = async (terminalId: string) => {
     try {
-      await invoke("stop_terminal", {
-        sessionId: props.sessionId,
-        terminalId,
-      });
+      // For DumbPipe, send exit command to stop terminal
+      try {
+        const result = await ConnectionApi.sendDumbPipeCommand(props.nodeTicket, "exit");
+        console.log("Terminal stop command sent:", result);
+      } catch (error) {
+        console.error("Failed to stop terminal:", error);
+      }
 
       // 清理本地终端会话
       const sessions = terminalSessions();
@@ -371,13 +324,9 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     if (!text.trim() || !activeId) return;
 
     try {
-      await invoke("send_terminal_input_to_terminal", {
-        request: {
-          session_id: props.sessionId,
-          terminal_id: activeId,
-          input: text,
-        },
-      });
+      // Use DumbPipe API for sending input
+      const result = await ConnectionApi.sendDumbPipeInput(props.nodeTicket, text);
+      console.log("Text sent:", result);
       setTextInput(""); // 发送后清空输入框
     } catch (error) {
       console.error("Failed to send text to terminal:", error);
@@ -488,23 +437,19 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       setActiveTerminalId(terminalId);
 
       // 设置终端数据处理器
-      terminal.onData((data) => {
-        invoke("send_terminal_input_to_terminal", {
-          request: {
-            session_id: props.sessionId,
-            terminal_id: terminalId,
-            input: data,
-          },
-        }).catch((error) => {
+      terminal.onData(async (data) => {
+        try {
+          const result = await ConnectionApi.sendDumbPipeInput(props.nodeTicket, data);
+          console.log("Input sent:", result);
+        } catch (error) {
           console.error("Failed to send terminal input:", error);
-        });
+        };
       });
 
       // 告诉CLI端我们连接到了这个终端
-      await invoke("connect_to_terminal", {
-        sessionId: props.sessionId,
-        terminalId,
-      });
+      // For DumbPipe, we don't need to connect to terminal separately
+      // The connection is established through the node ticket
+      console.log(`Connected to terminal ${terminalId}`);
     } catch (error) {
       console.error("Failed to connect to terminal:", error);
     }
@@ -512,7 +457,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
   // 监听终端输出
   const setupTerminalEventListeners = async () => {
-    await listen(`terminal-output-${props.sessionId}`, (event) => {
+    await listen(`terminal-output-${props.nodeTicket.replace(/[^a-zA-Z0-9-_:/]/g, '')}`, (event) => {
       const { terminalId, data } = event.payload;
       const sessions = terminalSessions();
       const session = sessions.get(terminalId);
@@ -522,7 +467,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       }
     });
 
-    await listen(`terminal-event-${props.sessionId}`, (event) => {
+    await listen(`terminal-event-${props.nodeTicket.replace(/[^a-zA-Z0-9-_:/]/g, '')}`, (event) => {
       console.log("Terminal event:", event.payload);
 
       // 处理终端列表响应 - 使用新的结构化数据

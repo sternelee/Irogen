@@ -5,13 +5,15 @@ use std::time::Instant;
 
 use tauri::Manager;
 use tauri::{Emitter, State};
-use tokio::sync::{RwLock, mpsc, broadcast};
+use tokio::sync::{RwLock, broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
-use riterm_shared::{EventType, NodeTicket, P2PNetwork, TerminalEvent, p2p::*};
 use iroh::NodeId;
+use riterm_shared::{EventType, NodeTicket, P2PNetwork, TerminalEvent, p2p::*};
+
+mod dumbpipe_client;
 
 /// Maximum number of concurrent sessions to prevent memory exhaustion
 const MAX_CONCURRENT_SESSIONS: usize = 50;
@@ -29,97 +31,105 @@ fn is_valid_session_ticket(ticket: &str) -> bool {
 }
 
 // Parse structured events from EventType enum
-fn parse_structured_event(event_type: &EventType) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+fn parse_structured_event(
+    event_type: &EventType,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     match event_type {
         // Terminal management events
-        EventType::TerminalList { terminals } => {
-            Ok(serde_json::json!({
-                "type": "terminal_list_response",
-                "data": terminals
-            }))
-        }
-        EventType::TerminalOutput { terminal_id, data } => {
-            Ok(serde_json::json!({
-                "type": "terminal_output",
-                "terminal_id": terminal_id,
-                "data": data
-            }))
-        }
-        EventType::TerminalInput { terminal_id, data } => {
-            Ok(serde_json::json!({
-                "type": "terminal_input",
-                "terminal_id": terminal_id,
-                "data": data
-            }))
-        }
-        EventType::TerminalResize { terminal_id, rows, cols } => {
-            Ok(serde_json::json!({
-                "type": "terminal_resize",
-                "terminal_id": terminal_id,
-                "rows": rows,
-                "cols": cols
-            }))
-        }
+        EventType::TerminalList { terminals } => Ok(serde_json::json!({
+            "type": "terminal_list_response",
+            "data": terminals
+        })),
+        EventType::TerminalOutput { terminal_id, data } => Ok(serde_json::json!({
+            "type": "terminal_output",
+            "terminal_id": terminal_id,
+            "data": data
+        })),
+        EventType::TerminalInput { terminal_id, data } => Ok(serde_json::json!({
+            "type": "terminal_input",
+            "terminal_id": terminal_id,
+            "data": data
+        })),
+        EventType::TerminalResize {
+            terminal_id,
+            rows,
+            cols,
+        } => Ok(serde_json::json!({
+            "type": "terminal_resize",
+            "terminal_id": terminal_id,
+            "rows": rows,
+            "cols": cols
+        })),
 
         // WebShare management events
-        EventType::WebShareCreate { local_port, public_port, service_name, terminal_id } => {
-            Ok(serde_json::json!({
-                "type": "webshare_create",
-                "local_port": local_port,
-                "public_port": public_port,
-                "service_name": service_name,
-                "terminal_id": terminal_id
-            }))
-        }
-        EventType::WebShareList { webshares } => {
-            Ok(serde_json::json!({
-                "type": "webshare_list_response",
-                "data": webshares
-            }))
-        }
+        EventType::WebShareCreate {
+            local_port,
+            public_port,
+            service_name,
+            terminal_id,
+        } => Ok(serde_json::json!({
+            "type": "webshare_create",
+            "local_port": local_port,
+            "public_port": public_port,
+            "service_name": service_name,
+            "terminal_id": terminal_id
+        })),
+        EventType::WebShareList { webshares } => Ok(serde_json::json!({
+            "type": "webshare_list_response",
+            "data": webshares
+        })),
 
         // System events
-        EventType::Stats { terminal_stats, webshare_stats } => {
-            Ok(serde_json::json!({
-                "type": "stats_response",
-                "terminal_stats": terminal_stats,
-                "webshare_stats": webshare_stats
-            }))
-        }
+        EventType::Stats {
+            terminal_stats,
+            webshare_stats,
+        } => Ok(serde_json::json!({
+            "type": "stats_response",
+            "terminal_stats": terminal_stats,
+            "webshare_stats": webshare_stats
+        })),
 
         // File transfer events
-        EventType::FileTransferStart { terminal_id, file_name, file_size } => {
-            Ok(serde_json::json!({
-                "type": "file_transfer_start",
-                "terminal_id": terminal_id,
-                "file_name": file_name,
-                "file_size": file_size
-            }))
-        }
-        EventType::FileTransferProgress { terminal_id, file_name, progress } => {
-            Ok(serde_json::json!({
-                "type": "file_transfer_progress",
-                "terminal_id": terminal_id,
-                "file_name": file_name,
-                "progress": progress
-            }))
-        }
-        EventType::FileTransferComplete { terminal_id, file_name, file_path } => {
-            Ok(serde_json::json!({
-                "type": "file_transfer_complete",
-                "terminal_id": terminal_id,
-                "file_name": file_name,
-                "file_path": file_path
-            }))
-        }
-        EventType::FileTransferError { terminal_id, file_name, error } => {
-            Ok(serde_json::json!({
-                "type": "file_transfer_error",
-                "terminal_id": terminal_id,
-                "file_name": file_name,
-                "error": error
-            }))
-        }
+        EventType::FileTransferStart {
+            terminal_id,
+            file_name,
+            file_size,
+        } => Ok(serde_json::json!({
+            "type": "file_transfer_start",
+            "terminal_id": terminal_id,
+            "file_name": file_name,
+            "file_size": file_size
+        })),
+        EventType::FileTransferProgress {
+            terminal_id,
+            file_name,
+            progress,
+        } => Ok(serde_json::json!({
+            "type": "file_transfer_progress",
+            "terminal_id": terminal_id,
+            "file_name": file_name,
+            "progress": progress
+        })),
+        EventType::FileTransferComplete {
+            terminal_id,
+            file_name,
+            file_path,
+        } => Ok(serde_json::json!({
+            "type": "file_transfer_complete",
+            "terminal_id": terminal_id,
+            "file_name": file_name,
+            "file_path": file_path
+        })),
+        EventType::FileTransferError {
+            terminal_id,
+            file_name,
+            error,
+        } => Ok(serde_json::json!({
+            "type": "file_transfer_error",
+            "terminal_id": terminal_id,
+            "file_name": file_name,
+            "error": error
+        })),
 
         // Handle Output events that might contain structured data
         EventType::Output { data } => {
@@ -161,14 +171,10 @@ fn parse_structured_event(event_type: &EventType) -> Result<serde_json::Value, B
         }
 
         // Input events are handled internally, no need to expose to frontend
-        EventType::Input { .. } => {
-            Err("Input event not exposed to frontend".into())
-        }
+        EventType::Input { .. } => Err("Input event not exposed to frontend".into()),
 
         // Other events that don't need special handling
-        _ => {
-            Err("No structured event found".into())
-        }
+        _ => Err("No structured event found".into()),
     }
 }
 
@@ -332,7 +338,7 @@ async fn connect_to_peer(
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
     // ✅ 修正：简化连接逻辑，移除多余的session管理
-    
+
     // 1. 基础验证
     if session_ticket.trim().is_empty() {
         return Err("Session ticket cannot be empty".to_string());
@@ -349,7 +355,8 @@ async fn connect_to_peer(
     // 3. 获取网络实例
     let network = {
         let network_guard = state.network.read().await;
-        network_guard.as_ref()
+        network_guard
+            .as_ref()
             .ok_or("Network not initialized. Please restart the application.")?
             .clone()
     };
@@ -363,7 +370,7 @@ async fn connect_to_peer(
                 MAX_CONCURRENT_SESSIONS
             ));
         }
-        
+
         // 检查是否已存在到此主机的连接
         let connection_id = format!("conn_{}", host_node_id);
         if connections.contains_key(&connection_id) {
@@ -401,7 +408,12 @@ async fn connect_to_peer(
     info!("🔗 Connection established with ID: {}", connection_id);
 
     // 8. 启动事件处理
-    start_event_handling(app_handle, connection_id.clone(), terminal_connection.clone()).await;
+    start_event_handling(
+        app_handle,
+        connection_id.clone(),
+        terminal_connection.clone(),
+    )
+    .await;
 
     // 9. 返回连接ID（不是sessionID）
     Ok(connection_id)
@@ -461,8 +473,6 @@ async fn start_event_handling(
     });
 }
 
-
-
 #[tauri::command]
 async fn send_directed_message(
     request: DirectedMessageRequest,
@@ -501,7 +511,6 @@ async fn send_directed_message(
 
     Ok(())
 }
-
 
 #[tauri::command]
 async fn disconnect_session(session_id: String, _state: State<'_, AppState>) -> Result<(), String> {
@@ -559,6 +568,87 @@ async fn get_connected_node_id(
     Err("Method deprecated - use connection-based approach".to_string())
 }
 
+// === DumbPipe Terminal Management Commands ===
+
+#[tauri::command]
+async fn create_dumbpipe_terminal(
+    node_ticket_str: String,
+    name: Option<String>,
+    shell_path: Option<String>,
+    working_dir: Option<String>,
+    rows: Option<u16>,
+    cols: Option<u16>,
+) -> Result<String, String> {
+    info!("Creating dumbpipe terminal: {:?}", name);
+
+    // Parse the node ticket
+    let node_ticket = node_ticket_str
+        .parse::<NodeTicket>()
+        .map_err(|e| format!("Invalid node ticket: {}", e))?;
+
+    // Create dumbpipe client
+    let mut client = crate::dumbpipe_client::DumbPipeClient::new()
+        .await
+        .map_err(|e| format!("Failed to create dumbpipe client: {}", e))?;
+
+    // Connect to remote host
+    let mut connected_client = client
+        .connect(&node_ticket)
+        .await
+        .map_err(|e| format!("Failed to connect to remote host: {}", e))?;
+
+    // Send terminal creation command
+    let create_command = if let (Some(rows), Some(cols)) = (rows, cols) {
+        format!("RESIZE:{} {}\n", rows, cols)
+    } else {
+        String::new()
+    };
+
+    if !create_command.is_empty() {
+        connected_client
+            .send_resize_command(rows.unwrap_or(24), cols.unwrap_or(80))
+            .await
+            .map_err(|e| format!("Failed to resize terminal: {}", e))?;
+    }
+
+    // Send a welcome command to test the terminal
+    connected_client
+        .send_shell_command("echo 'Terminal Ready'")
+        .await
+        .map_err(|e| format!("Failed to initialize terminal: {}", e))?;
+
+    let terminal_id = format!("term_{}", connected_client.remote_node_id());
+
+    Ok(format!("Terminal created: {}", terminal_id))
+}
+
+#[tauri::command]
+async fn send_dumbpipe_input(node_ticket_str: String, input: String) -> Result<String, String> {
+    // Parse the node ticket
+    let node_ticket = node_ticket_str
+        .parse::<NodeTicket>()
+        .map_err(|e| format!("Invalid node ticket: {}", e))?;
+
+    // Create dumbpipe client
+    let mut client = crate::dumbpipe_client::DumbPipeClient::new()
+        .await
+        .map_err(|e| format!("Failed to create dumbpipe client: {}", e))?;
+
+    // Connect to remote host
+    let mut connected_client = client
+        .connect(&node_ticket)
+        .await
+        .map_err(|e| format!("Failed to connect to remote host: {}", e))?;
+
+    // Send input to terminal
+    connected_client
+        .send_shell_command(&input)
+        .await
+        .map_err(|e| format!("Failed to send input: {}", e))?;
+
+    Ok("Input sent successfully".to_string())
+}
+
 /// Start background cleanup task for session management
 async fn start_cleanup_task(state: &State<'_, AppState>) {
     let cleanup_guard = state.cleanup_token.read().await;
@@ -605,12 +695,14 @@ async fn create_terminal(
         .from_node(network.get_node_id())
         .for_session(request.session_id.clone())
         .with_domain(MessageDomain::Terminal)
-        .build(StructuredPayload::TerminalManagement(TerminalManagementMessage::Create {
-            name: request.name,
-            shell_path: request.shell_path,
-            working_dir: request.working_dir,
-            size: request.size,
-        }));
+        .build(StructuredPayload::TerminalManagement(
+            TerminalManagementMessage::Create {
+                name: request.name,
+                shell_path: request.shell_path,
+                working_dir: request.working_dir,
+                size: request.size,
+            },
+        ));
 
     network
         .send_message(connected_node_id, terminal_message)
@@ -641,9 +733,11 @@ async fn stop_terminal(
         .from_node(network.get_node_id())
         .for_session(request.session_id.clone())
         .with_domain(MessageDomain::Terminal)
-        .build(StructuredPayload::TerminalManagement(TerminalManagementMessage::Stop {
-            terminal_id: request.terminal_id,
-        }));
+        .build(StructuredPayload::TerminalManagement(
+            TerminalManagementMessage::Stop {
+                terminal_id: request.terminal_id,
+            },
+        ));
 
     network
         .send_message(connected_node_id, terminal_message)
@@ -671,7 +765,9 @@ async fn list_terminals(session_id: String, state: State<'_, AppState>) -> Resul
         .from_node(network.get_node_id())
         .for_session(session_id.clone())
         .with_domain(MessageDomain::Terminal)
-        .build(StructuredPayload::TerminalManagement(TerminalManagementMessage::ListRequest));
+        .build(StructuredPayload::TerminalManagement(
+            TerminalManagementMessage::ListRequest,
+        ));
 
     network
         .send_message(connected_node_id, terminal_message)
@@ -702,10 +798,12 @@ async fn send_terminal_input_to_terminal(
         .from_node(network.get_node_id())
         .for_session(request.session_id.clone())
         .with_domain(MessageDomain::Terminal)
-        .build(StructuredPayload::TerminalManagement(TerminalManagementMessage::Input {
-            terminal_id: request.terminal_id,
-            data: request.input,
-        }));
+        .build(StructuredPayload::TerminalManagement(
+            TerminalManagementMessage::Input {
+                terminal_id: request.terminal_id,
+                data: request.input,
+            },
+        ));
 
     network
         .send_message(connected_node_id, input_message)
@@ -736,11 +834,13 @@ async fn resize_terminal(
         .from_node(network.get_node_id())
         .for_session(request.session_id.clone())
         .with_domain(MessageDomain::Terminal)
-        .build(StructuredPayload::TerminalManagement(TerminalManagementMessage::Resize {
-            terminal_id: request.terminal_id,
-            rows: request.rows,
-            cols: request.cols,
-        }));
+        .build(StructuredPayload::TerminalManagement(
+            TerminalManagementMessage::Resize {
+                terminal_id: request.terminal_id,
+                rows: request.rows,
+                cols: request.cols,
+            },
+        ));
 
     network
         .send_message(connected_node_id, resize_message)
@@ -769,7 +869,10 @@ async fn create_webshare(
     };
 
     // Create unified port forwarding message for WebShare (which is now a type of port forwarding)
-    let service_id = format!("webshare_{}", request.public_port.unwrap_or(request.local_port));
+    let service_id = format!(
+        "webshare_{}",
+        request.public_port.unwrap_or(request.local_port)
+    );
     let port_forward_message = MessageFactory::create_web_service(
         network.get_node_id(),
         service_id,
@@ -809,10 +912,12 @@ async fn stop_webshare(
         .from_node(network.get_node_id())
         .for_session(request.session_id.clone())
         .with_domain(MessageDomain::PortForward)
-        .build(StructuredPayload::PortForward(PortForwardMessage::Stopped {
-            service_id,
-            reason: Some("WebShare stopped by user".to_string()),
-        }));
+        .build(StructuredPayload::PortForward(
+            PortForwardMessage::Stopped {
+                service_id,
+                reason: Some("WebShare stopped by user".to_string()),
+            },
+        ));
 
     network
         .send_message(connected_node_id, port_forward_message)
@@ -840,7 +945,9 @@ async fn list_webshares(session_id: String, state: State<'_, AppState>) -> Resul
         .from_node(network.get_node_id())
         .for_session(session_id.clone())
         .with_domain(MessageDomain::PortForward)
-        .build(StructuredPayload::PortForward(PortForwardMessage::ListRequest));
+        .build(StructuredPayload::PortForward(
+            PortForwardMessage::ListRequest,
+        ));
 
     network
         .send_message(connected_node_id, port_forward_message)
@@ -910,10 +1017,12 @@ async fn connect_to_terminal(
         .from_node(network.get_node_id())
         .for_session(session_id.clone())
         .with_domain(MessageDomain::Terminal)
-        .build(StructuredPayload::TerminalManagement(TerminalManagementMessage::Input {
-            terminal_id: terminal_id.clone(),
-            data: format!("CONNECT_TO_TERMINAL:{}", terminal_id),
-        }));
+        .build(StructuredPayload::TerminalManagement(
+            TerminalManagementMessage::Input {
+                terminal_id: terminal_id.clone(),
+                data: format!("CONNECT_TO_TERMINAL:{}", terminal_id),
+            },
+        ));
 
     network
         .send_message(connected_node_id, terminal_message)
@@ -1000,7 +1109,10 @@ async fn create_tcp_forward(
             metadata: None,
         }));
 
-    if let Err(e) = network.send_message(connected_node_id, port_forward_message).await {
+    if let Err(e) = network
+        .send_message(connected_node_id, port_forward_message)
+        .await
+    {
         return Err(format!("Failed to create TCP forward: {}", e));
     }
 
@@ -1129,12 +1241,17 @@ async fn stop_tcp_forward(
         .from_node(network.get_node_id())
         .for_session(session_id.clone())
         .with_domain(MessageDomain::PortForward)
-        .build(StructuredPayload::PortForward(PortForwardMessage::Stopped {
-            service_id: format!("tcp_{}", remote_port),
-            reason: Some("TCP forward stopped by user".to_string()),
-        }));
+        .build(StructuredPayload::PortForward(
+            PortForwardMessage::Stopped {
+                service_id: format!("tcp_{}", remote_port),
+                reason: Some("TCP forward stopped by user".to_string()),
+            },
+        ));
 
-    if let Err(e) = network.send_message(connected_node_id, port_forward_message).await {
+    if let Err(e) = network
+        .send_message(connected_node_id, port_forward_message)
+        .await
+    {
         return Err(format!("Failed to stop TCP forward: {}", e));
     }
 
@@ -1187,15 +1304,20 @@ async fn send_file_to_terminal(
         .from_node(network.get_node_id())
         .for_session(request.session_id.clone())
         .with_domain(MessageDomain::FileTransfer)
-        .build(StructuredPayload::FileTransfer(FileTransferMessage::Start {
-            terminal_id: request.terminal_id.clone(),
-            file_name: file_name.clone(),
-            file_size: file_content.len() as u64,
-            chunk_count: Some(1), // Single chunk for simplicity
-            mime_type: Some("application/octet-stream".to_string()),
-        }));
+        .build(StructuredPayload::FileTransfer(
+            FileTransferMessage::Start {
+                terminal_id: request.terminal_id.clone(),
+                file_name: file_name.clone(),
+                file_size: file_content.len() as u64,
+                chunk_count: Some(1), // Single chunk for simplicity
+                mime_type: Some("application/octet-stream".to_string()),
+            },
+        ));
 
-    if let Err(e) = network.send_message(connected_node_id, file_transfer_message).await {
+    if let Err(e) = network
+        .send_message(connected_node_id, file_transfer_message)
+        .await
+    {
         return Err(format!("Failed to send file transfer start: {}", e));
     }
 
@@ -1235,15 +1357,20 @@ async fn send_file_data_to_terminal(
         .from_node(network.get_node_id())
         .for_session(request.session_id.clone())
         .with_domain(MessageDomain::FileTransfer)
-        .build(StructuredPayload::FileTransfer(FileTransferMessage::Start {
-            terminal_id: request.terminal_id.clone(),
-            file_name: request.file_name.clone(),
-            file_size: request.file_data.len() as u64,
-            chunk_count: Some(1), // Single chunk for simplicity
-            mime_type: Some("application/octet-stream".to_string()),
-        }));
+        .build(StructuredPayload::FileTransfer(
+            FileTransferMessage::Start {
+                terminal_id: request.terminal_id.clone(),
+                file_name: request.file_name.clone(),
+                file_size: request.file_data.len() as u64,
+                chunk_count: Some(1), // Single chunk for simplicity
+                mime_type: Some("application/octet-stream".to_string()),
+            },
+        ));
 
-    if let Err(e) = network.send_message(connected_node_id, file_transfer_message).await {
+    if let Err(e) = network
+        .send_message(connected_node_id, file_transfer_message)
+        .await
+    {
         return Err(format!("Failed to send file transfer start: {}", e));
     }
 
@@ -1252,6 +1379,147 @@ async fn send_file_data_to_terminal(
         request.file_name, request.terminal_id
     );
     Ok(())
+}
+
+// === DumbPipe Client Commands ===
+
+/// Connect to dumbpipe host using NodeTicket
+#[tauri::command]
+async fn connect_to_dumbpipe_host(node_ticket_str: String) -> Result<String, String> {
+    info!(
+        "Connecting to dumbpipe host with ticket: {}",
+        node_ticket_str
+    );
+
+    // Parse the node ticket
+    let node_ticket = node_ticket_str
+        .parse::<NodeTicket>()
+        .map_err(|e| format!("Invalid node ticket: {}", e))?;
+
+    // Create dumbpipe client
+    let client = crate::dumbpipe_client::DumbPipeClient::new()
+        .await
+        .map_err(|e| format!("Failed to create dumbpipe client: {}", e))?;
+
+    // Connect to remote host
+    let mut connected_client = client
+        .connect(&node_ticket)
+        .await
+        .map_err(|e| format!("Failed to connect to remote host: {}", e))?;
+
+    info!(
+        "Successfully connected to remote host: {}",
+        connected_client.remote_node_id()
+    );
+
+    // Send a test command to verify the connection works
+    connected_client
+        .send_shell_command("echo 'Riterm Connection Test'")
+        .await
+        .map_err(|e| format!("Failed to send test command: {}", e))?;
+
+    // Read the response (optional)
+    match connected_client.read_output().await {
+        Ok(response) => {
+            info!("Test command response: {}", response.trim());
+        }
+        Err(e) => {
+            warn!("Failed to read test command response: {}", e);
+        }
+    }
+
+    // Send exit command to properly close the test terminal
+    connected_client
+        .send_exit_command()
+        .await
+        .map_err(|e| format!("Failed to send exit command: {}", e))?;
+
+    Ok(format!(
+        "Connected to dumbpipe host: {}",
+        connected_client.remote_node_id()
+    ))
+}
+
+/// Send shell command to connected dumbpipe host
+#[tauri::command]
+async fn send_dumbpipe_command(node_ticket_str: String, command: String) -> Result<String, String> {
+    info!("Sending dumbpipe command: {}", command);
+
+    // Parse the node ticket
+    let node_ticket = node_ticket_str
+        .parse::<NodeTicket>()
+        .map_err(|e| format!("Invalid node ticket: {}", e))?;
+
+    // Create dumbpipe client
+    let client = crate::dumbpipe_client::DumbPipeClient::new()
+        .await
+        .map_err(|e| format!("Failed to create dumbpipe client: {}", e))?;
+
+    // Connect to remote host
+    let mut connected_client = client
+        .connect(&node_ticket)
+        .await
+        .map_err(|e| format!("Failed to connect to remote host: {}", e))?;
+
+    // Send shell command
+    connected_client
+        .send_shell_command(&command)
+        .await
+        .map_err(|e| format!("Failed to send command: {}", e))?;
+
+    // Read response
+    let response = connected_client
+        .read_output()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    // Send exit command
+    connected_client
+        .send_exit_command()
+        .await
+        .map_err(|e| format!("Failed to send exit command: {}", e))?;
+
+    Ok(response.trim().to_string())
+}
+
+/// Resize remote terminal via dumbpipe
+#[tauri::command]
+async fn resize_dumbpipe_terminal(
+    node_ticket_str: String,
+    rows: u16,
+    cols: u16,
+) -> Result<String, String> {
+    info!("Resizing dumbpipe terminal to {}x{}", rows, cols);
+
+    // Parse the node ticket
+    let node_ticket = node_ticket_str
+        .parse::<NodeTicket>()
+        .map_err(|e| format!("Invalid node ticket: {}", e))?;
+
+    // Create dumbpipe client
+    let client = crate::dumbpipe_client::DumbPipeClient::new()
+        .await
+        .map_err(|e| format!("Failed to create dumbpipe client: {}", e))?;
+
+    // Connect to remote host
+    let mut connected_client = client
+        .connect(&node_ticket)
+        .await
+        .map_err(|e| format!("Failed to connect to remote host: {}", e))?;
+
+    // Send resize command
+    connected_client
+        .send_resize_command(rows, cols)
+        .await
+        .map_err(|e| format!("Failed to send resize command: {}", e))?;
+
+    // Send exit command
+    connected_client
+        .send_exit_command()
+        .await
+        .map_err(|e| format!("Failed to send exit command: {}", e))?;
+
+    Ok(format!("Terminal resized to {}x{}", rows, cols))
 }
 
 /// Initialize tracing with conditional log levels based on build configuration
@@ -1329,7 +1597,14 @@ pub fn run() {
             stop_tcp_forward,
             // File Transfer
             send_file_to_terminal,
-            send_file_data_to_terminal
+            send_file_data_to_terminal,
+            // DumbPipe Client
+            connect_to_dumbpipe_host,
+            send_dumbpipe_command,
+            resize_dumbpipe_terminal,
+            // DumbPipe Terminal Management
+            create_dumbpipe_terminal,
+            send_dumbpipe_input
         ])
         .setup(|app| {
             // Setup message handlers
@@ -1341,25 +1616,36 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 // Get the message router from the app handle state
                 if let Some(state) = app_handle1.try_state::<AppState>() {
-                    state.message_router.register_handler(terminal_handler).await;
+                    state
+                        .message_router
+                        .register_handler(terminal_handler)
+                        .await;
                 }
             });
 
-            let port_forward_handler = Arc::new(AppPortForwardMessageHandler::new(app_handle.clone()));
+            let port_forward_handler =
+                Arc::new(AppPortForwardMessageHandler::new(app_handle.clone()));
             let app_handle2 = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 // Get the message router from the app handle state
                 if let Some(state) = app_handle2.try_state::<AppState>() {
-                    state.message_router.register_handler(port_forward_handler).await;
+                    state
+                        .message_router
+                        .register_handler(port_forward_handler)
+                        .await;
                 }
             });
 
-            let file_transfer_handler = Arc::new(AppFileTransferMessageHandler::new(app_handle.clone()));
+            let file_transfer_handler =
+                Arc::new(AppFileTransferMessageHandler::new(app_handle.clone()));
             let app_handle3 = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 // Get the message router from the app handle state
                 if let Some(state) = app_handle3.try_state::<AppState>() {
-                    state.message_router.register_handler(file_transfer_handler).await;
+                    state
+                        .message_router
+                        .register_handler(file_transfer_handler)
+                        .await;
                 }
             });
 
@@ -1393,49 +1679,70 @@ impl AppTerminalMessageHandler {
 }
 
 impl MessageHandler for AppTerminalMessageHandler {
-    fn handle_message(&self, message: NetworkMessage) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+    fn handle_message(
+        &self,
+        message: NetworkMessage,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
         Box::pin(async move {
             match message {
                 NetworkMessage::Structured { payload, .. } => {
                     match payload {
-                        StructuredPayload::TerminalManagement(TerminalManagementMessage::Output {
-                            terminal_id,
-                            data,
-                        }) => {
-                            info!("Received terminal output from structured message: {} -> {}", terminal_id, data);
+                        StructuredPayload::TerminalManagement(
+                            TerminalManagementMessage::Output { terminal_id, data },
+                        ) => {
+                            info!(
+                                "Received terminal output from structured message: {} -> {}",
+                                terminal_id, data
+                            );
                             // Emit to frontend
-                            let _ = self.app_handle.emit("terminal-output", serde_json::json!({
-                                "terminal_id": terminal_id,
-                                "data": data
-                            }));
+                            let _ = self.app_handle.emit(
+                                "terminal-output",
+                                serde_json::json!({
+                                    "terminal_id": terminal_id,
+                                    "data": data
+                                }),
+                            );
                         }
-                        StructuredPayload::TerminalManagement(TerminalManagementMessage::StatusUpdate {
-                            terminal_id,
-                            status,
-                        }) => {
+                        StructuredPayload::TerminalManagement(
+                            TerminalManagementMessage::StatusUpdate {
+                                terminal_id,
+                                status,
+                            },
+                        ) => {
                             info!("Terminal status update: {} -> {:?}", terminal_id, status);
-                            let _ = self.app_handle.emit("terminal-status-update", serde_json::json!({
-                                "terminal_id": terminal_id,
-                                "status": status
-                            }));
+                            let _ = self.app_handle.emit(
+                                "terminal-status-update",
+                                serde_json::json!({
+                                    "terminal_id": terminal_id,
+                                    "status": status
+                                }),
+                            );
                         }
-                        StructuredPayload::TerminalManagement(TerminalManagementMessage::DirectoryChanged {
-                            terminal_id,
-                            new_dir,
-                        }) => {
+                        StructuredPayload::TerminalManagement(
+                            TerminalManagementMessage::DirectoryChanged {
+                                terminal_id,
+                                new_dir,
+                            },
+                        ) => {
                             info!("Terminal directory changed: {} -> {}", terminal_id, new_dir);
-                            let _ = self.app_handle.emit("terminal-directory-changed", serde_json::json!({
-                                "terminal_id": terminal_id,
-                                "new_dir": new_dir
-                            }));
+                            let _ = self.app_handle.emit(
+                                "terminal-directory-changed",
+                                serde_json::json!({
+                                    "terminal_id": terminal_id,
+                                    "new_dir": new_dir
+                                }),
+                            );
                         }
-                        StructuredPayload::TerminalManagement(TerminalManagementMessage::ListResponse {
-                            terminals,
-                        }) => {
+                        StructuredPayload::TerminalManagement(
+                            TerminalManagementMessage::ListResponse { terminals },
+                        ) => {
                             info!("Received terminal list: {} terminals", terminals.len());
-                            let _ = self.app_handle.emit("terminal-list-response", serde_json::json!({
-                                "terminals": terminals
-                            }));
+                            let _ = self.app_handle.emit(
+                                "terminal-list-response",
+                                serde_json::json!({
+                                    "terminals": terminals
+                                }),
+                            );
                         }
                         _ => {
                             debug!("Ignoring non-terminal-management message in terminal handler");
@@ -1464,55 +1771,79 @@ impl AppPortForwardMessageHandler {
 }
 
 impl MessageHandler for AppPortForwardMessageHandler {
-    fn handle_message(&self, message: NetworkMessage) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+    fn handle_message(
+        &self,
+        message: NetworkMessage,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
         let app_handle = self.app_handle.clone();
         Box::pin(async move {
             match message {
-                NetworkMessage::Structured { payload, .. } => {
-                    match payload {
-                        StructuredPayload::PortForward(PortForwardMessage::Connected {
-                            service_id,
-                            assigned_remote_port,
-                            access_url,
-                        }) => {
-                            info!("Port forwarding service {} connected on port {}", service_id, assigned_remote_port);
-                            let _ = app_handle.emit("port-forward-connected", serde_json::json!({
+                NetworkMessage::Structured { payload, .. } => match payload {
+                    StructuredPayload::PortForward(PortForwardMessage::Connected {
+                        service_id,
+                        assigned_remote_port,
+                        access_url,
+                    }) => {
+                        info!(
+                            "Port forwarding service {} connected on port {}",
+                            service_id, assigned_remote_port
+                        );
+                        let _ = app_handle.emit(
+                            "port-forward-connected",
+                            serde_json::json!({
                                 "service_id": service_id,
                                 "assigned_remote_port": assigned_remote_port,
                                 "access_url": access_url
-                            }));
-                        }
-                        StructuredPayload::PortForward(PortForwardMessage::StatusUpdate {
-                            service_id,
-                            status,
-                        }) => {
-                            info!("Port forwarding service {} status: {:?}", service_id, status);
-                            let _ = app_handle.emit("port-forward-status-update", serde_json::json!({
+                            }),
+                        );
+                    }
+                    StructuredPayload::PortForward(PortForwardMessage::StatusUpdate {
+                        service_id,
+                        status,
+                    }) => {
+                        info!(
+                            "Port forwarding service {} status: {:?}",
+                            service_id, status
+                        );
+                        let _ = app_handle.emit(
+                            "port-forward-status-update",
+                            serde_json::json!({
                                 "service_id": service_id,
                                 "status": status
-                            }));
-                        }
-                        StructuredPayload::PortForward(PortForwardMessage::Stopped {
-                            service_id,
-                            reason,
-                        }) => {
-                            info!("Port forwarding service {} stopped", service_id);
-                            let _ = app_handle.emit("port-forward-stopped", serde_json::json!({
+                            }),
+                        );
+                    }
+                    StructuredPayload::PortForward(PortForwardMessage::Stopped {
+                        service_id,
+                        reason,
+                    }) => {
+                        info!("Port forwarding service {} stopped", service_id);
+                        let _ = app_handle.emit(
+                            "port-forward-stopped",
+                            serde_json::json!({
                                 "service_id": service_id,
                                 "reason": reason
-                            }));
-                        }
-                        StructuredPayload::PortForward(PortForwardMessage::ListResponse { services }) => {
-                            info!("Received port forwarding services list: {} services", services.len());
-                            let _ = app_handle.emit("port-forward-list-response", serde_json::json!({
-                                "services": services
-                            }));
-                        }
-                        _ => {
-                            debug!("Ignoring port forward message type in App handler");
-                        }
+                            }),
+                        );
                     }
-                }
+                    StructuredPayload::PortForward(PortForwardMessage::ListResponse {
+                        services,
+                    }) => {
+                        info!(
+                            "Received port forwarding services list: {} services",
+                            services.len()
+                        );
+                        let _ = app_handle.emit(
+                            "port-forward-list-response",
+                            serde_json::json!({
+                                "services": services
+                            }),
+                        );
+                    }
+                    _ => {
+                        debug!("Ignoring port forward message type in App handler");
+                    }
+                },
             }
             Ok(())
         })
@@ -1535,81 +1866,103 @@ impl AppFileTransferMessageHandler {
 }
 
 impl MessageHandler for AppFileTransferMessageHandler {
-    fn handle_message(&self, message: NetworkMessage) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+    fn handle_message(
+        &self,
+        message: NetworkMessage,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
         let app_handle = self.app_handle.clone();
         Box::pin(async move {
             match message {
-                NetworkMessage::Structured { payload, .. } => {
-                    match payload {
-                        StructuredPayload::FileTransfer(FileTransferMessage::Start {
-                            terminal_id,
-                            file_name,
-                            file_size,
-                            chunk_count,
-                            mime_type,
-                        }) => {
-                            info!("File transfer started: {} ({} bytes) for terminal {}", file_name, file_size, terminal_id);
-                            let _ = app_handle.emit("file-transfer-start", serde_json::json!({
+                NetworkMessage::Structured { payload, .. } => match payload {
+                    StructuredPayload::FileTransfer(FileTransferMessage::Start {
+                        terminal_id,
+                        file_name,
+                        file_size,
+                        chunk_count,
+                        mime_type,
+                    }) => {
+                        info!(
+                            "File transfer started: {} ({} bytes) for terminal {}",
+                            file_name, file_size, terminal_id
+                        );
+                        let _ = app_handle.emit(
+                            "file-transfer-start",
+                            serde_json::json!({
                                 "terminal_id": terminal_id,
                                 "file_name": file_name,
                                 "file_size": file_size,
                                 "chunk_count": chunk_count,
                                 "mime_type": mime_type
-                            }));
-                        }
-                        StructuredPayload::FileTransfer(FileTransferMessage::Progress {
-                            terminal_id,
-                            file_name,
-                            bytes_transferred,
-                            total_bytes,
-                        }) => {
-                            let progress = if total_bytes > 0 {
-                                (bytes_transferred * 100) / total_bytes
-                            } else {
-                                0
-                            };
-                            info!("File transfer progress: {} - {}% ({}/{})", file_name, progress, bytes_transferred, total_bytes);
-                            let _ = app_handle.emit("file-transfer-progress", serde_json::json!({
+                            }),
+                        );
+                    }
+                    StructuredPayload::FileTransfer(FileTransferMessage::Progress {
+                        terminal_id,
+                        file_name,
+                        bytes_transferred,
+                        total_bytes,
+                    }) => {
+                        let progress = if total_bytes > 0 {
+                            (bytes_transferred * 100) / total_bytes
+                        } else {
+                            0
+                        };
+                        info!(
+                            "File transfer progress: {} - {}% ({}/{})",
+                            file_name, progress, bytes_transferred, total_bytes
+                        );
+                        let _ = app_handle.emit(
+                            "file-transfer-progress",
+                            serde_json::json!({
                                 "terminal_id": terminal_id,
                                 "file_name": file_name,
                                 "bytes_transferred": bytes_transferred,
                                 "total_bytes": total_bytes,
                                 "progress": progress
-                            }));
-                        }
-                        StructuredPayload::FileTransfer(FileTransferMessage::Complete {
-                            terminal_id,
-                            file_name,
-                            file_path,
-                            file_hash,
-                        }) => {
-                            info!("File transfer completed: {} -> {}", file_name, file_path);
-                            let _ = app_handle.emit("file-transfer-complete", serde_json::json!({
+                            }),
+                        );
+                    }
+                    StructuredPayload::FileTransfer(FileTransferMessage::Complete {
+                        terminal_id,
+                        file_name,
+                        file_path,
+                        file_hash,
+                    }) => {
+                        info!("File transfer completed: {} -> {}", file_name, file_path);
+                        let _ = app_handle.emit(
+                            "file-transfer-complete",
+                            serde_json::json!({
                                 "terminal_id": terminal_id,
                                 "file_name": file_name,
                                 "file_path": file_path,
                                 "file_hash": file_hash
-                            }));
-                        }
-                        StructuredPayload::FileTransfer(FileTransferMessage::Error {
-                            terminal_id,
-                            file_name,
-                            error_message,
-                            error_code,
-                        }) => {
-                            error!("File transfer error: {} - {} (code: {:?})", file_name, error_message, error_code);
-                            let _ = app_handle.emit("file-transfer-error", serde_json::json!({
+                            }),
+                        );
+                    }
+                    StructuredPayload::FileTransfer(FileTransferMessage::Error {
+                        terminal_id,
+                        file_name,
+                        error_message,
+                        error_code,
+                    }) => {
+                        error!(
+                            "File transfer error: {} - {} (code: {:?})",
+                            file_name, error_message, error_code
+                        );
+                        let _ = app_handle.emit(
+                            "file-transfer-error",
+                            serde_json::json!({
                                 "terminal_id": terminal_id,
                                 "file_name": file_name,
                                 "error_message": error_message,
                                 "error_code": error_code
-                            }));
-                        }
-                        _ => {
-                            debug!("Ignoring file transfer message type in App handler");
-                        }
+                            }),
+                        );
                     }
-                }
+                    _ => {
+                        debug!("Ignoring file transfer message type in App handler");
+                    }
+                },
             }
             Ok(())
         })
@@ -1632,7 +1985,10 @@ impl AppSystemMessageHandler {
 }
 
 impl MessageHandler for AppSystemMessageHandler {
-    fn handle_message(&self, message: NetworkMessage) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+    fn handle_message(
+        &self,
+        message: NetworkMessage,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
         let app_handle = self.app_handle.clone();
         Box::pin(async move {
             match message {
@@ -1645,26 +2001,42 @@ impl MessageHandler for AppSystemMessageHandler {
                             timestamp: _,
                         }) => {
                             info!("Received system stats from node: {}", node_id);
-                            let _ = app_handle.emit("system-stats-response", serde_json::json!({
-                                "terminal_stats": terminal_stats,
-                                "port_forward_stats": port_forward_stats,
-                                "node_id": node_id
-                            }));
+                            let _ = app_handle.emit(
+                                "system-stats-response",
+                                serde_json::json!({
+                                    "terminal_stats": terminal_stats,
+                                    "port_forward_stats": port_forward_stats,
+                                    "node_id": node_id
+                                }),
+                            );
                         }
                         StructuredPayload::System(SystemMessage::Ping { sequence }) => {
                             info!("Received ping: {}", sequence);
                             // Send pong response
-                            let _ = app_handle.emit("system-ping", serde_json::json!({
-                                "sequence": sequence
-                            }));
+                            let _ = app_handle.emit(
+                                "system-ping",
+                                serde_json::json!({
+                                    "sequence": sequence
+                                }),
+                            );
                         }
-                        StructuredPayload::System(SystemMessage::Error { code, message, details }) => {
-                            error!("System error: {:?} - {} (details: {:?})", code, message, details);
-                            let _ = app_handle.emit("system-error", serde_json::json!({
-                                "code": code,
-                                "message": message,
-                                "details": details
-                            }));
+                        StructuredPayload::System(SystemMessage::Error {
+                            code,
+                            message,
+                            details,
+                        }) => {
+                            error!(
+                                "System error: {:?} - {} (details: {:?})",
+                                code, message, details
+                            );
+                            let _ = app_handle.emit(
+                                "system-error",
+                                serde_json::json!({
+                                    "code": code,
+                                    "message": message,
+                                    "details": details
+                                }),
+                            );
                         }
                         _ => {
                             debug!("Ignoring system message type in App handler");

@@ -1,0 +1,40 @@
+[package]
+name = "riterm-tests"
+version = "0.1.0"
+edition = "2021"
+
+[[test]]
+name = "simple_host_integration_test"
+path = "integration/simple_host_integration_test.rs"
+
+[[test]]
+name = "app_client_integration_test"
+path = "integration/app_client_integration_test.rs"
+
+[[test]]
+name = "simple_protocol_test"
+path = "simple_protocol_test.rs"
+
+[[test]]
+name = "end_to_end_test"
+path = "integration/end_to_end_test.rs"
+
+[[test]]
+name = "basic_protocol_test"
+path = "basic_protocol_test.rs"
+
+[dependencies]
+tokio = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+riterm-shared = { path = "../shared" }
+cli = { path = "../cli" }
+app = { path = "../app" }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.0"

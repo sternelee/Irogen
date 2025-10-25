@@ -1,41 +1,36 @@
 import { createSignal, createEffect, onMount, For, Show, onCleanup } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { createMessageHandler, extractTerminalInfo } from "../utils/messageHandler";
-import { createApiClient, ApiValidators } from "../utils/api";
+import { createApiClient, ApiValidators, ConnectionApi } from "../utils/api";
 import { TerminalInfo, TerminalEvent, MessageDomain } from "../types/messages";
+import { createConnectionHandler } from "../hooks/useConnection";
 
 // Use the new TerminalInfo type from messages.ts
 type Terminal = TerminalInfo;
 
 interface CreateTerminalRequest {
-  session_id: string;
   name?: string;
   shell_path?: string;
   working_dir?: string;
-  size?: [number, number];
+  rows?: number;
+  cols?: number;
 }
 
 interface TerminalInputRequest {
-  session_id: string;
-  terminal_id: string;
   input: string;
 }
 
 interface TerminalResizeRequest {
-  session_id: string;
-  terminal_id: string;
   rows: number;
   cols: number;
 }
 
 interface TerminalStopRequest {
-  session_id: string;
-  terminal_id: string;
+  // No parameters needed for dumbpipe
 }
 
 export function TerminalManager(props: {
-  sessionId: string;
+  nodeTicket: string;
   onClose: () => void;
 }) {
   const [terminals, setTerminals] = createSignal<Terminal[]>([]);
@@ -52,24 +47,25 @@ export function TerminalManager(props: {
   const [newTerminalRows, setNewTerminalRows] = createSignal(24);
   const [newTerminalCols, setNewTerminalCols] = createSignal(80);
 
-  // Create API client and message handler
-  let apiClient: ReturnType<typeof createApiClient>;
+  // Create connection handler and message handler
+  let connectionHandler: ReturnType<typeof createConnectionHandler>;
   let messageHandler: ReturnType<typeof createMessageHandler>;
+  let apiClient: ReturnType<typeof createApiClient>;
 
   // Load terminals on mount
   onMount(() => {
-    apiClient = createApiClient(props.sessionId);
-    messageHandler = createMessageHandler(props.sessionId, {
-      onTerminalEvent: handleTerminalEvent,
-      onError: (error) => console.error("Terminal manager message handler error:", error)
-    });
-
+    connectionHandler = createConnectionHandler();
+    
+    // For DumbPipe, we'll use direct API calls instead of message events
+    // So we don't need to establish a traditional session
     loadTerminals();
-    setupEventListeners();
   });
 
   // Cleanup on unmount
   onCleanup(async () => {
+    if (connectionHandler) {
+      await connectionHandler.disconnect(undefined, props.nodeTicket);
+    }
     if (messageHandler) {
       await messageHandler.stopListening();
     }
@@ -78,11 +74,10 @@ export function TerminalManager(props: {
   const loadTerminals = async () => {
     setLoading(true);
     try {
-      const response = await apiClient.listTerminals();
-      if (!response.success) {
-        throw new Error(response.error || "Failed to list terminals");
-      }
-      // Terminal list will be received via events
+      // For DumbPipe, terminals are managed differently
+      // We don't have a traditional list command, so we'll start with an empty list
+      // Terminals will be created on demand
+      setTerminals([]);
     } catch (error) {
       console.error("Failed to load terminals:", error);
     } finally {
@@ -91,16 +86,8 @@ export function TerminalManager(props: {
   };
 
   const setupEventListeners = async () => {
-    if (!messageHandler) {
-      console.error("Message handler not initialized");
-      return;
-    }
-
-    try {
-      await messageHandler.startListening();
-    } catch (error) {
-      console.error("Failed to start message handler:", error);
-    }
+    // For DumbPipe, we don't use traditional message events
+    // Terminal management is done through direct API calls
   };
 
   const handleTerminalEvent = (event: TerminalEvent) => {
@@ -168,31 +155,24 @@ export function TerminalManager(props: {
   const createTerminal = async () => {
     setCreating(true);
     try {
-      const request = {
-        session_id: props.sessionId,
-        name: newTerminalName() || undefined,
-        shell_path: newTerminalShell() || undefined,
-        working_dir: newTerminalDir() || undefined,
-        size: [newTerminalRows(), newTerminalCols()],
-      };
+      // Use DumbPipe API for terminal creation
+      const result = await ConnectionApi.createDumbPipeTerminal(
+        props.nodeTicket,
+        newTerminalName() || undefined,
+        newTerminalShell() || undefined,
+        newTerminalDir() || undefined,
+        newTerminalRows(),
+        newTerminalCols()
+      );
 
-      // Validate request
-      const errors = ApiValidators.validateCreateTerminalRequest(request);
-      if (errors.length > 0) {
-        throw new Error(`Validation errors: ${errors.join(", ")}`);
-      }
-
-      const response = await apiClient.createTerminal(request);
-      if (!response.success) {
-        throw new Error(response.error || "Failed to create terminal");
-      }
-
+      console.log("Terminal created:", result);
       setShowCreateForm(false);
       resetCreateForm();
+      
       // Terminal will be added via events, no need to refresh list
     } catch (error) {
       console.error("Failed to create terminal:", error);
-      // TODO: Show error to user
+      showErrorMessage(`Failed to create terminal: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setCreating(false);
     }
@@ -200,57 +180,49 @@ export function TerminalManager(props: {
 
   const stopTerminal = async (terminalId: string) => {
     try {
-      const request = {
-        session_id: props.sessionId,
-        terminal_id: terminalId,
-      };
-
-      const response = await apiClient.stopTerminal(request);
-      if (!response.success) {
-        throw new Error(response.error || "Failed to stop terminal");
+      // For DumbPipe, we can send a command to stop the terminal
+      const result = await ConnectionApi.sendDumbPipeCommand(props.nodeTicket, "exit");
+      console.log("Terminal stop command sent:", result);
+      
+      // Remove terminal from local list
+      setTerminals(prev => prev.filter(t => t.id !== terminalId));
+      if (selectedTerminal() === terminalId) {
+        setSelectedTerminal(null);
       }
-      // Terminal will be removed via events, no need to refresh list
     } catch (error) {
       console.error("Failed to stop terminal:", error);
-      // TODO: Show error to user
+      showErrorMessage(`Failed to stop terminal: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
   const sendInputToTerminal = async (terminalId: string, input: string) => {
     try {
-      const request = {
-        session_id: props.sessionId,
-        terminal_id: terminalId,
-        input,
-      };
-
-      const response = await apiClient.sendTerminalInput(request);
-      if (!response.success) {
-        throw new Error(response.error || "Failed to send input to terminal");
-      }
+      // Use DumbPipe API for sending input
+      const result = await ConnectionApi.sendDumbPipeInput(props.nodeTicket, input);
+      console.log("Input sent:", result);
     } catch (error) {
       console.error("Failed to send input to terminal:", error);
-      // TODO: Show error to user
+      showErrorMessage(`Failed to send input: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
   const resizeTerminal = async (terminalId: string, rows: number, cols: number) => {
     try {
-      const request = {
-        session_id: props.sessionId,
-        terminal_id: terminalId,
-        rows,
-        cols,
-      };
-
-      const response = await apiClient.resizeTerminal(request);
-      if (!response.success) {
-        throw new Error(response.error || "Failed to resize terminal");
-      }
-      // Terminal will be updated via events, no need to refresh list
+      // Use DumbPipe resize API
+      const result = await ConnectionApi.resizeDumbPipeTerminal(props.nodeTicket, rows, cols);
+      console.log("Terminal resized:", result);
+      
+      // Update terminal size in local list
+      setTerminals(prev =>
+        prev.map(terminal =>
+          terminal.id === terminalId
+            ? { ...terminal, size: [rows, cols] }
+            : terminal
+        )
+      );
     } catch (error) {
       console.error("Failed to resize terminal:", error);
-      // TODO: Show error to user
+      showErrorMessage(`Failed to resize terminal: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -284,6 +256,12 @@ export function TerminalManager(props: {
     }
   };
 
+  const showErrorMessage = (message: string) => {
+    console.error("Terminal Manager Error:", message);
+    // TODO: Show error to user in UI
+    alert(message); // Temporary implementation
+  };
+
   return (
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -294,7 +272,7 @@ export function TerminalManager(props: {
               <span class="text-white font-bold">T</span>
             </div>
             <h2 class="text-xl font-semibold">Terminal Manager</h2>
-            <span class="text-sm text-gray-300">Session: {props.sessionId.slice(0, 8)}...</span>
+            <span class="text-sm text-gray-300">Node: {props.nodeTicket.slice(0, 8)}...</span>
           </div>
           <div class="flex items-center space-x-2">
             <button
@@ -494,7 +472,7 @@ export function TerminalManager(props: {
 
         {/* Footer */}
         <div class="bg-gray-100 p-3 border-t text-sm text-gray-600 text-center">
-          <div>Connected to: {props.sessionId}</div>
+          <div>Connected to: {props.nodeTicket}</div>
           <div>Total terminals: {terminals().length}</div>
         </div>
       </div>

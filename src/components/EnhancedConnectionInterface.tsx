@@ -19,7 +19,7 @@ import {
 } from "../types/messages";
 
 interface EnhancedConnectionInterfaceProps {
-  onConnectionEstablished?: (sessionId: string) => void;
+  onConnectionEstablished?: (sessionId: string, nodeTicket?: string) => void;
   onConnectionLost?: (sessionId: string) => void;
   onTerminalEvent?: (event: TerminalEvent) => void;
   onPortForwardEvent?: (event: PortForwardEvent) => void;
@@ -98,19 +98,28 @@ export function EnhancedConnectionInterface(props: EnhancedConnectionInterfacePr
         }
       });
 
+      // For DumbPipe connections, we also have access to the node ticket
+      const activeNodeTicket = connectionHandler.activeNodeTicket();
+      console.log("Connection established - SessionId:", newSessionId);
+      console.log("Active NodeTicket:", activeNodeTicket);
+
       setSessionId(newSessionId);
       setConnected(true);
 
-      // Setup message handler for this session
-      await setupMessageHandler(newSessionId);
+      // For DumbPipe connections, skip the traditional message handler setup
+      // as we use direct API calls instead
+      if (!activeNodeTicket) {
+        // Only setup message handler for traditional connections
+        await setupMessageHandler(newSessionId);
+      }
 
       // Add to history
       const newHistory = [newSessionId, ...connectionHistory().slice(0, 9)];
       setConnectionHistory(newHistory);
       localStorage.setItem("connectionHistory", JSON.stringify(newHistory));
 
-      // Notify parent
-      props.onConnectionEstablished?.(newSessionId);
+      // Notify parent with both sessionId and nodeTicket if available
+      props.onConnectionEstablished?.(newSessionId, activeNodeTicket);
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

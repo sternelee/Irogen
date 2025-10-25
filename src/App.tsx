@@ -63,6 +63,7 @@ function App() {
 
   // Enhanced connection handler
   const connectionHandler = createConnectionHandler();
+  const nodeTicket = () => connectionHandler.activeNodeTicket();
 
   // Message handlers for different sessions
   const [messageHandlers, setMessageHandlers] = createSignal<Map<string, any>>(new Map());
@@ -412,7 +413,7 @@ function App() {
 
       // Setup legacy terminal event listener for backward compatibility
       const unlisten = await listen<any>(
-        `terminal-event-${newSessionId}`,
+        'terminal-event',
         (event) => {
           const termEvent = event.payload;
           if (terminalInstance && !(terminalInstance as any)._isDisposed) {
@@ -604,9 +605,9 @@ function App() {
             />
           )}
 
-          {currentView() === "remote" && isConnected() && sessionId() && (
+          {currentView() === "remote" && isConnected() && nodeTicket() && (
             <RemoteSessionView
-              sessionId={sessionId()}
+              nodeTicket={nodeTicket()}
               onDisconnect={handleDisconnect}
               onBack={() => setCurrentView("home")}
             />
@@ -660,18 +661,23 @@ function App() {
             </div>
             <div class="p-4">
               <EnhancedConnectionInterface
-                onConnectionEstablished={(newSessionId) => {
-                  setSessionId(newSessionId);
+                onConnectionEstablished={(newSessionId, nodeTicket) => {
+                  console.log("Connection established with session:", newSessionId);
+                  console.log("Node ticket:", nodeTicket);
+                  
+                  setSessionId(newSessionId); // Keep for compatibility
                   setIsConnected(true);
                   setShowEnhancedConnection(false);
                   setCurrentView("remote");
                 }}
                 onConnectionLost={(lostSessionId) => {
-                  if (sessionId() === lostSessionId) {
-                    setIsConnected(false);
-                    setSessionId(null);
-                    setCurrentView("home");
-                  }
+                  console.log("Connection lost for session:", lostSessionId);
+                  setIsConnected(false);
+                  setSessionId(null);
+                  setCurrentView("home");
+                  
+                  // Clear the active node ticket
+                  connectionHandler.disconnect(lostSessionId);
                 }}
                 onTerminalEvent={handleTerminalEvent}
                 onPortForwardEvent={handlePortForwardEvent}
