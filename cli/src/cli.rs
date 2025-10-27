@@ -109,17 +109,17 @@ impl CliApp {
                   data: String|
                   -> tokio::task::JoinHandle<anyhow::Result<Option<String>>> {
                 let terminal_manager = terminal_manager_for_input.clone();
-                let session_id = session_id_for_input.clone();
-                let network = network_for_input.clone();
+                // let session_id = session_id_for_input.clone();
+                // let network = network_for_input.clone();
 
                 tokio::spawn(async move {
-                    info!(
-                        "🔥 RECEIVED TERMINAL INPUT: terminal_id={}, data='{}'",
-                        terminal_id, data
-                    );
+                    // info!(
+                    //     "🔥 RECEIVED TERMINAL INPUT: terminal_id={}, data='{}'",
+                    //     terminal_id, data
+                    // );
 
                     // 将输入发送到实际的终端会话
-                    let data_clone = data.clone();
+                    // let data_clone = data.clone();
                     if let Err(e) = terminal_manager
                         .send_input(&terminal_id, data.into_bytes())
                         .await
@@ -128,16 +128,16 @@ impl CliApp {
                         return Ok(None);
                     }
 
-                    info!(
-                        "✅ Successfully sent input '{}' to terminal {}",
-                        data_clone, terminal_id
-                    );
+                    // info!(
+                    //     "✅ Successfully sent input '{}' to terminal {}",
+                    //     data_clone, terminal_id
+                    // );
 
                     // 这里暂时返回 None，实际的输出将由终端会话通过其他方式发送
                     // 未来可以在这里等待终端的输出响应
-                    info!(
-                        "⏭️ Terminal input callback returning None (output will be sent via callback chain)"
-                    );
+                    // info!(
+                    //     "⏭️ Terminal input callback returning None (output will be sent via callback chain)"
+                    // );
                     Ok(None)
                 })
             };
@@ -151,7 +151,7 @@ impl CliApp {
         let gossip_sender_for_responses = sender.clone();
 
         // 设置终端输出处理器回调
-        let terminal_manager_for_output = self.terminal_manager.clone();
+        // let terminal_manager_for_output = self.terminal_manager.clone();
         let session_id_for_output = header.session_id.clone();
         let network_for_output = self.network.clone();
         let gossip_sender_for_output = gossip_sender_for_responses.clone();
@@ -162,10 +162,10 @@ impl CliApp {
             let network = network_for_output.clone();
             let gossip_sender = gossip_sender_for_output.clone();
 
-            info!(
-                "🔥 RECEIVED TERMINAL OUTPUT: terminal_id={}, data='{}'",
-                terminal_id, data
-            );
+            // info!(
+            //     "🔥 RECEIVED TERMINAL OUTPUT: terminal_id={}, data='{}'",
+            //     terminal_id, data
+            // );
 
             tokio::spawn(async move {
                 // 使用保存的 gossip sender 发送终端输出
@@ -180,10 +180,10 @@ impl CliApp {
                 {
                     error!("Failed to send terminal output to P2P network: {}", e);
                 } else {
-                    info!(
-                        "✅ Successfully sent terminal output from {} to P2P network: '{}'",
-                        terminal_id, data
-                    );
+                    // info!(
+                    //     "✅ Successfully sent terminal output from {} to P2P network: '{}'",
+                    //     terminal_id, data
+                    // );
                 }
             });
         };
@@ -195,7 +195,7 @@ impl CliApp {
 
         // 设置终端管理消息处理器
         let terminal_manager = self.terminal_manager.clone();
-        let network_for_terminal = self.network.clone();
+        // let network_for_terminal = self.network.clone();
 
         // 创建一个默认终端用于测试
         let terminal_manager_task = terminal_manager.clone();
@@ -231,9 +231,9 @@ impl CliApp {
 
         self.network
             .set_history_callback(move |_session_id: &str| {
-                let terminal_manager = terminal_manager.clone();
-                let session_id = session_id_for_history.clone();
-                let sender = sender_for_history.clone();
+                // let terminal_manager = terminal_manager.clone();
+                // let session_id = session_id_for_history.clone();
+                // let sender = sender_for_history.clone();
 
                 let (tx, rx) = tokio::sync::oneshot::channel();
 
