@@ -380,6 +380,24 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     }
   });
 
+  // 自动选择第一个可用终端
+  createEffect(() => {
+    const availableTerminals = terminals();
+    const hasActiveTerminal = activeTerminalId();
+    const availableTerminalIds = availableTerminals.map(t => t.id);
+
+    // 如果没有活动终端但有可用终端，自动选择第一个
+    if (!hasActiveTerminal && availableTerminalIds.length > 0) {
+      const firstTerminalId = availableTerminalIds[0];
+      setActiveTerminalId(firstTerminalId);
+    }
+
+    // 如果当前活动终端不在可用列表中，清空选择
+    if (hasActiveTerminal && !availableTerminalIds.includes(hasActiveTerminal)) {
+      setActiveTerminalId(null);
+    }
+  });
+
   // 渲染终端列表
   const renderTerminalList = (inDropdown = false) => (
     <div class={inDropdown ? "space-y-2" : "space-y-2"}>
@@ -472,36 +490,66 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     if (!session) return null;
 
     return (
-      <div class="flex-1 bg-black p-4">
-        <div class="bg-base-100 rounded-t-lg px-4 py-2 flex justify-between items-center">
-          <div class="text-sm font-medium">
-            {terminals().find((t) => t.id === terminalId)?.name ||
-              `Terminal ${terminalId.slice(0, 8)}`}
+      <div class="flex-1 bg-black relative">
+        {/* 桌面端：直接显示终端，不重复标题栏 */}
+        <Show when={!isMobile}>
+          <div
+            ref={(el) => {
+              if (el && el.children.length === 0) {
+                session.terminal.open(el);
+                session.fitAddon.fit();
+              }
+            }}
+            class="w-full h-full"
+          />
+        </Show>
+
+        {/* 移动端：保持原有的标题栏设计 */}
+        <Show when={isMobile}>
+          <div class="bg-base-100 px-4 py-2 flex justify-between items-center">
+            <div class="text-sm font-medium truncate">
+              {terminals().find((t) => t.id === terminalId)?.name ||
+                `Terminal ${terminalId.slice(0, 8)}`}
+            </div>
+            <button
+              class="btn btn-ghost btn-xs"
+              onClick={() => setActiveTerminalId(null)}
+              title="关闭终端"
+            >
+              ✖️
+            </button>
           </div>
-          <button
-            class="btn btn-ghost btn-sm"
-            onClick={() => setActiveTerminalId(null)}
-            title="关闭终端"
-          >
-            ✖️
-          </button>
-        </div>
-        <div
-          ref={(el) => {
-            if (el && el.children.length === 0) {
-              session.terminal.open(el);
-              session.fitAddon.fit();
-            }
-          }}
-          class="h-full"
-          style={{ height: "calc(100% - 48px)" }}
-        />
+          <div
+            ref={(el) => {
+              if (el && el.children.length === 0) {
+                session.terminal.open(el);
+                session.fitAddon.fit();
+              }
+            }}
+            class="flex-1"
+            style={{ height: "calc(100% - 48px)" }}
+          />
+        </Show>
       </div>
     );
   };
 
+  // 键盘快捷键支持
+  const handleKeyboardShortcuts = (e: KeyboardEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      const digit = parseInt(e.key);
+      if (digit >= 1 && digit <= 9) {
+        const availableTerminals = terminals();
+        if (digit <= availableTerminals.length) {
+          e.preventDefault();
+          setActiveTerminalId(availableTerminals[digit - 1].id);
+        }
+      }
+    }
+  };
+
   return (
-    <div class="h-full flex flex-col">
+    <div class="h-full flex flex-col" onKeyDown={handleKeyboardShortcuts} tabIndex={0}>
       {/* 创建终端对话框 */}
       <Show when={showCreateDialog()}>
         <div class="modal modal-open">
@@ -551,85 +599,162 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       </Show>
 
       {/* 头部 */}
-      <div class="navbar bg-base-100 border-b min-h-[48px] px-2 sm:px-4">
-        <div class="flex-1">
-          <button class="btn btn-ghost btn-sm" onClick={props.onBack}>
-            ← 返回
-          </button>
-          <span class="ml-2 font-medium hidden sm:inline">远程会话</span>
-        </div>
-        <div class="flex-none flex items-center space-x-1">
-          <button
-            class="btn btn-ghost btn-sm"
-            onClick={() => fetchTerminals()}
-            title="刷新"
-          >
-            🔄
-          </button>
-
-          {/* 移动端下拉菜单 */}
-          <Show when={isMobile}>
-            <div class="dropdown dropdown-end">
-              <button
-                class="btn btn-ghost btn-sm"
-                onClick={() => setShowMainMenu(!showMainMenu())}
-              >
-                ☰
-              </button>
-              <Show when={showMainMenu()}>
-                <ul class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-box w-72 max-h-[80vh] overflow-y-auto z-50 mt-2">
-                  <li class="menu-title">
-                    <span>终端管理</span>
-                  </li>
-                  <li>
-                    <button
-                      onClick={() => {
-                        setShowTerminalMenu(true);
-                        setShowMainMenu(false);
-                      }}
-                    >
-                      💻 终端列表 ({terminals().length})
-                    </button>
-                  </li>
-                  <li class="menu-title">
-                    <span>操作</span>
-                  </li>
-                  <li>
-                    <button
-                      onClick={() => {
-                        openCreateDialog();
-                        setShowMainMenu(false);
-                      }}
-                    >
-                      ➕ 新建终端
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      onClick={() => {
-                        props.onDisconnect();
-                        setShowMainMenu(false);
-                      }}
-                    >
-                      🔌 断开连接
-                    </button>
-                  </li>
-                </ul>
-              </Show>
-            </div>
-          </Show>
-
-          {/* 桌面端按钮 */}
-          <Show when={!isMobile}>
+      <div class="bg-base-100 border-b">
+        {/* 导航栏 */}
+        <div class="navbar min-h-[48px] px-2 sm:px-4">
+          <div class="flex-1">
+            <button class="btn btn-ghost btn-sm" onClick={props.onBack}>
+              ← 返回
+            </button>
+            <span class="ml-2 font-medium hidden sm:inline">远程会话</span>
+          </div>
+          <div class="flex-none flex items-center space-x-1">
             <button
               class="btn btn-ghost btn-sm"
-              onClick={props.onDisconnect}
-              title="断开连接"
+              onClick={() => fetchTerminals()}
+              title="刷新"
             >
-              🔌 断开
+              🔄
             </button>
-          </Show>
+
+            {/* 移动端下拉菜单 */}
+            <Show when={isMobile}>
+              <div class="dropdown dropdown-end">
+                <button
+                  class="btn btn-ghost btn-sm"
+                  onClick={() => setShowMainMenu(!showMainMenu())}
+                >
+                  ☰
+                </button>
+                <Show when={showMainMenu()}>
+                  <ul class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-box w-72 max-h-[80vh] overflow-y-auto z-50 mt-2">
+                    <li class="menu-title">
+                      <span>终端管理</span>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => {
+                          setShowTerminalMenu(true);
+                          setShowMainMenu(false);
+                        }}
+                      >
+                        💻 终端列表 ({terminals().length})
+                      </button>
+                    </li>
+                    <li class="menu-title">
+                      <span>操作</span>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => {
+                          openCreateDialog();
+                          setShowMainMenu(false);
+                        }}
+                      >
+                        ➕ 新建终端
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => {
+                          props.onDisconnect();
+                          setShowMainMenu(false);
+                        }}
+                      >
+                        🔌 断开连接
+                      </button>
+                    </li>
+                  </ul>
+                </Show>
+              </div>
+            </Show>
+
+            {/* 桌面端按钮 */}
+            <Show when={!isMobile}>
+              <button
+                class="btn btn-ghost btn-sm"
+                onClick={() => openCreateDialog()}
+                title="新建终端"
+              >
+                ➕ 新建
+              </button>
+              <button
+                class="btn btn-ghost btn-sm"
+                onClick={props.onDisconnect}
+                title="断开连接"
+              >
+                🔌 断开
+              </button>
+            </Show>
+          </div>
         </div>
+
+        {/* 桌面端终端标签页 */}
+        <Show when={!isMobile}>
+          <div class="border-t bg-base-200">
+            <div class="flex items-center px-2 py-1 overflow-x-auto">
+              <Show
+                when={terminals().length > 0}
+                fallback={
+                  <div class="text-sm text-gray-500 px-3 py-2">
+                    暂无终端，点击"新建"创建第一个终端
+                  </div>
+                }
+              >
+                <div class="flex space-x-1">
+                  <For each={terminals()}>
+                    {(terminal, index) => {
+                      const isActive = activeTerminalId() === terminal.id;
+                      const tabIndex = index() + 1;
+                      return (
+                        <button
+                          class={`flex items-center space-x-2 px-3 py-2 rounded-t-lg text-sm font-medium transition-colors whitespace-nowrap group ${
+                            isActive
+                              ? "bg-base-100 border border-b-0 border-gray-300 text-base-content shadow-sm"
+                              : "bg-base-300/50 hover:bg-base-300 text-base-content/70"
+                          }`}
+                          onClick={() => setActiveTerminalId(terminal.id)}
+                          title={`终端 ${tabIndex} - ${terminal.name || `Terminal ${terminal.id.slice(0, 8)}`} (${isActive ? "Ctrl+" + tabIndex + " 切换" : "Ctrl+" + tabIndex + " 打开"})`}
+                        >
+                          <span class="flex items-center space-x-1">
+                            <span
+                              class={`w-2 h-2 rounded-full ${
+                                terminal.status === "Running" ? "bg-green-500" :
+                                terminal.status === "Starting" ? "bg-yellow-500" :
+                                terminal.status === "Stopped" ? "bg-gray-500" :
+                                "bg-red-500"
+                              }`}
+                            />
+                            <span class="flex items-center space-x-1">
+                              <Show when={!isMobile && tabIndex <= 9}>
+                                <span class={`text-xs ${isActive ? "text-gray-600" : "text-gray-500"} font-mono`}>
+                                  {tabIndex}
+                                </span>
+                              </Show>
+                              <span>{terminal.name || `Terminal ${terminal.id.slice(0, 8)}`}</span>
+                            </span>
+                          </span>
+                          <Show when={isActive}>
+                            <button
+                              class="ml-1 text-gray-500 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // TODO: 实现关闭终端功能
+                              }}
+                              title="关闭终端"
+                            >
+                              ✕
+                            </button>
+                          </Show>
+                        </button>
+                      );
+                    }}
+                  </For>
+                </div>
+              </Show>
+            </div>
+          </div>
+        </Show>
       </div>
 
       {/* 移动端终端列表下拉菜单 */}
@@ -667,46 +792,44 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
 
       {/* 主内容 */}
-      <div ref={containerRef} class="flex-1 flex overflow-hidden">
-        {/* 桌面端侧边栏 - 终端列表 */}
-        <Show when={!isMobile}>
-          <div class="w-80 bg-base-100 border-r overflow-y-auto p-4">
-            {loading() ? (
-              <div class="text-center py-8">
-                <div class="loading loading-spinner"></div>
-                <div class="mt-2">加载中...</div>
-              </div>
-            ) : (
-              renderTerminalList(false)
-            )}
-          </div>
-        </Show>
+      <div ref={containerRef} class="flex-1 flex overflow-hidden flex-col">
+        {/* 终端显示区域 - 桌面端全宽，移动端保持原样 */}
+        <div class="flex-1 relative">
+          {/* 桌面端终端显示 */}
+          <Show when={!isMobile}>
+            {renderActiveTerminal()}
+          </Show>
 
-        {/* 终端显示区域 */}
-        {renderActiveTerminal()}
+          {/* 移动端终端显示 */}
+          <Show when={isMobile}>
+            {renderActiveTerminal()}
+          </Show>
 
-        {/* 无活动终端时的占位符 */}
-        {!activeTerminalId() && (
-          <div class="flex-1 flex items-center justify-center bg-base-200">
-            <div class="text-center opacity-50 px-4">
-              <div class="text-6xl mb-4">💻</div>
-              <div class="text-xl">选择一个终端开始</div>
-              <div class="text-sm mt-2">
-                {isMobile
-                  ? "点击右上角菜单选择或创建终端"
-                  : "从左侧列表中选择或创建新终端"}
+          {/* 无活动终端时的占位符 */}
+          {!activeTerminalId() && (
+            <div class="absolute inset-0 flex items-center justify-center bg-base-200">
+              <div class="text-center opacity-50 px-4">
+                <div class="text-6xl mb-4">💻</div>
+                <div class="text-xl">选择一个终端开始</div>
+                <div class="text-sm mt-2">
+                  {isMobile
+                    ? "点击右上角菜单选择或创建终端"
+                    : terminals().length > 0
+                    ? "点击顶部标签页选择终端"
+                    : "点击顶部"新建"按钮创建第一个终端"}
+                </div>
+                <Show when={isMobile}>
+                  <button
+                    class="btn btn-primary btn-sm mt-4"
+                    onClick={() => setShowMainMenu(true)}
+                  >
+                    打开菜单
+                  </button>
+                </Show>
               </div>
-              <Show when={isMobile}>
-                <button
-                  class="btn btn-primary btn-sm mt-4"
-                  onClick={() => setShowMainMenu(true)}
-                >
-                  打开菜单
-                </button>
-              </Show>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
