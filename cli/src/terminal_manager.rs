@@ -5,10 +5,10 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::terminal_runner::{TerminalCommand, TerminalRunner};
-use riterm_shared::p2p::{TerminalInfo, TerminalStatus};
+use riterm_shared::p2p::TerminalInfo;
 
 /// Simplified terminal manager inspired by sshx
 #[derive(Clone)]
@@ -168,7 +168,6 @@ impl TerminalManager {
             .collect()
     }
 
-    
     /// Create terminal via P2P request (for remote participants)
     pub async fn handle_create_terminal_request(
         &self,
@@ -235,7 +234,6 @@ mod tests {
             .await
             .unwrap();
 
-        
         // Test closing
         manager.close_terminal(&terminal_id).await.unwrap();
     }

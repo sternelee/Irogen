@@ -16,8 +16,6 @@ use riterm_shared::{EventType, P2PNetwork, SessionTicket, TerminalEvent};
 const MAX_CONCURRENT_SESSIONS: usize = 50;
 /// Maximum events per session buffer
 const MAX_EVENTS_PER_SESSION: usize = 5000;
-/// Session timeout in seconds (cleanup inactive sessions)
-const SESSION_TIMEOUT_SECS: u64 = 3600; // 1 hour
 /// Memory cleanup interval in seconds
 const CLEANUP_INTERVAL_SECS: u64 = 300; // 5 minutes
 
@@ -110,7 +108,6 @@ fn parse_structured_event(data: &str) -> Result<serde_json::Value, Box<dyn std::
         }
     }
 
-    
     Err("No structured event found".into())
 }
 
@@ -180,7 +177,6 @@ pub struct TerminalResizeRequest {
     pub rows: u16,
     pub cols: u16,
 }
-
 
 #[tauri::command]
 async fn initialize_network(state: State<'_, AppState>) -> Result<String, String> {
@@ -844,7 +840,6 @@ async fn connect_to_terminal(
 
     Ok(())
 }
-
 
 /// Initialize tracing with conditional log levels based on build configuration
 fn init_tracing() {

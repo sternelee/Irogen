@@ -73,7 +73,6 @@ pub enum NetworkMessage {
         timestamp: u64,
     },
 
-    
     // === Terminal Management (Real Terminals) ===
     /// Create a new local terminal request
     TerminalCreate {
@@ -133,7 +132,7 @@ pub enum NetworkMessage {
         from: NodeId,
         terminals: Vec<TerminalInfo>,
         timestamp: u64,
-    }
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -357,7 +356,7 @@ pub enum EventType {
         terminal_id: String,
         rows: u16,
         cols: u16,
-    }
+    },
 }
 
 /// Frontend event with timestamp, event type, and optional data
@@ -405,7 +404,6 @@ pub enum TerminalStatus {
     Stopped,
     Error(String),
 }
-
 
 impl P2PNetwork {
     pub async fn new(relay_url: Option<String>) -> Result<Self> {
@@ -680,7 +678,6 @@ impl P2PNetwork {
         Ok(())
     }
 
-    
     async fn start_topic_listener(
         &self,
         mut receiver: GossipReceiver,
@@ -1156,7 +1153,7 @@ impl P2PNetwork {
                         warn!("No active receivers for terminal list response event, skipping");
                     }
                 }
-                }
+            }
         }
         Ok(())
     }
@@ -1353,7 +1350,6 @@ impl P2PNetwork {
         Ok(())
     }
 
-    
     // Additional terminal management methods
 
     pub async fn send_terminal_output(

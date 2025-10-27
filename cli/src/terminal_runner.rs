@@ -4,10 +4,9 @@
 use anyhow::{Context, Result};
 use encoding_rs::{CoderResult, UTF_8};
 use riterm_shared::p2p::{TerminalInfo, TerminalStatus};
-use std::collections::HashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info};
 
 use crate::terminal_driver::Terminal;
 

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use tracing::{error, info, warn};
+use tracing::error;
 
 use crate::terminal_manager::TerminalManager;
 use riterm_shared::P2PNetwork;
@@ -100,8 +100,6 @@ impl CliApp {
 
         // 设置终端输入处理器回调
         let terminal_manager_for_input = self.terminal_manager.clone();
-        let session_id_for_input = header.session_id.clone();
-        let network_for_input = self.network.clone();
 
         // 创建终端输入处理器回调
         let input_processor =
@@ -225,9 +223,7 @@ impl CliApp {
         });
 
         // 设置历史记录回调来处理终端管理请求
-        let terminal_manager = self.terminal_manager.clone();
-        let session_id_for_history = header.session_id.clone();
-        let sender_for_history = sender.clone();
+        let _terminal_manager = self.terminal_manager.clone();
 
         self.network
             .set_history_callback(move |_session_id: &str| {

@@ -1,8 +1,6 @@
 // Terminal recording and session management module
 // Currently unused in agent mode but kept for future compatibility
 
-use riterm_shared::TerminalEvent;
-use std::io::Write;
 
 /// Filter out unwanted terminal output strings
 fn filter_terminal_output(data: &str) -> String {
