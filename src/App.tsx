@@ -15,6 +15,7 @@ import {
   createConnectionHistory,
   HistoryEntry,
 } from "./hooks/useConnectionHistory";
+import { useTerminalStore } from "./stores/terminalStore";
 import { EnhancedTerminalView } from "./components/EnhancedTerminalView";
 import { SettingsModal } from "./components/SettingsModal";
 import { HomeView } from "./components/HomeView";
@@ -30,6 +31,17 @@ import {
 import { globalBatteryOptimizer } from "./utils/batteryOptimizer";
 
 function App() {
+  // 全局状态管理
+  const {
+    sessions,
+    activeSession,
+    createSession,
+    updateSession,
+    deleteSession,
+    setActiveSession,
+  } = useTerminalStore();
+
+  // 本地状态
   const [sessionTicket, setSessionTicket] = createSignal("");
   const [connecting, setConnecting] = createSignal(false);
   const [status, setStatus] = createSignal("Disconnected");
@@ -117,60 +129,50 @@ function App() {
   };
 
   const removeSession = async (ticket: string, reason: string = "User disconnected") => {
-    const sessions = activeSessions();
-    const session = sessions.get(ticket);
+    console.log(`🗑️ Removing session ${ticket.substring(0, 8)}: ${reason}`);
 
-    if (session) {
-      console.log(`🗑️ Removing session ${ticket.substring(0, 8)}: ${reason}`);
-
+    // 使用全局状态管理删除会话
+    const globalSession = sessions().find(s => s.ticket === ticket);
+    if (globalSession) {
       // Show disconnect message in terminal
-      if (session.terminal && session.status === "connected") {
-        session.terminal.writeln(`\r\n\x1b[1;33m👋 ${reason}\x1b[0m`);
-      }
+      console.log(`Session ${globalSession.title} disconnected: ${reason}`);
 
-      // Clean up resources
+      // 清理远程连接
       try {
-        if (session.sessionId && session.status === "connected") {
-          await invoke("disconnect_session", { sessionId: session.sessionId });
+        if (globalSession.id && globalSession.status === "connected") {
+          await invoke("disconnect_session", { sessionId: globalSession.id });
         }
       } catch (error) {
-        console.warn(`Failed to disconnect session ${session.sessionId}:`, error);
+        console.warn(`Failed to disconnect session ${globalSession.id}:`, error);
       }
 
-      // Clean up event listener
-      if (session.unlisten) {
-        session.unlisten();
-      }
-
-      // Clean up terminal resources
-      if (session.terminal) {
-        try {
-          session.terminal.dispose();
-        } catch (error) {
-          console.warn("Failed to dispose terminal:", error);
-        }
-      }
-
-      // Remove from sessions
-      sessions.delete(ticket);
-      setActiveSessions(new Map(sessions));
-
-      // Update history
-      updateHistoryEntry(ticket, {
-        status: session.status === "failed" ? "Failed" : "Completed",
-        description: reason,
+      // 更新会话状态
+      updateSession(ticket, {
+        status: "disconnected",
       });
 
-      // Handle current session switching
+      // 从全局状态中删除会话
+      deleteSession(ticket);
+
+      // 更新本地活动会话
       if (currentSessionTicket() === ticket) {
-        const remainingSessions = Array.from(sessions.keys());
+        const remainingSessions = sessions();
         if (remainingSessions.length > 0) {
-          setCurrentSessionTicket(remainingSessions[0]);
+          const nextSession = remainingSessions[0];
+          setCurrentSessionTicket(nextSession.ticket);
+          setActiveSession(nextSession.id);
         } else {
           setCurrentSessionTicket(null);
+          setActiveSession(null);
           setCurrentView("home");
         }
       }
+
+      // 更新历史记录
+      updateHistoryEntry(ticket, {
+        status: "Completed",
+        description: reason,
+      });
 
       updateGlobalConnectionState();
     }
@@ -182,7 +184,7 @@ function App() {
       minute: "2-digit",
     })
   );
-
+  
   // Enhanced mobile keyboard state management
   const [keyboardVisible, setKeyboardVisible] = createSignal(false);
   const [keyboardHeight, setKeyboardHeight] = createSignal(0);
@@ -486,18 +488,16 @@ function App() {
         timeoutPromise,
       ]);
 
-      // Update session with successful connection
-      updateSessionState(ticket, {
-        sessionId: actualSessionId,
-        status: "connected",
-        connectTime: new Date(),
-        lastError: undefined,
-        terminalInfo: {
-          sessionTitle: `Session ${ticket.substring(0, 8)}`,
-          terminalType: "shell",
-          workingDirectory: "~",
-        },
-      });
+      // Update global session with successful connection
+      const globalSession = sessions().find(s => s.ticket === ticket);
+      if (globalSession) {
+        updateSession(globalSession.id, {
+          status: "connected",
+        });
+
+        // Set as active session
+        setActiveSession(globalSession.id);
+      }
 
       // Set up event listener for this session
       const unlisten = await listen<any>(
@@ -529,44 +529,65 @@ function App() {
                   const historyData = JSON.parse(termEvent.data);
                   const { logs, shell, cwd } = historyData;
 
-                  // 更新终端信息
-                  updateSessionState(ticket, {
-                    terminalInfo: {
-                      sessionTitle: `${shell} @ ${cwd}`,
+                  // 更新全局会话状态
+                  const globalSession = sessions().find(s => s.ticket === ticket);
+                  if (globalSession) {
+                    updateSession(globalSession.id, {
+                      title: `${shell} @ ${cwd}`,
                       terminalType: shell || "shell",
                       workingDirectory: cwd || "~",
-                    },
-                  });
+                    });
 
-                  // 在终端中显示历史记录
-                  session.terminal.writeln(
-                    "\r\n\x1b[1;36m📜 Session History Received\x1b[0m"
-                  );
-                  session.terminal.writeln(`\x1b[1;33mShell:\x1b[0m ${shell}`);
-                  session.terminal.writeln(
-                    `\x1b[1;33mWorking Directory:\x1b[0m ${cwd}`
-                  );
-                  session.terminal.writeln(
-                    "\x1b[1;33m--- History Start ---\x1b[0m"
-                  );
-                  session.terminal.write(logs);
-                  session.terminal.writeln(
-                    "\x1b[1;33m--- History End ---\x1b[0m\r\n"
-                  );
+                    // 更新会话上下文
+                    updateSession(globalSession.id, {
+                      context: {
+                        ...globalSession.context,
+                        currentDirectory: cwd || "~",
+                      },
+                    });
+
+                    // 添加历史记录到会话
+                    if (logs) {
+                      const { updateContext } = useTerminalStore();
+                      updateContext(globalSession.id, {
+                        history: [...(globalSession.context.history || []), logs],
+                      });
+                    }
+
+                    console.log(
+                      `✅ [${ticket.substring(0, 8)}] Updated global session context: Shell: ${shell}, CWD: ${cwd}`
+                    );
+                  }
+
+                  // 在终端中显示历史记录（如果终端存在）
+                  if (session?.terminal) {
+                    session.terminal.writeln(
+                      "\r\n\x1b[1;36m📜 Session History Received\x1b[0m"
+                    );
+                    session.terminal.writeln(`\x1b[1;33mShell:\x1b[0m ${shell}`);
+                    session.terminal.writeln(
+                      `\x1b[1;33mWorking Directory:\x1b[0m ${cwd}`
+                    );
+                    session.terminal.writeln(
+                      "\x1b[1;33m--- History Start ---\x1b[0m"
+                    );
+                    session.terminal.write(logs);
+                    session.terminal.writeln(
+                      "\x1b[1;33m--- History End ---\x1b[0m\r\n"
+                    );
+                  }
 
                   // 更新连接历史记录
                   updateHistoryEntry(ticket, {
                     description: `Connected with history (${shell} @ ${cwd})`,
                   });
-
-                  console.log(
-                    `✅ [${ticket.substring(0, 8)}] History displayed: ${logs.length} characters, Shell: ${shell}, CWD: ${cwd}`
-                  );
                 } catch (error) {
                   console.error(`❌ [${ticket.substring(0, 8)}] Failed to parse history data:`, error);
-                  session.terminal.writeln(
-                    "\r\n\x1b[1;31m❌ Failed to parse session history\x1b[0m\r\n"
-                  );
+                  if (session?.terminal) {
+                    session.terminal.writeln(
+                      "\r\n\x1b[1;31m❌ Failed to parse session history\x1b[0m\r\n"
+                    );
+                  }
                 }
               }
             } catch (error) {
@@ -613,6 +634,20 @@ function App() {
     // TODO: Implement actual authentication
     console.log("Login attempt:", username);
     setIsLoggedIn(true);
+  };
+
+  // 新增：处理 AI 消息发送
+  const handleSendMessage = (message: string) => {
+    const session = currentSession();
+    if (session?.sessionId) {
+      // 将消息发送到终端
+      invoke("send_terminal_input", {
+        sessionId: session.sessionId,
+        input: message + "\n",
+      }).catch((error) => {
+        console.error("Failed to send AI message:", error);
+      });
+    }
   };
 
   const handleSkipLogin = () => {
@@ -727,6 +762,7 @@ function App() {
           </div>
         )}
 
+        
         {/* Main Content */}
         <div
           class="flex-1 overflow-hidden" // 改为overflow-hidden防止滚动问题
@@ -759,25 +795,34 @@ function App() {
                 // 处理内部移动键盘状态变化
                 console.log("Terminal internal keyboard toggled:", visible);
               }}
-              // 新增标签页支持 - 使用新的会话状态管理
-              sessionTabs={sessionsList().map((session) => ({
-                id: session.ticket,
+              // 使用全局状态管理中的会话数据
+              sessionTabs={sessions().map((session) => ({
+                id: session.id,
                 ticket: session.ticket,
-                title: session.terminalInfo.sessionTitle,
-                terminalType: session.terminalInfo.terminalType,
-                workingDirectory: session.terminalInfo.workingDirectory,
+                title: session.title,
+                terminalType: session.terminalType,
+                workingDirectory: session.workingDirectory,
                 isActive: session.ticket === currentSessionTicket(),
+                status: session.status,
               }))}
-              currentSessionId={currentSessionTicket() || undefined}
+              currentSessionId={sessions().find(s => s.ticket === currentSessionTicket())?.id || undefined}
               onTabSwitch={(sessionId) => {
-                setCurrentSessionTicket(sessionId);
-                console.log("Switched to session:", sessionId);
+                const session = sessions().find(s => s.id === sessionId);
+                if (session) {
+                  setCurrentSessionTicket(session.ticket);
+                  setActiveSession(sessionId);
+                  console.log("Switched to session:", session.title);
+                }
               }}
               onTabClose={(sessionId) => {
-                handleDisconnect(sessionId);
-                console.log("Closed session:", sessionId);
+                const session = sessions().find(s => s.id === sessionId);
+                if (session) {
+                  handleDisconnect(session.ticket);
+                  console.log("Closed session:", session.title);
+                }
               }}
               enableTabSwitching={activeSessions().size > 1}
+              onSendMessage={handleSendMessage}
             />
           ) : (
             <HomeView

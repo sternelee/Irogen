@@ -22,6 +22,8 @@ import {
   injectBatteryOptimizationStyles,
   type PowerSaveConfig,
 } from "../utils/batteryOptimizer";
+import { useTerminalStore } from "../stores/terminalStore";
+import { TerminalSessionManager } from "../utils/terminalStateManager";
 
 interface SessionTab {
   id: string;
@@ -54,6 +56,8 @@ interface EnhancedTerminalViewProps {
   onTabSwitch?: (sessionId: string) => void;
   onTabClose?: (sessionId: string) => void;
   enableTabSwitching?: boolean;
+  // 新增 AI 输入支持
+  onSendMessage?: (message: string) => void;
 }
 
 // 渲染器类型枚举
@@ -83,6 +87,16 @@ const debugTerminal = (message: string, terminal?: Terminal | null) => {
 };
 
 export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
+  // 全局状态管理
+  const {
+    sessions,
+    activeSession,
+    updateSession,
+    updateContext,
+    recordUserInput,
+  } = useTerminalStore();
+
+  // 本地状态
   const [terminal, setTerminal] = createSignal<Terminal | null>(null);
   const [fitAddon, setFitAddon] = createSignal<FitAddon | null>(null);
   const [searchAddon, setSearchAddon] = createSignal<SearchAddon | null>(null);
@@ -102,6 +116,12 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
   const [showPerformanceStats, setShowPerformanceStats] = createSignal(false);
   const [searchQuery, setSearchQuery] = createSignal("");
   const [isFullscreen, setIsFullscreen] = createSignal(false);
+  // AI 输入相关状态
+  const [aiMessage, setAiMessage] = createSignal("");
+  const [isSending, setIsSending] = createSignal(false);
+
+  // 状态管理相关
+  const [autoSaveCleanup, setAutoSaveCleanup] = createSignal<(() => void) | null>(null);
   const [fontSize, setFontSize] = createSignal(getDeviceCapabilities().isMobile ? 10 : 14);
   const [opacity, setOpacity] = createSignal(1);
   const [deviceCapabilities] = createSignal(getDeviceCapabilities());
@@ -674,13 +694,25 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
     if (terminalElement && !terminalInstance) {
       debugTerminal("Initializing new terminal...");
 
+      // 获取当前会话状态
+      const currentSession = props.currentSessionId ?
+        useTerminalStore().sessions().find(s => s.id === props.currentSessionId) : null;
+      const sessionContext = currentSession?.context;
+
+      // 从会话状态中恢复设置
+      const savedFontSize = sessionContext?.fontSize || fontSize();
+      if (sessionContext?.fontSize) {
+        setFontSize(sessionContext.fontSize);
+      }
+
       // 根据会话数量优化终端配置
       const sessionCount = props.sessionTabs?.length || 1;
       const isMultiSession = sessionCount > 1;
 
       // 多会话优化策略：减少资源消耗
       const optimizedScrollback = isMultiSession ? Math.min(5000, 10000 / sessionCount) : 10000;
-      const optimizedFontSize = isMultiSession && deviceCapabilities().isMobile ? Math.max(fontSize() - 1, 10) : fontSize();
+      const optimizedFontSize = sessionContext?.fontSize ||
+        (isMultiSession && deviceCapabilities().isMobile ? Math.max(fontSize() - 1, 10) : fontSize());
 
       const term = new Terminal({
         cursorBlink: !isMultiSession || !deviceCapabilities().isMobile, // 多会话时在移动设备上禁用光标闪烁
@@ -915,6 +947,11 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
       onDataDispose = term.onData((data) => {
         debugTerminal(`Terminal input: ${data}`);
         props.onInput(data);
+
+        // 记录用户输入到全局状态
+        if (props.currentSessionId) {
+          recordUserInput(props.currentSessionId, data);
+        }
 
         // 性能监控：计算帧数
         if (props.enablePerformanceMonitoring) {
@@ -1185,6 +1222,56 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
     });
   });
 
+  // 会话切换时的状态恢复
+  createEffect(() => {
+    const currentSessionId = props.currentSessionId;
+    const term = terminal();
+
+    if (currentSessionId && term) {
+      // 恢复会话状态
+      const restored = TerminalSessionManager.restoreTerminalState(currentSessionId, term);
+      if (restored) {
+        console.log(`✅ Restored terminal state for session: ${currentSessionId}`);
+      }
+
+      // 设置自动保存
+      const cleanup = TerminalSessionManager.createAutoSaver(currentSessionId, term);
+      setAutoSaveCleanup(() => cleanup);
+
+      // 更新会话的最后活跃时间
+      updateSession(currentSessionId, { lastActiveAt: new Date() });
+    }
+
+    // 清理之前的自动保存
+    return () => {
+      const cleanup = autoSaveCleanup();
+      if (cleanup) {
+        cleanup();
+        setAutoSaveCleanup(null);
+      }
+    };
+  });
+
+  // 监听字体大小变化并保存到状态
+  createEffect(() => {
+    const currentSessionId = props.currentSessionId;
+    const currentFontSize = fontSize();
+
+    if (currentSessionId) {
+      updateContext(currentSessionId, { fontSize: currentFontSize });
+    }
+  });
+
+  // 监听渲染器变化并保存到状态
+  createEffect(() => {
+    const currentSessionId = props.currentSessionId;
+    const renderer = activeRenderer();
+
+    if (currentSessionId) {
+      updateContext(currentSessionId, { renderer });
+    }
+  });
+
   // Enhanced font size and theme updates with performance optimization
   createEffect(() => {
     const currentFontSize = fontSize();
@@ -1351,6 +1438,17 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
     }
   };
 
+  // 发送 AI 消息
+  const sendAiMessage = () => {
+    const msg = aiMessage().trim();
+    if (!msg || !props.onSendMessage) return;
+
+    setIsSending(true);
+    props.onSendMessage(msg);
+    setAiMessage("");
+    setIsSending(false);
+  };
+
   // Search functionality
   const handleSearch = (
     query: string,
@@ -1377,43 +1475,43 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
   };
 
   return (
-    <div
-      class={`relative w-full h-full flex flex-col ${isFullscreen() ? "fixed inset-0 z-50 bg-black" : ""}`}
-    >
-      {/* Terminal Header - 显示标题和终端信息 */}
-      <div class="flex items-center justify-between p-3 bg-base-100 border-b border-base-300 shrink-0">
-        <div class="flex items-center space-x-3">
-          {/* 终端状态指示器 */}
-          <div class="flex items-center space-x-2">
-            <div
-              class={`w-2 h-2 rounded-full ${props.isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
-            ></div>
-            <div class="font-medium text-sm">
-              {props.isConnected ? "已连接" : "未连接"}
-            </div>
-          </div>
+    <div class="flex flex-col h-full bg-base-900">
+      {/* 顶部标签页切换区域 */}
+      <div class="flex items-center justify-between p-3 bg-base-800 border-b border-base-700">
+        <div class="flex items-center space-x-2 overflow-x-auto">
+          <For each={props.sessionTabs || []}>
+            {(tab) => (
+              <button
+                onClick={() => props.onTabSwitch?.(tab.id)}
+                class={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                  tab.id === props.currentSessionId
+                    ? "bg-primary text-primary-content"
+                    : "bg-base-700 text-base-300 hover:bg-base-600"
+                }`}
+              >
+                <span class="flex items-center">
+                  <span class={`w-2 h-2 rounded-full mr-2 ${
+                    tab.id === props.currentSessionId ? "bg-primary-content" : "bg-green-500"
+                  }`} />
+                  {tab.title}
+                </span>
+                <Show when={props.sessionTabs!.length > 1}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      props.onTabClose?.(tab.id);
+                    }}
+                    class="ml-2 opacity-60 hover:opacity-100"
+                  >
+                    ×
+                  </button>
+                </Show>
+              </button>
+            )}
+          </For>
 
-          {/* 分隔线 */}
-          <div class="w-px h-4 bg-base-300"></div>
-
-          {/* 会话信息 */}
-          <div class="flex items-center space-x-2 text-sm">
-            <Show when={props.sessionTitle} fallback="RiTerm">
-              <span class="font-medium">{props.sessionTitle}</span>
-            </Show>
-            <Show when={props.terminalType}>
-              <span class="opacity-60">({props.terminalType})</span>
-            </Show>
-          </div>
-
-          {/* 工作目录 */}
-          <Show when={props.workingDirectory}>
-            <>
-              <div class="w-px h-4 bg-base-300"></div>
-              <div class="text-xs opacity-50 font-mono hidden sm:block">
-                {props.workingDirectory}
-              </div>
-            </>
+          <Show when={!props.sessionTabs || props.sessionTabs.length === 0}>
+            <div class="text-sm text-base-500">无活跃会话</div>
           </Show>
         </div>
 
@@ -1421,517 +1519,158 @@ export function EnhancedTerminalView(props: EnhancedTerminalViewProps) {
           <EnhancedButton
             variant="ghost"
             size="sm"
-            onClick={() => setShowTerminalActions(!showTerminalActions())}
-            icon="⚙️"
-          >
-            <span class="hidden sm:inline">操作</span>
-          </EnhancedButton>
-
-          <EnhancedButton
-            variant="ghost"
-            size="sm"
             onClick={() => setShowSearchBar(!showSearchBar())}
             icon="🔍"
-          >
-            <span class="hidden sm:inline">搜索</span>
-          </EnhancedButton>
-
-          <Show when={props.enablePerformanceMonitoring}>
-            <EnhancedButton
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowPerformanceStats(!showPerformanceStats())}
-              icon="📊"
-            >
-              <span class="hidden sm:inline">性能</span>
-            </EnhancedButton>
-          </Show>
-
-          {/* 显示电池状态 */}
-          <Show when={batteryOptimized()}>
-            <div class="text-xs opacity-70 hidden sm:block">
-              🔋 省电模式
-            </div>
-          </Show>
-
-          <div class="text-xs opacity-70 hidden sm:block">
-            字体: {fontSize()}px
-          </div>
-
-          <Show when={props.enablePerformanceMonitoring}>
-            <div class="text-xs opacity-70 hidden md:block">
-              渲染器: {activeRenderer()}{batteryOptimized() ? " (省电)" : ""}
-            </div>
-          </Show>
-
+          />
           <EnhancedButton
             variant="ghost"
             size="sm"
-            onClick={toggleFullscreen}
-            icon={isFullscreen() ? "🗗" : "⛶"}
-          >
-            <span class="hidden sm:inline">
-              {isFullscreen() ? "退出" : "全屏"}
-            </span>
-          </EnhancedButton>
+            onClick={() => setFontSize(prev => Math.max(prev - 1, 10))}
+            icon="A-"
+          />
+          <div class="text-sm text-base-500 px-2">{fontSize()}px</div>
+          <EnhancedButton
+            variant="ghost"
+            size="sm"
+            onClick={() => setFontSize(prev => Math.min(prev + 1, 24))}
+            icon="A+"
+          />
         </div>
       </div>
 
-      {/* Performance Stats Panel */}
-      <Show when={showPerformanceStats() && props.enablePerformanceMonitoring}>
-        <div class="p-3 bg-base-200 border-b border-base-300">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-sm font-medium">性能统计</span>
-            <EnhancedButton
-              variant="ghost"
-              size="xs"
-              onClick={() => setShowPerformanceStats(false)}
-              icon="✕"
-            >
-              关闭
-            </EnhancedButton>
-          </div>
-
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-            <div class="bg-base-100 p-2 rounded">
-              <div class="text-xs opacity-60">帧率 (FPS)</div>
-              <div class="font-mono font-bold text-primary">{performanceStats().fps}</div>
-            </div>
-
-            <div class="bg-base-100 p-2 rounded">
-              <div class="text-xs opacity-60">帧时间 (ms)</div>
-              <div class="font-mono font-bold text-secondary">{performanceStats().frameTime.toFixed(1)}</div>
-            </div>
-
-            <div class="bg-base-100 p-2 rounded">
-              <div class="text-xs opacity-60">渲染器</div>
-              <div class={`font-mono font-bold capitalize ${activeRenderer() === "webgl" ? "text-green-600" :
-                activeRenderer() === "canvas" ? "text-blue-600" : "text-orange-600"
-                }`}>
-                {activeRenderer()}
-              </div>
-            </div>
-
-            <div class="bg-base-100 p-2 rounded">
-              <div class="text-xs opacity-60">电池状态</div>
-              <div class={`font-mono font-bold ${globalBatteryOptimizer.isPowerSaveMode() ? "text-warning" : "text-success"}`}>
-                {globalBatteryOptimizer.isPowerSaveMode() ? "🔋 省电" : "⚙️ 正常"}
-              </div>
-            </div>
-          </div>
-
-          {/* 渲染器切换 */}
-          <div class="mt-3">
-            <div class="text-sm mb-2">渲染器切换：</div>
-            <div class="flex space-x-2">
-              <EnhancedButton
-                variant={activeRenderer() === "webgl" ? "primary" : "outline"}
-                size="xs"
-                onClick={() => switchRenderer("webgl")}
-                disabled={deviceCapabilities().isMobile}
-              >
-                WebGL
-              </EnhancedButton>
-              <EnhancedButton
-                variant={activeRenderer() === "canvas" ? "primary" : "outline"}
-                size="xs"
-                onClick={() => switchRenderer("canvas")}
-              >
-                Canvas
-              </EnhancedButton>
-              <EnhancedButton
-                variant={activeRenderer() === "dom" ? "primary" : "outline"}
-                size="xs"
-                onClick={() => switchRenderer("dom")}
-              >
-                DOM
-              </EnhancedButton>
-            </div>
-            <Show when={deviceCapabilities().isMobile}>
-              <div class="text-xs opacity-60 mt-1">
-                注意：移动设备上禁用WebGL以省电
-              </div>
-            </Show>
-          </div>
-        </div>
-      </Show>
-
-      {/* Search Bar */}
+          {/* 搜索栏 */}
       <Show when={showSearchBar()}>
-        <div class="flex items-center space-x-2 p-2 bg-base-200 border-b border-base-300">
-          <div class="flex-1 flex space-x-2">
-            <input
-              type="text"
-              placeholder="Search terminal..."
-              class="input input-sm input-bordered flex-1"
-              value={searchQuery()}
-              onInput={(e) => setSearchQuery(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleSearch(searchQuery());
-                }
-              }}
-            />
-            <EnhancedButton
-              variant="primary"
-              size="sm"
-              onClick={() => handleSearch(searchQuery())}
-              icon="⬇️"
-            >
-              Next
-            </EnhancedButton>
-            <EnhancedButton
-              variant="secondary"
-              size="sm"
-              onClick={() => handleSearch(searchQuery(), "previous")}
-              icon="⬆️"
-            >
-              Prev
-            </EnhancedButton>
-          </div>
+        <div class="flex items-center space-x-2 p-2 bg-base-800 border-b border-base-700">
+          <input
+            type="text"
+            placeholder="搜索终端内容..."
+            class="flex-1 input input-sm input-bordered bg-base-700 text-base-200"
+            value={searchQuery()}
+            onInput={(e) => setSearchQuery(e.currentTarget.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSearch(searchQuery())}
+          />
+          <EnhancedButton
+            variant="primary"
+            size="sm"
+            onClick={() => handleSearch(searchQuery())}
+            icon="↓"
+          />
+          <EnhancedButton
+            variant="secondary"
+            size="sm"
+            onClick={() => handleSearch(searchQuery(), "previous")}
+            icon="↑"
+          />
           <EnhancedButton
             variant="ghost"
             size="sm"
             onClick={() => setShowSearchBar(false)}
             icon="✕"
-          >
-            Close
-          </EnhancedButton>
-        </div>
-      </Show>
-
-      {/* Terminal Actions Panel */}
-      <Show when={showTerminalActions()}>
-        <div class="p-3 bg-base-200 border-b border-base-300">
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-            <EnhancedButton
-              variant="outline"
-              size="sm"
-              onClick={() => terminal()?.clear()}
-              icon="🗑️"
-            >
-              Clear
-            </EnhancedButton>
-
-            <EnhancedButton
-              variant="outline"
-              size="sm"
-              onClick={() => terminal()?.selectAll()}
-              icon="📋"
-            >
-              Select All
-            </EnhancedButton>
-
-            <EnhancedButton
-              variant="outline"
-              size="sm"
-              onClick={() => setShowMobileKeyboard(!showMobileKeyboard())}
-              icon="⌨️"
-            >
-              Keyboard
-            </EnhancedButton>
-
-            <EnhancedButton
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const currentTerminal = terminal();
-                if (currentTerminal) {
-                  currentTerminal.reset();
-                  // Also reset font size to default
-                  setFontSize(14);
-                  // Reset renderer to preferred
-                  const preferredRenderer = props.preferredRenderer || "webgl";
-                  if (preferredRenderer !== activeRenderer()) {
-                    switchRenderer(preferredRenderer);
-                  }
-                  debugTerminal("Terminal reset with default font size 14px and preferred renderer");
-                }
-              }}
-              icon="🔄"
-            >
-              Reset
-            </EnhancedButton>
-          </div>
-
-          {/* Font Size Control */}
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-sm">Font Size:</span>
-            <div class="flex items-center space-x-2">
-              <EnhancedButton
-                variant="ghost"
-                size="xs"
-                onClick={() => {
-                  const newSize = Math.max(fontSize() - 1, 8);
-                  if (newSize !== fontSize()) {
-                    setFontSize(newSize);
-                    debugTerminal(
-                      `Font size decreased to ${newSize}px via button`,
-                    );
-                  }
-                }}
-                disabled={fontSize() <= 8}
-              >
-                A-
-              </EnhancedButton>
-              <span class="text-sm w-12 text-center font-mono bg-base-300 px-2 py-1 rounded">
-                {fontSize()}px
-              </span>
-              <EnhancedButton
-                variant="ghost"
-                size="xs"
-                onClick={() => {
-                  const newSize = Math.min(fontSize() + 1, 24);
-                  if (newSize !== fontSize()) {
-                    setFontSize(newSize);
-                    debugTerminal(
-                      `Font size increased to ${newSize}px via button`,
-                    );
-                  }
-                }}
-                disabled={fontSize() >= 24}
-              >
-                A+
-              </EnhancedButton>
-            </div>
-          </div>
-
-          {/* 渲染器优化控制 */}
-          <Show when={props.enablePerformanceMonitoring}>
-            <div class="border-t border-base-300 pt-3">
-              <div class="text-sm mb-2">渲染器优化：</div>
-              <div class="grid grid-cols-2 gap-2">
-                <EnhancedButton
-                  variant="outline"
-                  size="xs"
-                  onClick={() => {
-                    // 强制重新初始化渲染器
-                    const currentRenderer = activeRenderer();
-                    switchRenderer("dom"); // 先切换到DOM
-                    setTimeout(() => {
-                      switchRenderer(currentRenderer); // 再切换回来
-                    }, 100);
-                    debugTerminal("Renderer reinitialized");
-                  }}
-                  icon="🔄"
-                >
-                  重新初始化
-                </EnhancedButton>
-                <EnhancedButton
-                  variant="outline"
-                  size="xs"
-                  onClick={() => {
-                    // 清理WebGL上下文缓存
-                    const canvas = terminalElement?.querySelector("canvas");
-                    if (canvas) {
-                      const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl") as WebGLRenderingContext | null;
-                      if (gl) {
-                        const ext = gl.getExtension("WEBGL_lose_context");
-                        if (ext) {
-                          ext.loseContext();
-                          setTimeout(() => ext.restoreContext(), 100);
-                        }
-                      }
-                    }
-                    debugTerminal("GPU cache cleared");
-                  }}
-                  icon="🧹"
-                >
-                  清理GPU缓存
-                </EnhancedButton>
-              </div>
-            </div>
-          </Show>
-        </div>
-      </Show>
-
-      {/* Tab Switcher Indicator - 标签页切换提示 */}
-      <Show when={showTabSwitcher() && props.sessionTabs && props.sessionTabs.length > 1}>
-        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-black bg-opacity-80 text-white px-4 py-2 rounded-lg text-sm font-medium">
-          <div class="flex items-center space-x-2">
-            <span class="text-blue-400">⚙️</span>
-            <span>标签页切换</span>
-          </div>
-          <div class="text-xs opacity-75 mt-1">
-            {props.sessionTabs?.find(tab => tab.id === props.currentSessionId)?.title || "未知会话"}
-          </div>
-        </div>
-      </Show>
-
-      {/* Session Tabs - 标签页切换条 */}
-      <Show when={props.sessionTabs && props.sessionTabs.length > 1 && props.enableTabSwitching}>
-        <div class="bg-base-200 border-b border-base-300 px-2 py-1 shrink-0">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-sm font-medium">会话标签页</span>
-            <div class="text-xs opacity-60">
-              Ctrl+Tab 切换 | Ctrl+1-9 直接跳转
-            </div>
-          </div>
-
-          <div class="flex space-x-1 overflow-x-auto">
-            <For each={props.sessionTabs}>
-              {(tab, index) => (
-                <EnhancedButton
-                  variant={tab.id === props.currentSessionId ? "primary" : "outline"}
-                  size="sm"
-                  onClick={() => props.onTabSwitch?.(tab.id)}
-                  class={`min-w-0 max-w-48 flex items-center space-x-2 ${tab.id === props.currentSessionId
-                    ? "ring-2 ring-primary ring-opacity-50"
-                    : ""
-                    }`}
-                >
-                  <div class="flex items-center space-x-2 min-w-0">
-                    <span class="text-xs opacity-60 shrink-0">{index() + 1}</span>
-                    <div class="min-w-0">
-                      <div class="text-xs font-medium truncate">{tab.title}</div>
-                      <div class="text-xs opacity-50 truncate">{tab.terminalType} | {tab.workingDirectory}</div>
-                    </div>
-                  </div>
-                  <Show when={props.sessionTabs!.length > 1}>
-                    <button
-                      class="text-red-400 hover:text-red-300 ml-1 shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        props.onTabClose?.(tab.id);
-                      }}
-                    >
-                      ×
-                    </button>
-                  </Show>
-                </EnhancedButton>
-              )}
-            </For>
-          </div>
-        </div>
-      </Show>
-
-      {/* Terminal Container with Touch Support and Mobile Optimizations */}
-      <div
-        class="flex-1 relative overflow-hidden terminal-container"
-        style={{
-          height: terminalHeight() ? `${terminalHeight()}px` : "100%",
-          "max-height": terminalHeight() ? `${terminalHeight()}px` : "100%",
-          transition:
-            "height 0.2s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-        }}
-      >
-        <SwipeGesture
-          onSwipeDown={() => {
-            if (!props.keyboardVisible) {
-              setShowMobileKeyboard(true);
-              props.onKeyboardToggle?.(true);
-            }
-          }}
-          onSwipeUp={() => {
-            setShowMobileKeyboard(false);
-            props.onKeyboardToggle?.(false);
-          }}
-          class="w-full h-full"
-        >
-          <div
-            ref={terminalElement}
-            id="enhanced-terminal-container"
-            class={`terminal-content w-full ${deviceCapabilities().isMobile ? "mobile-terminal" : ""}`}
-            style={{
-              height: "100%",
-              opacity: opacity(),
-              background: "transparent",
-              // Enhanced scrolling optimizations
-              "overflow-x": deviceCapabilities().isMobile ? "auto" : "hidden",
-              "overflow-y": "hidden",
-              "min-width": deviceCapabilities().isMobile ? "640px" : "auto",
-              // Hardware acceleration for smooth scrolling
-              transform: "translateZ(0)",
-              "will-change": "scroll-position, transform",
-              "backface-visibility": "hidden",
-              // iOS Safari smooth scrolling optimization
-              "-webkit-overflow-scrolling": "touch",
-              "scroll-behavior": "smooth",
-              // Prevent scroll bouncing
-              "overscroll-behavior": "contain",
-              // Force GPU layer for better performance
-              contain: "layout style paint",
-            }}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
           />
-        </SwipeGesture>
+        </div>
+      </Show>
+
+      {/* 主体终端区域 */}
+      <div class="flex-1 relative overflow-hidden">
+        <div
+          ref={terminalElement}
+          id="enhanced-terminal-container"
+          class={`terminal-content w-full ${deviceCapabilities().isMobile ? "mobile-terminal" : ""}`}
+          style={{
+            height: "100%",
+            background: "transparent",
+            // 增强滚动优化
+            "overflow-x": deviceCapabilities().isMobile ? "auto" : "hidden",
+            "overflow-y": "hidden",
+            "min-width": deviceCapabilities().isMobile ? "640px" : "auto",
+            // 硬件加速
+            transform: "translateZ(0)",
+            "will-change": "scroll-position, transform",
+            "backface-visibility": "hidden",
+            // iOS Safari 优化
+            "-webkit-overflow-scrolling": "touch",
+            "scroll-behavior": "smooth",
+            "overscroll-behavior": "contain",
+            contain: "layout style paint",
+          }}
+        />
+
+        {/* 连接状态提示 */}
+        <Show when={!props.isConnected}>
+          <div class="absolute inset-0 flex items-center justify-center bg-base-900 bg-opacity-80">
+            <div class="text-center p-6 bg-base-800 rounded-lg border border-base-700">
+              <div class="text-2xl mb-2">🔌</div>
+              <div class="text-lg font-medium text-base-200 mb-1">未连接</div>
+              <div class="text-sm text-base-500">请先连接到终端会话</div>
+            </div>
+          </div>
+        </Show>
       </div>
 
-      {/* Mobile Keyboard */}
-      <Show when={showMobileKeyboard() && !props.keyboardVisible}>
-        <div
-          ref={mobileKeyboardRef}
-          class="bg-base-100 border-t border-base-300 p-3 shrink-0 mobile-keyboard fixed-bottom"
-          style={{
-            animation: "slideUpKeyboard 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-          }}
-        >
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-sm font-medium">Terminal Keys</span>
-            <EnhancedButton
-              variant="ghost"
-              size="xs"
-              onClick={() => setShowMobileKeyboard(false)}
-              icon="✕"
-            >
-              Close
-            </EnhancedButton>
-          </div>
-
-          <div class="grid grid-cols-3 sm:grid-cols-5 gap-2">
-            {commonKeys.map((keyDef) => (
-              <EnhancedButton
-                variant="outline"
-                size="sm"
-                onClick={() => sendKey(keyDef.key)}
-                haptic
-                class={`text-xs ${deviceCapabilities().isMobile ? "min-h-[40px]" : ""}`}
-              >
-                {keyDef.label}
-              </EnhancedButton>
-            ))}
-          </div>
-
-          {/* 标签页切换按钮（移动端） */}
-          <Show when={tabSwitchKeys.length > 0}>
-            <div class="mt-3 pt-3 border-t border-base-300">
-              <div class="text-xs opacity-60 mb-2">标签页切换</div>
-              <div class="grid grid-cols-2 gap-2">
-                {tabSwitchKeys.map((tabKey) => (
-                  <EnhancedButton
-                    variant="secondary"
-                    size="sm"
-                    onClick={tabKey.action}
-                    haptic
-                    class="text-xs"
-                  >
-                    {tabKey.label}
-                  </EnhancedButton>
-                ))}
+      {/* 底部 AI 输入框 */}
+      <div class="p-4 bg-base-800 border-t border-base-700">
+        <div class="flex items-end space-x-3">
+          <div class="flex-1">
+            <div class="text-xs text-base-500 mb-1">
+              AI 助手 - 输入命令或问题
+            </div>
+            <div class="relative">
+              <textarea
+                value={aiMessage()}
+                onInput={(e) => setAiMessage(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendAiMessage();
+                  }
+                }}
+                placeholder="输入命令或询问问题..."
+                class="w-full textarea textarea-bordered bg-base-700 text-base-200 border-base-600 focus:border-primary resize-none"
+                rows={3}
+                disabled={isSending()}
+              />
+              <div class="absolute bottom-2 right-2 text-xs text-base-500">
+                {aiMessage().length}/500
               </div>
             </div>
-          </Show>
-        </div>
-      </Show>
+          </div>
 
-      {/* Floating Action Buttons */}
-      <Show
-        when={
-          !showMobileKeyboard() && !isFullscreen() && !props.keyboardVisible
-        }
-      >
-        <FloatingActionButton
-          icon="⌨️"
-          onClick={() => {
-            setShowMobileKeyboard(true);
-            props.onKeyboardToggle?.(true);
-          }}
-          position="bottom-right"
-          variant="primary"
-        />
-      </Show>
+          <div class="flex flex-col space-y-2">
+            <EnhancedButton
+              variant="primary"
+              onClick={sendAiMessage}
+              disabled={!aiMessage().trim() || isSending() || !props.onSendMessage}
+              icon={isSending() ? "⏳" : "🚀"}
+              class="px-4"
+            >
+              {isSending() ? "发送中..." : "发送"}
+            </EnhancedButton>
+
+            <div class="text-xs text-center text-base-500">
+              Enter 发送
+              <br />
+              Shift+Enter 换行
+            </div>
+          </div>
+        </div>
+
+        {/* 快捷命令建议 */}
+        <Show when={props.isConnected}>
+          <div class="mt-3">
+            <div class="text-xs text-base-500 mb-1">快捷命令：</div>
+            <div class="flex flex-wrap gap-1">
+              {["ls -la", "pwd", "git status", "npm run build", "docker ps"].map((cmd) => (
+                <button
+                  onClick={() => setAiMessage(cmd)}
+                  class="px-2 py-1 text-xs bg-base-700 text-base-300 rounded hover:bg-base-600 transition-colors"
+                >
+                  {cmd}
+                </button>
+              ))}
+            </div>
+          </div>
+        </Show>
+      </div>
     </div>
   );
 }
