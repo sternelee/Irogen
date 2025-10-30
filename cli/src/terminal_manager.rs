@@ -9,12 +9,19 @@ use tracing::{debug, error, info};
 
 use crate::terminal_runner::{TerminalCommand, TerminalRunner};
 use riterm_shared::p2p::TerminalInfo;
+use riterm_shared::P2PNetwork;
+use iroh_gossip::api::GossipSender;
 
-/// Simplified terminal manager inspired by sshx
+/// Simplified terminal manager with direct P2P integration
 #[derive(Clone)]
 pub struct TerminalManager {
     terminals: Arc<RwLock<HashMap<String, TerminalSession>>>,
-    output_callback: Option<Arc<dyn Fn(String, String) + Send + Sync>>,
+    /// Optional P2P network for sending outputs directly
+    network: Option<Arc<P2PNetwork>>,
+    /// Session ID for P2P communication
+    session_id: Option<String>,
+    /// Gossip sender for P2P communication
+    gossip_sender: Option<GossipSender>,
 }
 
 /// Terminal session information
@@ -28,16 +35,36 @@ impl TerminalManager {
     pub fn new() -> Self {
         Self {
             terminals: Arc::new(RwLock::new(HashMap::new())),
-            output_callback: None,
+            network: None,
+            session_id: None,
+            gossip_sender: None,
         }
     }
 
-    /// Set output callback for terminal output
-    pub async fn set_output_callback<F>(&mut self, callback: F)
-    where
-        F: Fn(String, String) + Send + Sync + 'static,
-    {
-        self.output_callback = Some(Arc::new(callback));
+    /// Configure with P2P network (enables direct output sending)
+    pub fn with_network(
+        mut self,
+        network: Arc<P2PNetwork>,
+        session_id: String,
+        gossip_sender: GossipSender,
+    ) -> Self {
+        self.network = Some(network);
+        self.session_id = Some(session_id);
+        self.gossip_sender = Some(gossip_sender);
+        self
+    }
+
+    /// Internal method: send terminal output directly to P2P network
+    async fn send_output_to_network(&self, terminal_id: &str, data: Vec<u8>) -> Result<()> {
+        if let (Some(network), Some(session_id), Some(sender)) =
+            (&self.network, &self.session_id, &self.gossip_sender)
+        {
+            network
+                .send_terminal_output(session_id, sender, terminal_id.to_string(), data)
+                .await
+                .context("Failed to send terminal output to network")?;
+        }
+        Ok(())
     }
 
     /// Create a new terminal
@@ -75,19 +102,30 @@ impl TerminalManager {
         };
         let mut terminals = self.terminals.write().await;
         terminals.insert(terminal_id.clone(), session);
+        drop(terminals); // Release lock
 
-        // Start terminal runner in background
+        // Start terminal runner in background with direct P2P integration
         let terminals_ref = self.terminals.clone();
-        let output_callback = self.output_callback.clone();
         let terminal_id_for_spawn = terminal_id.clone();
+        let manager_clone = self.clone(); // Clone self to send output
+        
         tokio::spawn(async move {
-            // Set output callback if available
-            if let Some(callback) = output_callback {
-                let _terminal_id_clone = terminal_id_for_spawn.clone();
-                runner.set_output_callback(move |id, data| {
-                    callback(id, data);
+            // Set output callback to send directly to P2P network
+            let manager_for_output = manager_clone.clone();
+            let tid_for_callback = terminal_id_for_spawn.clone();
+            
+            runner.set_output_callback(move |_id, data| {
+                let manager = manager_for_output.clone();
+                let tid = tid_for_callback.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = manager
+                        .send_output_to_network(&tid, data.into_bytes())
+                        .await
+                    {
+                        error!("Failed to send terminal output: {}", e);
+                    }
                 });
-            }
+            });
 
             if let Err(e) = runner.run(receiver).await {
                 error!("Terminal {} failed: {}", terminal_id_for_spawn, e);

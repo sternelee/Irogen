@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use std::sync::Arc;
 use tracing::error;
 
 use crate::terminal_manager::TerminalManager;
@@ -148,52 +149,17 @@ impl CliApp {
         // 保存gossip sender的引用用于后续发送响应
         let gossip_sender_for_responses = sender.clone();
 
-        // 设置终端输出处理器回调
-        // let terminal_manager_for_output = self.terminal_manager.clone();
-        let session_id_for_output = header.session_id.clone();
-        let network_for_output = self.network.clone();
-        let gossip_sender_for_output = gossip_sender_for_responses.clone();
-
-        // 创建终端输出处理器回调
-        let output_processor = move |terminal_id: String, data: String| {
-            let session_id = session_id_for_output.clone();
-            let network = network_for_output.clone();
-            let gossip_sender = gossip_sender_for_output.clone();
-
-            // info!(
-            //     "🔥 RECEIVED TERMINAL OUTPUT: terminal_id={}, data='{}'",
-            //     terminal_id, data
-            // );
-
-            tokio::spawn(async move {
-                // 使用保存的 gossip sender 发送终端输出
-                if let Err(e) = network
-                    .send_terminal_output(
-                        &session_id,
-                        &gossip_sender,
-                        terminal_id.clone(),
-                        data.clone(),
-                    )
-                    .await
-                {
-                    error!("Failed to send terminal output to P2P network: {}", e);
-                } else {
-                    // info!(
-                    //     "✅ Successfully sent terminal output from {} to P2P network: '{}'",
-                    //     terminal_id, data
-                    // );
-                }
-            });
-        };
-
-        // 设置终端输出处理回调
-        self.terminal_manager
-            .set_output_callback(output_processor)
-            .await;
+        // Phase 2: Configure TerminalManager with direct P2P integration
+        // This removes the callback chain: Runner -> Manager -> CLI -> Network
+        // New simplified flow: Runner -> Manager -> Network (direct)
+        self.terminal_manager = self.terminal_manager.clone().with_network(
+            Arc::new(self.network.clone()),
+            header.session_id.clone(),
+            gossip_sender_for_responses.clone(),
+        );
 
         // 设置终端管理消息处理器
         let terminal_manager = self.terminal_manager.clone();
-        // let network_for_terminal = self.network.clone();
 
         // 创建一个默认终端用于测试
         let terminal_manager_task = terminal_manager.clone();
@@ -253,120 +219,15 @@ impl CliApp {
             })
             .await;
 
-        // 设置事件监听器来处理终端创建事件
-        let terminal_manager_for_events = self.terminal_manager.clone();
-        let session_id_for_events = header.session_id.clone();
-        let network_for_events = self.network.clone();
-        let gossip_sender_for_events = gossip_sender_for_responses.clone();
+        // Note: The terminal_input_callback in P2PNetwork will handle terminal commands
+        // Output is sent directly through TerminalManager -> P2PNetwork (no callback chain)
 
-        tokio::spawn(async move {
-            info!(
-                "Starting terminal creation event listener for session: {}",
-                session_id_for_events
-            );
+        // Keep the connection alive
+        let _input_receiver = input_receiver; // Keep receiver to prevent channel close
+        let _gossip_sender = gossip_sender_for_responses; // Keep sender alive
 
-            // 获取事件接收器 - 简化版本，直接创建新的事件接收器
-            let session = {
-                let sessions = network_for_events.get_active_sessions().await;
-                if sessions.contains(&session_id_for_events) {
-                    // 重新获取事件接收器
-                    network_for_events
-                        .create_event_receiver(&session_id_for_events)
-                        .await
-                } else {
-                    info!(
-                        "Session {} not found for event listening",
-                        session_id_for_events
-                    );
-                    return;
-                }
-            };
-
-            if let Some(mut event_receiver) = session {
-                while let Ok(event) = event_receiver.recv().await {
-                    match event.event_type {
-                        riterm_shared::p2p::EventType::Output => {
-                            // 检查是否是终端创建请求
-                            if event.data.contains("[Terminal Create Request]") {
-                                info!(
-                                    "Detected terminal create request in event, creating terminal..."
-                                );
-
-                                // 解析事件数据来提取参数 - 使用系统默认 shell
-                                let shell_path = std::env::var("SHELL").unwrap_or_else(|_| {
-                                    // 如果 SHELL 环境变量不存在，使用默认路径
-                                    if cfg!(unix) {
-                                        "/bin/bash".to_string()
-                                    } else {
-                                        "cmd.exe".to_string()
-                                    }
-                                });
-                                let working_dir = std::env::current_dir()
-                                    .unwrap_or_default()
-                                    .to_string_lossy()
-                                    .to_string();
-                                let size = Some((24, 80));
-
-                                if let Ok(terminal_id) = terminal_manager_for_events
-                                    .create_terminal(
-                                        None, // name
-                                        Some(shell_path),
-                                        Some(working_dir),
-                                        size,
-                                    )
-                                    .await
-                                {
-                                    info!(
-                                        "✅ Successfully created terminal {} from event",
-                                        terminal_id
-                                    );
-
-                                    // 获取终端列表并发送响应给前端
-                                    let terminal_list =
-                                        terminal_manager_for_events.list_terminals().await;
-                                    info!(
-                                        "📋 Sending terminal list with {} terminals to frontend",
-                                        terminal_list.len()
-                                    );
-
-                                    // 直接使用保存的gossip sender发送终端列表响应
-                                    if let Err(e) = network_for_events
-                                        .send_terminal_list_response(
-                                            &session_id_for_events,
-                                            &gossip_sender_for_events,
-                                            terminal_list,
-                                        )
-                                        .await
-                                    {
-                                        error!("Failed to send terminal list response: {}", e);
-                                    } else {
-                                        info!("✅ Terminal list response sent successfully");
-                                    }
-                                } else {
-                                    info!("❌ Failed to create terminal from event");
-                                }
-                            }
-                        }
-                        _ => {
-                            // 其他事件类型暂时忽略
-                        }
-                    }
-                }
-
-                info!("Terminal creation event listener ended");
-            } else {
-                info!(
-                    "No event receiver available for session: {}",
-                    session_id_for_events
-                );
-            }
-        });
-
-        // 注意：input_receiver 现在用于接收旧的 Input 消息类型
-        // 新的 TerminalInput 消息直接在 P2P 网络层处理
-        let _input_receiver = input_receiver; // 保留 receiver 以避免通道关闭
-
-        // 保持主机运行直到用户中断
+        // Host runs until user interrupts
+        println!("✅ Terminal host is running. Press Ctrl+C to stop.");
         tokio::signal::ctrl_c().await?;
         println!("\n👋 Terminal Host stopped");
 
