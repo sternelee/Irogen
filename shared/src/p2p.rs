@@ -32,9 +32,80 @@ pub struct SessionHeader {
 
 pub type EncryptionKey = [u8; 32];
 
+// === Terminal Command/Response System ===
+// Clean separation of commands (requests) and responses
+
+/// Terminal commands sent from client to host
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TerminalCommand {
+    /// Create a new terminal
+    Create {
+        name: Option<String>,
+        shell_path: Option<String>,
+        working_dir: Option<String>,
+        size: Option<(u16, u16)>,
+    },
+    /// Send input to terminal
+    Input {
+        terminal_id: String,
+        data: Vec<u8>,
+    },
+    /// Resize terminal
+    Resize {
+        terminal_id: String,
+        rows: u16,
+        cols: u16,
+    },
+    /// Stop terminal
+    Stop {
+        terminal_id: String,
+    },
+    /// Request terminal list
+    List,
+}
+
+/// Terminal responses sent from host to client
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TerminalResponse {
+    /// Terminal created successfully
+    Created {
+        terminal_id: String,
+        info: TerminalInfo,
+    },
+    /// Terminal output data
+    Output {
+        terminal_id: String,
+        data: Vec<u8>,
+    },
+    /// Terminal list
+    List {
+        terminals: Vec<TerminalInfo>,
+    },
+    /// Terminal status update
+    StatusUpdate {
+        terminal_id: String,
+        status: TerminalStatus,
+    },
+    /// Working directory changed
+    DirectoryChanged {
+        terminal_id: String,
+        new_dir: String,
+    },
+    /// Terminal stopped
+    Stopped {
+        terminal_id: String,
+    },
+    /// Error response
+    Error {
+        terminal_id: Option<String>,
+        message: String,
+    },
+}
+
 // === Network Layer Messages ===
 // These are encrypted and transmitted over P2P network
 
+/// Unified network message format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NetworkMessage {
     // === Session Management ===
@@ -44,90 +115,22 @@ pub enum NetworkMessage {
         header: SessionHeader,
     },
     /// Session ended notification
-    SessionEnd { from: EndpointId, timestamp: u64 },
-    /// Participant joined notification
-    ParticipantJoined { from: EndpointId, timestamp: u64 },
-    /// Directed message to specific node
-    DirectedMessage {
+    SessionEnd {
         from: EndpointId,
-        to: EndpointId,
-        data: String,
-        timestamp: u64,
     },
-
-    // === Terminal I/O (Virtual Terminals) ===
-    /// Terminal output data (for virtual terminals)
-    Output {
+    
+    // === Terminal Operations ===
+    /// Terminal command (request)
+    Command {
         from: EndpointId,
-        data: String,
-        timestamp: u64,
+        command: TerminalCommand,
+        request_id: Option<String>,
     },
-    /// User input data (for virtual terminals)
-    Input {
+    /// Terminal response
+    Response {
         from: EndpointId,
-        data: String,
-        timestamp: u64,
-    },
-  
-    // === Terminal Management (Real Terminals) ===
-    /// Create a new local terminal request
-    TerminalCreate {
-        from: EndpointId,
-        name: Option<String>,
-        shell_path: Option<String>,
-        working_dir: Option<String>,
-        size: Option<(u16, u16)>,
-        timestamp: u64,
-    },
-    /// Terminal output data (from real terminal)
-    TerminalOutput {
-        from: EndpointId,
-        terminal_id: String,
-        data: String,
-        timestamp: u64,
-    },
-    /// Terminal input data (to real terminal)
-    TerminalInput {
-        from: EndpointId,
-        terminal_id: String,
-        data: String,
-        timestamp: u64,
-    },
-    /// Terminal resize request
-    TerminalResize {
-        from: EndpointId,
-        terminal_id: String,
-        rows: u16,
-        cols: u16,
-        timestamp: u64,
-    },
-    /// Terminal status update
-    TerminalStatusUpdate {
-        from: EndpointId,
-        terminal_id: String,
-        status: TerminalStatus,
-        timestamp: u64,
-    },
-    /// Terminal directory change notification
-    TerminalDirectoryChanged {
-        from: EndpointId,
-        terminal_id: String,
-        new_dir: String,
-        timestamp: u64,
-    },
-    /// Stop terminal request
-    TerminalStop {
-        from: EndpointId,
-        terminal_id: String,
-        timestamp: u64,
-    },
-    /// List terminals request
-    TerminalListRequest { from: EndpointId, timestamp: u64 },
-    /// List terminals response
-    TerminalListResponse {
-        from: EndpointId,
-        terminals: Vec<TerminalInfo>,
-        timestamp: u64,
+        response: TerminalResponse,
+        request_id: Option<String>,
     },
 }
 
@@ -328,39 +331,55 @@ impl Clone for P2PNetwork {
 /// Clean, structured event types for frontend communication
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EventType {
-    // === Virtual Terminal Events ===
-    /// Terminal output (for virtual terminals)
-    Output,
-    /// User input (for virtual terminals)
-    Input,
-        /// Session started
-    Start,
+    // === Session Events ===
+    /// Session started
+    SessionStarted,
     /// Session ended
-    End,
-
-    // === Real Terminal Management Events ===
-    /// Terminal list updated
-    TerminalList(Vec<TerminalInfo>),
-    /// Terminal output received
-    TerminalOutput { terminal_id: String, data: String },
-    /// Terminal input sent
-    TerminalInput { terminal_id: String, data: String },
-    /// Terminal resized
-    TerminalResize {
+    SessionEnded,
+    
+    // === Terminal Events ===
+    /// Terminal created successfully
+    TerminalCreated {
         terminal_id: String,
-        rows: u16,
-        cols: u16,
+        info: TerminalInfo,
+    },
+    /// Terminal output received (data in event.data)
+    TerminalOutput {
+        terminal_id: String,
+    },
+    /// Terminal stopped
+    TerminalStopped {
+        terminal_id: String,
+    },
+    /// Terminal error
+    TerminalError {
+        terminal_id: Option<String>,
+        error: String,
+    },
+    /// Terminal status updated
+    TerminalStatusUpdate {
+        terminal_id: String,
+        status: TerminalStatus,
+    },
+    /// Working directory changed
+    TerminalDirectoryChanged {
+        terminal_id: String,
+        new_dir: String,
+    },
+    /// Terminal list updated
+    TerminalList {
+        terminals: Vec<TerminalInfo>,
     },
 }
 
-/// Frontend event with timestamp, event type, and optional data
+/// Frontend event with timestamp, event type, and optional binary data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalEvent {
     pub timestamp: u64,
     pub event_type: EventType,
-    /// Data field used for simple events (Output, Input)
-    /// For structured events, this is typically empty
-    pub data: String,
+    /// Binary data (e.g., terminal output)
+    /// Use Vec<u8> to avoid UTF-8 conversion issues
+    pub data: Vec<u8>,
 }
 
 // === Type Aliases for Backward Compatibility ===
@@ -482,7 +501,7 @@ impl P2PNetwork {
         self.start_topic_listener(receiver, session_id).await?;
 
         // Send session info message
-        let body = TerminalMessageBody::SessionInfo {
+        let body = NetworkMessage::SessionInfo {
             from: self.endpoint.id(),
             header,
         };
@@ -557,57 +576,37 @@ impl P2PNetwork {
         Ok((sender, event_receiver))
     }
 
-    pub async fn send_input(
-        &self,
-        session_id: &str,
-        sender: &GossipSender,
-        data: String,
-    ) -> Result<()> {
-        debug!("Sending input data");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for input"))?;
+    // DEPRECATED: Virtual terminal methods - to be replaced with Command/Response
+    // pub async fn send_input(
+    //     &self,
+    //     session_id: &str,
+    //     sender: &GossipSender,
+    //     data: String,
+    // ) -> Result<()> {
+    //     // Use send_terminal_command instead
+    //     unimplemented!("Use send_terminal_command with TerminalCommand::Input")
+    // }
 
-        let body = TerminalMessageBody::Input {
-            from: self.endpoint.id(),
-            data,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
-    }
+    // pub async fn send_directed_message(
+    //     &self,
+    //     session_id: &str,
+    //     sender: &GossipSender,
+    //     to: EndpointId,
+    //     data: String,
+    // ) -> Result<()> {
+    //     // Directed messages removed - use terminal-specific commands
+    //     unimplemented!("Use terminal-specific commands")
+    // }
 
-    pub async fn send_directed_message(
-        &self,
-        session_id: &str,
-        sender: &GossipSender,
-        to: EndpointId,
-        data: String,
-    ) -> Result<()> {
-        debug!("Sending directed message to node: {}", to.fmt_short());
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for directed message"))?;
+    // pub async fn send_participant_joined(
+    //     &self,
+    //     session_id: &str,
+    //     sender: &GossipSender,
+    // ) -> Result<()> {
+    //     // Participant notifications removed
+    //     unimplemented!("Participant notifications removed")
+    // }
 
-        let body = TerminalMessageBody::DirectedMessage {
-            from: self.endpoint.id(),
-            to,
-            data,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
-    }
-
-    
     pub async fn end_session(&self, session_id: &str, sender: &GossipSender) -> Result<()> {
         info!("Ending session: {}", session_id);
         let sessions = self.sessions.read().await;
@@ -615,11 +614,8 @@ impl P2PNetwork {
             .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("Session not found for ending"))?;
 
-        let body = TerminalMessageBody::SessionEnd {
+        let body = NetworkMessage::SessionEnd {
             from: self.endpoint.id(),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
         };
         let message = EncryptedTerminalMessage::new(body, &session.key)?;
         sender.broadcast(message.to_vec()?.into()).await?;
@@ -628,22 +624,50 @@ impl P2PNetwork {
         Ok(())
     }
 
-    pub async fn send_participant_joined(
+    // === New Unified Command/Response Methods ===
+
+    /// Send a terminal command (from client to host)
+    pub async fn send_command(
         &self,
         session_id: &str,
         sender: &GossipSender,
+        command: TerminalCommand,
+        request_id: Option<String>,
     ) -> Result<()> {
-        debug!("Sending participant joined notification");
+        debug!("Sending terminal command: {:?}", command);
         let sessions = self.sessions.read().await;
         let session = sessions
             .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for participant joined"))?;
+            .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
 
-        let body = TerminalMessageBody::ParticipantJoined {
+        let body = NetworkMessage::Command {
             from: self.endpoint.id(),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
+            command,
+            request_id,
+        };
+        let message = EncryptedTerminalMessage::new(body, &session.key)?;
+        sender.broadcast(message.to_vec()?.into()).await?;
+        Ok(())
+    }
+
+    /// Send a terminal response (from host to client)
+    pub async fn send_response(
+        &self,
+        session_id: &str,
+        sender: &GossipSender,
+        response: TerminalResponse,
+        request_id: Option<String>,
+    ) -> Result<()> {
+        debug!("Sending terminal response: {:?}", response);
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
+
+        let body = NetworkMessage::Response {
+            from: self.endpoint.id(),
+            response,
+            request_id,
         };
         let message = EncryptedTerminalMessage::new(body, &session.key)?;
         sender.broadcast(message.to_vec()?.into()).await?;
@@ -731,387 +755,190 @@ impl P2PNetwork {
     async fn handle_gossip_message(
         &self,
         session_id: &str,
-        body: TerminalMessageBody,
+        body: NetworkMessage,
     ) -> Result<()> {
         let sessions_guard = self.sessions.read().await;
-        if let Some(session) = sessions_guard.get(session_id) {
-            match body {
-                TerminalMessageBody::Output {
-                    from: _,
-                    data,
-                    timestamp,
-                } => {
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::Output,
-                        data,
-                    };
-                    if session.event_sender.send(event).is_err() {
-                        warn!("No active receivers for output event, skipping");
-                    }
-                }
-                TerminalMessageBody::Input {
-                    from,
-                    data,
-                    timestamp,
-                } => {
-                    debug!("Received input event from {}: {:?}", from.fmt_short(), data);
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::Input,
-                        data: data.clone(),
-                    };
+        let session = match sessions_guard.get(session_id) {
+            Some(s) => s,
+            None => {
+                warn!("Session {} not found", session_id);
+                return Ok(());
+            }
+        };
 
-                    if session.is_host {
-                        if let Some(input_sender) = &session.input_sender {
-                            if input_sender.send(data).is_err() {
-                                // warn!("Failed to send input to terminal");
-                            }
+        match body {
+            // === Session Management ===
+            NetworkMessage::SessionInfo { from, header } => {
+                info!(
+                    "Received session info from {} for session: {}",
+                    from.fmt_short(),
+                    session_id
+                );
+                drop(sessions_guard); // Release read lock
+                let mut sessions_write = self.sessions.write().await;
+                if let Some(session) = sessions_write.get_mut(session_id) {
+                    session.participants.push(from.to_string());
+                    session.header = header;
+                }
+                
+                // Send session started event
+                let event = TerminalEvent {
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)?
+                        .as_secs(),
+                    event_type: EventType::SessionStarted,
+                    data: Vec::new(),
+                };
+                
+                let sessions_read = self.sessions.read().await;
+                if let Some(session) = sessions_read.get(session_id) {
+                    let _ = session.event_sender.send(event);
+                }
+            }
+
+            NetworkMessage::SessionEnd { from } => {
+                info!("Session ended by {}", from.fmt_short());
+                let event = TerminalEvent {
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)?
+                        .as_secs(),
+                    event_type: EventType::SessionEnded,
+                    data: Vec::new(),
+                };
+                if let Err(_e) = session.event_sender.send(event) {
+                    warn!("Failed to send end event to subscribers");
+                }
+            }
+
+            // === Terminal Commands ===
+            NetworkMessage::Command {
+                from,
+                command,
+                request_id: _,
+            } => {
+                // Only host processes commands
+                if !session.is_host {
+                    return Ok(());
+                }
+
+                drop(sessions_guard); // Release lock before async operations
+
+                info!(
+                    "Received terminal command from {}: {:?}",
+                    from.fmt_short(),
+                    command
+                );
+
+                // Get callback and process command
+                let callback_guard = self.terminal_input_callback.read().await;
+                if let Some(callback) = &*callback_guard {
+                    match command {
+                        TerminalCommand::Input { terminal_id, data } => {
+                            // Convert bytes to string for backward compatibility
+                            let data_str = String::from_utf8_lossy(&data).to_string();
+                            let _ = callback(terminal_id, data_str);
                         }
-                    }
-                    if session.event_sender.send(event).is_err() {
-                        // warn!("Failed to broadcast input event");
-                    }
-                }
-                TerminalMessageBody::SessionEnd { from: _, timestamp } => {
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::End,
-                        data: "Session ended".to_string(),
-                    };
-                    if let Err(_e) = session.event_sender.send(event) {
-                        warn!("Failed to send end event to subscribers");
-                    }
-                }
-                TerminalMessageBody::DirectedMessage {
-                    from,
-                    to,
-                    data,
-                    timestamp,
-                } => {
-                    let my_node_id = self.endpoint.id();
-                    if to == my_node_id {
-                        let event = TerminalEvent {
-                            timestamp,
-                            event_type: EventType::Output,
-                            data: format!("[DM from {}] {}", from.fmt_short(), data),
-                        };
-                        if session.event_sender.send(event).is_err() {
-                            warn!("No active receivers for directed message, skipping");
+                        _ => {
+                            // Other commands should be handled by dedicated callbacks
+                            // For now, we'll rely on the existing event system
+                            debug!("Command {:?} requires dedicated handler", command);
                         }
-                    }
-                }
-                TerminalMessageBody::SessionInfo { from, header } => {
-                    info!(
-                        "Received session info from {} for session: {}",
-                        from.fmt_short(),
-                        session_id
-                    );
-                    drop(sessions_guard); // Release read lock
-                    let mut sessions_write = self.sessions.write().await;
-                    if let Some(session) = sessions_write.get_mut(session_id) {
-                        session.participants.push(from.to_string());
-                        session.header = header;
-                    }
-                }
-                TerminalMessageBody::ParticipantJoined { from, timestamp } => {
-                    info!("Participant {} joined session", from.fmt_short());
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::Output,
-                        data: format!("Participant {} joined the session", from.fmt_short()),
-                    };
-                    if session.event_sender.send(event).is_err() {
-                        warn!("No active receivers for participant joined event, skipping");
-                    }
-                }
-
-                // === Terminal Management Messages ===
-                TerminalMessageBody::TerminalCreate {
-                    from,
-                    name,
-                    shell_path,
-                    working_dir,
-                    size,
-                    timestamp,
-                } => {
-                    info!("Received terminal create request from {}", from.fmt_short());
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::Output,
-                        data: format!(
-                            "[Terminal Create Request] Name: {:?}, Shell: {:?}, Dir: {:?}, Size: {:?}",
-                            name, shell_path, working_dir, size
-                        ),
-                    };
-                    if session.event_sender.send(event).is_err() {
-                        warn!("No active receivers for terminal create event, skipping");
-                    }
-                }
-                TerminalMessageBody::TerminalStatusUpdate {
-                    from,
-                    terminal_id,
-                    status,
-                    timestamp,
-                } => {
-                    info!(
-                        "Received terminal status update from {} for terminal {}",
-                        from.fmt_short(),
-                        terminal_id
-                    );
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::Output,
-                        data: format!("[Terminal Status Update] {}: {:?}", terminal_id, status),
-                    };
-                    if session.event_sender.send(event).is_err() {
-                        warn!("No active receivers for terminal status update event, skipping");
-                    }
-                }
-                TerminalMessageBody::TerminalOutput {
-                    from,
-                    terminal_id,
-                    data,
-                    timestamp,
-                } => {
-                    debug!(
-                        "Received terminal output from {} for terminal {}",
-                        from.fmt_short(),
-                        terminal_id
-                    );
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::TerminalOutput { terminal_id, data },
-                        data: String::new(),
-                    };
-                    if session.event_sender.send(event).is_err() {
-                        warn!("No active receivers for terminal output event, skipping");
-                    }
-                }
-                TerminalMessageBody::TerminalInput {
-                    from,
-                    terminal_id,
-                    data,
-                    timestamp,
-                } => {
-                    debug!(
-                        "Received terminal input from {} for terminal {}",
-                        from.fmt_short(),
-                        terminal_id
-                    );
-
-                    // Clone values before moving them into the closure
-                    let terminal_id_clone = terminal_id.clone();
-                    let data_clone = data.clone();
-
-                    // 如果我们是主机，处理终端输入并发送输出响应
-                    if session.is_host {
-                        // 获取 gossip_sender 的克隆
-                        let gossip_sender = session.gossip_sender.clone();
-
-                        // 获取终端输入处理回调
-                        let input_callback = {
-                            let callback_guard = self.terminal_input_callback.read().await;
-                            callback_guard
-                                .as_ref()
-                                .map(|cb| cb(terminal_id_clone.clone(), data_clone.clone()))
-                        };
-
-                        drop(sessions_guard); // 释放锁
-
-                        if let Some(input_handler) = input_callback {
-                            // 使用回调处理终端输入
-                            let network_clone = self.clone();
-                            let session_id_clone = session_id.to_string();
-                            let terminal_id_for_output = terminal_id_clone.clone();
-                            let gossip_sender_clone = gossip_sender.clone();
-
-                            tokio::spawn(async move {
-                                // 等待输入处理完成
-                                match input_handler.await {
-                                    Ok(Ok(Some(response_data))) => {
-                                        // 发送终端输出响应
-                                        if let Some(sender) = &gossip_sender_clone {
-                                            if let Err(e) = network_clone
-                                                .send_terminal_output(
-                                                    &session_id_clone,
-                                                    sender,
-                                                    terminal_id_for_output,
-                                                    response_data,
-                                                )
-                                                .await
-                                            {
-                                                error!(
-                                                    "Failed to send terminal output response: {}",
-                                                    e
-                                                );
-                                            }
-                                        } else {
-                                            error!(
-                                                "No gossip sender available for terminal output response"
-                                            );
-                                        }
-                                    }
-                                    Ok(Ok(None)) => {
-                                        // 没有输出数据，这是正常的，终端输出将通过其他方式发送
-                                        debug!("Terminal input processed, no immediate output");
-                                    }
-                                    Ok(Err(e)) => {
-                                        error!("Terminal input processing failed: {}", e);
-                                    }
-                                    Err(e) => {
-                                        error!("Terminal input handler join error: {}", e);
-                                    }
-                                }
-                            });
-                        } else if let Some(sender) = gossip_sender {
-                            // 没有设置回调，使用模拟输出（向后兼容）
-                            warn!("No terminal input callback set, using simulated output");
-                            let network_clone = self.clone();
-                            let session_id_clone = session_id.to_string();
-
-                            tokio::spawn(async move {
-                                // 这里应该将输入发送到对应的终端实例
-                                // 由于我们使用虚拟终端，暂时模拟终端输出
-                                let response_data = if data_clone == "\r" {
-                                    // 模拟回车符的响应
-                                    format!("\r\n[Terminal Output: {}] $ ", terminal_id_clone)
-                                } else {
-                                    // 模拟普通输入的回显
-                                    format!(
-                                        "[Terminal Output: {}] {}",
-                                        terminal_id_clone, data_clone
-                                    )
-                                };
-
-                                // 发送终端输出响应
-                                if let Err(e) = network_clone
-                                    .send_terminal_output(
-                                        &session_id_clone,
-                                        &sender,
-                                        terminal_id_clone,
-                                        response_data,
-                                    )
-                                    .await
-                                {
-                                    error!("Failed to send terminal output response: {}", e);
-                                }
-                            });
-                        }
-                    } else {
-                        drop(sessions_guard); // 释放锁
-                    }
-
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::TerminalInput { terminal_id, data },
-                        data: String::new(),
-                    };
-                    // 重新获取会话来发送事件
-                    let network_clone = self.clone();
-                    let sessions_guard = network_clone.sessions.read().await;
-                    if let Some(session) = sessions_guard.get(session_id) {
-                        if session.event_sender.send(event).is_err() {
-                            warn!("No active receivers for terminal input event, skipping");
-                        }
-                    }
-                }
-                TerminalMessageBody::TerminalResize {
-                    from,
-                    terminal_id,
-                    rows,
-                    cols,
-                    timestamp,
-                } => {
-                    debug!(
-                        "Received terminal resize from {} for terminal {}",
-                        from.fmt_short(),
-                        terminal_id
-                    );
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::TerminalResize {
-                            terminal_id,
-                            rows,
-                            cols,
-                        },
-                        data: String::new(),
-                    };
-                    if session.event_sender.send(event).is_err() {
-                        warn!("No active receivers for terminal resize event, skipping");
-                    }
-                }
-                TerminalMessageBody::TerminalDirectoryChanged {
-                    from,
-                    terminal_id,
-                    new_dir,
-                    timestamp,
-                } => {
-                    info!(
-                        "Received terminal directory change from {} for terminal {}",
-                        from.fmt_short(),
-                        terminal_id
-                    );
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::Output,
-                        data: format!("[Terminal Directory Change: {}] {}", terminal_id, new_dir),
-                    };
-                    if session.event_sender.send(event).is_err() {
-                        warn!("No active receivers for terminal directory change event, skipping");
-                    }
-                }
-                TerminalMessageBody::TerminalStop {
-                    from,
-                    terminal_id,
-                    timestamp,
-                } => {
-                    info!(
-                        "Received terminal stop request from {} for terminal {}",
-                        from.fmt_short(),
-                        terminal_id
-                    );
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::Output,
-                        data: format!("[Terminal Stop Request] {}", terminal_id),
-                    };
-                    if session.event_sender.send(event).is_err() {
-                        warn!("No active receivers for terminal stop event, skipping");
-                    }
-                }
-                TerminalMessageBody::TerminalListRequest { from, timestamp } => {
-                    info!("Received terminal list request from {}", from.fmt_short());
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::Output,
-                        data: "[Terminal List Request]".to_string(),
-                    };
-                    if session.event_sender.send(event).is_err() {
-                        warn!("No active receivers for terminal list request event, skipping");
-                    }
-                }
-                TerminalMessageBody::TerminalListResponse {
-                    from,
-                    terminals,
-                    timestamp,
-                } => {
-                    info!(
-                        "Received terminal list response from {} with {} terminals",
-                        from.fmt_short(),
-                        terminals.len()
-                    );
-                    let event = TerminalEvent {
-                        timestamp,
-                        event_type: EventType::TerminalList(terminals),
-                        data: String::new(),
-                    };
-                    if session.event_sender.send(event).is_err() {
-                        warn!("No active receivers for terminal list response event, skipping");
                     }
                 }
             }
+
+            // === Terminal Responses ===
+            NetworkMessage::Response {
+                from: _,
+                response,
+                request_id: _,
+            } => {
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_secs();
+
+                let (event_type, data) = match response {
+                    TerminalResponse::Created { terminal_id, info } => {
+                        info!("Terminal created: {}", terminal_id);
+                        (
+                            EventType::TerminalCreated {
+                                terminal_id,
+                                info,
+                            },
+                            Vec::new(),
+                        )
+                    }
+
+                    TerminalResponse::Output { terminal_id, data } => {
+                        debug!("Terminal output for {}: {} bytes", terminal_id, data.len());
+                        (
+                            EventType::TerminalOutput { terminal_id },
+                            data,
+                        )
+                    }
+
+                    TerminalResponse::List { terminals } => {
+                        info!("Received terminal list with {} terminals", terminals.len());
+                        (
+                            EventType::TerminalList { terminals },
+                            Vec::new(),
+                        )
+                    }
+
+                    TerminalResponse::StatusUpdate { terminal_id, status } => {
+                        info!("Terminal {} status: {:?}", terminal_id, status);
+                        (
+                            EventType::TerminalStatusUpdate {
+                                terminal_id,
+                                status,
+                            },
+                            Vec::new(),
+                        )
+                    }
+
+                    TerminalResponse::DirectoryChanged { terminal_id, new_dir } => {
+                        info!("Terminal {} directory changed to: {}", terminal_id, new_dir);
+                        (
+                            EventType::TerminalDirectoryChanged {
+                                terminal_id,
+                                new_dir,
+                            },
+                            Vec::new(),
+                        )
+                    }
+
+                    TerminalResponse::Stopped { terminal_id } => {
+                        info!("Terminal stopped: {}", terminal_id);
+                        (
+                            EventType::TerminalStopped { terminal_id },
+                            Vec::new(),
+                        )
+                    }
+
+                    TerminalResponse::Error { terminal_id, message } => {
+                        error!("Terminal error: {:?} - {}", terminal_id, message);
+                        (
+                            EventType::TerminalError {
+                                terminal_id,
+                                error: message,
+                            },
+                            Vec::new(),
+                        )
+                    }
+                };
+
+                let event = TerminalEvent {
+                    timestamp,
+                    event_type,
+                    data,
+                };
+
+                if session.event_sender.send(event).is_err() {
+                    warn!("No active receivers for terminal response event, skipping");
+                }
+            }
         }
+
         Ok(())
     }
 
@@ -1207,6 +1034,8 @@ impl P2PNetwork {
 
     // === Terminal Management Methods ===
 
+    // === Convenience Methods (using new Command/Response system) ===
+
     pub async fn send_terminal_create(
         &self,
         session_id: &str,
@@ -1216,25 +1045,13 @@ impl P2PNetwork {
         working_dir: Option<String>,
         size: Option<(u16, u16)>,
     ) -> Result<()> {
-        debug!("Sending terminal create request");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal create"))?;
-
-        let body = TerminalMessageBody::TerminalCreate {
-            from: self.endpoint.id(),
+        let command = TerminalCommand::Create {
             name,
             shell_path,
             working_dir,
             size,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_command(session_id, sender, command, None).await
     }
 
     pub async fn send_terminal_stop(
@@ -1243,22 +1060,8 @@ impl P2PNetwork {
         sender: &GossipSender,
         terminal_id: String,
     ) -> Result<()> {
-        debug!("Sending terminal stop request");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal stop"))?;
-
-        let body = TerminalMessageBody::TerminalStop {
-            from: self.endpoint.id(),
-            terminal_id,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        let command = TerminalCommand::Stop { terminal_id };
+        self.send_command(session_id, sender, command, None).await
     }
 
     pub async fn send_terminal_list_request(
@@ -1266,21 +1069,8 @@ impl P2PNetwork {
         session_id: &str,
         sender: &GossipSender,
     ) -> Result<()> {
-        debug!("Sending terminal list request");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal list"))?;
-
-        let body = TerminalMessageBody::TerminalListRequest {
-            from: self.endpoint.id(),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        let command = TerminalCommand::List;
+        self.send_command(session_id, sender, command, None).await
     }
 
     pub async fn send_terminal_list_response(
@@ -1289,50 +1079,19 @@ impl P2PNetwork {
         sender: &GossipSender,
         terminals: Vec<TerminalInfo>,
     ) -> Result<()> {
-        debug!("Sending terminal list response");
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal list response"))?;
-
-        let body = TerminalMessageBody::TerminalListResponse {
-            from: self.endpoint.id(),
-            terminals,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        let response = TerminalResponse::List { terminals };
+        self.send_response(session_id, sender, response, None).await
     }
-
-    // Additional terminal management methods
 
     pub async fn send_terminal_output(
         &self,
         session_id: &str,
         sender: &GossipSender,
         terminal_id: String,
-        data: String,
+        data: Vec<u8>,
     ) -> Result<()> {
-        debug!("Sending terminal output for terminal {}", terminal_id);
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal output"))?;
-
-        let body = TerminalMessageBody::TerminalOutput {
-            from: self.endpoint.id(),
-            terminal_id,
-            data,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        let response = TerminalResponse::Output { terminal_id, data };
+        self.send_response(session_id, sender, response, None).await
     }
 
     pub async fn send_terminal_input(
@@ -1340,25 +1099,10 @@ impl P2PNetwork {
         session_id: &str,
         sender: &GossipSender,
         terminal_id: String,
-        data: String,
+        data: Vec<u8>,
     ) -> Result<()> {
-        debug!("Sending terminal input for terminal {}", terminal_id);
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal input"))?;
-
-        let body = TerminalMessageBody::TerminalInput {
-            from: self.endpoint.id(),
-            terminal_id,
-            data,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-        };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        let command = TerminalCommand::Input { terminal_id, data };
+        self.send_command(session_id, sender, command, None).await
     }
 
     pub async fn send_terminal_resize(
@@ -1369,24 +1113,12 @@ impl P2PNetwork {
         rows: u16,
         cols: u16,
     ) -> Result<()> {
-        debug!("Sending terminal resize for terminal {}", terminal_id);
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal resize"))?;
-
-        let body = TerminalMessageBody::TerminalResize {
-            from: self.endpoint.id(),
+        let command = TerminalCommand::Resize {
             terminal_id,
             rows,
             cols,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_command(session_id, sender, command, None).await
     }
 
     pub async fn send_terminal_status_update(
@@ -1396,26 +1128,11 @@ impl P2PNetwork {
         terminal_id: String,
         status: TerminalStatus,
     ) -> Result<()> {
-        debug!(
-            "Sending terminal status update for terminal {}",
-            terminal_id
-        );
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal status update"))?;
-
-        let body = TerminalMessageBody::TerminalStatusUpdate {
-            from: self.endpoint.id(),
+        let response = TerminalResponse::StatusUpdate {
             terminal_id,
             status,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_response(session_id, sender, response, None).await
     }
 
     pub async fn send_terminal_directory_change(
@@ -1425,25 +1142,10 @@ impl P2PNetwork {
         terminal_id: String,
         new_dir: String,
     ) -> Result<()> {
-        debug!(
-            "Sending terminal directory change for terminal {}",
-            terminal_id
-        );
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found for terminal directory change"))?;
-
-        let body = TerminalMessageBody::TerminalDirectoryChanged {
-            from: self.endpoint.id(),
+        let response = TerminalResponse::DirectoryChanged {
             terminal_id,
             new_dir,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
         };
-        let message = EncryptedTerminalMessage::new(body, &session.key)?;
-        sender.broadcast(message.to_vec()?.into()).await?;
-        Ok(())
+        self.send_response(session_id, sender, response, None).await
     }
 }
