@@ -26,11 +26,7 @@ pub struct Cli {
     )]
     pub no_batch: bool,
 
-    #[arg(
-        long,
-        help = "Maximum batch size in bytes",
-        default_value = "4096"
-    )]
+    #[arg(long, help = "Maximum batch size in bytes", default_value = "4096")]
     pub batch_size: usize,
 
     #[arg(
@@ -125,47 +121,46 @@ impl CliApp {
         let network_for_commands = Arc::new(self.network.clone());
 
         // 创建终端命令处理器回调
-        let command_processor =
-            move |command: riterm_shared::TerminalCommand,
-                  session_id: String,
-                  sender: iroh_gossip::api::GossipSender|
-                  -> tokio::task::JoinHandle<anyhow::Result<()>> {
-                let terminal_manager = terminal_manager_for_commands.clone();
-                let network = network_for_commands.clone();
+        let command_processor = move |command: riterm_shared::TerminalCommand,
+                                      session_id: String,
+                                      sender: iroh_gossip::api::GossipSender|
+              -> tokio::task::JoinHandle<anyhow::Result<()>> {
+            let terminal_manager = terminal_manager_for_commands.clone();
+            let network = network_for_commands.clone();
 
-                tokio::spawn(async move {
-                    info!("Processing terminal command: {:?}", command);
+            tokio::spawn(async move {
+                info!("Processing terminal command: {:?}", command);
 
-                    // Handle the command using TerminalManager
-                    let response = terminal_manager.handle_terminal_command(command).await;
+                // Handle the command using TerminalManager
+                let response = terminal_manager.handle_terminal_command(command).await;
 
-                    // Send response back to client
-                    match response {
-                        Ok(resp) => {
-                            if let Err(e) = network
-                                .send_response(&session_id, &sender, resp, None)
-                                .await
-                            {
-                                error!("Failed to send response: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            error!("Failed to handle command: {}", e);
-                            // Send error response
-                            let error_resp = riterm_shared::TerminalResponse::Error {
-                                terminal_id: None,
-                                message: e.to_string(),
-                            };
-                            network
-                                .send_response(&session_id, &sender, error_resp, None)
-                                .await
-                                .ok();
+                // Send response back to client
+                match response {
+                    Ok(resp) => {
+                        if let Err(e) = network
+                            .send_response(&session_id, &sender, resp, None)
+                            .await
+                        {
+                            error!("Failed to send response: {}", e);
                         }
                     }
+                    Err(e) => {
+                        error!("Failed to handle command: {}", e);
+                        // Send error response
+                        let error_resp = riterm_shared::TerminalResponse::Error {
+                            terminal_id: None,
+                            message: e.to_string(),
+                        };
+                        network
+                            .send_response(&session_id, &sender, error_resp, None)
+                            .await
+                            .ok();
+                    }
+                }
 
-                    Ok(())
-                })
-            };
+                Ok(())
+            })
+        };
 
         // 设置终端命令处理回调
         self.network

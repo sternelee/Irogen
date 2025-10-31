@@ -1,8 +1,8 @@
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
-use regex::Regex;
 
 use tauri::Manager;
 use tauri::{Emitter, State};
@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 use iroh_gossip::api::GossipSender;
-use riterm_shared::{EventType, P2PNetwork, SessionTicket, TerminalEvent, TerminalCommand};
+use riterm_shared::{EventType, P2PNetwork, SessionTicket, TerminalCommand, TerminalEvent};
 
 /// Maximum number of concurrent sessions to prevent memory exhaustion
 const MAX_CONCURRENT_SESSIONS: usize = 50;
@@ -62,7 +62,10 @@ fn parse_structured_event(data: &str) -> Result<serde_json::Value, Box<dyn std::
 
     // Handle terminal output
     if data.starts_with("[Terminal Output:") {
-        if let Some(captures) = Regex::new(r"\[Terminal Output: ([^]]+)\] (.*)").unwrap().captures(data) {
+        if let Some(captures) = Regex::new(r"\[Terminal Output: ([^]]+)\] (.*)")
+            .unwrap()
+            .captures(data)
+        {
             if let (Some(terminal_id), Some(output_data)) = (captures.get(1), captures.get(2)) {
                 return Ok(serde_json::json!({
                     "type": "terminal_output",
@@ -501,7 +504,9 @@ async fn send_terminal_input(
 
     // This command is deprecated, use send_terminal_input_to_terminal instead
     #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-    tracing::warn!("send_terminal_input is deprecated. Use send_terminal_input_to_terminal for specific terminal input.");
+    tracing::warn!(
+        "send_terminal_input is deprecated. Use send_terminal_input_to_terminal for specific terminal input."
+    );
 
     Ok(())
 }
@@ -512,7 +517,7 @@ async fn send_directed_message(
     _state: State<'_, AppState>,
 ) -> Result<(), String> {
     let _session_sender = request.session_id; // Keep for API compatibility
-    
+
     // Note: send_directed_message is no longer available in the new message system
     // This functionality has been replaced by the Command/Response pattern
     Err("Directed messages are deprecated. Use terminal commands instead.".to_string())
@@ -763,7 +768,7 @@ async fn send_terminal_input_to_terminal(
         terminal_id: request.terminal_id,
         data: request.input.as_bytes().to_vec(),
     };
-    
+
     network
         .send_command(&request.session_id, &session_sender, command, None)
         .await
@@ -821,10 +826,14 @@ async fn connect_to_terminal(
     // With the new Command/Response system, connecting is implicit
     // The terminal should already be receiving outputs via TerminalResponse::Output
     // This command is now a no-op but kept for API compatibility
-    
+
     #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-    tracing::info!("connect_to_terminal called for session {} terminal {}", session_id, terminal_id);
-    
+    tracing::info!(
+        "connect_to_terminal called for session {} terminal {}",
+        session_id,
+        terminal_id
+    );
+
     Ok(())
 }
 

@@ -7,11 +7,11 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, error, info};
 
+use crate::output_batcher::{BatchConfig, OutputBatcher};
 use crate::terminal_runner::{TerminalCommand as RunnerCommand, TerminalRunner};
-use crate::output_batcher::{OutputBatcher, BatchConfig};
+use iroh_gossip::api::GossipSender;
 use riterm_shared::p2p::{TerminalInfo, TerminalStatus};
 use riterm_shared::{P2PNetwork, TerminalCommand, TerminalResponse};
-use iroh_gossip::api::GossipSender;
 
 /// Simplified terminal manager with direct P2P integration
 #[derive(Clone)]
@@ -115,20 +115,17 @@ impl TerminalManager {
         let terminals_ref = self.terminals.clone();
         let terminal_id_for_spawn = terminal_id.clone();
         let manager_clone = self.clone(); // Clone self to send output
-        
+
         tokio::spawn(async move {
             // Set output callback to send directly to P2P network
             let manager_for_output = manager_clone.clone();
             let tid_for_callback = terminal_id_for_spawn.clone();
-            
+
             runner.set_output_callback(move |_id, data| {
                 let manager = manager_for_output.clone();
                 let tid = tid_for_callback.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = manager
-                        .send_output(&tid, data.into_bytes())
-                        .await
-                    {
+                    if let Err(e) = manager.send_output(&tid, data.into_bytes()).await {
                         error!("Failed to send terminal output: {}", e);
                     }
                 });
@@ -220,7 +217,7 @@ impl TerminalManager {
         command: TerminalCommand,
     ) -> Result<TerminalResponse> {
         info!("Handling terminal command: {:?}", command);
-        
+
         match command {
             TerminalCommand::Create {
                 name,
@@ -228,7 +225,9 @@ impl TerminalManager {
                 working_dir,
                 size,
             } => {
-                let terminal_id = self.create_terminal(name, shell_path, working_dir, size).await?;
+                let terminal_id = self
+                    .create_terminal(name, shell_path, working_dir, size)
+                    .await?;
                 let info = self
                     .get_terminal_info(&terminal_id)
                     .await

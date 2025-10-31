@@ -46,10 +46,7 @@ pub enum TerminalCommand {
         size: Option<(u16, u16)>,
     },
     /// Send input to terminal
-    Input {
-        terminal_id: String,
-        data: Vec<u8>,
-    },
+    Input { terminal_id: String, data: Vec<u8> },
     /// Resize terminal
     Resize {
         terminal_id: String,
@@ -57,9 +54,7 @@ pub enum TerminalCommand {
         cols: u16,
     },
     /// Stop terminal
-    Stop {
-        terminal_id: String,
-    },
+    Stop { terminal_id: String },
     /// Request terminal list
     List,
 }
@@ -73,14 +68,9 @@ pub enum TerminalResponse {
         info: TerminalInfo,
     },
     /// Terminal output data
-    Output {
-        terminal_id: String,
-        data: Vec<u8>,
-    },
+    Output { terminal_id: String, data: Vec<u8> },
     /// Terminal list
-    List {
-        terminals: Vec<TerminalInfo>,
-    },
+    List { terminals: Vec<TerminalInfo> },
     /// Terminal status update
     StatusUpdate {
         terminal_id: String,
@@ -92,9 +82,7 @@ pub enum TerminalResponse {
         new_dir: String,
     },
     /// Terminal stopped
-    Stopped {
-        terminal_id: String,
-    },
+    Stopped { terminal_id: String },
     /// Error response
     Error {
         terminal_id: Option<String>,
@@ -115,10 +103,8 @@ pub enum NetworkMessage {
         header: SessionHeader,
     },
     /// Session ended notification
-    SessionEnd {
-        from: EndpointId,
-    },
-    
+    SessionEnd { from: EndpointId },
+
     // === Terminal Operations ===
     /// Terminal command (request)
     Command {
@@ -319,8 +305,7 @@ pub struct P2PNetwork {
                             TerminalCommand,
                             String, // session_id
                             GossipSender,
-                        )
-                            -> tokio::task::JoinHandle<anyhow::Result<()>>
+                        ) -> tokio::task::JoinHandle<anyhow::Result<()>>
                         + Send
                         + Sync,
                 >,
@@ -354,7 +339,7 @@ pub enum EventType {
     SessionStarted,
     /// Session ended
     SessionEnded,
-    
+
     // === Terminal Events ===
     /// Terminal created successfully
     TerminalCreated {
@@ -362,13 +347,9 @@ pub enum EventType {
         info: TerminalInfo,
     },
     /// Terminal output received (data in event.data)
-    TerminalOutput {
-        terminal_id: String,
-    },
+    TerminalOutput { terminal_id: String },
     /// Terminal stopped
-    TerminalStopped {
-        terminal_id: String,
-    },
+    TerminalStopped { terminal_id: String },
     /// Terminal error
     TerminalError {
         terminal_id: Option<String>,
@@ -385,9 +366,7 @@ pub enum EventType {
         new_dir: String,
     },
     /// Terminal list updated
-    TerminalList {
-        terminals: Vec<TerminalInfo>,
-    },
+    TerminalList { terminals: Vec<TerminalInfo> },
 }
 
 /// Frontend event with timestamp, event type, and optional binary data
@@ -771,11 +750,7 @@ impl P2PNetwork {
         Ok(())
     }
 
-    async fn handle_gossip_message(
-        &self,
-        session_id: &str,
-        body: NetworkMessage,
-    ) -> Result<()> {
+    async fn handle_gossip_message(&self, session_id: &str, body: NetworkMessage) -> Result<()> {
         let sessions_guard = self.sessions.read().await;
         let session = match sessions_guard.get(session_id) {
             Some(s) => s,
@@ -799,7 +774,7 @@ impl P2PNetwork {
                     session.participants.push(from.to_string());
                     session.header = header;
                 }
-                
+
                 // Send session started event
                 let event = TerminalEvent {
                     timestamp: std::time::SystemTime::now()
@@ -808,7 +783,7 @@ impl P2PNetwork {
                     event_type: EventType::SessionStarted,
                     data: Vec::new(),
                 };
-                
+
                 let sessions_read = self.sessions.read().await;
                 if let Some(session) = sessions_read.get(session_id) {
                     let _ = session.event_sender.send(event);
@@ -841,9 +816,11 @@ impl P2PNetwork {
                 }
 
                 let session_id = session_id.to_string();
-                let gossip_sender = session.gossip_sender.clone()
+                let gossip_sender = session
+                    .gossip_sender
+                    .clone()
                     .ok_or_else(|| anyhow::anyhow!("No gossip sender available"))?;
-                
+
                 drop(sessions_guard); // Release lock before async operations
 
                 info!(
@@ -860,7 +837,7 @@ impl P2PNetwork {
                     drop(command_callback_guard);
                 } else {
                     drop(command_callback_guard);
-                    
+
                     // Fall back to old input callback for backward compatibility
                     let input_callback_guard = self.terminal_input_callback.read().await;
                     if let Some(input_callback) = &*input_callback_guard {
@@ -870,7 +847,10 @@ impl P2PNetwork {
                                 let _ = input_callback(terminal_id.clone(), data_str);
                             }
                             _ => {
-                                debug!("Command {:?} not handled - no command callback set", command);
+                                debug!(
+                                    "Command {:?} not handled - no command callback set",
+                                    command
+                                );
                             }
                         }
                     } else {
@@ -892,32 +872,23 @@ impl P2PNetwork {
                 let (event_type, data) = match response {
                     TerminalResponse::Created { terminal_id, info } => {
                         info!("Terminal created: {}", terminal_id);
-                        (
-                            EventType::TerminalCreated {
-                                terminal_id,
-                                info,
-                            },
-                            Vec::new(),
-                        )
+                        (EventType::TerminalCreated { terminal_id, info }, Vec::new())
                     }
 
                     TerminalResponse::Output { terminal_id, data } => {
                         debug!("Terminal output for {}: {} bytes", terminal_id, data.len());
-                        (
-                            EventType::TerminalOutput { terminal_id },
-                            data,
-                        )
+                        (EventType::TerminalOutput { terminal_id }, data)
                     }
 
                     TerminalResponse::List { terminals } => {
                         info!("Received terminal list with {} terminals", terminals.len());
-                        (
-                            EventType::TerminalList { terminals },
-                            Vec::new(),
-                        )
+                        (EventType::TerminalList { terminals }, Vec::new())
                     }
 
-                    TerminalResponse::StatusUpdate { terminal_id, status } => {
+                    TerminalResponse::StatusUpdate {
+                        terminal_id,
+                        status,
+                    } => {
                         info!("Terminal {} status: {:?}", terminal_id, status);
                         (
                             EventType::TerminalStatusUpdate {
@@ -928,7 +899,10 @@ impl P2PNetwork {
                         )
                     }
 
-                    TerminalResponse::DirectoryChanged { terminal_id, new_dir } => {
+                    TerminalResponse::DirectoryChanged {
+                        terminal_id,
+                        new_dir,
+                    } => {
                         info!("Terminal {} directory changed to: {}", terminal_id, new_dir);
                         (
                             EventType::TerminalDirectoryChanged {
@@ -941,13 +915,13 @@ impl P2PNetwork {
 
                     TerminalResponse::Stopped { terminal_id } => {
                         info!("Terminal stopped: {}", terminal_id);
-                        (
-                            EventType::TerminalStopped { terminal_id },
-                            Vec::new(),
-                        )
+                        (EventType::TerminalStopped { terminal_id }, Vec::new())
                     }
 
-                    TerminalResponse::Error { terminal_id, message } => {
+                    TerminalResponse::Error {
+                        terminal_id,
+                        message,
+                    } => {
                         error!("Terminal error: {:?} - {}", terminal_id, message);
                         (
                             EventType::TerminalError {
