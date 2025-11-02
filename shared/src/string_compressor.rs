@@ -36,9 +36,8 @@ impl StringCompressor {
     /// Decompress a string that was compressed with compress()
     pub fn decompress(compressed: &str) -> Result<String> {
         // Check for different compression prefixes
-        if compressed.starts_with("HEX_") {
+        if let Some(hex_part) = compressed.strip_prefix("HEX_") {
             // Hex encoded for very short strings
-            let hex_part = &compressed[4..];
             let bytes = hex::decode(hex_part)
                 .map_err(|e| anyhow::anyhow!("Failed to decode hex: {}", e))?;
             return Ok(String::from_utf8(bytes)?);
@@ -82,27 +81,27 @@ impl StringCompressor {
         let mut best_size = input_len;
 
         // Setting 1: Maximum compression (quality 11, window 24)
-        if let Ok(result1) = Self::try_brotli_compress(input, 11, 24) {
-            if result1.len() < best_size {
-                best_result = result1.clone();
-                best_size = result1.len();
-            }
+        if let Ok(result1) = Self::try_brotli_compress(input, 11, 24)
+            && result1.len() < best_size
+        {
+            best_result = result1.clone();
+            best_size = result1.len();
         }
 
         // Setting 2: Alternative high compression (quality 10, window 22)
-        if let Ok(result2) = Self::try_brotli_compress(input, 10, 22) {
-            if result2.len() < best_size {
-                best_result = result2.clone();
-                best_size = result2.len();
-            }
+        if let Ok(result2) = Self::try_brotli_compress(input, 10, 22)
+            && result2.len() < best_size
+        {
+            best_result = result2.clone();
+            best_size = result2.len();
         }
 
         // Setting 3: Balanced compression (quality 9, window 20)
-        if let Ok(result3) = Self::try_brotli_compress(input, 9, 20) {
-            if result3.len() < best_size {
-                best_size = result3.len();
-                best_result = result3;
-            }
+        if let Ok(result3) = Self::try_brotli_compress(input, 9, 20)
+            && result3.len() < best_size
+        {
+            best_size = result3.len();
+            best_result = result3;
         }
 
         debug!(

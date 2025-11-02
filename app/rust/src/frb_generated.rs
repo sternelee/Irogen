@@ -25,8 +25,9 @@
 
 // Section: imports
 
-use crate::api::iroh_client::*;
+use crate::message_bridge::*;
 use crate::*;
+use riterm_shared::TcpForwardingType;
 use flutter_rust_bridge::for_generated::byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
 use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
 use flutter_rust_bridge::{Handler, IntoIntoDart};
@@ -39,135 +40,16 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1483479097;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 382551315;
 
 // Section: executor
 
 flutter_rust_bridge::frb_generated_default_handler!();
 
+
 // Section: wire_funcs
 
-fn wire__crate__api__iroh_client__IrohClientManager_get_active_sessions_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "IrohClientManager_get_active_sessions",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_that = <RustOpaqueMoi<
-                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<IrohClientManager>,
-            >>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| async move {
-                transform_result_sse::<_, ()>(
-                    (move || async move {
-                        let mut api_that_guard = None;
-                        let decode_indices_ =
-                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
-                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
-                                    &api_that, 0, false,
-                                )],
-                            );
-                        for i in decode_indices_ {
-                            match i {
-                                0 => {
-                                    api_that_guard =
-                                        Some(api_that.lockable_decode_async_ref().await)
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
-                        let api_that_guard = api_that_guard.unwrap();
-                        let output_ok = Result::<_, ()>::Ok(
-                            crate::api::iroh_client::IrohClientManager::get_active_sessions(
-                                &*api_that_guard,
-                            )
-                            .await,
-                        )?;
-                        Ok(output_ok)
-                    })()
-                    .await,
-                )
-            }
-        },
-    )
-}
-fn wire__crate__api__iroh_client__IrohClientManager_get_active_terminals_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "IrohClientManager_get_active_terminals",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_that = <RustOpaqueMoi<
-                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<IrohClientManager>,
-            >>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| async move {
-                transform_result_sse::<_, ()>(
-                    (move || async move {
-                        let mut api_that_guard = None;
-                        let decode_indices_ =
-                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
-                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
-                                    &api_that, 0, false,
-                                )],
-                            );
-                        for i in decode_indices_ {
-                            match i {
-                                0 => {
-                                    api_that_guard =
-                                        Some(api_that.lockable_decode_async_ref().await)
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
-                        let api_that_guard = api_that_guard.unwrap();
-                        let output_ok = Result::<_, ()>::Ok(
-                            crate::api::iroh_client::IrohClientManager::get_active_terminals(
-                                &*api_that_guard,
-                            )
-                            .await,
-                        )?;
-                        Ok(output_ok)
-                    })()
-                    .await,
-                )
-            }
-        },
-    )
-}
-fn wire__crate__api__iroh_client__IrohClientManager_new_impl(
+fn wire__crate__message_bridge__FlutterMessageClient_default_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -175,7 +57,7 @@ fn wire__crate__api__iroh_client__IrohClientManager_new_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "IrohClientManager_new",
+            debug_name: "FlutterMessageClient_default",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -189,12 +71,11 @@ fn wire__crate__api__iroh_client__IrohClientManager_new_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_network = <P2PNetwork>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, ()>((move || {
                     let output_ok = Result::<_, ()>::Ok(
-                        crate::api::iroh_client::IrohClientManager::new(api_network),
+                        crate::message_bridge::FlutterMessageClient::default(),
                     )?;
                     Ok(output_ok)
                 })())
@@ -202,15 +83,15 @@ fn wire__crate__api__iroh_client__IrohClientManager_new_impl(
         },
     )
 }
-fn wire__crate__api__iroh_client__IrohClientManager_start_impl(
+fn wire__crate__message_bridge__FlutterMessageClient_new_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
 ) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "IrohClientManager_start",
+            debug_name: "FlutterMessageClient_new",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -224,33 +105,134 @@ fn wire__crate__api__iroh_client__IrohClientManager_start_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_that = <RustOpaqueMoi<
-                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<IrohClientManager>,
-            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Result::<_, ()>::Ok(crate::message_bridge::FlutterMessageClient::new())?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__connect_by_node_id_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "connect_by_node_id",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_node_id_str = <String>::sse_decode(&mut deserializer);
+            let api_relay_url = <Option<String>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || async move {
-                        let mut api_that_guard = None;
-                        let decode_indices_ =
-                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
-                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
-                                    &api_that, 0, false,
-                                )],
-                            );
-                        for i in decode_indices_ {
-                            match i {
-                                0 => {
-                                    api_that_guard =
-                                        Some(api_that.lockable_decode_async_ref().await)
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
-                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::message_bridge::connect_by_node_id(
+                            api_client,
+                            api_node_id_str,
+                            api_relay_url,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__connect_by_ticket_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "connect_by_ticket",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_ticket = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
                         let output_ok =
-                            crate::api::iroh_client::IrohClientManager::start(&*api_that_guard)
+                            crate::message_bridge::connect_by_ticket(api_client, api_ticket)
                                 .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__connect_to_cli_server_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "connect_to_cli_server",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_endpoint_addr_str = <String>::sse_decode(&mut deserializer);
+            let api_relay_url = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::message_bridge::connect_to_cli_server(
+                            api_client,
+                            api_endpoint_addr_str,
+                            api_relay_url,
+                        )
+                        .await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -281,18 +263,55 @@ fn wire__rust_lib_app__api__iroh_client__connect_to_peer_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_ticket = <String>::sse_decode(&mut deserializer);
+            let api__ticket = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
                         let output_ok =
-                            rust_lib_app::api::iroh_client::connect_to_peer(api_ticket).await?;
+                            crate::api::iroh_client::connect_to_peer(api__ticket).await?;
                         Ok(output_ok)
                     })()
                     .await,
                 )
             }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__construct_endpoint_addr_from_node_info_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "construct_endpoint_addr_from_node_info",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_node_id_hex = <String>::sse_decode(&mut deserializer);
+            let api_relay_url = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok =
+                        crate::message_bridge::construct_endpoint_addr_from_node_info(
+                            api_node_id_hex,
+                            api_relay_url,
+                        )?;
+                    Ok(output_ok)
+                })(),
+            )
         },
     )
 }
@@ -318,14 +337,145 @@ fn wire__rust_lib_app__api__iroh_client__create_iroh_client_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_relay_url = <Option<String>>::sse_decode(&mut deserializer);
+            let api__relay_url = <Option<String>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
                         let output_ok =
-                            rust_lib_app::api::iroh_client::create_iroh_client(api_relay_url)
+                            crate::api::iroh_client::create_iroh_client(api__relay_url)
                                 .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__create_message_client_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "create_message_client",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok =
+                    Result::<_, ()>::Ok(crate::message_bridge::create_message_client())?;
+                Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__create_remote_terminal_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "create_remote_terminal",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
+            let api_name = <Option<String>>::sse_decode(&mut deserializer);
+            let api_shell_path = <Option<String>>::sse_decode(&mut deserializer);
+            let api_working_dir = <Option<String>>::sse_decode(&mut deserializer);
+            let api_rows = <u16>::sse_decode(&mut deserializer);
+            let api_cols = <u16>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::message_bridge::create_remote_terminal(
+                            api_client,
+                            api_session_id,
+                            api_name,
+                            api_shell_path,
+                            api_working_dir,
+                            api_rows,
+                            api_cols,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__create_tcp_forwarding_session_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "create_tcp_forwarding_session",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
+            let api_local_addr = <String>::sse_decode(&mut deserializer);
+            let api_remote_host = <Option<String>>::sse_decode(&mut deserializer);
+            let api_remote_port = <Option<u16>>::sse_decode(&mut deserializer);
+            let api_forwarding_type = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok =
+                            crate::message_bridge::create_tcp_forwarding_session(
+                                api_client,
+                                api_session_id,
+                                api_local_addr,
+                                api_remote_host,
+                                api_remote_port,
+                                api_forwarding_type,
+                            )
+                            .await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -356,21 +506,62 @@ fn wire__rust_lib_app__api__iroh_client__create_terminal_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_name = <Option<String>>::sse_decode(&mut deserializer);
-            let api_shell_path = <Option<String>>::sse_decode(&mut deserializer);
-            let api_working_dir = <Option<String>>::sse_decode(&mut deserializer);
-            let api_rows = <Option<u16>>::sse_decode(&mut deserializer);
-            let api_cols = <Option<u16>>::sse_decode(&mut deserializer);
+            let api__name = <Option<String>>::sse_decode(&mut deserializer);
+            let api__shell_path = <Option<String>>::sse_decode(&mut deserializer);
+            let api__working_dir = <Option<String>>::sse_decode(&mut deserializer);
+            let api__rows = <Option<u16>>::sse_decode(&mut deserializer);
+            let api__cols = <Option<u16>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
-                        let output_ok = rust_lib_app::api::iroh_client::create_terminal(
-                            api_name,
-                            api_shell_path,
-                            api_working_dir,
-                            api_rows,
-                            api_cols,
+                        let output_ok = crate::api::iroh_client::create_terminal(
+                            api__name,
+                            api__shell_path,
+                            api__working_dir,
+                            api__rows,
+                            api__cols,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__disconnect_from_cli_server_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "disconnect_from_cli_server",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::message_bridge::disconnect_from_cli_server(
+                            api_client,
+                            api_session_id,
                         )
                         .await?;
                         Ok(output_ok)
@@ -403,19 +594,51 @@ fn wire__rust_lib_app__api__iroh_client__disconnect_session_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_session_id = <String>::sse_decode(&mut deserializer);
+            let api__session_id = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
                         let output_ok =
-                            rust_lib_app::api::iroh_client::disconnect_session(api_session_id)
+                            crate::api::iroh_client::disconnect_session(api__session_id)
                                 .await?;
                         Ok(output_ok)
                     })()
                     .await,
                 )
             }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__format_forwarding_type_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "format_forwarding_type",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_forwarding_type = <TcpForwardingType>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Result::<_, ()>::Ok(
+                    crate::message_bridge::format_forwarding_type(api_forwarding_type),
+                )?;
+                Ok(output_ok)
+            })())
         },
     )
 }
@@ -441,18 +664,18 @@ fn wire__rust_lib_app__api__iroh_client__generate_qr_code_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_data = <String>::sse_decode(&mut deserializer);
+            let api__data = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
-                    let output_ok = rust_lib_app::api::iroh_client::generate_qr_code(api_data)?;
+                    let output_ok = crate::api::iroh_client::generate_qr_code(api__data)?;
                     Ok(output_ok)
                 })())
             }
         },
     )
 }
-fn wire__rust_lib_app__api__iroh_client__get_active_sessions_impl(
+fn wire__rust_lib_app__message_bridge__get_active_sessions_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -474,12 +697,13 @@ fn wire__rust_lib_app__api__iroh_client__get_active_sessions_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || async move {
                         let output_ok =
-                            rust_lib_app::api::iroh_client::get_active_sessions().await?;
+                            crate::message_bridge::get_active_sessions(api_client).await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -488,7 +712,7 @@ fn wire__rust_lib_app__api__iroh_client__get_active_sessions_impl(
         },
     )
 }
-fn wire__rust_lib_app__api__iroh_client__get_active_terminals_impl(
+fn wire__rust_lib_app__message_bridge__get_system_status_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -496,7 +720,7 @@ fn wire__rust_lib_app__api__iroh_client__get_active_terminals_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "get_active_terminals",
+            debug_name: "get_system_status",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -510,12 +734,58 @@ fn wire__rust_lib_app__api__iroh_client__get_active_terminals_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, String>(
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || async move {
-                        let output_ok =
-                            rust_lib_app::api::iroh_client::get_active_terminals().await?;
+                        let output_ok = crate::message_bridge::get_system_status(
+                            api_client,
+                            api_session_id,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__get_tcp_forwarding_sessions_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_tcp_forwarding_sessions",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::message_bridge::get_tcp_forwarding_sessions(
+                            api_client,
+                            api_session_id,
+                        )
+                        .await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -548,43 +818,9 @@ fn wire__rust_lib_app__api__simple__greet_impl(
             let api_name = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             transform_result_sse::<_, ()>((move || {
-                let output_ok = Result::<_, ()>::Ok(rust_lib_app::api::simple::greet(api_name))?;
+                let output_ok = Result::<_, ()>::Ok(crate::api::simple::greet(api_name))?;
                 Ok(output_ok)
             })())
-        },
-    )
-}
-fn wire__rust_lib_app__api__iroh_client__init_app_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "init_app",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            deserializer.end();
-            move |context| {
-                transform_result_sse::<_, ()>((move || {
-                    let output_ok = Result::<_, ()>::Ok({
-                        rust_lib_app::api::iroh_client::init_app();
-                    })?;
-                    Ok(output_ok)
-                })())
-            }
         },
     )
 }
@@ -614,10 +850,199 @@ fn wire__rust_lib_app__api__simple__init_app_impl(
             move |context| {
                 transform_result_sse::<_, ()>((move || {
                     let output_ok = Result::<_, ()>::Ok({
-                        rust_lib_app::api::simple::init_app();
+                        crate::api::simple::init_app();
                     })?;
                     Ok(output_ok)
                 })())
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__quic_bridge__legacy_quic_deprecated_notice_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "legacy_quic_deprecated_notice",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok =
+                            crate::quic_bridge::legacy_quic_deprecated_notice().await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__list_remote_terminals_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "list_remote_terminals",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::message_bridge::list_remote_terminals(
+                            api_client,
+                            api_session_id,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__parse_connection_ticket_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "parse_connection_ticket",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_ticket = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok =
+                        crate::message_bridge::parse_connection_ticket(api_ticket)?;
+                    Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__parse_endpoint_addr_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "parse_endpoint_addr",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_addr = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok = crate::message_bridge::parse_endpoint_addr(api_addr)?;
+                    Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__resize_remote_terminal_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "resize_remote_terminal",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
+            let api_terminal_id = <String>::sse_decode(&mut deserializer);
+            let api_rows = <u16>::sse_decode(&mut deserializer);
+            let api_cols = <u16>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::message_bridge::resize_remote_terminal(
+                            api_client,
+                            api_session_id,
+                            api_terminal_id,
+                            api_rows,
+                            api_cols,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
             }
         },
     )
@@ -644,17 +1069,17 @@ fn wire__rust_lib_app__api__iroh_client__resize_terminal_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_terminal_id = <String>::sse_decode(&mut deserializer);
-            let api_rows = <u16>::sse_decode(&mut deserializer);
-            let api_cols = <u16>::sse_decode(&mut deserializer);
+            let api__terminal_id = <String>::sse_decode(&mut deserializer);
+            let api__rows = <u16>::sse_decode(&mut deserializer);
+            let api__cols = <u16>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
-                        let output_ok = rust_lib_app::api::iroh_client::resize_terminal(
-                            api_terminal_id,
-                            api_rows,
-                            api_cols,
+                        let output_ok = crate::api::iroh_client::resize_terminal(
+                            api__terminal_id,
+                            api__rows,
+                            api__cols,
                         )
                         .await?;
                         Ok(output_ok)
@@ -687,15 +1112,146 @@ fn wire__rust_lib_app__api__iroh_client__send_terminal_input_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_terminal_id = <String>::sse_decode(&mut deserializer);
-            let api_input = <String>::sse_decode(&mut deserializer);
+            let api__terminal_id = <String>::sse_decode(&mut deserializer);
+            let api__input = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
-                        let output_ok = rust_lib_app::api::iroh_client::send_terminal_input(
+                        let output_ok = crate::api::iroh_client::send_terminal_input(
+                            api__terminal_id,
+                            api__input,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__send_terminal_input_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "send_terminal_input",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
+            let api_terminal_id = <String>::sse_decode(&mut deserializer);
+            let api_input = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::message_bridge::send_terminal_input(
+                            api_client,
+                            api_session_id,
                             api_terminal_id,
                             api_input,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__stop_remote_terminal_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "stop_remote_terminal",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
+            let api_terminal_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::message_bridge::stop_remote_terminal(
+                            api_client,
+                            api_session_id,
+                            api_terminal_id,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__rust_lib_app__message_bridge__stop_tcp_forwarding_session_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "stop_tcp_forwarding_session",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client = <FlutterMessageClient>::sse_decode(&mut deserializer);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
+            let api_tcp_session_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::message_bridge::stop_tcp_forwarding_session(
+                            api_client,
+                            api_session_id,
+                            api_tcp_session_id,
                         )
                         .await?;
                         Ok(output_ok)
@@ -728,13 +1284,13 @@ fn wire__rust_lib_app__api__iroh_client__stop_terminal_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_terminal_id = <String>::sse_decode(&mut deserializer);
+            let api__terminal_id = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
                         let output_ok =
-                            rust_lib_app::api::iroh_client::stop_terminal(api_terminal_id).await?;
+                            crate::api::iroh_client::stop_terminal(api__terminal_id).await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -743,14 +1299,48 @@ fn wire__rust_lib_app__api__iroh_client__stop_terminal_impl(
         },
     )
 }
+fn wire__rust_lib_app__message_bridge__validate_terminal_size_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "validate_terminal_size",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_rows = <u16>::sse_decode(&mut deserializer);
+            let api_cols = <u16>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok =
+                        crate::message_bridge::validate_terminal_size(api_rows, api_cols)?;
+                    Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
 
 // Section: related_funcs
 
 flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
-    flutter_rust_bridge::for_generated::RustAutoOpaqueInner<IrohClientManager>
+    flutter_rust_bridge::for_generated::RustAutoOpaqueInner<FlutterMessageClient>
 );
 flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
-    flutter_rust_bridge::for_generated::RustAutoOpaqueInner<P2PNetwork>
+    flutter_rust_bridge::for_generated::RustAutoOpaqueInner<TcpForwardingType>
 );
 
 // Section: dart2rust
@@ -763,28 +1353,28 @@ impl SseDecode for flutter_rust_bridge::for_generated::anyhow::Error {
     }
 }
 
-impl SseDecode for IrohClientManager {
+impl SseDecode for FlutterMessageClient {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <RustOpaqueMoi<
-            flutter_rust_bridge::for_generated::RustAutoOpaqueInner<IrohClientManager>,
+            flutter_rust_bridge::for_generated::RustAutoOpaqueInner<FlutterMessageClient>,
         >>::sse_decode(deserializer);
         return flutter_rust_bridge::for_generated::rust_auto_opaque_decode_owned(inner);
     }
 }
 
-impl SseDecode for P2PNetwork {
+impl SseDecode for TcpForwardingType {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <RustOpaqueMoi<
-            flutter_rust_bridge::for_generated::RustAutoOpaqueInner<P2PNetwork>,
+            flutter_rust_bridge::for_generated::RustAutoOpaqueInner<TcpForwardingType>,
         >>::sse_decode(deserializer);
         return flutter_rust_bridge::for_generated::rust_auto_opaque_decode_owned(inner);
     }
 }
 
 impl SseDecode
-    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<IrohClientManager>>
+    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<FlutterMessageClient>>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -794,7 +1384,7 @@ impl SseDecode
 }
 
 impl SseDecode
-    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<P2PNetwork>>
+    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<TcpForwardingType>>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -818,43 +1408,108 @@ impl SseDecode for bool {
     }
 }
 
-impl SseDecode for crate::api::iroh_client::FlutterSession {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut var_id = <String>::sse_decode(deserializer);
-        let mut var_ticket = <String>::sse_decode(deserializer);
-        let mut var_title = <Option<String>>::sse_decode(deserializer);
-        let mut var_createdAt = <u64>::sse_decode(deserializer);
-        let mut var_status = <String>::sse_decode(deserializer);
-        return crate::api::iroh_client::FlutterSession {
-            id: var_id,
-            ticket: var_ticket,
-            title: var_title,
-            created_at: var_createdAt,
-            status: var_status,
-        };
-    }
-}
-
-impl SseDecode for crate::api::iroh_client::FlutterTerminal {
+impl SseDecode for crate::message_bridge::FlutterRemoteTerminal {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_id = <String>::sse_decode(deserializer);
         let mut var_name = <Option<String>>::sse_decode(deserializer);
         let mut var_shellType = <String>::sse_decode(deserializer);
         let mut var_currentDir = <String>::sse_decode(deserializer);
-        let mut var_status = <String>::sse_decode(deserializer);
-        let mut var_createdAt = <u64>::sse_decode(deserializer);
         let mut var_size = <(u16, u16)>::sse_decode(deserializer);
-        return crate::api::iroh_client::FlutterTerminal {
+        let mut var_running = <bool>::sse_decode(deserializer);
+        let mut var_createdAt = <u64>::sse_decode(deserializer);
+        return crate::message_bridge::FlutterRemoteTerminal {
             id: var_id,
             name: var_name,
             shell_type: var_shellType,
             current_dir: var_currentDir,
-            status: var_status,
-            created_at: var_createdAt,
             size: var_size,
+            running: var_running,
+            created_at: var_createdAt,
         };
+    }
+}
+
+impl SseDecode for crate::message_bridge::FlutterSession {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_nodeId = <String>::sse_decode(deserializer);
+        let mut var_endpointAddr = <String>::sse_decode(deserializer);
+        let mut var_connectionId = <String>::sse_decode(deserializer);
+        let mut var_createdAt = <u64>::sse_decode(deserializer);
+        let mut var_sessionType =
+            <crate::message_bridge::FlutterSessionType>::sse_decode(deserializer);
+        return crate::message_bridge::FlutterSession {
+            id: var_id,
+            node_id: var_nodeId,
+            endpoint_addr: var_endpointAddr,
+            connection_id: var_connectionId,
+            created_at: var_createdAt,
+            session_type: var_sessionType,
+        };
+    }
+}
+
+impl SseDecode for crate::message_bridge::FlutterSessionType {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::message_bridge::FlutterSessionType::Terminal,
+            1 => crate::message_bridge::FlutterSessionType::TcpForwarding,
+            2 => crate::message_bridge::FlutterSessionType::SystemControl,
+            _ => unreachable!("Invalid variant for FlutterSessionType: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::message_bridge::FlutterSystemStatus {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_status = <String>::sse_decode(deserializer);
+        let mut var_uptime = <u64>::sse_decode(deserializer);
+        let mut var_activeTerminals = <u32>::sse_decode(deserializer);
+        let mut var_activeTcpSessions = <u32>::sse_decode(deserializer);
+        let mut var_memoryUsage = <u64>::sse_decode(deserializer);
+        return crate::message_bridge::FlutterSystemStatus {
+            status: var_status,
+            uptime: var_uptime,
+            active_terminals: var_activeTerminals,
+            active_tcp_sessions: var_activeTcpSessions,
+            memory_usage: var_memoryUsage,
+        };
+    }
+}
+
+impl SseDecode for crate::message_bridge::FlutterTcpForwardingSession {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_localAddr = <String>::sse_decode(deserializer);
+        let mut var_remoteEndpoint = <String>::sse_decode(deserializer);
+        let mut var_forwardingType = <String>::sse_decode(deserializer);
+        let mut var_activeConnections = <u32>::sse_decode(deserializer);
+        let mut var_bytesSent = <u64>::sse_decode(deserializer);
+        let mut var_bytesReceived = <u64>::sse_decode(deserializer);
+        let mut var_createdAt = <u64>::sse_decode(deserializer);
+        return crate::message_bridge::FlutterTcpForwardingSession {
+            id: var_id,
+            local_addr: var_localAddr,
+            remote_endpoint: var_remoteEndpoint,
+            forwarding_type: var_forwardingType,
+            active_connections: var_activeConnections,
+            bytes_sent: var_bytesSent,
+            bytes_received: var_bytesReceived,
+            created_at: var_createdAt,
+        };
+    }
+}
+
+impl SseDecode for i32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_i32::<NativeEndian>().unwrap()
     }
 }
 
@@ -874,13 +1529,13 @@ impl SseDecode for crate::api::iroh_client::IrohSessionInfo {
     }
 }
 
-impl SseDecode for Vec<crate::api::iroh_client::FlutterSession> {
+impl SseDecode for Vec<crate::message_bridge::FlutterRemoteTerminal> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut len_ = <i32>::sse_decode(deserializer);
         let mut ans_ = vec![];
         for idx_ in 0..len_ {
-            ans_.push(<crate::api::iroh_client::FlutterSession>::sse_decode(
+            ans_.push(<crate::message_bridge::FlutterRemoteTerminal>::sse_decode(
                 deserializer,
             ));
         }
@@ -888,15 +1543,29 @@ impl SseDecode for Vec<crate::api::iroh_client::FlutterSession> {
     }
 }
 
-impl SseDecode for Vec<crate::api::iroh_client::FlutterTerminal> {
+impl SseDecode for Vec<crate::message_bridge::FlutterSession> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut len_ = <i32>::sse_decode(deserializer);
         let mut ans_ = vec![];
         for idx_ in 0..len_ {
-            ans_.push(<crate::api::iroh_client::FlutterTerminal>::sse_decode(
+            ans_.push(<crate::message_bridge::FlutterSession>::sse_decode(
                 deserializer,
             ));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::message_bridge::FlutterTcpForwardingSession> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(
+                <crate::message_bridge::FlutterTcpForwardingSession>::sse_decode(deserializer),
+            );
         }
         return ans_;
     }
@@ -952,6 +1621,13 @@ impl SseDecode for u16 {
     }
 }
 
+impl SseDecode for u32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_u32::<NativeEndian>().unwrap()
+    }
+}
+
 impl SseDecode for u64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -978,13 +1654,6 @@ impl SseDecode for usize {
     }
 }
 
-impl SseDecode for i32 {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        deserializer.cursor.read_i32::<NativeEndian>().unwrap()
-    }
-}
-
 fn pde_ffi_dispatcher_primary_impl(
     func_id: i32,
     port: flutter_rust_bridge::for_generated::MessagePort,
@@ -994,89 +1663,152 @@ fn pde_ffi_dispatcher_primary_impl(
 ) {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        1 => wire__crate__api__iroh_client__IrohClientManager_get_active_sessions_impl(
+        1 => wire__crate__message_bridge__FlutterMessageClient_default_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        2 => wire__crate__api__iroh_client__IrohClientManager_get_active_terminals_impl(
+        2 => wire__crate__message_bridge__FlutterMessageClient_new_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        3 => wire__crate__api__iroh_client__IrohClientManager_new_impl(
+        3 => wire__rust_lib_app__message_bridge__connect_by_node_id_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        4 => wire__crate__api__iroh_client__IrohClientManager_start_impl(
+        4 => wire__rust_lib_app__message_bridge__connect_by_ticket_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        5 => wire__rust_lib_app__api__iroh_client__connect_to_peer_impl(
+        5 => wire__rust_lib_app__message_bridge__connect_to_cli_server_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        6 => wire__rust_lib_app__api__iroh_client__create_iroh_client_impl(
+        6 => wire__rust_lib_app__api__iroh_client__connect_to_peer_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        7 => wire__rust_lib_app__api__iroh_client__create_terminal_impl(
+        8 => wire__rust_lib_app__api__iroh_client__create_iroh_client_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        8 => wire__rust_lib_app__api__iroh_client__disconnect_session_impl(
+        10 => wire__rust_lib_app__message_bridge__create_remote_terminal_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        9 => wire__rust_lib_app__api__iroh_client__generate_qr_code_impl(
+        11 => wire__rust_lib_app__message_bridge__create_tcp_forwarding_session_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        10 => wire__rust_lib_app__api__iroh_client__get_active_sessions_impl(
+        12 => wire__rust_lib_app__api__iroh_client__create_terminal_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        11 => wire__rust_lib_app__api__iroh_client__get_active_terminals_impl(
+        13 => wire__rust_lib_app__message_bridge__disconnect_from_cli_server_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        13 => {
-            wire__rust_lib_app__api__iroh_client__init_app_impl(port, ptr, rust_vec_len, data_len)
-        }
-        14 => wire__rust_lib_app__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__rust_lib_app__api__iroh_client__resize_terminal_impl(
+        14 => wire__rust_lib_app__api__iroh_client__disconnect_session_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        16 => wire__rust_lib_app__api__iroh_client__send_terminal_input_impl(
+        16 => wire__rust_lib_app__api__iroh_client__generate_qr_code_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        17 => wire__rust_lib_app__api__iroh_client__stop_terminal_impl(
+        17 => wire__rust_lib_app__message_bridge__get_active_sessions_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        18 => wire__rust_lib_app__message_bridge__get_system_status_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        19 => wire__rust_lib_app__message_bridge__get_tcp_forwarding_sessions_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        21 => wire__rust_lib_app__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__rust_lib_app__quic_bridge__legacy_quic_deprecated_notice_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        23 => wire__rust_lib_app__message_bridge__list_remote_terminals_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        26 => wire__rust_lib_app__message_bridge__resize_remote_terminal_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        27 => wire__rust_lib_app__api__iroh_client__resize_terminal_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        28 => wire__rust_lib_app__api__iroh_client__send_terminal_input_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        29 => wire__rust_lib_app__message_bridge__send_terminal_input_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        30 => wire__rust_lib_app__message_bridge__stop_remote_terminal_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        31 => wire__rust_lib_app__message_bridge__stop_tcp_forwarding_session_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        32 => wire__rust_lib_app__api__iroh_client__stop_terminal_impl(
             port,
             ptr,
             rust_vec_len,
@@ -1094,7 +1826,37 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        12 => wire__rust_lib_app__api__simple__greet_impl(ptr, rust_vec_len, data_len),
+        7 => wire__rust_lib_app__message_bridge__construct_endpoint_addr_from_node_info_impl(
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        9 => wire__rust_lib_app__message_bridge__create_message_client_impl(
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        15 => wire__rust_lib_app__message_bridge__format_forwarding_type_impl(
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        20 => wire__rust_lib_app__api__simple__greet_impl(ptr, rust_vec_len, data_len),
+        24 => wire__rust_lib_app__message_bridge__parse_connection_ticket_impl(
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        25 => wire__rust_lib_app__message_bridge__parse_endpoint_addr_impl(
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        33 => wire__rust_lib_app__message_bridge__validate_terminal_size_impl(
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
         _ => unreachable!(),
     }
 }
@@ -1102,82 +1864,159 @@ fn pde_ffi_dispatcher_sync_impl(
 // Section: rust2dart
 
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for FrbWrapper<IrohClientManager> {
+impl flutter_rust_bridge::IntoDart for FrbWrapper<FlutterMessageClient> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self.0)
             .into_dart()
-    }
-}
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for FrbWrapper<IrohClientManager> {}
-
-impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<IrohClientManager>> for IrohClientManager {
-    fn into_into_dart(self) -> FrbWrapper<IrohClientManager> {
-        self.into()
-    }
-}
-
-// Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for FrbWrapper<P2PNetwork> {
-    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self.0)
-            .into_dart()
-    }
-}
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for FrbWrapper<P2PNetwork> {}
-
-impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<P2PNetwork>> for P2PNetwork {
-    fn into_into_dart(self) -> FrbWrapper<P2PNetwork> {
-        self.into()
-    }
-}
-
-// Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::iroh_client::FlutterSession {
-    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        [
-            self.id.into_into_dart().into_dart(),
-            self.ticket.into_into_dart().into_dart(),
-            self.title.into_into_dart().into_dart(),
-            self.created_at.into_into_dart().into_dart(),
-            self.status.into_into_dart().into_dart(),
-        ]
-        .into_dart()
     }
 }
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::api::iroh_client::FlutterSession
+    for FrbWrapper<FlutterMessageClient>
 {
 }
-impl flutter_rust_bridge::IntoIntoDart<crate::api::iroh_client::FlutterSession>
-    for crate::api::iroh_client::FlutterSession
-{
-    fn into_into_dart(self) -> crate::api::iroh_client::FlutterSession {
-        self
+
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<FlutterMessageClient>> for FlutterMessageClient {
+    fn into_into_dart(self) -> FrbWrapper<FlutterMessageClient> {
+        self.into()
     }
 }
+
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::iroh_client::FlutterTerminal {
+impl flutter_rust_bridge::IntoDart for FrbWrapper<TcpForwardingType> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self.0)
+            .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for FrbWrapper<TcpForwardingType> {}
+
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<TcpForwardingType>> for TcpForwardingType {
+    fn into_into_dart(self) -> FrbWrapper<TcpForwardingType> {
+        self.into()
+    }
+}
+
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::message_bridge::FlutterRemoteTerminal {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.id.into_into_dart().into_dart(),
             self.name.into_into_dart().into_dart(),
             self.shell_type.into_into_dart().into_dart(),
             self.current_dir.into_into_dart().into_dart(),
-            self.status.into_into_dart().into_dart(),
-            self.created_at.into_into_dart().into_dart(),
             self.size.into_into_dart().into_dart(),
+            self.running.into_into_dart().into_dart(),
+            self.created_at.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
 }
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::api::iroh_client::FlutterTerminal
+    for crate::message_bridge::FlutterRemoteTerminal
 {
 }
-impl flutter_rust_bridge::IntoIntoDart<crate::api::iroh_client::FlutterTerminal>
-    for crate::api::iroh_client::FlutterTerminal
+impl flutter_rust_bridge::IntoIntoDart<crate::message_bridge::FlutterRemoteTerminal>
+    for crate::message_bridge::FlutterRemoteTerminal
 {
-    fn into_into_dart(self) -> crate::api::iroh_client::FlutterTerminal {
+    fn into_into_dart(self) -> crate::message_bridge::FlutterRemoteTerminal {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::message_bridge::FlutterSession {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.id.into_into_dart().into_dart(),
+            self.node_id.into_into_dart().into_dart(),
+            self.endpoint_addr.into_into_dart().into_dart(),
+            self.connection_id.into_into_dart().into_dart(),
+            self.created_at.into_into_dart().into_dart(),
+            self.session_type.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::message_bridge::FlutterSession
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::message_bridge::FlutterSession>
+    for crate::message_bridge::FlutterSession
+{
+    fn into_into_dart(self) -> crate::message_bridge::FlutterSession {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::message_bridge::FlutterSessionType {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Terminal => 0.into_dart(),
+            Self::TcpForwarding => 1.into_dart(),
+            Self::SystemControl => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::message_bridge::FlutterSessionType
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::message_bridge::FlutterSessionType>
+    for crate::message_bridge::FlutterSessionType
+{
+    fn into_into_dart(self) -> crate::message_bridge::FlutterSessionType {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::message_bridge::FlutterSystemStatus {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.status.into_into_dart().into_dart(),
+            self.uptime.into_into_dart().into_dart(),
+            self.active_terminals.into_into_dart().into_dart(),
+            self.active_tcp_sessions.into_into_dart().into_dart(),
+            self.memory_usage.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::message_bridge::FlutterSystemStatus
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::message_bridge::FlutterSystemStatus>
+    for crate::message_bridge::FlutterSystemStatus
+{
+    fn into_into_dart(self) -> crate::message_bridge::FlutterSystemStatus {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::message_bridge::FlutterTcpForwardingSession {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.id.into_into_dart().into_dart(),
+            self.local_addr.into_into_dart().into_dart(),
+            self.remote_endpoint.into_into_dart().into_dart(),
+            self.forwarding_type.into_into_dart().into_dart(),
+            self.active_connections.into_into_dart().into_dart(),
+            self.bytes_sent.into_into_dart().into_dart(),
+            self.bytes_received.into_into_dart().into_dart(),
+            self.created_at.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::message_bridge::FlutterTcpForwardingSession
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::message_bridge::FlutterTcpForwardingSession>
+    for crate::message_bridge::FlutterTcpForwardingSession
+{
+    fn into_into_dart(self) -> crate::message_bridge::FlutterTcpForwardingSession {
         self
     }
 }
@@ -1212,22 +2051,27 @@ impl SseEncode for flutter_rust_bridge::for_generated::anyhow::Error {
     }
 }
 
-impl SseEncode for IrohClientManager {
+impl SseEncode for FlutterMessageClient {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<IrohClientManager>>>::sse_encode(flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self), serializer);
+        <RustOpaqueMoi<
+            flutter_rust_bridge::for_generated::RustAutoOpaqueInner<FlutterMessageClient>,
+        >>::sse_encode(
+            flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self),
+            serializer,
+        );
     }
 }
 
-impl SseEncode for P2PNetwork {
+impl SseEncode for TcpForwardingType {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<P2PNetwork>>>::sse_encode(flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self), serializer);
+        <RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<TcpForwardingType>>>::sse_encode(flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self), serializer);
     }
 }
 
 impl SseEncode
-    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<IrohClientManager>>
+    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<FlutterMessageClient>>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1238,7 +2082,7 @@ impl SseEncode
 }
 
 impl SseEncode
-    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<P2PNetwork>>
+    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<TcpForwardingType>>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1262,27 +2106,77 @@ impl SseEncode for bool {
     }
 }
 
-impl SseEncode for crate::api::iroh_client::FlutterSession {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <String>::sse_encode(self.id, serializer);
-        <String>::sse_encode(self.ticket, serializer);
-        <Option<String>>::sse_encode(self.title, serializer);
-        <u64>::sse_encode(self.created_at, serializer);
-        <String>::sse_encode(self.status, serializer);
-    }
-}
-
-impl SseEncode for crate::api::iroh_client::FlutterTerminal {
+impl SseEncode for crate::message_bridge::FlutterRemoteTerminal {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.id, serializer);
         <Option<String>>::sse_encode(self.name, serializer);
         <String>::sse_encode(self.shell_type, serializer);
         <String>::sse_encode(self.current_dir, serializer);
-        <String>::sse_encode(self.status, serializer);
-        <u64>::sse_encode(self.created_at, serializer);
         <(u16, u16)>::sse_encode(self.size, serializer);
+        <bool>::sse_encode(self.running, serializer);
+        <u64>::sse_encode(self.created_at, serializer);
+    }
+}
+
+impl SseEncode for crate::message_bridge::FlutterSession {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.node_id, serializer);
+        <String>::sse_encode(self.endpoint_addr, serializer);
+        <String>::sse_encode(self.connection_id, serializer);
+        <u64>::sse_encode(self.created_at, serializer);
+        <crate::message_bridge::FlutterSessionType>::sse_encode(self.session_type, serializer);
+    }
+}
+
+impl SseEncode for crate::message_bridge::FlutterSessionType {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::message_bridge::FlutterSessionType::Terminal => 0,
+                crate::message_bridge::FlutterSessionType::TcpForwarding => 1,
+                crate::message_bridge::FlutterSessionType::SystemControl => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::message_bridge::FlutterSystemStatus {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.status, serializer);
+        <u64>::sse_encode(self.uptime, serializer);
+        <u32>::sse_encode(self.active_terminals, serializer);
+        <u32>::sse_encode(self.active_tcp_sessions, serializer);
+        <u64>::sse_encode(self.memory_usage, serializer);
+    }
+}
+
+impl SseEncode for crate::message_bridge::FlutterTcpForwardingSession {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.local_addr, serializer);
+        <String>::sse_encode(self.remote_endpoint, serializer);
+        <String>::sse_encode(self.forwarding_type, serializer);
+        <u32>::sse_encode(self.active_connections, serializer);
+        <u64>::sse_encode(self.bytes_sent, serializer);
+        <u64>::sse_encode(self.bytes_received, serializer);
+        <u64>::sse_encode(self.created_at, serializer);
+    }
+}
+
+impl SseEncode for i32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_i32::<NativeEndian>(self).unwrap();
     }
 }
 
@@ -1296,22 +2190,32 @@ impl SseEncode for crate::api::iroh_client::IrohSessionInfo {
     }
 }
 
-impl SseEncode for Vec<crate::api::iroh_client::FlutterSession> {
+impl SseEncode for Vec<crate::message_bridge::FlutterRemoteTerminal> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
-            <crate::api::iroh_client::FlutterSession>::sse_encode(item, serializer);
+            <crate::message_bridge::FlutterRemoteTerminal>::sse_encode(item, serializer);
         }
     }
 }
 
-impl SseEncode for Vec<crate::api::iroh_client::FlutterTerminal> {
+impl SseEncode for Vec<crate::message_bridge::FlutterSession> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
-            <crate::api::iroh_client::FlutterTerminal>::sse_encode(item, serializer);
+            <crate::message_bridge::FlutterSession>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::message_bridge::FlutterTcpForwardingSession> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::message_bridge::FlutterTcpForwardingSession>::sse_encode(item, serializer);
         }
     }
 }
@@ -1361,6 +2265,13 @@ impl SseEncode for u16 {
     }
 }
 
+impl SseEncode for u32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_u32::<NativeEndian>(self).unwrap();
+    }
+}
+
 impl SseEncode for u64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1390,13 +2301,6 @@ impl SseEncode for usize {
     }
 }
 
-impl SseEncode for i32 {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        serializer.cursor.write_i32::<NativeEndian>(self).unwrap();
-    }
-}
-
 #[cfg(not(target_family = "wasm"))]
 mod io {
     // This file is automatically generated, so please do not edit it.
@@ -1405,8 +2309,9 @@ mod io {
     // Section: imports
 
     use super::*;
-    use crate::api::iroh_client::*;
+    use crate::message_bridge::*;
     use crate::*;
+    use riterm_shared::TcpForwardingType;
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };
@@ -1418,31 +2323,31 @@ mod io {
     flutter_rust_bridge::frb_generated_boilerplate_io!();
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_riterm_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerIrohClientManager(
+    pub extern "C" fn frbgen_riterm_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerFlutterMessageClient(
         ptr: *const std::ffi::c_void,
     ) {
-        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<IrohClientManager>>::increment_strong_count(ptr as _);
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<FlutterMessageClient>>::increment_strong_count(ptr as _);
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_riterm_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerIrohClientManager(
+    pub extern "C" fn frbgen_riterm_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerFlutterMessageClient(
         ptr: *const std::ffi::c_void,
     ) {
-        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<IrohClientManager>>::decrement_strong_count(ptr as _);
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<FlutterMessageClient>>::decrement_strong_count(ptr as _);
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_riterm_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerP2PNetwork(
+    pub extern "C" fn frbgen_riterm_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTcpForwardingType(
         ptr: *const std::ffi::c_void,
     ) {
-        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<P2PNetwork>>::increment_strong_count(ptr as _);
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<TcpForwardingType>>::increment_strong_count(ptr as _);
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_riterm_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerP2PNetwork(
+    pub extern "C" fn frbgen_riterm_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTcpForwardingType(
         ptr: *const std::ffi::c_void,
     ) {
-        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<P2PNetwork>>::decrement_strong_count(ptr as _);
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<TcpForwardingType>>::decrement_strong_count(ptr as _);
     }
 }
 #[cfg(not(target_family = "wasm"))]
@@ -1457,7 +2362,7 @@ mod web {
     // Section: imports
 
     use super::*;
-    use crate::api::iroh_client::*;
+    use crate::message_bridge::*;
     use crate::*;
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
@@ -1472,31 +2377,31 @@ mod web {
     flutter_rust_bridge::frb_generated_boilerplate_web!();
 
     #[wasm_bindgen]
-    pub fn rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerIrohClientManager(
+    pub fn rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerFlutterMessageClient(
         ptr: *const std::ffi::c_void,
     ) {
-        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<IrohClientManager>>::increment_strong_count(ptr as _);
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<FlutterMessageClient>>::increment_strong_count(ptr as _);
     }
 
     #[wasm_bindgen]
-    pub fn rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerIrohClientManager(
+    pub fn rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerFlutterMessageClient(
         ptr: *const std::ffi::c_void,
     ) {
-        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<IrohClientManager>>::decrement_strong_count(ptr as _);
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<FlutterMessageClient>>::decrement_strong_count(ptr as _);
     }
 
     #[wasm_bindgen]
-    pub fn rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerP2PNetwork(
+    pub fn rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTcpForwardingType(
         ptr: *const std::ffi::c_void,
     ) {
-        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<P2PNetwork>>::increment_strong_count(ptr as _);
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<TcpForwardingType>>::increment_strong_count(ptr as _);
     }
 
     #[wasm_bindgen]
-    pub fn rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerP2PNetwork(
+    pub fn rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTcpForwardingType(
         ptr: *const std::ffi::c_void,
     ) {
-        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<P2PNetwork>>::decrement_strong_count(ptr as _);
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<TcpForwardingType>>::decrement_strong_count(ptr as _);
     }
 }
 #[cfg(target_family = "wasm")]

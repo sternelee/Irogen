@@ -1,7 +1,6 @@
 // Terminal recording and session management module
 // Currently unused in agent mode but kept for future compatibility
 
-
 /// Filter out unwanted terminal output strings
 fn filter_terminal_output(data: &str) -> String {
     // Remove "1;2c" string from terminal output

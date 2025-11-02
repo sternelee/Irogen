@@ -48,7 +48,13 @@
       "WebFetch(domain:rustdoc.cs.tuwien.ac.at)",
       "Bash(flutter analyze:*)",
       "Bash(flutter build:*)",
-      "Bash(flutter clean:*)"
+      "Bash(flutter clean:*)",
+      "Bash(./target/debug/cli:*)",
+      "Bash(./target/release/cli:*)",
+      "Bash(/Users/sternelee/www/github/riterm/target/release/cli:*)",
+      "Bash(../target/release/cli:*)",
+      "Read(//Users/sternelee/www/github/**)",
+      "Read(//Users/sternelee/www/**)"
     ],
     "deny": []
   },

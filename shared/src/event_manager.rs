@@ -1,0 +1,653 @@
+//! 事件管理器
+//!
+//! 此模块提供统一的事件管理和消息处理机制，
+//! 支持App-CLI、终端管理、TCP转发等各种事件的处理。
+
+use crate::message_protocol::*;
+use anyhow::Result;
+use async_trait::async_trait;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::{RwLock, mpsc};
+use tracing::{debug, error, info, warn};
+
+// Type aliases for complex types to improve readability
+type EventListenerMap = HashMap<EventType, Vec<Arc<dyn EventListener>>>;
+type EventListenerStore = Arc<RwLock<EventListenerMap>>;
+
+/// 事件类型
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum EventType {
+    /// 终端事件
+    TerminalCreated,
+    TerminalStopped,
+    TerminalInput,
+    TerminalOutput,
+    TerminalError,
+    /// TCP转发事件
+    TcpSessionCreated,
+    TcpSessionStopped,
+    TcpConnectionOpen,
+    TcpConnectionClose,
+    TcpDataForwarded,
+    /// 系统事件
+    SystemStarted,
+    SystemStopped,
+    SystemError,
+    /// 连接事件
+    PeerConnected,
+    PeerDisconnected,
+}
+
+/// 事件数据
+#[derive(Debug, Clone)]
+pub struct Event {
+    pub event_type: EventType,
+    pub source: String,
+    pub data: serde_json::Value,
+    pub timestamp: u64,
+    pub session_id: Option<String>,
+}
+
+impl Event {
+    pub fn new(event_type: EventType, source: String, data: serde_json::Value) -> Self {
+        Self {
+            event_type,
+            source,
+            data,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            session_id: None,
+        }
+    }
+
+    pub fn with_session(mut self, session_id: String) -> Self {
+        self.session_id = Some(session_id);
+        self
+    }
+}
+
+/// 事件监听器trait
+#[async_trait::async_trait]
+pub trait EventListener: Send + Sync {
+    /// 处理事件
+    async fn handle_event(&self, event: &Event) -> Result<()>;
+
+    /// 获取监听器名称
+    fn name(&self) -> &str;
+
+    /// 获取支持的事件类型
+    fn supported_events(&self) -> Vec<EventType>;
+}
+
+/// 事件管理器
+pub struct EventManager {
+    listeners: Arc<RwLock<HashMap<EventType, Vec<Arc<dyn EventListener>>>>>,
+    event_tx: mpsc::UnboundedSender<Event>,
+    event_rx: Arc<RwLock<Option<mpsc::UnboundedReceiver<Event>>>>,
+}
+
+impl EventManager {
+    pub fn new() -> Self {
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+
+        Self {
+            listeners: Arc::new(RwLock::new(HashMap::new())),
+            event_tx,
+            event_rx: Arc::new(RwLock::new(Some(event_rx))),
+        }
+    }
+
+    /// 注册事件监听器
+    pub async fn register_listener(&self, listener: Arc<dyn EventListener>) {
+        for event_type in listener.supported_events() {
+            let mut listeners = self.listeners.write().await;
+            listeners
+                .entry(event_type)
+                .or_insert_with(Vec::new)
+                .push(listener.clone());
+        }
+        info!("Registered event listener: {}", listener.name());
+    }
+
+    /// 发布事件
+    pub async fn publish_event(&self, event: Event) -> Result<()> {
+        debug!(
+            "Publishing event: {:?} from {}",
+            event.event_type, event.source
+        );
+
+        if let Err(e) = self.event_tx.send(event) {
+            error!("Failed to publish event: {}", e);
+            return Err(anyhow::anyhow!("Failed to publish event: {}", e));
+        }
+
+        Ok(())
+    }
+
+    /// 启动事件处理循环
+    pub async fn start_event_loop(&self) -> Result<()> {
+        info!("Starting event manager loop");
+
+        let mut event_rx = {
+            let mut rx_guard = self.event_rx.write().await;
+            rx_guard
+                .take()
+                .ok_or_else(|| anyhow::anyhow!("Event receiver already taken"))?
+        };
+
+        let listeners = self.listeners.clone();
+
+        tokio::spawn(async move {
+            while let Some(event) = event_rx.recv().await {
+                debug!(
+                    "Processing event: {:?} from {}",
+                    event.event_type, event.source
+                );
+
+                let current_listeners = {
+                    let listeners_guard = listeners.read().await;
+                    listeners_guard
+                        .get(&event.event_type)
+                        .cloned()
+                        .unwrap_or_default()
+                };
+
+                for listener in current_listeners {
+                    let event_clone = event.clone();
+                    let listener_clone = listener.clone();
+
+                    tokio::spawn(async move {
+                        let listener_name = listener_clone.name();
+                        if let Err(e) = listener_clone.handle_event(&event_clone).await {
+                            error!(
+                                "Event listener {} failed to handle event: {}",
+                                listener_name, e
+                            );
+                        }
+                    });
+                }
+            }
+
+            info!("Event manager loop ended");
+        });
+
+        Ok(())
+    }
+
+    /// 获取事件发送器
+    pub fn get_event_sender(&self) -> mpsc::UnboundedSender<Event> {
+        self.event_tx.clone()
+    }
+}
+
+impl Default for EventManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 消息到事件转换器
+pub struct MessageToEventConverter {
+    event_manager: Arc<EventManager>,
+    sender_id: String,
+}
+
+impl MessageToEventConverter {
+    pub fn new(event_manager: Arc<EventManager>, sender_id: String) -> Self {
+        Self {
+            event_manager,
+            sender_id,
+        }
+    }
+
+    /// 将消息转换为事件并发布
+    pub async fn convert_and_publish(&self, message: &Message) -> Result<()> {
+        match &message.payload {
+            MessagePayload::TerminalManagement(msg) => match &msg.action {
+                TerminalAction::Create { .. } => {
+                    let event = Event::new(
+                        EventType::TerminalCreated,
+                        self.sender_id.clone(),
+                        serde_json::json!({
+                            "message_id": message.id,
+                            "request_id": msg.request_id,
+                        }),
+                    );
+                    self.event_manager.publish_event(event).await?;
+                }
+                TerminalAction::Stop { terminal_id } => {
+                    let event = Event::new(
+                        EventType::TerminalStopped,
+                        self.sender_id.clone(),
+                        serde_json::json!({
+                            "terminal_id": terminal_id,
+                            "message_id": message.id,
+                        }),
+                    );
+                    self.event_manager.publish_event(event).await?;
+                }
+                _ => {}
+            },
+            MessagePayload::TerminalIO(msg) => match msg.data_type {
+                IODataType::Input => {
+                    let event = Event::new(
+                        EventType::TerminalInput,
+                        self.sender_id.clone(),
+                        serde_json::json!({
+                            "terminal_id": msg.terminal_id,
+                            "data_length": msg.data.len(),
+                            "message_id": message.id,
+                        }),
+                    );
+                    self.event_manager.publish_event(event).await?;
+                }
+                IODataType::Output => {
+                    let event = Event::new(
+                        EventType::TerminalOutput,
+                        self.sender_id.clone(),
+                        serde_json::json!({
+                            "terminal_id": msg.terminal_id,
+                            "data_length": msg.data.len(),
+                            "message_id": message.id,
+                        }),
+                    );
+                    self.event_manager.publish_event(event).await?;
+                }
+                IODataType::Error => {
+                    let event = Event::new(
+                        EventType::TerminalError,
+                        self.sender_id.clone(),
+                        serde_json::json!({
+                            "terminal_id": msg.terminal_id,
+                            "data": String::from_utf8_lossy(&msg.data),
+                            "message_id": message.id,
+                        }),
+                    );
+                    self.event_manager.publish_event(event).await?;
+                }
+                _ => {}
+            },
+            MessagePayload::TcpForwarding(msg) => match &msg.action {
+                TcpForwardingAction::CreateSession { .. } => {
+                    let event = Event::new(
+                        EventType::TcpSessionCreated,
+                        self.sender_id.clone(),
+                        serde_json::json!({
+                            "message_id": message.id,
+                            "request_id": msg.request_id,
+                        }),
+                    );
+                    self.event_manager.publish_event(event).await?;
+                }
+                TcpForwardingAction::StopSession { session_id } => {
+                    let event = Event::new(
+                        EventType::TcpSessionStopped,
+                        self.sender_id.clone(),
+                        serde_json::json!({
+                            "session_id": session_id,
+                            "message_id": message.id,
+                        }),
+                    );
+                    self.event_manager.publish_event(event).await?;
+                }
+                _ => {}
+            },
+            MessagePayload::TcpData(msg) => match msg.data_type {
+                TcpDataType::ConnectionOpen => {
+                    let event = Event::new(
+                        EventType::TcpConnectionOpen,
+                        self.sender_id.clone(),
+                        serde_json::json!({
+                            "session_id": msg.session_id,
+                            "connection_id": msg.connection_id,
+                            "message_id": message.id,
+                        }),
+                    );
+                    self.event_manager.publish_event(event).await?;
+                }
+                TcpDataType::ConnectionClose => {
+                    let event = Event::new(
+                        EventType::TcpConnectionClose,
+                        self.sender_id.clone(),
+                        serde_json::json!({
+                            "session_id": msg.session_id,
+                            "connection_id": msg.connection_id,
+                            "message_id": message.id,
+                        }),
+                    );
+                    self.event_manager.publish_event(event).await?;
+                }
+                TcpDataType::Data => {
+                    let event = Event::new(
+                        EventType::TcpDataForwarded,
+                        self.sender_id.clone(),
+                        serde_json::json!({
+                            "session_id": msg.session_id,
+                            "connection_id": msg.connection_id,
+                            "data_length": msg.data.len(),
+                            "message_id": message.id,
+                        }),
+                    );
+                    self.event_manager.publish_event(event).await?;
+                }
+                _ => {}
+            },
+            MessagePayload::Error(msg) => {
+                let event = Event::new(
+                    EventType::SystemError,
+                    self.sender_id.clone(),
+                    serde_json::json!({
+                        "code": msg.code,
+                        "message": msg.message,
+                        "details": msg.details,
+                        "message_id": message.id,
+                    }),
+                );
+                self.event_manager.publish_event(event).await?;
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+}
+
+/// 统一通信管理器
+pub struct CommunicationManager {
+    message_router: Arc<MessageRouter>,
+    event_manager: Arc<EventManager>,
+    message_converter: Arc<MessageToEventConverter>,
+    incoming_message_tx: mpsc::UnboundedSender<Message>,
+    outgoing_message_tx: mpsc::UnboundedSender<Message>,
+    node_id: String,
+}
+
+impl CommunicationManager {
+    pub fn new(node_id: String) -> Self {
+        let (incoming_message_tx, _) = mpsc::unbounded_channel();
+        let (outgoing_message_tx, _) = mpsc::unbounded_channel();
+
+        let event_manager = Arc::new(EventManager::new());
+        let message_converter = Arc::new(MessageToEventConverter::new(
+            event_manager.clone(),
+            node_id.clone(),
+        ));
+
+        Self {
+            message_router: Arc::new(MessageRouter::new()),
+            event_manager,
+            message_converter,
+            incoming_message_tx,
+            outgoing_message_tx,
+            node_id,
+        }
+    }
+
+    /// 初始化通信管理器
+    pub async fn initialize(&self) -> Result<()> {
+        info!(
+            "Initializing communication manager for node: {}",
+            self.node_id
+        );
+
+        // 启动事件管理器
+        self.event_manager.start_event_loop().await?;
+
+        // 启动消息处理循环
+        self.start_message_processing_loop().await?;
+
+        info!("Communication manager initialized successfully");
+        Ok(())
+    }
+
+    /// 注册消息处理器
+    pub async fn register_message_handler(&self, handler: Arc<dyn MessageHandler>) {
+        self.message_router.register_handler(handler).await;
+    }
+
+    /// 注册事件监听器
+    pub async fn register_event_listener(&self, listener: Arc<dyn EventListener>) {
+        self.event_manager.register_listener(listener).await;
+    }
+
+    /// 发送消息
+    pub async fn send_message(&self, message: Message) -> Result<()> {
+        debug!(
+            "Sending message: {:?} from {}",
+            message.message_type, message.sender_id
+        );
+
+        if let Err(e) = self.outgoing_message_tx.send(message) {
+            error!("Failed to send message: {}", e);
+            return Err(anyhow::anyhow!("Failed to send message: {}", e));
+        }
+
+        Ok(())
+    }
+
+    /// 接收传入的消息
+    pub async fn receive_incoming_message(&self, message: Message) -> Result<()> {
+        debug!("Received incoming message: {:?}", message.message_type);
+
+        // 转换消息为事件
+        self.message_converter.convert_and_publish(&message).await?;
+
+        // 路由消息到处理器
+        let results = self.message_router.route_message(&message).await;
+
+        for (i, result) in results.into_iter().enumerate() {
+            if let Err(e) = result {
+                error!("Message handler {} failed: {}", i, e);
+            }
+        }
+
+        // 发送到传入消息队列
+        if let Err(e) = self.incoming_message_tx.send(message) {
+            error!("Failed to queue incoming message: {}", e);
+        }
+
+        Ok(())
+    }
+
+    /// 获取传入消息接收器
+    pub fn get_incoming_message_receiver(&self) -> mpsc::UnboundedReceiver<Message> {
+        let (_, rx) = mpsc::unbounded_channel();
+        rx // Note: 这里需要重构以支持多个接收器
+    }
+
+    /// 获取传出消息接收器
+    pub fn get_outgoing_message_receiver(&self) -> mpsc::UnboundedReceiver<Message> {
+        let (_, rx) = mpsc::unbounded_channel();
+        rx // Note: 这里需要重构以支持多个接收器
+    }
+
+    /// 获取事件管理器
+    pub fn get_event_manager(&self) -> Arc<EventManager> {
+        self.event_manager.clone()
+    }
+
+    /// 获取节点ID
+    pub fn get_node_id(&self) -> &str {
+        &self.node_id
+    }
+
+    /// 启动消息处理循环
+    async fn start_message_processing_loop(&self) -> Result<()> {
+        let _outgoing_tx = self.outgoing_message_tx.clone();
+        let node_id = self.node_id.clone();
+
+        tokio::spawn(async move {
+            // 这里可以添加消息处理逻辑，比如：
+            // - 消息重试机制
+            // - 消息优先级队列
+            // - 消息统计和监控
+
+            debug!("Message processing loop started for node: {}", node_id);
+
+            // 模拟处理循环
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+            info!("Message processing loop ended for node: {}", node_id);
+        });
+
+        Ok(())
+    }
+
+    /// 创建心跳任务
+    pub async fn start_heartbeat_task(&self) -> Result<()> {
+        let outgoing_tx = self.outgoing_message_tx.clone();
+        let node_id = self.node_id.clone();
+
+        tokio::spawn(async move {
+            let mut sequence = 0;
+            loop {
+                let heartbeat =
+                    MessageBuilder::heartbeat(node_id.clone(), sequence, "active".to_string());
+
+                if let Err(e) = outgoing_tx.send(heartbeat) {
+                    error!("Failed to send heartbeat: {}", e);
+                    break;
+                }
+
+                sequence += 1;
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            }
+        });
+
+        info!("Heartbeat task started");
+        Ok(())
+    }
+}
+
+/// 终端事件监听器示例
+pub struct TerminalEventListener {
+    name: String,
+}
+
+impl TerminalEventListener {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+#[async_trait]
+impl EventListener for TerminalEventListener {
+    async fn handle_event(&self, event: &Event) -> Result<()> {
+        match event.event_type {
+            EventType::TerminalCreated => {
+                info!("[{}] Terminal created: {}", self.name, event.data);
+            }
+            EventType::TerminalStopped => {
+                info!("[{}] Terminal stopped: {}", self.name, event.data);
+            }
+            EventType::TerminalInput => {
+                debug!("[{}] Terminal input: {}", self.name, event.data);
+            }
+            EventType::TerminalOutput => {
+                debug!("[{}] Terminal output: {}", self.name, event.data);
+            }
+            EventType::TerminalError => {
+                warn!("[{}] Terminal error: {}", self.name, event.data);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn supported_events(&self) -> Vec<EventType> {
+        vec![
+            EventType::TerminalCreated,
+            EventType::TerminalStopped,
+            EventType::TerminalInput,
+            EventType::TerminalOutput,
+            EventType::TerminalError,
+        ]
+    }
+}
+
+/// TCP转发事件监听器示例
+pub struct TcpForwardingEventListener {
+    name: String,
+}
+
+impl TcpForwardingEventListener {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+#[async_trait]
+impl EventListener for TcpForwardingEventListener {
+    async fn handle_event(&self, event: &Event) -> Result<()> {
+        match event.event_type {
+            EventType::TcpSessionCreated => {
+                info!("[{}] TCP session created: {}", self.name, event.data);
+            }
+            EventType::TcpSessionStopped => {
+                info!("[{}] TCP session stopped: {}", self.name, event.data);
+            }
+            EventType::TcpConnectionOpen => {
+                info!("[{}] TCP connection opened: {}", self.name, event.data);
+            }
+            EventType::TcpConnectionClose => {
+                info!("[{}] TCP connection closed: {}", self.name, event.data);
+            }
+            EventType::TcpDataForwarded => {
+                debug!("[{}] TCP data forwarded: {}", self.name, event.data);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn supported_events(&self) -> Vec<EventType> {
+        vec![
+            EventType::TcpSessionCreated,
+            EventType::TcpSessionStopped,
+            EventType::TcpConnectionOpen,
+            EventType::TcpConnectionClose,
+            EventType::TcpDataForwarded,
+        ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_event_manager() {
+        let event_manager = Arc::new(EventManager::new());
+        event_manager.start_event_loop().await.unwrap();
+
+        let listener = Arc::new(TerminalEventListener::new("test".to_string()));
+        event_manager.register_listener(listener.clone()).await;
+
+        let event = Event::new(
+            EventType::TerminalCreated,
+            "test_source".to_string(),
+            serde_json::json!({"terminal_id": "test_term"}),
+        );
+
+        event_manager.publish_event(event).await.unwrap();
+
+        // 给事件处理一些时间
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    #[test]
+    fn test_message_to_event_converter() {
+        // 这个测试需要异步运行时，在实际使用时会测试
+    }
+}

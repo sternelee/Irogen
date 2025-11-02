@@ -3,14 +3,14 @@ import 'package:xterm/xterm.dart';
 import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
-import 'src/rust/bridge_api.dart';
-import 'src/rust/frb_generated.dart';
-import 'src/rust/api/iroh_client.dart';
+// 启用 Rust bridge
+import 'bridge_generated.dart/frb_generated.dart';
+import 'bridge_generated.dart/third_party/rust_lib_app/message_bridge.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize RustLib
+  // 初始化 Rust bridge
   await RustLib.init();
 
   runApp(const RiTermApp());
@@ -49,11 +49,13 @@ class _MainScreenState extends State<MainScreen> {
   bool _isInitialized = false;
   bool _isConnected = false;
   String _status = "Initializing...";
-  IrohSessionInfo? _sessionInfo;
+  FlutterMessageClient? _messageClient;
+  String? _currentSessionId;
   List<FlutterSession> _sessions = [];
-  List<FlutterTerminal> _terminals = [];
-  Map<String, Terminal> _terminalsMap = {};
+  List<FlutterRemoteTerminal> _terminals = [];
+  final Map<String, Terminal> _terminalsMap = {};
   final _ticketController = TextEditingController();
+  final _endpointController = TextEditingController();
   int _selectedTabIndex = 0;
 
   @override
@@ -64,41 +66,101 @@ class _MainScreenState extends State<MainScreen> {
 
   Future<void> _checkInitialization() async {
     try {
+      final client = createMessageClient();
       setState(() {
         _isInitialized = true;
-        _status = "RiTerm Ready";
+        _messageClient = client;
+        _status = "RiTerm Ready - Enter endpoint address";
       });
     } catch (e) {
       setState(() => _status = "Failed to initialize: $e");
     }
   }
 
-  Future<void> _connectToTicket() async {
-    final ticket = _ticketController.text.trim();
+  Future<void> _connectToEndpoint() async {
+    final endpoint = _endpointController.text.trim();
 
-    if (ticket.isEmpty) {
-      setState(() => _status = "Please enter a ticket");
+    if (endpoint.isEmpty) {
+      setState(() => _status = "Please enter an endpoint address");
       return;
     }
 
-    if (!_validateTicket(ticket)) {
-      setState(() => _status = "Invalid ticket format");
+    if (_messageClient == null) {
+      setState(() => _status = "Message client not initialized");
       return;
     }
 
-    setState(() => _status = "Connecting...");
+    setState(() => _status = "Connecting to CLI server...");
 
     try {
-      final result = await connectToPeer(ticket: ticket);
+      String sessionId;
+
+      // 检查是否是 ticket 格式
+      if (endpoint.startsWith('ticket:')) {
+        sessionId = await connectByTicket(
+          client: _messageClient!,
+          ticket: endpoint,
+        );
+      } else {
+        // 传统地址连接方式
+        sessionId = await connectToCliServer(
+          client: _messageClient!,
+          endpointAddrStr: endpoint,
+          relayUrl: null, // 使用默认中继
+        );
+      }
+
       setState(() {
         _status = "Connected successfully!";
         _isConnected = true;
-        _ticketController.clear();
+        _currentSessionId = sessionId;
+        _endpointController.clear();
       });
+
       _refreshSessions();
       _refreshTerminals();
     } catch (e) {
       setState(() => _status = "Failed to connect: $e");
+    }
+  }
+
+  Future<void> _connectByTicket() async {
+    final ticket = _ticketController.text.trim();
+
+    if (ticket.isEmpty) {
+      setState(() => _status = "Please enter a connection ticket");
+      return;
+    }
+
+    if (!_validateTicket(ticket)) {
+      setState(() => _status = "Invalid ticket format. Ticket should start with 'ticket:'");
+      return;
+    }
+
+    if (_messageClient == null) {
+      setState(() => _status = "Message client not initialized");
+      return;
+    }
+
+    setState(() => _status = "Connecting using ticket...");
+
+    try {
+      final sessionId = await connectByTicket(
+        client: _messageClient!,
+        ticket: ticket,
+      );
+
+      setState(() {
+        _status = "Connected successfully via ticket!";
+        _isConnected = true;
+        _currentSessionId = sessionId;
+        _ticketController.clear();
+      });
+
+      _refreshSessions();
+      _refreshTerminals();
+    } catch (e) {
+      setState(() => _status = "Failed to connect via ticket: $e");
     }
   }
 
@@ -109,33 +171,49 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _refreshSessions() async {
+    if (_messageClient == null) return;
+
     try {
-      final result = await getActiveSessions();
-      setState(() => _sessions = result);
+      final sessions = await getActiveSessions(client: _messageClient!);
+      setState(() => _sessions = sessions);
     } catch (e) {
       debugPrint("Failed to refresh sessions: $e");
     }
   }
 
   Future<void> _refreshTerminals() async {
+    if (_messageClient == null || _currentSessionId == null) return;
+
     try {
-      final result = await getActiveTerminals();
-      setState(() => _terminals = result);
+      final terminals = await listRemoteTerminals(
+        client: _messageClient!,
+        sessionId: _currentSessionId!,
+      );
+      setState(() => _terminals = terminals);
     } catch (e) {
       debugPrint("Failed to refresh terminals: $e");
     }
   }
 
   Future<void> _createTerminal() async {
+    if (_messageClient == null || _currentSessionId == null) {
+      setState(() => _status = "Not connected to CLI server");
+      return;
+    }
+
     try {
-      final result = await createTerminal(
-        name: "Terminal ${_terminals.length + 1}",
-        shellPath: "/bin/bash",
-        workingDir: "/home",
+      final terminalId = await createRemoteTerminal(
+        client: _messageClient!,
+        sessionId: _currentSessionId!,
+        name: "Flutter Terminal",
+        shellPath: null, // 使用默认shell
+        workingDir: null, // 使用默认目录
         rows: 24,
-        cols: 80,
+        cols: 80, // 终端大小
       );
-      _createXTerminal(result);
+      setState(() => _status = "Terminal created successfully");
+      _createXTerminal(terminalId);
+      _refreshTerminals(); // 刷新终端列表
     } catch (e) {
       setState(() => _status = "Failed to create terminal: $e");
     }
@@ -144,9 +222,24 @@ class _MainScreenState extends State<MainScreen> {
   void _createXTerminal(String terminalId) {
     final terminal = Terminal();
     terminal.onOutput = (data) {
-      sendTerminalInput(terminalId: terminalId, input: data);
+      _sendTerminalInput(terminalId, data);
     };
     setState(() => _terminalsMap[terminalId] = terminal);
+  }
+
+  Future<void> _sendTerminalInput(String terminalId, String input) async {
+    if (_messageClient == null || _currentSessionId == null) return;
+
+    try {
+      await sendTerminalInput(
+        client: _messageClient!,
+        sessionId: _currentSessionId!,
+        terminalId: terminalId,
+        input: input,
+      );
+    } catch (e) {
+      debugPrint("Failed to send terminal input: $e");
+    }
   }
 
   void _openTerminal(String terminalId) {
@@ -155,11 +248,18 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _closeTerminal(String terminalId) async {
+    if (_messageClient == null || _currentSessionId == null) return;
+
     try {
-      await stopTerminal(terminalId: terminalId);
+      await stopRemoteTerminal(
+        client: _messageClient!,
+        sessionId: _currentSessionId!,
+        terminalId: terminalId,
+      );
+
       setState(() {
         _terminalsMap.remove(terminalId);
-        _terminals.removeWhere((t) => (t as FlutterTerminal).id == terminalId);
+        _terminals.removeWhere((t) => t.id == terminalId);
       });
     } catch (e) {
       debugPrint("Failed to close terminal: $e");
@@ -291,12 +391,40 @@ class _MainScreenState extends State<MainScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Connect to Remote Session',
+                          'Connect to CLI Server',
                           style: Theme.of(context).textTheme.headlineSmall,
                         ),
                         const SizedBox(height: 16),
+
+                        // Tab buttons for connection type
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF00D4FF).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Center(
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.confirmation_number, size: 18, color: Color(0xFF00D4FF)),
+                                      SizedBox(width: 8),
+                                      Text('Ticket Connection', style: TextStyle(color: Color(0xFF00D4FF), fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Ticket input
                         Text(
-                          'Enter the ticket from your CLI command:',
+                          'Enter the connection ticket from your CLI host:',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: Colors.grey[400],
                           ),
@@ -305,7 +433,7 @@ class _MainScreenState extends State<MainScreen> {
                         TextField(
                           controller: _ticketController,
                           decoration: InputDecoration(
-                            hintText: 'ticket:abc123...',
+                            hintText: 'ticket:...',
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                               borderSide: BorderSide(color: Colors.grey[600]!),
@@ -318,35 +446,105 @@ class _MainScreenState extends State<MainScreen> {
                               borderRadius: BorderRadius.circular(8),
                               borderSide: const BorderSide(color: Color(0xFF00D4FF)),
                             ),
-                            prefixIcon: const Icon(Icons.link),
-                            suffixIcon: Platform.isIOS || Platform.isAndroid
-                                ? IconButton(
-                                    icon: const Icon(Icons.qr_code_scanner),
-                                    onPressed: _scanQRCode,
-                                  )
-                                : null,
+                            prefixIcon: const Icon(Icons.confirmation_number),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.qr_code_scanner),
+                              onPressed: _scanQRCode,
+                              tooltip: 'Scan QR Code',
+                            ),
                           ),
-                          maxLines: 3,
-                          onChanged: (value) {
-                            if (value.isNotEmpty && !value.startsWith('ticket:')) {
-                              _ticketController.text = 'ticket:$value';
-                              _ticketController.selection = TextSelection.fromPosition(
-                                TextPosition(offset: _ticketController.text.length),
-                              );
-                            }
-                          },
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _isInitialized ? _connectByTicket : null,
+                                icon: const Icon(Icons.confirmation_number),
+                                label: const Text('Connect with Ticket'),
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  backgroundColor: const Color(0xFF00D4FF),
+                                  foregroundColor: Colors.black,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  _ticketController.clear();
+                                });
+                              },
+                              icon: const Icon(Icons.clear),
+                              tooltip: 'Clear',
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.grey[700],
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Divider
+                        Row(
+                          children: [
+                            Expanded(child: Divider(color: Colors.grey[600])),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: Text('OR', style: TextStyle(color: Colors.grey[400])),
+                            ),
+                            Expanded(child: Divider(color: Colors.grey[600])),
+                          ],
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Traditional endpoint connection
+                        Text(
+                          'Or enter endpoint address (legacy):',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[400],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _endpointController,
+                          decoration: InputDecoration(
+                            hintText: '127.0.0.1:8080 or ticket:...',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: Colors.grey[600]!),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: Colors.grey[600]!),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(color: Color(0xFF7C3AED)),
+                            ),
+                            prefixIcon: const Icon(Icons.link),
+                          ),
+                          maxLines: 2,
                         ),
                         const SizedBox(height: 16),
                         SizedBox(
                           width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: _isInitialized ? _connectToTicket : null,
+                          child: OutlinedButton.icon(
+                            onPressed: _isInitialized ? _connectToEndpoint : null,
                             icon: const Icon(Icons.connect_without_contact),
-                            label: const Text('Connect'),
-                            style: ElevatedButton.styleFrom(
+                            label: const Text('Connect with Address'),
+                            style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 16),
-                              backgroundColor: const Color(0xFF00D4FF),
-                              foregroundColor: Colors.black,
+                              side: const BorderSide(color: Color(0xFF7C3AED)),
+                              foregroundColor: const Color(0xFF7C3AED),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -372,16 +570,31 @@ class _MainScreenState extends State<MainScreen> {
                             Icon(Icons.info_outline, color: Colors.grey[400]),
                             const SizedBox(width: 8),
                             Text(
-                              'How to get a ticket',
+                              'How to connect using tickets',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
-                        _buildInstructionStep('1', 'Run CLI: riterm host --create'),
-                        _buildInstructionStep('2', 'Copy the generated ticket'),
-                        _buildInstructionStep('3', 'Paste ticket above and connect'),
-                        _buildInstructionStep('4', 'Start using remote terminals'),
+                        _buildInstructionStep('1', 'Run CLI: riterm msg host'),
+                        _buildInstructionStep('2', 'Copy the connection ticket from CLI output'),
+                        _buildInstructionStep('3', 'Paste the ticket in the ticket field above'),
+                        _buildInstructionStep('4', 'Click "Connect with Ticket" to connect'),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Icon(Icons.lightbulb_outline, color: Colors.amber[400]),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Pro tip: Use QR code scanner for mobile devices',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Colors.amber[400],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -440,15 +653,25 @@ class _MainScreenState extends State<MainScreen> {
             tooltip: 'Refresh',
           ),
           PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'disconnect') {
-                setState(() {
-                  _isConnected = false;
-                  _sessions.clear();
-                  _terminals.clear();
-                  _terminalsMap.clear();
-                  _status = "Disconnected";
-                });
+            onSelected: (value) async {
+              if (value == 'disconnect' && _currentSessionId != null && _messageClient != null) {
+                try {
+                  await disconnectFromCliServer(
+                    client: _messageClient!,
+                    sessionId: _currentSessionId!,
+                  );
+
+                  setState(() {
+                    _isConnected = false;
+                    _currentSessionId = null;
+                    _sessions.clear();
+                    _terminals.clear();
+                    _terminalsMap.clear();
+                    _status = "Disconnected";
+                  });
+                } catch (e) {
+                  setState(() => _status = "Failed to disconnect: $e");
+                }
               }
             },
             itemBuilder: (context) => [
@@ -596,7 +819,7 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _buildTerminalView(FlutterTerminal terminal) {
+  Widget _buildTerminalView(FlutterRemoteTerminal terminal) {
     final terminalId = terminal.id;
     if (!_terminalsMap.containsKey(terminalId)) {
       return Center(
@@ -652,7 +875,7 @@ class _MainScreenState extends State<MainScreen> {
 
       if (result != null) {
         // User scanned a QR code, now try to connect
-        _connectToTicket();
+        _connectToEndpoint();
       }
     }
   }

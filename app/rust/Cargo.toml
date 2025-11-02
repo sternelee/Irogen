@@ -29,6 +29,8 @@ uuid = { version = "1.17", features = ["v4"] }
 base64 = "0.22"
 hex = "0.4"
 fast_qr = "0.13.0"
+lazy_static = "1.5"
+data-encoding = "2.6"
 
 # Logging
 tracing = "0.1"

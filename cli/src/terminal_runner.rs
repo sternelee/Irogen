@@ -3,10 +3,31 @@
 
 use anyhow::{Context, Result};
 use encoding_rs::{CoderResult, UTF_8};
-use riterm_shared::p2p::{TerminalInfo, TerminalStatus};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use tracing::{error, info};
+
+// Legacy types from removed p2p module - recreated for compatibility
+#[derive(Debug, Clone, PartialEq)]
+pub enum TerminalStatus {
+    Starting,
+    Running,
+    Stopped,
+    Failed,
+}
+
+#[derive(Debug, Clone)]
+pub struct TerminalInfo {
+    pub id: String,
+    pub name: Option<String>,
+    pub shell_type: String,
+    pub current_dir: String,
+    pub status: TerminalStatus,
+    pub created_at: u64,
+    pub last_activity: u64,
+    pub size: (u16, u16),
+    pub process_id: Option<u32>,
+}
 
 use crate::terminal_driver::Terminal;
 
