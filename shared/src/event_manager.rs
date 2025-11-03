@@ -11,9 +11,6 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 
-// Type aliases for complex types to improve readability
-type EventListenerMap = HashMap<EventType, Vec<Arc<dyn EventListener>>>;
-type EventListenerStore = Arc<RwLock<EventListenerMap>>;
 
 /// 事件类型
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

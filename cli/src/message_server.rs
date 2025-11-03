@@ -6,7 +6,7 @@
 use anyhow::Result;
 use portable_pty::{CommandBuilder, MasterPty, PtySize};
 use riterm_shared::{
-    CommunicationManager, EventManager, IODataType, Message, MessageHandler, MessagePayload,
+    CommunicationManager, IODataType, Message, MessageHandler, MessagePayload,
     MessageType, QuicMessageServer, QuicMessageServerConfig, ResponseMessage, SystemAction,
     TcpForwardingAction, TcpForwardingType, TerminalAction,
 };
@@ -34,7 +34,7 @@ pub struct TerminalSession {
 }
 
 /// 内部终端会话信息（包含 PTY 对象）
-struct InternalTerminalSession {
+pub struct InternalTerminalSession {
     pub session: TerminalSession,
     pub master: Option<Arc<Mutex<Box<dyn MasterPty + Send>>>>,
     pub output_tx: Option<mpsc::UnboundedSender<String>>,
@@ -85,18 +85,14 @@ pub struct TcpForwardingSession {
 }
 
 /// 内部 TCP 转发会话信息（包含运行时对象）
-struct InternalTcpForwardingSession {
+pub struct InternalTcpForwardingSession {
     pub session: TcpForwardingSession,
     pub connections: Arc<RwLock<HashMap<String, TcpConnection>>>,
     pub shutdown_tx: Option<mpsc::UnboundedSender<()>>,
 }
 
 /// TCP 连接信息
-struct TcpConnection {
-    pub id: String,
-    pub local_addr: SocketAddr,
-    pub remote_addr: SocketAddr,
-    pub created_at: std::time::SystemTime,
+pub struct TcpConnection {
     pub bytes_sent: u64,
     pub bytes_received: u64,
 }
@@ -149,8 +145,6 @@ pub struct CliMessageServer {
     quic_server: QuicMessageServer,
     /// 通信管理器
     communication_manager: Arc<CommunicationManager>,
-    /// 事件管理器
-    event_manager: Arc<EventManager>,
     /// 活跃终端会话（内部版本，包含 PTY）
     terminal_sessions: Arc<RwLock<HashMap<String, InternalTerminalSession>>>,
     /// TCP 转发会话（内部版本，包含运行时对象）
@@ -169,9 +163,6 @@ impl CliMessageServer {
             Arc::new(CommunicationManager::new("riterm_cli_host".to_string()));
         communication_manager.initialize().await?;
 
-        // 创建事件管理器
-        let event_manager = Arc::new(EventManager::new());
-
         // 创建 QUIC 服务器
         let quic_server = QuicMessageServer::new(config, communication_manager.clone()).await?;
 
@@ -179,7 +170,6 @@ impl CliMessageServer {
         let server = Self {
             quic_server,
             communication_manager,
-            event_manager,
             terminal_sessions: Arc::new(RwLock::new(HashMap::new())),
             tcp_sessions: Arc::new(RwLock::new(HashMap::new())),
             system_status: Arc::new(RwLock::new(SystemStatus {
@@ -228,17 +218,7 @@ impl CliMessageServer {
         Ok(())
     }
 
-    /// 获取节点地址（用户友好的格式）
-    pub fn get_node_addr(&self) -> Result<String> {
-        let addr = self.quic_server.get_endpoint_addr()?;
-        // 提取第一个可用的地址作为连接地址
-        if let Some(first_addr) = addr.addrs.iter().next() {
-            Ok(format!("{:?}", first_addr))
-        } else {
-            Err(anyhow::anyhow!("No available network addresses"))
-        }
-    }
-
+  
     /// 获取节点 ID
     pub fn get_node_id(&self) -> String {
         let node_id = self.quic_server.get_node_id();
@@ -277,12 +257,7 @@ impl CliMessageServer {
         Ok(ticket)
     }
 
-    /// 获取完整的连接地址（包含所有可用地址）
-    pub fn get_all_addresses(&self) -> Result<Vec<String>> {
-        let addr = self.quic_server.get_endpoint_addr()?;
-        Ok(addr.addrs.iter().map(|addr| format!("{:?}", addr)).collect())
-    }
-
+    
     /// 获取活跃连接数
     pub async fn get_active_connections_count(&self) -> usize {
         self.quic_server.get_active_connections_count().await
@@ -419,7 +394,7 @@ impl TerminalMessageHandler {
             }
         };
 
-        if let Some(master_arc) = master_clone {
+        if let Some(_master_arc) = master_clone {
             // 创建一个异步任务来处理写入操作
             let input_bytes = input.as_bytes().to_vec();
             let terminal_id_clone = terminal_id.to_string();
@@ -464,7 +439,7 @@ impl TerminalMessageHandler {
             }
         };
 
-        if let Some(master_arc) = master_clone {
+        if let Some(_master_arc) = master_clone {
             // 创建新的终端大小
             let new_size = PtySize {
                 rows,
@@ -742,7 +717,7 @@ impl TerminalIOHandler {
             }
         };
 
-        if let Some(master_arc) = master_clone {
+        if let Some(_master_arc) = master_clone {
             // 创建一个异步任务来处理写入操作
             let terminal_id_clone = terminal_id.to_string();
 
@@ -995,7 +970,7 @@ impl TcpForwardingMessageHandler {
                                 // 处理连接
                                 let connection_id = Uuid::new_v4().to_string();
                                 let connections_clone = connections.clone();
-                                let session_id_clone = session_id_clone.clone();
+                                let _session_id_clone = session_id_clone.clone();
                                 let remote_addr_clone = remote_addr;
 
                                 tokio::spawn(async move {
@@ -1058,10 +1033,6 @@ impl TcpForwardingMessageHandler {
             conn_map.insert(
                 connection_id.clone(),
                 TcpConnection {
-                    id: connection_id.clone(),
-                    local_addr: client_addr,
-                    remote_addr,
-                    created_at: std::time::SystemTime::now(),
                     bytes_sent: 0,
                     bytes_received: 0,
                 },

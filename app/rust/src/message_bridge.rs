@@ -629,22 +629,6 @@ pub async fn connect_by_ticket(
     Ok(session_id)
 }
 
-/// 解析连接地址字符串
-///
-/// 对于P2P连接，我们需要支持多种地址格式
-fn parse_connection_address(_addr_str: &str) -> Result<iroh::EndpointAddr> {
-    // 暂时使用占位符实现
-    // 在实际部署中，CLI服务器应该输出完整的连接信息
-    // 包括node_id和relay信息
-
-    // 由于构造EndpointAddr需要复杂的逻辑，这里我们先实现一个简单的方案
-    // 即通过直接连接已知的地址格式
-
-    Err(anyhow::anyhow!(
-        "Use simplified connection method. \
-         CLI should provide connection ticket or node ID."
-    ))
-}
 
 /// 简化的连接方法 - 使用节点ID直接连接
 pub async fn connect_by_node_id(
@@ -661,7 +645,7 @@ pub async fn connect_by_node_id(
     use iroh::PublicKey;
     use std::str::FromStr;
 
-    let node_id = PublicKey::from_str(&node_id_str)
+    let _node_id = PublicKey::from_str(&node_id_str)
         .map_err(|e| anyhow::anyhow!("Invalid node ID: {}", e))?;
 
     // 创建临时连接ID

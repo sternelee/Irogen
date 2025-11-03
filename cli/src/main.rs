@@ -4,7 +4,7 @@ use clap::Parser;
 mod message_server;
 use message_server::CliMessageServer;
 use riterm_shared::QuicMessageServerConfig;
-use tracing::{error, info};
+use tracing::info;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -160,137 +160,16 @@ async fn run_server_status_loop(server: &CliMessageServer) {
     }
 }
 
-fn print_help(topic: Option<&str>) {
-    use crossterm::{
-        cursor, execute,
-        style::{Color, Print, ResetColor, SetForegroundColor},
-        terminal::{Clear, ClearType},
-    };
-    use std::io;
-
-    let _ = execute!(
-        io::stdout(),
-        Clear(ClearType::All),
-        cursor::MoveTo(0, 0),
-        SetForegroundColor(Color::Blue),
-        Print("╭─────────────────────────────────────────────────────────────╮\n"),
-        Print("│              🖥️  RiTerm CLI                                 │\n"),
-        Print("│           P2P Terminal Session Sharing                       │\n"),
-        Print("╰─────────────────────────────────────────────────────────────╯\n"),
-        ResetColor,
-        Print("\n")
-    );
-
-    match topic {
-        Some("host") => print_host_help(),
-        Some("examples") => print_examples(),
-        _ => print_general_help(),
-    }
-}
-
 fn print_general_help() {
-    use crossterm::{
-        execute,
-        style::{Color, Print, ResetColor, SetForegroundColor},
-    };
-    use std::io;
-
-    let _ = execute!(
-        io::stdout(),
-        SetForegroundColor(Color::Cyan),
-        Print("📋 Commands:\n"),
-        ResetColor,
-        Print("   riterm host              Start a terminal host server\n"),
-        Print("   riterm help              Show this help message\n"),
-        Print("   riterm help --topic host Show detailed help for host command\n"),
-        Print("   riterm help --topic examples Show usage examples\n"),
-        Print("\n"),
-        SetForegroundColor(Color::Green),
-        Print("🚀 Features:\n"),
-        ResetColor,
-        Print("   • Low-latency QUIC connections (10-50ms)\n"),
-        Print("   • End-to-end encrypted communication\n"),
-        Print("   • Built-in TCP forwarding\n"),
-        Print("   • Real-time terminal management\n"),
-        Print("   • Mobile app integration\n"),
-        Print("\n"),
-        SetForegroundColor(Color::Yellow),
-        Print("💡 Quick Start:\n"),
-        ResetColor,
-        Print("   1. Run: riterm host\n"),
-        Print("   2. Copy the connection ticket\n"),
-        Print("   3. Use it in your Flutter app\n"),
-        Print("\n")
-    );
-}
-
-fn print_host_help() {
-    use crossterm::{
-        execute,
-        style::{Color, Print, ResetColor, SetForegroundColor},
-    };
-    use std::io;
-
-    let _ = execute!(
-        io::stdout(),
-        SetForegroundColor(Color::Cyan),
-        Print("🏠 Host Command:\n"),
-        ResetColor,
-        Print("   riterm host [OPTIONS]\n"),
-        Print("\n"),
-        SetForegroundColor(Color::Green),
-        Print("📋 Options:\n"),
-        ResetColor,
-        Print("   --relay <URL>           Custom relay server URL\n"),
-        Print("   --max-connections <N>   Maximum concurrent connections (default: 50)\n"),
-        Print("   --bind-addr <ADDR>      Bind address (default: 0.0.0.0:0)\n"),
-        Print("\n"),
-        SetForegroundColor(Color::Yellow),
-        Print("💡 Examples:\n"),
-        ResetColor,
-        Print("   riterm host                                    # Start with default settings\n"),
-        Print("   riterm host --max-connections 10             # Limit to 10 connections\n"),
-        Print("   riterm host --relay https://relay.example.com # Use custom relay\n"),
-        Print("   riterm host --bind-addr 127.0.0.1:8080      # Bind to localhost:8080\n"),
-        Print("\n")
-    );
-}
-
-fn print_examples() {
-    use crossterm::{
-        execute,
-        style::{Color, Print, ResetColor, SetForegroundColor},
-    };
-    use std::io;
-
-    let _ = execute!(
-        io::stdout(),
-        SetForegroundColor(Color::Cyan),
-        Print("📚 Usage Examples:\n"),
-        ResetColor,
-        Print("\n"),
-        SetForegroundColor(Color::Green),
-        Print("1. Basic Usage:\n"),
-        ResetColor,
-        Print("   $ riterm host\n"),
-        Print("   🚀 RiTerm Host Server Started\n"),
-        Print("   🔑 Node ID: abc123...\n"),
-        Print("   🎫 Connection Ticket:\n"),
-        Print("   ┌─────────────────────────────────┐\n"),
-        Print("   │ base32ticketdatahere...         │\n"),
-        Print("   └─────────────────────────────────┘\n"),
-        Print("\n"),
-        SetForegroundColor(Color::Green),
-        Print("2. Custom Configuration:\n"),
-        ResetColor,
-        Print("   $ riterm host --max-connections 5 --relay https://relay.example.com\n"),
-        Print("\n"),
-        SetForegroundColor(Color::Green),
-        Print("3. Getting Help:\n"),
-        ResetColor,
-        Print("   $ riterm help\n"),
-        Print("   $ riterm help --topic host\n"),
-        Print("   $ riterm help --topic examples\n"),
-        Print("\n")
-    );
+    println!("🚀 RiTerm - P2P Terminal Session Sharing Tool");
+    println!();
+    println!("📋 Commands:");
+    println!("   riterm host              Start a terminal host server");
+    println!("   riterm --help            Show this help message");
+    println!();
+    println!("💡 Quick Start:");
+    println!("   1. Run: riterm host");
+    println!("   2. Copy the connection ticket");
+    println!("   3. Use it in your Flutter app");
+    println!();
 }

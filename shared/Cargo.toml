@@ -25,3 +25,9 @@ brotli = { workspace = true }
 hex = { workspace = true }
 uuid = { workspace = true }
 async-trait = "0.1"
+dashmap = "6.1"
+tracing-subscriber = "0.3"
+
+[[example]]
+name = "message_performance_test"
+path = "../examples/message_performance_test.rs"
