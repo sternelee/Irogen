@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:flutter_solidart/flutter_solidart.dart';
-import 'package:xterm/xterm.dart';
 
 import '../stores/app_store.dart';
-import '../bridge_generated.dart/message_bridge.dart';
-import '../widgets/terminal_view.dart';
 import '../widgets/tcp_forwarding_view.dart';
 import '../widgets/settings_view.dart';
 
@@ -15,14 +10,14 @@ class MainScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ShadMaterialApp.shadcn(
-      theme: ShadThemeData(
+    return MaterialApp(
+      title: 'RiTerm Main Screen',
+      theme: ThemeData(
         brightness: Brightness.dark,
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF00D4FF),
           secondary: Color(0xFF7C3AED),
           surface: Color(0xFF2A2A3E),
-          background: Color(0xFF1E1E2E),
         ),
       ),
       home: const MainScreenContent(),
@@ -35,7 +30,7 @@ class MainScreenContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
     return Scaffold(
       backgroundColor: const Color(0xFF1E1E2E),
@@ -47,8 +42,8 @@ class MainScreenContent extends StatelessWidget {
           _buildNavigationTabs(context),
           // Content
           Expanded(
-            child: SignalBuilder(
-              signal: store._selectedTab,
+            child: ValueListenableBuilder(
+              valueListenable: appStore.selectedTabSignal,
               builder: (_, selectedTab, __) {
                 return IndexedStack(
                   index: selectedTab.index,
@@ -68,16 +63,14 @@ class MainScreenContent extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
         color: Color(0xFF2A2A3E),
-        border: Border(
-          bottom: BorderSide(color: Color(0xFF45475A)),
-        ),
+        border: Border(bottom: BorderSide(color: Color(0xFF45475A))),
       ),
       child: Row(
         children: [
@@ -116,12 +109,12 @@ class MainScreenContent extends StatelessWidget {
           const Spacer(),
 
           // Connection Status
-          SignalBuilder(
-            signal: store._connectionStatus,
-            builder: (_, status, __) {
-              return SignalBuilder(
-                signal: store._currentSession,
-                builder: (_, session, ___) {
+          ValueListenableBuilder(
+            valueListenable: appStore.connectionStatusSignal,
+            builder: (context, status, __) {
+              return ValueListenableBuilder(
+                valueListenable: appStore.currentSessionSignal,
+                builder: (context, session, ___) {
                   return _ConnectionStatusIndicator(
                     status: status,
                     session: session,
@@ -178,17 +171,15 @@ class MainScreenContent extends StatelessWidget {
   }
 
   Widget _buildNavigationTabs(BuildContext context) {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
     return Container(
       height: 48,
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Color(0xFF45475A)),
-        ),
+        border: Border(bottom: BorderSide(color: Color(0xFF45475A))),
       ),
-      child: SignalBuilder(
-        signal: store._selectedTab,
+      child: ValueListenableBuilder(
+        valueListenable: appStore.selectedTabSignal,
         builder: (_, selectedTab, __) {
           return Row(
             children: [
@@ -232,7 +223,7 @@ class MainScreenContent extends StatelessWidget {
   }
 
   void _handleMenuAction(BuildContext context, String action) async {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
     switch (action) {
       case 'refresh':
@@ -248,7 +239,7 @@ class MainScreenContent extends StatelessWidget {
   }
 
   Future<void> _refreshData(BuildContext context) async {
-    final store = context.read<AppStore>();
+    final store = appStore;
     store.setLoading(true);
 
     try {
@@ -264,7 +255,7 @@ class MainScreenContent extends StatelessWidget {
   }
 
   Future<void> _disconnect(BuildContext context) async {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
     try {
       // Disconnect from server
@@ -285,16 +276,16 @@ class MainScreenContent extends StatelessWidget {
   void _showAboutDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => ShadDialog(
+      builder: (context) => AlertDialog(
         title: const Text('About RiTerm'),
-        description: const Text(
+        content: const Text(
           'RiTerm - Secure Remote Terminal Access\n\n'
           'Version: 1.0.0\n'
           'Built with Flutter, Rust, and iroh P2P\n\n'
           '© 2024 RiTerm Project',
         ),
         actions: [
-          ShadButton.ghost(
+          TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Close'),
           ),
@@ -318,20 +309,14 @@ class _ConnectionStatusIndicator extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: _getStatusColor().withOpacity(0.1),
+        color: _getStatusColor().withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: _getStatusColor().withOpacity(0.3),
-        ),
+        border: Border.all(color: _getStatusColor().withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            _getStatusIcon(),
-            size: 14,
-            color: _getStatusColor(),
-          ),
+          Icon(_getStatusIcon(), size: 14, color: _getStatusColor()),
           const SizedBox(width: 6),
           Text(
             _getStatusText(),
@@ -408,9 +393,7 @@ class _NavigationTab extends StatelessWidget {
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: isSelected
-                  ? const Color(0xFF00D4FF)
-                  : Colors.transparent,
+              color: isSelected ? const Color(0xFF00D4FF) : Colors.transparent,
               width: 2,
             ),
           ),
@@ -465,10 +448,7 @@ class _HomeTab extends StatelessWidget {
           SizedBox(height: 16),
           Text(
             'Get started by creating a terminal or setting up TCP forwarding.',
-            style: TextStyle(
-              fontSize: 16,
-              color: Color(0xFF6C7293),
-            ),
+            style: TextStyle(fontSize: 16, color: Color(0xFF6C7293)),
           ),
           // Add more home content here
         ],
@@ -519,9 +499,7 @@ class _SettingsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.all(16),
-      child: SettingsView(),
-    );
+    return const Padding(padding: EdgeInsets.all(16), child: SettingsView());
   }
 }
+

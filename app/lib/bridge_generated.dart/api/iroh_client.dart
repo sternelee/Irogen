@@ -6,58 +6,6 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `TerminalInfo`, `TerminalInput`, `TerminalOutput`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`
-
-Future<IrohSessionInfo> createIrohClient({String? relayUrl}) =>
-    RustLib.instance.api.crateApiIrohClientCreateIrohClient(relayUrl: relayUrl);
-
-Future<String> connectToPeer({required String ticket}) =>
-    RustLib.instance.api.crateApiIrohClientConnectToPeer(ticket: ticket);
-
-Future<String> createTerminal({
-  String? name,
-  String? shellPath,
-  String? workingDir,
-  int? rows,
-  int? cols,
-}) => RustLib.instance.api.crateApiIrohClientCreateTerminal(
-  name: name,
-  shellPath: shellPath,
-  workingDir: workingDir,
-  rows: rows,
-  cols: cols,
-);
-
-Future<void> sendTerminalInput({
-  required String terminalId,
-  required String input,
-}) => RustLib.instance.api.crateApiIrohClientSendTerminalInput(
-  terminalId: terminalId,
-  input: input,
-);
-
-Future<void> resizeTerminal({
-  required String terminalId,
-  required int rows,
-  required int cols,
-}) => RustLib.instance.api.crateApiIrohClientResizeTerminal(
-  terminalId: terminalId,
-  rows: rows,
-  cols: cols,
-);
-
-Future<void> stopTerminal({required String terminalId}) =>
-    RustLib.instance.api.crateApiIrohClientStopTerminal(terminalId: terminalId);
-
-Future<void> disconnectSession({required String sessionId}) => RustLib
-    .instance
-    .api
-    .crateApiIrohClientDisconnectSession(sessionId: sessionId);
-
-Future<String> generateQrCode({required String data}) =>
-    RustLib.instance.api.crateApiIrohClientGenerateQrCode(data: data);
-
 /// 已弃用的会话信息
 /// 请使用 FlutterMessageClient 替代
 class IrohSessionInfo {

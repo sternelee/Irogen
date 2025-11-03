@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:shadcn_ui/shadcn_ui.dart' hide LucideIcons;
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:flutter_solidart/flutter_solidart.dart';
 import 'package:qr_code_scanner/qr_code_scanner.dart';
 import 'dart:io';
 
 import '../stores/app_store.dart';
-import '../bridge_generated.dart/message_bridge.dart';
+import '../bridge_generated.dart/third_party/rust_lib_app/message_bridge.dart';
 import '../widgets/qr_scanner_dialog.dart';
 
 class ConnectScreen extends StatelessWidget {
@@ -22,7 +21,6 @@ class ConnectScreen extends StatelessWidget {
             primary: Color(0xFF00D4FF),
             secondary: Color(0xFF7C3AED),
             surface: Color(0xFF2A2A3E),
-            background: Color(0xFF1E1E2E),
           ),
         ),
         home: const ConnectScreenContent(),
@@ -36,7 +34,7 @@ class ConnectScreenContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.provide<AppStore>(appStore);
+    final store = context.read<AppStore>();
 
     return const SafeArea(
       child: SingleChildScrollView(
@@ -83,14 +81,14 @@ class _AppHeader extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF00D4FF).withOpacity(0.3),
+                color: const Color(0xFF00D4FF).withValues(alpha: 0.3),
                 blurRadius: 20,
                 spreadRadius: 5,
               ),
             ],
           ),
           child: const Icon(
-            LucideIcons.terminal,
+            lucide.LucideIcons.terminal,
             size: 50,
             color: Colors.white,
           ),
@@ -108,10 +106,7 @@ class _AppHeader extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           'Secure Remote Terminal Access',
-          style: TextStyle(
-            fontSize: 16,
-            color: Colors.grey[400],
-          ),
+          style: TextStyle(fontSize: 16, color: Colors.grey[400]),
         ),
       ],
     );
@@ -131,7 +126,8 @@ class _ConnectionStatus extends StatelessWidget {
         if (message.isEmpty) return const SizedBox.shrink();
 
         final isError = store.error != null;
-        final isConnected = store.connectionStatus == ConnectionStatus.connected;
+        final isConnected =
+            store.connectionStatus == ConnectionStatus.connected;
 
         return ShadCard(
           child: Padding(
@@ -140,15 +136,15 @@ class _ConnectionStatus extends StatelessWidget {
               children: [
                 Icon(
                   isError
-                      ? LucideIcons.xCircle
+                      ? lucide.LucideIcons.xCircle
                       : isConnected
-                          ? LucideIcons.checkCircle
-                          : LucideIcons.info,
+                      ? lucide.LucideIcons.checkCircle
+                      : lucide.LucideIcons.info,
                   color: isError
                       ? Colors.red
                       : isConnected
-                          ? Colors.green
-                          : Colors.blue,
+                      ? Colors.green
+                      : Colors.blue,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -158,8 +154,8 @@ class _ConnectionStatus extends StatelessWidget {
                       color: isError
                           ? Colors.red
                           : isConnected
-                              ? Colors.green
-                              : Colors.blue,
+                          ? Colors.green
+                          : Colors.blue,
                     ),
                   ),
                 ),
@@ -219,17 +215,13 @@ class _TicketConnectionForm extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF00D4FF).withOpacity(0.1),
+                color: const Color(0xFF00D4FF).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    LucideIcons.ticket,
-                    size: 16,
-                    color: Color(0xFF00D4FF),
-                  ),
+                  Icon(LucideIcons.ticket, size: 16, color: Color(0xFF00D4FF)),
                   SizedBox(width: 6),
                   Text(
                     'Ticket Connection',
@@ -247,10 +239,7 @@ class _TicketConnectionForm extends StatelessWidget {
         const SizedBox(height: 16),
         const Text(
           'Enter the connection ticket from your CLI host:',
-          style: TextStyle(
-            fontSize: 14,
-            color: Color(0xFF6C7293),
-          ),
+          style: TextStyle(fontSize: 14, color: Color(0xFF6C7293)),
         ),
         const SizedBox(height: 12),
         ShadInput(
@@ -273,7 +262,9 @@ class _TicketConnectionForm extends StatelessWidget {
                 signal: store._isLoading,
                 builder: (_, isLoading, __) {
                   return ShadButton.ghost(
-                    onPressed: isLoading ? null : () => _connectWithTicket(context),
+                    onPressed: isLoading
+                        ? null
+                        : () => _connectWithTicket(context),
                     child: isLoading
                         ? const SizedBox(
                             width: 16,
@@ -316,10 +307,7 @@ class _LegacyConnectionForm extends StatelessWidget {
       children: [
         const Text(
           'Or enter endpoint address (legacy):',
-          style: TextStyle(
-            fontSize: 14,
-            color: Color(0xFF6C7293),
-          ),
+          style: TextStyle(fontSize: 14, color: Color(0xFF6C7293)),
         ),
         const SizedBox(height: 12),
         ShadInput(
@@ -359,10 +347,7 @@ class _Divider extends StatelessWidget {
         const Expanded(child: Divider(color: Color(0xFF45475A))),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'OR',
-            style: TextStyle(color: Colors.grey[400]),
-          ),
+          child: Text('OR', style: TextStyle(color: Colors.grey[400])),
         ),
         const Expanded(child: Divider(color: Color(0xFF45475A))),
       ],
@@ -383,10 +368,7 @@ class _ConnectionInstructions extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(
-                  LucideIcons.info,
-                  color: Color(0xFF6C7293),
-                ),
+                const Icon(LucideIcons.info, color: Color(0xFF6C7293)),
                 const SizedBox(width: 8),
                 const Text(
                   'How to connect using tickets',
@@ -400,24 +382,27 @@ class _ConnectionInstructions extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _buildInstructionStep('1', 'Run CLI: riterm host'),
-            _buildInstructionStep('2', 'Copy the connection ticket from CLI output'),
-            _buildInstructionStep('3', 'Paste the ticket in the ticket field above'),
-            _buildInstructionStep('4', 'Click "Connect with Ticket" to connect'),
+            _buildInstructionStep(
+              '2',
+              'Copy the connection ticket from CLI output',
+            ),
+            _buildInstructionStep(
+              '3',
+              'Paste the ticket in the ticket field above',
+            ),
+            _buildInstructionStep(
+              '4',
+              'Click "Connect with Ticket" to connect',
+            ),
             const SizedBox(height: 16),
             Row(
               children: [
-                const Icon(
-                  LucideIcons.lightbulb,
-                  color: Colors.amber,
-                ),
+                const Icon(LucideIcons.lightbulb, color: Colors.amber),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Pro tip: Use QR code scanner for mobile devices',
-                    style: TextStyle(
-                      color: Colors.amber[400],
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: Colors.amber[400], fontSize: 14),
                   ),
                 ),
               ],
@@ -444,10 +429,7 @@ class _ConnectionInstructions extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
-                color: Color(0xFFD1D5DB),
-                fontSize: 14,
-              ),
+              style: const TextStyle(color: Color(0xFFD1D5DB), fontSize: 14),
             ),
           ),
         ],
@@ -478,21 +460,20 @@ void _connectWithTicket(BuildContext context) async {
 
   try {
     final client = createMessageClient();
-    final sessionId = await connectByTicket(
-      client: client,
-      ticket: ticket,
-    );
+    final sessionId = await connectByTicket(client: client, ticket: ticket);
 
     store.setConnectionStatus(ConnectionStatus.connected);
-    store.setCurrentSession(AppSession(
-      id: sessionId,
-      name: 'Session ${sessionId.substring(0, 8)}',
-      nodeId: '', // Will be populated from response
-      endpointAddr: ticket,
-      connectionId: sessionId,
-      createdAt: DateTime.now(),
-      isActive: true,
-    ));
+    store.setCurrentSession(
+      AppSession(
+        id: sessionId,
+        name: 'Session ${sessionId.substring(0, 8)}',
+        nodeId: '', // Will be populated from response
+        endpointAddr: ticket,
+        connectionId: sessionId,
+        createdAt: DateTime.now(),
+        isActive: true,
+      ),
+    );
 
     store.setStatusMessage('Connected successfully via ticket!');
     store.setTicketInput('');
@@ -527,10 +508,7 @@ void _connectWithEndpoint(BuildContext context) async {
     String sessionId;
 
     if (endpoint.startsWith('ticket:')) {
-      sessionId = await connectByTicket(
-        client: client,
-        ticket: endpoint,
-      );
+      sessionId = await connectByTicket(client: client, ticket: endpoint);
     } else {
       sessionId = await connectToCliServer(
         client: client,
@@ -540,15 +518,17 @@ void _connectWithEndpoint(BuildContext context) async {
     }
 
     store.setConnectionStatus(ConnectionStatus.connected);
-    store.setCurrentSession(AppSession(
-      id: sessionId,
-      name: 'Session ${sessionId.substring(0, 8)}',
-      nodeId: '',
-      endpointAddr: endpoint,
-      connectionId: sessionId,
-      createdAt: DateTime.now(),
-      isActive: true,
-    ));
+    store.setCurrentSession(
+      AppSession(
+        id: sessionId,
+        name: 'Session ${sessionId.substring(0, 8)}',
+        nodeId: '',
+        endpointAddr: endpoint,
+        connectionId: sessionId,
+        createdAt: DateTime.now(),
+        isActive: true,
+      ),
+    );
 
     store.setStatusMessage('Connected successfully!');
     store.setEndpointInput('');
@@ -575,10 +555,7 @@ void _showQRScanner(BuildContext context) async {
 
   // Request camera permission
   // Implementation would go here
-  showDialog(
-    context: context,
-    builder: (context) => const QRScannerDialog(),
-  );
+  showDialog(context: context, builder: (context) => const QRScannerDialog());
 }
 
 bool _validateTicket(String ticket) {
@@ -586,3 +563,4 @@ bool _validateTicket(String ticket) {
   if (!ticket.startsWith('ticket:')) return false;
   return ticket.length > 20;
 }
+

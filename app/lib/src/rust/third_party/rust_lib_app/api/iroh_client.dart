@@ -7,25 +7,55 @@ import '../../../api/iroh_client.dart';
 import '../../../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`
 
-            // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`
+Future<IrohSessionInfo> createIrohClient({String? relayUrl}) => RustLib
+    .instance
+    .api
+    .rustLibAppApiIrohClientCreateIrohClient(relayUrl: relayUrl);
 
+Future<String> connectToPeer({required String ticket}) =>
+    RustLib.instance.api.rustLibAppApiIrohClientConnectToPeer(ticket: ticket);
 
-            Future<IrohSessionInfo>  createIrohClient({String? relayUrl }) => RustLib.instance.api.rustLibAppApiIrohClientCreateIrohClient(relayUrl: relayUrl);
+Future<String> createTerminal({
+  String? name,
+  String? shellPath,
+  String? workingDir,
+  int? rows,
+  int? cols,
+}) => RustLib.instance.api.rustLibAppApiIrohClientCreateTerminal(
+  name: name,
+  shellPath: shellPath,
+  workingDir: workingDir,
+  rows: rows,
+  cols: cols,
+);
 
-Future<String>  connectToPeer({required String ticket }) => RustLib.instance.api.rustLibAppApiIrohClientConnectToPeer(ticket: ticket);
+Future<void> sendTerminalInput({
+  required String terminalId,
+  required String input,
+}) => RustLib.instance.api.rustLibAppApiIrohClientSendTerminalInput(
+  terminalId: terminalId,
+  input: input,
+);
 
-Future<String>  createTerminal({String? name , String? shellPath , String? workingDir , int? rows , int? cols }) => RustLib.instance.api.rustLibAppApiIrohClientCreateTerminal(name: name, shellPath: shellPath, workingDir: workingDir, rows: rows, cols: cols);
+Future<void> resizeTerminal({
+  required String terminalId,
+  required int rows,
+  required int cols,
+}) => RustLib.instance.api.rustLibAppApiIrohClientResizeTerminal(
+  terminalId: terminalId,
+  rows: rows,
+  cols: cols,
+);
 
-Future<void>  sendTerminalInput({required String terminalId , required String input }) => RustLib.instance.api.rustLibAppApiIrohClientSendTerminalInput(terminalId: terminalId, input: input);
+Future<void> stopTerminal({required String terminalId}) => RustLib.instance.api
+    .rustLibAppApiIrohClientStopTerminal(terminalId: terminalId);
 
-Future<void>  resizeTerminal({required String terminalId , required int rows , required int cols }) => RustLib.instance.api.rustLibAppApiIrohClientResizeTerminal(terminalId: terminalId, rows: rows, cols: cols);
+Future<void> disconnectSession({required String sessionId}) => RustLib
+    .instance
+    .api
+    .rustLibAppApiIrohClientDisconnectSession(sessionId: sessionId);
 
-Future<void>  stopTerminal({required String terminalId }) => RustLib.instance.api.rustLibAppApiIrohClientStopTerminal(terminalId: terminalId);
-
-Future<void>  disconnectSession({required String sessionId }) => RustLib.instance.api.rustLibAppApiIrohClientDisconnectSession(sessionId: sessionId);
-
-Future<String>  generateQrCode({required String data }) => RustLib.instance.api.rustLibAppApiIrohClientGenerateQrCode(data: data);
-
-            
-            
+Future<String> generateQrCode({required String data}) =>
+    RustLib.instance.api.rustLibAppApiIrohClientGenerateQrCode(data: data);

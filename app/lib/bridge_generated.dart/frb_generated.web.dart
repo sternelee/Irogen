@@ -7,12 +7,15 @@
 // ignore_for_file: argument_type_not_assignable
 
 import 'api/iroh_client.dart';
-import 'api/simple.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
 import 'message_bridge.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
+import 'third_party/rust_lib_app/api/iroh_client.dart';
+import 'third_party/rust_lib_app/api/simple.dart';
+import 'third_party/rust_lib_app/message_bridge.dart';
+import 'third_party/rust_lib_app/quic_bridge.dart';
 
 abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RustLibApiImplPlatform({

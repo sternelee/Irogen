@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_solidart/flutter_solidart.dart';
 import 'package:uuid/uuid.dart';
 
@@ -131,105 +132,128 @@ class AppStore {
   String get endpointInput => _endpointInput.value;
   String? get error => _error.value;
 
+  // Signal accessors for SignalBuilder
+  Signal<ConnectionStatus> get connectionStatusSignal => _connectionStatus;
+  Signal<String> get statusMessageSignal => _statusMessage;
+  Signal<AppSession?> get currentSessionSignal => _currentSession;
+  Signal<List<AppSession>> get sessionsSignal => _sessions;
+  Signal<List<AppTerminal>> get terminalsSignal => _terminals;
+  Signal<String?> get activeTerminalIdSignal => _activeTerminalId;
+  Signal<AppTab> get selectedTabSignal => _selectedTab;
+  Signal<bool> get isLoadingSignal => _isLoading;
+  Signal<String> get ticketInputSignal => _ticketInput;
+  Signal<String> get endpointInputSignal => _endpointInput;
+  Signal<String?> get errorSignal => _error;
+
   // Setters
   void setConnectionStatus(ConnectionStatus status) {
-    _connectionStatus.set(status);
+    _connectionStatus.value = status;
   }
 
   void setCurrentSession(AppSession? session) {
-    _currentSession.set(session);
+    _currentSession.value = session;
   }
 
   void setSessions(List<AppSession> sessions) {
-    _sessions.set(sessions);
+    _sessions.value = sessions;
   }
 
   void setTerminals(List<AppTerminal> terminals) {
-    _terminals.set(terminals);
+    _terminals.value = terminals;
   }
 
   void setActiveTerminalId(String? terminalId) {
-    _activeTerminalId.set(terminalId);
+    _activeTerminalId.value = terminalId;
   }
 
   void setSelectedTab(AppTab tab) {
-    _selectedTab.set(tab);
+    _selectedTab.value = tab;
   }
 
   void setStatusMessage(String message) {
-    _statusMessage.set(message);
+    _statusMessage.value = message;
   }
 
   void setLoading(bool loading) {
-    _isLoading.set(loading);
+    _isLoading.value = loading;
   }
 
   void setTicketInput(String input) {
-    _ticketInput.set(input);
+    _ticketInput.value = input;
   }
 
   void setEndpointInput(String input) {
-    _endpointInput.set(input);
+    _endpointInput.value = input;
   }
 
   void setError(String? error) {
-    _error.set(error);
+    _error.value = error;
   }
 
   // Actions
   void addSession(AppSession session) {
     final currentSessions = [..._sessions.value];
     currentSessions.add(session);
-    _sessions.set(currentSessions);
+    _sessions.value = currentSessions;
   }
 
   void removeSession(String sessionId) {
     final currentSessions = _sessions.value.where((s) => s.id != sessionId).toList();
-    _sessions.set(currentSessions);
+    _sessions.value = currentSessions;
   }
 
   void updateSession(String sessionId, AppSession updatedSession) {
     final currentSessions = _sessions.value.map((s) => s.id == sessionId ? updatedSession : s).toList();
-    _sessions.set(currentSessions);
+    _sessions.value = currentSessions;
   }
 
   void addTerminal(AppTerminal terminal) {
     final currentTerminals = [..._terminals.value];
     currentTerminals.add(terminal);
-    _terminals.set(currentTerminals);
+    _terminals.value = currentTerminals;
   }
 
   void removeTerminal(String terminalId) {
     final currentTerminals = _terminals.value.where((t) => t.id != terminalId).toList();
-    _terminals.set(currentTerminals);
+    _terminals.value = currentTerminals;
 
     // Clear active terminal if it was removed
     if (_activeTerminalId.value == terminalId) {
-      _activeTerminalId.set(null);
+      _activeTerminalId.value = null;
     }
   }
 
   void updateTerminal(String terminalId, AppTerminal updatedTerminal) {
     final currentTerminals = _terminals.value.map((t) => t.id == terminalId ? updatedTerminal : t).toList();
-    _terminals.set(currentTerminals);
+    _terminals.value = currentTerminals;
   }
 
   void clearError() {
-    _error.set(null);
+    _error.value = null;
   }
 
   void reset() {
-    _connectionStatus.set(ConnectionStatus.disconnected);
-    _currentSession.set(null);
-    _sessions.set([]);
-    _terminals.set([]);
-    _activeTerminalId.set(null);
-    _selectedTab.set(AppTab.home);
-    _statusMessage.set('');
-    _isLoading.set(false);
-    _ticketInput.set('');
-    _endpointInput.set('');
-    _error.set(null);
+    try {
+      _connectionStatus.value = ConnectionStatus.disconnected;
+      _currentSession.value = null;
+      _sessions.value = [];
+      _terminals.value = [];
+      _activeTerminalId.value = null;
+      _selectedTab.value = AppTab.home;
+      _statusMessage.value = '';
+      _isLoading.value = false;
+      _ticketInput.value = '';
+      _endpointInput.value = '';
+      _error.value = null;
+    } catch (e) {
+      // Ignore errors during reset
+      debugPrint('Error during AppStore reset: $e');
+    }
+  }
+
+  void dispose() {
+    // Clean up any resources if needed
+    reset();
   }
 }
 

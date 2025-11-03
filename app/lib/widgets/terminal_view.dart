@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:shadcn_ui/shadcn_ui.dart' hide LucideIcons;
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:flutter_solidart/flutter_solidart.dart';
 import 'package:xterm/xterm.dart';
 
 import '../stores/app_store.dart';
-import '../bridge_generated.dart/message_bridge.dart';
+import '../bridge_generated.dart/third_party/rust_lib_app/message_bridge.dart';
 
 class TerminalView extends StatefulWidget {
   const TerminalView({super.key});
@@ -28,7 +27,7 @@ class _TerminalViewState extends State<TerminalView> {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
     return Column(
       children: [
@@ -42,15 +41,15 @@ class _TerminalViewState extends State<TerminalView> {
 
         // Terminal content
         Expanded(
-          child: SignalBuilder(
-            signal: store._terminals,
+          child: ValueListenableBuilder(
+            valueListenable: store.terminalsSignal,
             builder: (_, terminals, __) {
               if (terminals.isEmpty) {
                 return _buildEmptyState(context);
               }
 
-              return SignalBuilder(
-                signal: store._activeTerminalId,
+              return ValueListenableBuilder(
+                valueListenable: store.activeTerminalIdSignal,
                 builder: (_, activeTerminalId, ___) {
                   final activeTerminal = terminals.firstWhere(
                     (t) => t.id == activeTerminalId,
@@ -72,7 +71,7 @@ class _TerminalViewState extends State<TerminalView> {
   }
 
   Widget _buildTerminalCreationBar(BuildContext context) {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
     return ShadCard(
       child: Padding(
@@ -92,8 +91,8 @@ class _TerminalViewState extends State<TerminalView> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  SignalBuilder(
-                    signal: store._terminals,
+                  ValueListenableBuilder(
+                    valueListenable: store.terminalsSignal,
                     builder: (_, terminals, __) {
                       return Text(
                         '${terminals.length} active terminal${terminals.length != 1 ? 's' : ''}',
@@ -108,8 +107,8 @@ class _TerminalViewState extends State<TerminalView> {
               ),
             ),
             const SizedBox(width: 16),
-            SignalBuilder(
-              signal: store._isLoading,
+            ValueListenableBuilder(
+              valueListenable: store.isLoadingSignal,
               builder: (_, isLoading, __) {
                 return ShadButton(
                   onPressed: isLoading ? null : () => _createTerminal(context),
@@ -137,15 +136,15 @@ class _TerminalViewState extends State<TerminalView> {
   }
 
   Widget _buildTerminalTabs(BuildContext context) {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
-    return SignalBuilder(
-      signal: store._terminals,
+    return ValueListenableBuilder(
+      valueListenable: store.terminalsSignal,
       builder: (_, terminals, __) {
         if (terminals.isEmpty) return const SizedBox.shrink();
 
-        return SignalBuilder(
-          signal: store._activeTerminalId,
+        return ValueListenableBuilder(
+          valueListenable: store.activeTerminalIdSignal,
           builder: (_, activeTerminalId, __) {
             return Container(
               height: 48,
@@ -301,7 +300,7 @@ class _TerminalViewState extends State<TerminalView> {
   }
 
   Future<void> _createTerminal(BuildContext context) async {
-    final store = context.read<AppStore>();
+    final store = appStore;
     store.setLoading(true);
     store.clearError();
 
@@ -351,7 +350,7 @@ class _TerminalViewState extends State<TerminalView> {
   }
 
   Future<void> _closeTerminal(BuildContext context, String terminalId) async {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
     try {
       final client = createMessageClient();
@@ -394,7 +393,7 @@ class _TerminalViewState extends State<TerminalView> {
   }
 
   Future<void> _sendTerminalInput(String terminalId, String input) async {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
     try {
       final client = createMessageClient();

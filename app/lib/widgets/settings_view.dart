@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:shadcn_ui/shadcn_ui.dart' hide LucideIcons;
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:flutter_solidart/flutter_solidart.dart';
 
 import '../stores/app_store.dart';
 
@@ -83,7 +82,7 @@ class _HeaderSection extends StatelessWidget {
           ShadButton.destructive(
             onPressed: () {
               Navigator.of(context).pop();
-              final store = context.read<AppStore>();
+              final store = appStore;
               store.reset();
             },
             child: const Text('Reset'),
@@ -99,7 +98,7 @@ class _ConnectionSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
     return ShadCard(
       child: Padding(
@@ -118,8 +117,8 @@ class _ConnectionSettings extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Current session info
-            SignalBuilder(
-              signal: store._currentSession,
+            ValueListenableBuilder(
+              valueListenable: store.currentSessionSignal,
               builder: (_, session, __) {
                 if (session == null) {
                   return const Text(
@@ -237,7 +236,7 @@ class _ConnectionSettings extends StatelessWidget {
   }
 
   void _refreshConnection(BuildContext context) {
-    final store = context.read<AppStore>();
+    final store = appStore;
     store.setStatusMessage('Refreshing connection...');
     // Implementation would go here
   }
@@ -258,7 +257,7 @@ class _ConnectionSettings extends StatelessWidget {
           ShadButton.destructive(
             onPressed: () {
               Navigator.of(context).pop();
-              final store = context.read<AppStore>();
+              final store = appStore;
               store.reset();
               Navigator.of(context).pushReplacementNamed('/connect');
             },
@@ -275,7 +274,7 @@ class _TerminalSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
     return ShadCard(
       child: Padding(
@@ -294,8 +293,8 @@ class _TerminalSettings extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Terminal statistics
-            SignalBuilder(
-              signal: store._terminals,
+            ValueListenableBuilder(
+              valueListenable: store.terminalsSignal,
               builder: (_, terminals, __) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

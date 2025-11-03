@@ -40,10 +40,10 @@ dependencies:
   xterm: ^4.0.0
   shadcn_ui: ^0.39.0
   qr_code_scanner: ^1.0.1
-  permission_handler: ^11.3.1
+  permission_handler: ^12.0.1
 
   # State management
-  flutter_solidart: ^0.4.2
+  flutter_solidart: ^2.7.0
 
   # UI enhancements
   lucide_icons: ^0.257.0
@@ -62,7 +62,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
   integration_test:
     sdk: flutter
 

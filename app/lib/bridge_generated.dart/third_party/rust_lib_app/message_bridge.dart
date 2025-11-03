@@ -3,7 +3,6 @@
 
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
-import '../../api/iroh_client.dart';
 import '../../frb_generated.dart';
 import '../../message_bridge.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
@@ -15,11 +14,11 @@ FlutterMessageClient createMessageClient() =>
 
 Future<String> connectToCliServer({
   required FlutterMessageClient client,
-  required String endpointAddr,
+  required String endpointAddrStr,
   String? relayUrl,
 }) => RustLib.instance.api.rustLibAppMessageBridgeConnectToCliServer(
   client: client,
-  endpointAddr: endpointAddr,
+  endpointAddrStr: endpointAddrStr,
   relayUrl: relayUrl,
 );
 
@@ -145,6 +144,40 @@ Future<FlutterSystemStatus> getSystemStatus({
 /// 工具函数
 String parseEndpointAddr({required String addr}) =>
     RustLib.instance.api.rustLibAppMessageBridgeParseEndpointAddr(addr: addr);
+
+/// 解析 iroh 连接票据
+String parseConnectionTicket({required String ticket}) => RustLib.instance.api
+    .rustLibAppMessageBridgeParseConnectionTicket(ticket: ticket);
+
+/// 使用票据连接到 CLI 服务器
+Future<String> connectByTicket({
+  required FlutterMessageClient client,
+  required String ticket,
+}) => RustLib.instance.api.rustLibAppMessageBridgeConnectByTicket(
+  client: client,
+  ticket: ticket,
+);
+
+/// 简化的连接方法 - 使用节点ID直接连接
+Future<String> connectByNodeId({
+  required FlutterMessageClient client,
+  required String nodeIdStr,
+  String? relayUrl,
+}) => RustLib.instance.api.rustLibAppMessageBridgeConnectByNodeId(
+  client: client,
+  nodeIdStr: nodeIdStr,
+  relayUrl: relayUrl,
+);
+
+/// 通过节点ID和中继URL构造 EndpointAddr
+String constructEndpointAddrFromNodeInfo({
+  required String nodeIdHex,
+  String? relayUrl,
+}) => RustLib.instance.api
+    .rustLibAppMessageBridgeConstructEndpointAddrFromNodeInfo(
+      nodeIdHex: nodeIdHex,
+      relayUrl: relayUrl,
+    );
 
 String formatForwardingType({required TcpForwardingType forwardingType}) =>
     RustLib.instance.api.rustLibAppMessageBridgeFormatForwardingType(

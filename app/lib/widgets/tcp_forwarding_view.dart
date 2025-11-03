@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:shadcn_ui/shadcn_ui.dart' hide LucideIcons;
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:flutter_solidart/flutter_solidart.dart';
 
 import '../stores/app_store.dart';
-import '../bridge_generated.dart/message_bridge.dart';
+import '../bridge_generated.dart/third_party/rust_lib_app/message_bridge.dart';
+import '../bridge_generated.dart/frb_generated.dart';
 
 class TcpForwardingView extends StatefulWidget {
   const TcpForwardingView({super.key});
@@ -81,7 +81,7 @@ class _TcpForwardingViewState extends State<TcpForwardingView> {
   }
 
   Widget _buildCreateForwardingForm() {
-    final store = context.read<AppStore>();
+    final store = appStore;
 
     return ShadCard(
       child: Padding(
@@ -122,16 +122,20 @@ class _TcpForwardingViewState extends State<TcpForwardingView> {
               ),
             ),
             const SizedBox(height: 8),
-            ShadInput(
-              placeholder: const Text('127.0.0.1:3000'),
+            TextField(
               controller: _localAddrController,
-              prefix: const Icon(LucideIcons.server),
+              decoration: const InputDecoration(
+                labelText: 'Local Address',
+                hintText: '127.0.0.1:3000',
+                prefixIcon: Icon(LucideIcons.server),
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 16),
 
             // Remote configuration (conditional)
-            SignalBuilder(
-              signal: Signal(_forwardingTypeController.text),
+            ValueListenableBuilder(
+              valueListenable: _forwardingTypeController,
               builder: (_, forwardingType, __) {
                 if (forwardingType == 'ListenToRemote') {
                   return _buildRemoteConfig();
@@ -143,8 +147,8 @@ class _TcpForwardingViewState extends State<TcpForwardingView> {
             const SizedBox(height: 16),
 
             // Create button
-            SignalBuilder(
-              signal: store._isLoading,
+            ValueListenableBuilder(
+              valueListenable: store.isLoadingSignal,
               builder: (_, isLoading, __) {
                 return ShadButton(
                   onPressed: isLoading ? null : () => _createForwardingSession(context),
@@ -249,10 +253,14 @@ class _TcpForwardingViewState extends State<TcpForwardingView> {
           ),
         ),
         const SizedBox(height: 8),
-        ShadInput(
-          placeholder: const Text('example.com or 192.168.1.100'),
+        TextField(
           controller: _remoteHostController,
-          prefix: const Icon(LucideIcons.globe),
+          decoration: const InputDecoration(
+            labelText: 'Remote Host',
+            hintText: 'example.com or 192.168.1.100',
+            prefixIcon: Icon(LucideIcons.globe),
+            border: OutlineInputBorder(),
+          ),
         ),
         const SizedBox(height: 16),
         const Text(
@@ -264,11 +272,15 @@ class _TcpForwardingViewState extends State<TcpForwardingView> {
           ),
         ),
         const SizedBox(height: 8),
-        ShadInput(
-          placeholder: const Text('80, 443, 3000, etc.'),
+        TextField(
           controller: _remotePortController,
-          prefix: const Icon(LucideIcons.port),
           keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Remote Port',
+            hintText: '80, 443, 3000, etc.',
+            prefixIcon: Icon(LucideIcons.settings),
+            border: OutlineInputBorder(),
+          ),
         ),
       ],
     );
@@ -332,7 +344,7 @@ class _TcpForwardingViewState extends State<TcpForwardingView> {
   }
 
   Future<void> _createForwardingSession(BuildContext context) async {
-    final store = context.read<AppStore>();
+    final store = appStore;
     final localAddr = _localAddrController.text.trim();
     final remoteHost = _remoteHostController.text.trim();
     final remotePort = _remotePortController.text.trim();
@@ -353,7 +365,7 @@ class _TcpForwardingViewState extends State<TcpForwardingView> {
 
     try {
       final client = createMessageClient();
-      final sessionId = await RustLib.api.crateMessageBridgeCreateTcpForwardingSession(
+      final sessionId = await RustLib.instance.api.crateMessageBridgeCreateTcpForwardingSession(
         client: client,
         sessionId: store.currentSession!.id,
         localAddr: localAddr,
@@ -384,15 +396,15 @@ class _TcpForwardingViewState extends State<TcpForwardingView> {
   void _showSuccessDialog(BuildContext context, String sessionId) {
     showDialog(
       context: context,
-      builder: (context) => ShadDialog(
+      builder: (context) => AlertDialog(
         title: const Text('Session Created'),
-        description: Text(
+        content: Text(
           'TCP forwarding session has been created successfully.\n\n'
           'Session ID: $sessionId\n\n'
           'You can now use the local address to access the remote service.',
         ),
         actions: [
-          ShadButton(
+          TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('OK'),
           ),
@@ -404,7 +416,7 @@ class _TcpForwardingViewState extends State<TcpForwardingView> {
   void _showHelpDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => ShadDialog(
+      builder: (context) => AlertDialog(
         title: const Text('TCP Forwarding Help'),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
@@ -428,7 +440,7 @@ class _TcpForwardingViewState extends State<TcpForwardingView> {
           ],
         ),
         actions: [
-          ShadButton(
+          TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Got it'),
           ),

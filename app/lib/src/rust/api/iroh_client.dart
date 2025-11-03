@@ -6,36 +6,35 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-
-            
-
-            
-
-            /// 已弃用的会话信息
+/// 已弃用的会话信息
 /// 请使用 FlutterMessageClient 替代
-class IrohSessionInfo  {
-                final String nodeId;
-final String nodeAddr;
-final String? relayUrl;
-final bool isConnected;
+class IrohSessionInfo {
+  final String nodeId;
+  final String nodeAddr;
+  final String? relayUrl;
+  final bool isConnected;
 
-                const IrohSessionInfo({required this.nodeId ,required this.nodeAddr ,this.relayUrl ,required this.isConnected ,});
+  const IrohSessionInfo({
+    required this.nodeId,
+    required this.nodeAddr,
+    this.relayUrl,
+    required this.isConnected,
+  });
 
-                
-                
+  @override
+  int get hashCode =>
+      nodeId.hashCode ^
+      nodeAddr.hashCode ^
+      relayUrl.hashCode ^
+      isConnected.hashCode;
 
-                
-        @override
-        int get hashCode => nodeId.hashCode^nodeAddr.hashCode^relayUrl.hashCode^isConnected.hashCode;
-        
-
-                
-        @override
-        bool operator ==(Object other) =>
-            identical(this, other) ||
-            other is IrohSessionInfo &&
-                runtimeType == other.runtimeType
-                && nodeId == other.nodeId&& nodeAddr == other.nodeAddr&& relayUrl == other.relayUrl&& isConnected == other.isConnected;
-        
-            }
-            
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is IrohSessionInfo &&
+          runtimeType == other.runtimeType &&
+          nodeId == other.nodeId &&
+          nodeAddr == other.nodeAddr &&
+          relayUrl == other.relayUrl &&
+          isConnected == other.isConnected;
+}

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_solidart/flutter_solidart.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 // 启用 Rust bridge
@@ -26,28 +25,43 @@ Future<void> main() async {
     GoogleFonts.inter(),
   ]);
 
+  // Handle app lifecycle
+  AppLifecycleBinding.instance.init();
+
   runApp(const RiTermApp());
+}
+
+class AppLifecycleBinding extends WidgetsBindingObserver {
+  static final AppLifecycleBinding instance = AppLifecycleBinding._internal();
+  AppLifecycleBinding._internal();
+
+  void init() {
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.detached) {
+      // App is being destroyed, clean up resources
+      _cleanup();
+    }
+  }
+
+  void _cleanup() {
+    try {
+      // Reset the app store
+      appStore.reset();
+    } catch (e) {
+      // Ignore errors during cleanup
+      debugPrint('Error during cleanup: $e');
+    }
+  }
 }
 
 class RiTermApp extends StatelessWidget {
   const RiTermApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return SolidProvider(
-      store: appStore,
-      child: MaterialApp(
-        title: 'RiTerm',
-        theme: AppTheme.darkTheme,
-        debugShowCheckedModeBanner: false,
-        home: const AppRouter(),
-      ),
-    );
-  }
-}
-
-class AppRouter extends StatelessWidget {
-  const AppRouter({super.key});
 
   @override
   Widget build(BuildContext context) {
