@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import "@xterm/xterm/css/xterm.css";
 import { getDeviceCapabilities } from "../stores/deviceStore";
 import { useTerminalSessions } from "../stores/terminalSessionStore";
 import { useTerminalSession } from "../hooks/useTerminalSession";
@@ -95,9 +96,11 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     if (data) {
       // 发送到后端终端
       invoke("send_terminal_input_to_terminal", {
-        sessionId: props.sessionId,
-        terminalId: activeId,
-        input: data,
+        request: {
+          session_id: props.sessionId,
+          terminal_id: activeId,
+          input: data,
+        },
       }).catch((error) => {
         console.error("Failed to send terminal input:", error);
       });
@@ -368,18 +371,26 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       fetchTerminals();
     });
     
-    await listen(`terminal-output-${props.sessionId}`, (event) => {
-      const { terminalId, data } = event.payload;
+    await listen(`terminal-output-${props.sessionId}`, (event: any) => {
+      const payload = event.payload;
+      const terminalId = payload.terminal_id || payload.terminalId;
+      const data = payload.data;
+      
+      console.log("📤 Received terminal output:", { terminalId, dataLength: data?.length });
+      
       const sessions = terminalSessions();
       const session = sessions.get(terminalId);
 
-      if (session && session.isActive) {
+      if (session) {
+        console.log("✅ Writing to terminal:", terminalId);
         session.terminal.write(data);
 
         // 触发会话保存（通过解析输出更新工作目录等）
         if (session.terminalSession) {
           session.terminalSession.updateWorkingDirectory(data);
         }
+      } else {
+        console.warn("⚠️ Terminal session not found for output:", terminalId);
       }
     });
 

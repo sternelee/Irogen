@@ -213,9 +213,11 @@ pub struct QuicConnection {
     pub endpoint_addr: String,
     pub established_at: std::time::SystemTime,
     pub last_activity: std::time::SystemTime,
+    pub connection: iroh::endpoint::Connection,  // 存储实际的连接对象
 }
 
 /// QUIC消息服务器
+#[derive(Clone)]
 pub struct QuicMessageServer {
     endpoint: Endpoint,
     connections: Arc<RwLock<HashMap<String, QuicConnection>>>,
@@ -342,6 +344,7 @@ impl QuicMessageServer {
             endpoint_addr: endpoint_addr.clone(),
             established_at: std::time::SystemTime::now(),
             last_activity: std::time::SystemTime::now(),
+            connection: connection.clone(),  // 存储连接对象
         };
 
         // 存储连接
@@ -402,9 +405,9 @@ impl QuicMessageServer {
                     // 尝试反序列化消息
                     match MessageSerializer::deserialize_from_network(data) {
                         Ok(message) => {
-                            debug!(
-                                "Received message: {:?} from {}",
-                                message.message_type, message.sender_id
+                            info!(
+                                "📨 Received message: type={:?}, sender={}, requires_response={}",
+                                message.message_type, message.sender_id, message.requires_response
                             );
 
                             // 处理传入消息
@@ -414,7 +417,7 @@ impl QuicMessageServer {
                             {
                                 Ok(Some(response)) => {
                                     // 处理器返回了响应，发送它
-                                    debug!("Sending handler-generated response");
+                                    info!("📤 Sending handler-generated response");
                                     if let Err(e) =
                                         Self::send_message(&mut send_stream, &response).await
                                     {
@@ -422,6 +425,7 @@ impl QuicMessageServer {
                                     }
                                 }
                                 Ok(None) => {
+                                    info!("✅ Message processed, no response needed");
                                     // 处理成功但没有响应，如果需要则发送默认响应
                                     if message.requires_response {
                                         let response = Self::create_default_response(&message);
@@ -499,20 +503,37 @@ impl QuicMessageServer {
     pub async fn send_message_to_node(
         &self,
         node_id: &iroh::PublicKey,
-        _message: Message,
+        message: Message,
     ) -> Result<()> {
-        // 这里需要实现根据node_id找到连接并发送消息的逻辑
-        // 由于iroh的限制，这通常需要重新建立连接
-        info!("Sending message to node: {:?}", node_id);
-
-        // 暂时返回成功，实际实现需要更多逻辑
+        #[cfg(debug_assertions)]
+        debug!("Sending message to node: {:?}", node_id);
+        
+        // 找到对应的连接
+        let connection = {
+            let connections = self.connections.read().await;
+            connections
+                .values()
+                .find(|c| &c.node_id == node_id)
+                .map(|c| c.connection.clone())
+                .ok_or_else(|| anyhow::anyhow!("Connection not found for node: {:?}", node_id))?
+        };
+        
+        // 使用现有连接打开新流
+        let (mut send_stream, _recv_stream) = connection.open_bi().await?;
+        
+        // 序列化并发送消息
+        Self::send_message(&mut send_stream, &message).await?;
+        
+        #[cfg(debug_assertions)]
+        debug!("Message sent successfully to node: {:?}", node_id);
         Ok(())
     }
 
     /// 广播消息到所有连接的节点
     pub async fn broadcast_message(&self, message: Message) -> Result<()> {
         let connections = self.connections.read().await;
-        info!("Broadcasting message to {} connections", connections.len());
+        #[cfg(debug_assertions)]
+        debug!("Broadcasting message to {} connections", connections.len());
 
         for connection in connections.values() {
             if let Err(e) = self

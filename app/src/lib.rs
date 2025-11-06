@@ -550,7 +550,8 @@ async fn connect_to_peer(
 
                             // Process incoming message
                             #[cfg(debug_assertions)]
-                            tracing::debug!("Received message for session {}: {:?}", session_id_clone, message.message_type);
+                            tracing::debug!("Received message for session {}: type={:?}", 
+                                session_id_clone, message.message_type);
 
                             // Convert message to event and emit to frontend
                             match &message.payload {

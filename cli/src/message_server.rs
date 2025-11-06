@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener as TokioTcpListener, TcpStream as TokioTcpStream};
 use tokio::sync::{RwLock, mpsc};
@@ -37,7 +36,10 @@ pub struct TerminalSession {
 pub struct InternalTerminalSession {
     pub session: TerminalSession,
     pub master: Option<Arc<Mutex<Box<dyn MasterPty + Send>>>>,
+    pub writer: Option<Arc<Mutex<Box<dyn std::io::Write + Send>>>>,
+    pub input_tx: Option<mpsc::UnboundedSender<Vec<u8>>>, // 输入通道
     pub output_tx: Option<mpsc::UnboundedSender<String>>,
+    pub output_broadcast: Option<tokio::sync::broadcast::Sender<Vec<u8>>>, // 输出广播
 }
 
 impl Default for TerminalSession {
@@ -60,12 +62,29 @@ impl Default for TerminalSession {
 impl InternalTerminalSession {
     fn new(
         master: Option<Box<dyn MasterPty + Send>>,
+        input_tx: Option<mpsc::UnboundedSender<Vec<u8>>>,
         output_tx: Option<mpsc::UnboundedSender<String>>,
+        output_broadcast: Option<tokio::sync::broadcast::Sender<Vec<u8>>>,
     ) -> Self {
+        // 从 master 中分离 writer
+        let (master_arc, writer_arc) = if let Some(m) = master {
+            // 取出 writer（只能取一次）
+            let writer = m.take_writer().ok();
+            (
+                Some(Arc::new(Mutex::new(m))),
+                writer.map(|w| Arc::new(Mutex::new(w))),
+            )
+        } else {
+            (None, None)
+        };
+
         Self {
             session: TerminalSession::default(),
-            master: master.map(|m| Arc::new(Mutex::new(m))),
+            master: master_arc,
+            writer: writer_arc,
+            input_tx,
             output_tx,
+            output_broadcast,
         }
     }
 }
@@ -190,8 +209,11 @@ impl CliMessageServer {
     /// 注册消息处理器
     async fn register_message_handlers(&self) -> Result<()> {
         // 注册终端管理处理器
-        let terminal_handler =
-            Arc::new(TerminalMessageHandler::new(self.terminal_sessions.clone()));
+        let terminal_handler = Arc::new(TerminalMessageHandler::new(
+            self.terminal_sessions.clone(),
+            self.communication_manager.clone(),
+            self.quic_server.clone(),
+        ));
         self.communication_manager
             .register_message_handler(terminal_handler)
             .await;
@@ -307,11 +329,21 @@ impl CliMessageServer {
 /// 终端管理消息处理器
 pub struct TerminalMessageHandler {
     terminal_sessions: Arc<RwLock<HashMap<String, InternalTerminalSession>>>,
+    communication_manager: Arc<CommunicationManager>,
+    quic_server: QuicMessageServer,
 }
 
 impl TerminalMessageHandler {
-    pub fn new(terminal_sessions: Arc<RwLock<HashMap<String, InternalTerminalSession>>>) -> Self {
-        Self { terminal_sessions }
+    pub fn new(
+        terminal_sessions: Arc<RwLock<HashMap<String, InternalTerminalSession>>>,
+        communication_manager: Arc<CommunicationManager>,
+        quic_server: QuicMessageServer,
+    ) -> Self {
+        Self {
+            terminal_sessions,
+            communication_manager,
+            quic_server,
+        }
     }
 
     /// 创建新的终端会话
@@ -361,23 +393,31 @@ impl TerminalMessageHandler {
 
         // 启动 shell
         let _join_handle = pty_pair.slave.spawn_command(cmd)?;
-        let master = pty_pair.master;
+        let mut master = pty_pair.master;
 
-        // 创建输出通道
+        // 创建输入输出通道
+        let (input_tx, mut input_rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let (output_tx, _output_rx) = mpsc::unbounded_channel();
 
-        // 启动输出读取线程（暂时只记录，TODO: 实现真正的读取）
-        let terminal_id_clone = terminal_id.clone();
-        thread::spawn(move || {
-            // TODO: 实现真正的 PTY 输出读取
-            info!(
-                "Terminal output reader thread started for: {}",
-                terminal_id_clone
-            );
-        });
+        // 创建输出广播通道（用于向所有订阅者广播输出）
+        let (output_broadcast_tx, _output_broadcast_rx) = tokio::sync::broadcast::channel(1000);
+
+        // 获取 reader 和 writer
+        let reader = master.try_clone_reader()?;
+        let writer_result = master.take_writer();
+
+        if writer_result.is_err() {
+            return Err(anyhow::anyhow!("Failed to get PTY writer"));
+        }
+        let writer = writer_result.unwrap();
 
         // 创建终端会话
-        let mut session = InternalTerminalSession::new(Some(master), Some(output_tx));
+        let mut session = InternalTerminalSession::new(
+            Some(master),
+            Some(input_tx.clone()),
+            Some(output_tx),
+            Some(output_broadcast_tx.clone()),
+        );
         session.session.id = terminal_id.clone();
         session.session.name = name;
         session.session.shell_type = shell;
@@ -392,6 +432,114 @@ impl TerminalMessageHandler {
         }
 
         info!("Terminal session created successfully: {}", terminal_id);
+        info!("✅ PTY ready, starting async I/O loop (sshx pattern)...");
+
+        // 将 reader 和 writer 包装在 Arc<Mutex<>> 中以便在 select 分支中使用
+        let reader_shared = Arc::new(tokio::sync::Mutex::new(reader));
+        let writer_shared = Arc::new(tokio::sync::Mutex::new(writer));
+
+        // 启动异步 I/O 循环（使用 tokio::select!，参考 sshx）
+        let terminal_id_clone = terminal_id.clone();
+        let output_broadcast_for_io = output_broadcast_tx.clone();
+        let quic_server_for_io = self.quic_server.clone();
+
+        tokio::spawn(async move {
+            use riterm_shared::message_protocol::{IODataType, MessageBuilder};
+            use std::io::{Read, Write};
+
+            info!("🔄 Terminal I/O loop started for: {}", terminal_id_clone);
+
+            let mut read_buffer = vec![0u8; 8192];
+
+            loop {
+                tokio::select! {
+                    // 处理输入（从通道读取并写入 PTY）
+                    Some(input_data) = input_rx.recv() => {
+                        #[cfg(debug_assertions)]
+                        debug!("Writing {} bytes to PTY", input_data.len());
+
+                        // 使用 spawn_blocking 进行同步 I/O
+                        let writer = writer_shared.clone();
+                        let data = input_data.clone();
+                        let write_result = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                            let mut writer = writer.blocking_lock();
+                            writer.write_all(&data)?;
+                            writer.flush()?;
+                            Ok(())
+                        }).await;
+
+                        match write_result {
+                            Ok(Ok(_)) => {
+                                #[cfg(debug_assertions)]
+                                debug!("Input written and flushed");
+                            }
+                            Ok(Err(e)) => {
+                                error!("Failed to write to PTY: {}", e);
+                                break;
+                            }
+                            Err(e) => {
+                                error!("Write task panicked: {}", e);
+                                break;
+                            }
+                        }
+                    }
+
+                    // 处理输出（从 PTY 读取并发送到客户端）
+                    read_result = {
+                        let reader = reader_shared.clone();
+                        let mut buffer = read_buffer.clone();
+                        tokio::task::spawn_blocking(move || -> anyhow::Result<(usize, Vec<u8>)> {
+                            let mut reader = reader.blocking_lock();
+                            let n = reader.read(&mut buffer)?;
+                            Ok((n, buffer))
+                        })
+                    } => {
+                        match read_result {
+                            Ok(Ok((0, _))) => {
+                                info!("Terminal {} reader: reached EOF", terminal_id_clone);
+                                break;
+                            }
+                            Ok(Ok((n, buffer))) => {
+                                let data = buffer[..n].to_vec();
+                                #[cfg(debug_assertions)]
+                                debug!("Terminal {} output: {} bytes", terminal_id_clone, n);
+
+                                // 广播输出到所有订阅者
+                                let _ = output_broadcast_for_io.send(data.clone());
+
+                                // 发送输出消息到所有连接的客户端
+                                let output_msg = MessageBuilder::terminal_io(
+                                    "cli_server".to_string(),
+                                    terminal_id_clone.clone(),
+                                    IODataType::Output,
+                                    data,
+                                );
+
+                                // 广播到所有连接的客户端
+                                if let Err(e) = quic_server_for_io.broadcast_message(output_msg).await {
+                                    error!("Failed to broadcast terminal output: {}", e);
+                                    // 不要因为发送失败就退出，继续处理
+                                }
+                            }
+                            Ok(Err(e)) => {
+                                error!("Failed to read from PTY: {}", e);
+                                break;
+                            }
+                            Err(e) => {
+                                error!("Read task panicked: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            info!("Terminal I/O loop ended for: {}", terminal_id_clone);
+        });
+
+        info!("✅ Async I/O loop spawned for terminal: {}", terminal_id);
+
+        // 返回 terminal_id
         Ok(terminal_id)
     }
 
@@ -720,17 +868,18 @@ impl TerminalIOHandler {
 
     /// 处理终端输入
     async fn handle_terminal_input(&self, terminal_id: &str, data: Vec<u8>) -> Result<()> {
-        debug!(
+        let terminal_id = terminal_id.to_string();
+        info!(
             "Handling terminal input for {}: {} bytes",
             terminal_id,
             data.len()
         );
 
-        // 找到对应的终端 session 并克隆 master 引用
-        let master_clone = {
+        // 找到对应的终端 session 并获取输入通道
+        let input_tx = {
             let sessions = self.terminal_sessions.read().await;
-            if let Some(terminal_session) = sessions.get(terminal_id) {
-                terminal_session.master.clone()
+            if let Some(terminal_session) = sessions.get(&terminal_id) {
+                terminal_session.input_tx.clone()
             } else {
                 return Err(anyhow::anyhow!(
                     "Terminal session not found: {}",
@@ -739,29 +888,16 @@ impl TerminalIOHandler {
             }
         };
 
-        if let Some(_master_arc) = master_clone {
-            // 创建一个异步任务来处理写入操作
-            let terminal_id_clone = terminal_id.to_string();
+        if let Some(tx) = input_tx {
+            // 通过通道发送输入数据到 I/O 循环
+            tx.send(data)
+                .map_err(|e| anyhow::anyhow!("Failed to send input to terminal: {}", e))?;
 
-            tokio::task::spawn_blocking(move || {
-                // TODO: 实现真正的 PTY 输入
-                // portable_pty 的 MasterPty 需要特定的方法来写入数据
-                debug!(
-                    "PTY input not yet implemented for terminal {}: {} bytes",
-                    terminal_id_clone,
-                    data.len()
-                );
-
-                // 暂时只记录输入内容
-                if let Ok(input_str) = String::from_utf8(data.clone()) {
-                    debug!("Input content: {:?}", input_str);
-                }
-            });
-
+            info!("✅ Terminal input queued successfully");
             Ok(())
         } else {
             Err(anyhow::anyhow!(
-                "Terminal not found or not properly initialized"
+                "Terminal input channel not found or not properly initialized"
             ))
         }
     }
@@ -772,38 +908,30 @@ impl MessageHandler for TerminalIOHandler {
     async fn handle_message(&self, message: &Message) -> Result<Option<Message>> {
         match &message.payload {
             MessagePayload::TerminalIO(io_msg) => {
+                info!(
+                    "Received TerminalIO message: type={:?}, terminal_id={}",
+                    io_msg.data_type, io_msg.terminal_id
+                );
+
                 match &io_msg.data_type {
                     IODataType::Input => {
-                        match self
+                        info!(
+                            "Processing terminal input for {}: {} bytes",
+                            io_msg.terminal_id,
+                            io_msg.data.len()
+                        );
+
+                        // 处理终端输入，不返回响应（高频操作）
+                        if let Err(e) = self
                             .handle_terminal_input(&io_msg.terminal_id, io_msg.data.clone())
                             .await
                         {
-                            Ok(()) => {
-                                return Ok(Some(message.create_response(
-                                    MessagePayload::Response(ResponseMessage {
-                                        request_id: message.id.clone(),
-                                        success: true,
-                                        data: None,
-                                        message: Some(
-                                            "Terminal input processed successfully".to_string(),
-                                        ),
-                                    }),
-                                )));
-                            }
-                            Err(e) => {
-                                return Ok(Some(message.create_response(
-                                    MessagePayload::Response(ResponseMessage {
-                                        request_id: message.id.clone(),
-                                        success: false,
-                                        data: None,
-                                        message: Some(format!(
-                                            "Failed to process terminal input: {}",
-                                            e
-                                        )),
-                                    }),
-                                )));
-                            }
+                            error!("Failed to process terminal input: {}", e);
+                        } else {
+                            info!("Terminal input processed successfully");
                         }
+                        // 不返回响应，避免不必要的网络开销
+                        return Ok(None);
                     }
                     IODataType::Output => {
                         // 输出消息通常由 CLI 服务器发送给客户端，而不是接收

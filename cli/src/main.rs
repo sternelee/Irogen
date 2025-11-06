@@ -123,7 +123,9 @@ fn print_host_info(node_id: &str, ticket: &str) {
     println!("🚀 RiTerm Host Server Started");
     println!("🔑 Node ID: {}", node_id);
     println!();
+
     println!("🎫 Connection Ticket:");
+    println!();
     println!("{}", &ticket);
     println!();
 

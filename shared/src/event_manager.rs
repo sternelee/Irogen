@@ -483,21 +483,21 @@ impl CommunicationManager {
 
     /// 启动消息处理循环
     async fn start_message_processing_loop(&self) -> Result<()> {
-        let _outgoing_tx = self.outgoing_message_tx.clone();
+        let outgoing_tx = self.outgoing_message_tx.clone();
         let node_id = self.node_id.clone();
 
         tokio::spawn(async move {
-            // 这里可以添加消息处理逻辑，比如：
-            // - 消息重试机制
-            // - 消息优先级队列
-            // - 消息统计和监控
-
             debug!("Message processing loop started for node: {}", node_id);
 
-            // 模拟处理循环
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            // 保持 outgoing_tx 存活，这样通道就不会被关闭
+            // 实际的消息发送是通过 send_message() 方法进行的
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                debug!("Message processing loop alive for node: {}", node_id);
+            }
 
-            info!("Message processing loop ended for node: {}", node_id);
+            // 注意：这个循环永远不会退出，除非任务被取消
+            // 这样可以保持 outgoing_tx 存活，防止通道关闭
         });
 
         Ok(())
