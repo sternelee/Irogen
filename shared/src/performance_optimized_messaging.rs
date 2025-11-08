@@ -803,4 +803,3 @@ mod tests {
         assert!(metrics.messages_per_second.load(Ordering::Relaxed) > 0);
     }
 }
-

@@ -8,9 +8,12 @@ use crate::message_protocol::*;
 use anyhow::Result;
 use async_trait::async_trait;
 pub use iroh::NodeAddr;
-use iroh::{Endpoint, discovery::dns::DnsDiscovery};
+use iroh::{Endpoint, SecretKey, discovery::dns::DnsDiscovery};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
+use std::io::Write;
+use std::path::Path;
 
 // 端点地址序列化辅助结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,16 +194,24 @@ pub struct QuicMessageServerConfig {
     pub heartbeat_interval: std::time::Duration,
     /// 超时设置
     pub timeout: std::time::Duration,
+    /// SecretKey存储路径（用于持久化node ID）
+    pub secret_key_path: Option<std::path::PathBuf>,
 }
 
 impl Default for QuicMessageServerConfig {
     fn default() -> Self {
+        // 默认使用当前启动目录
+        let default_path = std::env::current_dir()
+            .ok()
+            .map(|cwd| cwd.join("riterm_secret_key"));
+
         Self {
             bind_addr: None,
             relay_url: None,
             max_connections: 100,
             heartbeat_interval: std::time::Duration::from_secs(30),
             timeout: std::time::Duration::from_secs(60),
+            secret_key_path: default_path,
         }
     }
 }
@@ -213,7 +224,16 @@ pub struct QuicConnection {
     pub endpoint_addr: String,
     pub established_at: std::time::SystemTime,
     pub last_activity: std::time::SystemTime,
-    pub connection: iroh::endpoint::Connection,  // 存储实际的连接对象
+    pub connection: iroh::endpoint::Connection, // 存储实际的连接对象
+}
+
+/// 连接信息用于状态显示
+#[derive(Debug, Clone)]
+pub struct ConnectionInfo {
+    pub id: String,
+    pub node_id: iroh::PublicKey,
+    pub established_at: std::time::SystemTime,
+    pub last_activity: std::time::SystemTime,
 }
 
 /// QUIC消息服务器
@@ -228,6 +248,59 @@ pub struct QuicMessageServer {
 }
 
 impl QuicMessageServer {
+    /// 加载或生成SecretKey
+    async fn load_or_generate_secret_key(key_path: Option<&Path>) -> Result<SecretKey> {
+        match key_path {
+            Some(path) => {
+                // 尝试加载已有的密钥
+                if path.exists() {
+                    info!("Loading existing secret key from: {:?}", path);
+                    let key_data = fs::read(path)?;
+                    if key_data.len() != 32 {
+                        return Err(anyhow::anyhow!(
+                            "Invalid secret key file length: expected 32 bytes, got {}",
+                            key_data.len()
+                        ));
+                    }
+                    let mut key_array = [0u8; 32];
+                    key_array.copy_from_slice(&key_data);
+                    let secret_key = SecretKey::from_bytes(&key_array);
+                    info!("✅ Loaded existing secret key");
+                    Ok(secret_key)
+                } else {
+                    // 生成新密钥并保存
+                    info!("Generating new secret key and saving to: {:?}", path);
+                    let secret_key = SecretKey::generate(&mut rand::rng());
+
+                    // 确保目录存在
+                    if let Some(parent) = path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+
+                    // 保存密钥到文件
+                    let key_bytes = secret_key.to_bytes();
+                    let mut file = fs::File::create(path)?;
+                    file.write_all(&key_bytes)?;
+
+                    // 设置文件权限（仅所有者可读写）
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let mut perms = fs::metadata(path)?.permissions();
+                        perms.set_mode(0o600); // rw-------
+                        fs::set_permissions(path, perms)?;
+                    }
+
+                    info!("✅ Generated and saved new secret key");
+                    Ok(secret_key)
+                }
+            }
+            None => {
+                info!("No secret key path provided, generating temporary key");
+                Ok(SecretKey::generate(&mut rand::rng()))
+            }
+        }
+    }
     /// 创建新的QUIC消息服务器
     pub async fn new(
         config: QuicMessageServerConfig,
@@ -235,11 +308,16 @@ impl QuicMessageServer {
     ) -> Result<Self> {
         info!("Initializing QUIC message server...");
 
-        // 创建endpoint with ALPN
+        // 加载或生成SecretKey
+        let secret_key =
+            Self::load_or_generate_secret_key(config.secret_key_path.as_deref()).await?;
+
+        // 创建endpoint with ALPN and persistent secret key
         let endpoint = if let Some(relay) = &config.relay_url {
             info!("Using custom relay: {}", relay);
             let _relay_url: url::Url = relay.parse()?;
             Endpoint::builder()
+                .secret_key(secret_key)
                 .alpns(vec![QUIC_MESSAGE_ALPN.to_vec()])
                 .discovery(DnsDiscovery::n0_dns())
                 .bind()
@@ -247,6 +325,7 @@ impl QuicMessageServer {
         } else {
             info!("Using default relay");
             Endpoint::builder()
+                .secret_key(secret_key)
                 .alpns(vec![QUIC_MESSAGE_ALPN.to_vec()])
                 .discovery(DnsDiscovery::n0_dns())
                 .bind()
@@ -331,27 +410,44 @@ impl QuicMessageServer {
     ) -> Result<()> {
         // 执行握手
         let connection = incoming.await?;
-        let remote_node_id = connection.remote_node_id();
-        let endpoint_addr = format!("{:?}", remote_node_id);
+        let remote_node_id_result = connection.remote_node_id();
+        let endpoint_addr = format!("{:?}", remote_node_id_result);
 
-        info!("Message connection established with: {:?}", remote_node_id);
-
-        // 创建连接状态
-        let connection_id = format!("conn_{}", uuid::Uuid::new_v4());
-        let conn_state = QuicConnection {
-            id: connection_id.clone(),
-            node_id: remote_node_id?,
-            endpoint_addr: endpoint_addr.clone(),
-            established_at: std::time::SystemTime::now(),
-            last_activity: std::time::SystemTime::now(),
-            connection: connection.clone(),  // 存储连接对象
-        };
-
-        // 存储连接
-        {
+        // 检查是否已有相同node_id的连接
+        let connection_id = {
             let mut conns = connections.write().await;
-            conns.insert(connection_id.clone(), conn_state);
-        }
+
+            // 先获取node_id，然后使用
+            let remote_id = remote_node_id_result?;
+
+            info!("Message connection established with: {:?}", remote_id);
+
+            // 查找是否有相同node_id的连接
+            let existing_conn = conns.iter_mut().find(|(_, conn)| conn.node_id == remote_id);
+
+            if let Some((existing_id, existing_conn)) = existing_conn {
+                // 找到相同node_id的连接，更新连接信息但保持相同ID
+                info!("🔄 Reconnected from same node: {:?}", remote_id);
+                existing_conn.connection = connection.clone();
+                existing_conn.last_activity = std::time::SystemTime::now();
+                existing_conn.endpoint_addr = endpoint_addr.clone();
+                existing_id.clone()
+            } else {
+                // 新连接，创建新的连接状态
+                let new_connection_id = format!("conn_{}", uuid::Uuid::new_v4());
+                let conn_state = QuicConnection {
+                    id: new_connection_id.clone(),
+                    node_id: remote_id,
+                    endpoint_addr: endpoint_addr.clone(),
+                    established_at: std::time::SystemTime::now(),
+                    last_activity: std::time::SystemTime::now(),
+                    connection: connection.clone(),
+                };
+
+                conns.insert(new_connection_id.clone(), conn_state);
+                new_connection_id
+            }
+        };
 
         // 处理消息流
         Self::handle_message_streams(connection, connection_id, communication_manager).await
@@ -507,7 +603,7 @@ impl QuicMessageServer {
     ) -> Result<()> {
         #[cfg(debug_assertions)]
         debug!("Sending message to node: {:?}", node_id);
-        
+
         // 找到对应的连接
         let connection = {
             let connections = self.connections.read().await;
@@ -517,13 +613,13 @@ impl QuicMessageServer {
                 .map(|c| c.connection.clone())
                 .ok_or_else(|| anyhow::anyhow!("Connection not found for node: {:?}", node_id))?
         };
-        
+
         // 使用现有连接打开新流
         let (mut send_stream, _recv_stream) = connection.open_bi().await?;
-        
+
         // 序列化并发送消息
         Self::send_message(&mut send_stream, &message).await?;
-        
+
         #[cfg(debug_assertions)]
         debug!("Message sent successfully to node: {:?}", node_id);
         Ok(())
@@ -577,6 +673,79 @@ impl QuicMessageServer {
         connections.values().cloned().collect()
     }
 
+    /// 获取连接信息用于状态显示
+    pub async fn get_connection_info(&self) -> Vec<ConnectionInfo> {
+        let connections = self.connections.read().await;
+        connections
+            .values()
+            .map(|conn| ConnectionInfo {
+                id: conn.id.clone(),
+                node_id: conn.node_id,
+                established_at: conn.established_at,
+                last_activity: conn.last_activity,
+            })
+            .collect()
+    }
+
+    /// 主动清理指定node_id的连接
+    pub async fn cleanup_connection_by_node_id(&self, node_id: &iroh::PublicKey) -> bool {
+        let mut connections = self.connections.write().await;
+
+        // 找到要删除的连接ID
+        let connection_to_remove: Option<String> = connections
+            .iter()
+            .find(|(_, conn)| conn.node_id == *node_id)
+            .map(|(id, _)| id.clone());
+
+        if let Some(connection_id) = connection_to_remove {
+            if let Some(conn) = connections.remove(&connection_id) {
+                info!(
+                    "🔌 Force cleanup connection: {} (Node: {:?})",
+                    connection_id, node_id
+                );
+                // 关闭连接
+                conn.connection.close(0u32.into(), b"Connection cleanup");
+                debug!("Closed connection during cleanup");
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// 清理不活跃的连接（超过指定时间没有活动）
+    pub async fn cleanup_inactive_connections(&self, timeout: std::time::Duration) -> usize {
+        let mut connections = self.connections.write().await;
+        let now = std::time::SystemTime::now();
+
+        let inactive_connections: Vec<String> = connections
+            .iter()
+            .filter(|(_, conn)| {
+                now.duration_since(conn.last_activity).unwrap_or_default() > timeout
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        let count = inactive_connections.len();
+        for connection_id in inactive_connections {
+            if let Some(conn) = connections.remove(&connection_id) {
+                info!(
+                    "🔌 Cleanup inactive connection: {} (inactive for {:?}",
+                    connection_id,
+                    now.duration_since(conn.last_activity).unwrap_or_default()
+                );
+
+                conn.connection
+                    .close(0u32.into(), b"Inactive connection cleanup");
+                debug!("Closed inactive connection during cleanup");
+            }
+        }
+
+        count
+    }
+
     /// 关闭服务器
     pub async fn shutdown(&self) -> Result<()> {
         info!("Shutting down QUIC message server");
@@ -616,17 +785,31 @@ impl QuicMessageClient {
         relay_url: Option<String>,
         communication_manager: Arc<CommunicationManager>,
     ) -> Result<Self> {
+        Self::new_with_secret_key(relay_url, communication_manager, None).await
+    }
+
+    /// 创建新的QUIC消息客户端，支持持久化SecretKey
+    pub async fn new_with_secret_key(
+        relay_url: Option<String>,
+        communication_manager: Arc<CommunicationManager>,
+        secret_key_path: Option<&Path>,
+    ) -> Result<Self> {
         info!("Initializing QUIC message client...");
+
+        // 加载或生成SecretKey
+        let secret_key = QuicMessageServer::load_or_generate_secret_key(secret_key_path).await?;
 
         let endpoint = if let Some(relay) = relay_url {
             let _relay_url: url::Url = relay.parse()?;
             Endpoint::builder()
+                .secret_key(secret_key)
                 .alpns(vec![QUIC_MESSAGE_ALPN.to_vec()])
                 .discovery(DnsDiscovery::n0_dns())
                 .bind()
                 .await?
         } else {
             Endpoint::builder()
+                .secret_key(secret_key)
                 .alpns(vec![QUIC_MESSAGE_ALPN.to_vec()])
                 .discovery(DnsDiscovery::n0_dns())
                 .bind()
@@ -866,7 +1049,21 @@ impl QuicMessageClientHandle {
         relay_url: Option<String>,
         communication_manager: Arc<CommunicationManager>,
     ) -> Result<Self> {
-        let client = QuicMessageClient::new(relay_url, communication_manager).await?;
+        Self::new_with_secret_key(relay_url, communication_manager, None).await
+    }
+
+    /// 创建新的QUIC消息客户端句柄，支持持久化SecretKey
+    pub async fn new_with_secret_key(
+        relay_url: Option<String>,
+        communication_manager: Arc<CommunicationManager>,
+        secret_key_path: Option<&Path>,
+    ) -> Result<Self> {
+        let client = QuicMessageClient::new_with_secret_key(
+            relay_url,
+            communication_manager,
+            secret_key_path,
+        )
+        .await?;
         Ok(Self {
             client: Arc::new(Mutex::new(client)),
         })

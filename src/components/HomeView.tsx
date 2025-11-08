@@ -1,5 +1,6 @@
 import { createSignal, Show, For, onMount, onCleanup } from "solid-js";
 import { getDeviceCapabilities } from "../utils/mobile";
+import { getLastTicket, saveTicket, getTicketHistory } from "../utils/localStorage";
 
 interface HomeViewProps {
   sessionTicket: string;
@@ -23,10 +24,23 @@ export function HomeView(props: HomeViewProps) {
   const [password, setPassword] = createSignal("");
   const [inputFocused, setInputFocused] = createSignal(false);
   const [loginInputFocused, setLoginInputFocused] = createSignal(false);
+  const [ticketHistory, setTicketHistory] = createSignal<string[]>([]);
 
   // 检测设备类型
   const deviceCapabilities = getDeviceCapabilities();
   const isMobile = deviceCapabilities.isMobile;
+
+  // Load saved tickets on component mount
+  onMount(() => {
+    // Load last ticket and set it if no current ticket is provided
+    const lastTicket = getLastTicket();
+    if (lastTicket && !props.sessionTicket) {
+      props.onTicketInput(lastTicket);
+    }
+    
+    // Load ticket history
+    setTicketHistory(getTicketHistory());
+  });
 
   const handleLogin = () => {
     props.onLogin(username(), password());
@@ -34,7 +48,18 @@ export function HomeView(props: HomeViewProps) {
   };
 
   const handleQuickConnect = (ticket: string) => {
+    // Save ticket to localStorage before connecting
+    saveTicket(ticket);
     props.onConnect(ticket);
+  };
+
+  const handleConnect = () => {
+    const ticket = props.sessionTicket.trim();
+    if (ticket) {
+      // Save ticket to localStorage before connecting
+      saveTicket(ticket);
+      props.onConnect(ticket);
+    }
   };
 
   const handleShowQRScanner = async () => {
@@ -208,10 +233,10 @@ export function HomeView(props: HomeViewProps) {
                 class="input input-bordered w-full text-base"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && props.sessionTicket.trim()) {
-                    props.onConnect();
+                    handleConnect();
                   }
                 }}
-                autoFocus
+                autofocus
               />
               {props.connectionError && (
                 <div class="text-error text-sm mt-1">{props.connectionError}</div>
@@ -228,6 +253,28 @@ export function HomeView(props: HomeViewProps) {
             </Show>
           </div>
         </div>
+
+        {/* 票据历史 */}
+        <Show when={ticketHistory().length > 0}>
+          <div class="w-full max-w-md mb-4">
+            <div class="text-sm opacity-70 mb-2">最近连接:</div>
+            <div class="space-y-1">
+              <For each={ticketHistory()}>
+                {(ticket) => (
+                  <div
+                    class="p-2 bg-base-200 rounded-lg cursor-pointer hover:bg-base-300 transition-colors"
+                    onClick={() => {
+                      props.onTicketInput(ticket);
+                      handleConnect();
+                    }}
+                  >
+                    <div class="font-mono text-xs truncate">{ticket}</div>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
 
         {/* 登录按钮 */}
         {/* <EnhancedButton */}

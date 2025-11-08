@@ -8,11 +8,12 @@ use tauri::Manager;
 use tauri::{Emitter, State};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
+use tracing::info;
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 use riterm_shared::{
     CommunicationManager, Event, EventListener, EventType, IODataType, Message, MessageBuilder,
-    MessagePayload, NodeAddr, QuicMessageClientHandle, SerializableEndpointAddr, TerminalAction,
+    MessagePayload, QuicMessageClientHandle, SerializableEndpointAddr, TerminalAction,
 };
 
 /// Maximum number of concurrent sessions to prevent memory exhaustion
@@ -345,11 +346,6 @@ pub struct TerminalResizeRequest {
 }
 
 #[tauri::command]
-async fn initialize_network(state: State<'_, AppState>) -> Result<String, String> {
-    initialize_network_with_relay(None, state).await
-}
-
-#[tauri::command]
 async fn initialize_network_with_relay(
     relay_url: Option<String>,
     state: State<'_, AppState>,
@@ -361,10 +357,22 @@ async fn initialize_network_with_relay(
         .await
         .map_err(|e| format!("Failed to initialize communication manager: {}", e))?;
 
-    // Create QUIC client
-    let quic_client = QuicMessageClientHandle::new(relay_url, communication_manager.clone())
-        .await
-        .map_err(|e| format!("Failed to initialize QUIC client: {}", e))?;
+    // Get secret key path for persistent node ID - use app startup directory
+    let app_data_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let secret_key_path = app_data_dir.join("riterm_app_secret_key");
+    info!(
+        "🔑 Using app secret key in startup directory: {:?}",
+        secret_key_path
+    );
+
+    // Create QUIC client with persistent secret key
+    let quic_client = QuicMessageClientHandle::new_with_secret_key(
+        relay_url,
+        communication_manager.clone(),
+        Some(&secret_key_path),
+    )
+    .await
+    .map_err(|e| format!("Failed to initialize QUIC client: {}", e))?;
 
     let node_id = format!("{:?}", quic_client.get_node_id().await);
 
@@ -382,6 +390,11 @@ async fn initialize_network_with_relay(
     start_cleanup_task(&state).await;
 
     Ok(node_id)
+}
+
+#[tauri::command]
+async fn initialize_network(state: State<'_, AppState>) -> Result<String, String> {
+    initialize_network_with_relay(None, state).await
 }
 
 #[tauri::command]
@@ -550,7 +563,7 @@ async fn connect_to_peer(
 
                             // Process incoming message
                             #[cfg(debug_assertions)]
-                            tracing::debug!("Received message for session {}: type={:?}", 
+                            tracing::debug!("Received message for session {}: type={:?}",
                                 session_id_clone, message.message_type);
 
                             // Convert message to event and emit to frontend
@@ -1105,8 +1118,8 @@ pub fn run() {
     builder
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
-            initialize_network,
             initialize_network_with_relay,
+            initialize_network,
             connect_to_peer,
             execute_remote_command, // Kept for compatibility but redirects to terminal input
             disconnect_session,

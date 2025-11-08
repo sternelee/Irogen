@@ -575,4 +575,3 @@ mod tests {
         assert!(stats.total_processed.load(Ordering::Relaxed) >= 0);
     }
 }
-

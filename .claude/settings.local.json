@@ -48,7 +48,14 @@
       "Bash(RUSTDOCFLAGS='-Zunstable-options' cargo doc:*)",
       "Bash(echo:*)",
       "Bash(RUST_LOG=debug cargo run:*)",
-      "Bash(debug_ticket.rs)"
+      "Bash(debug_ticket.rs)",
+      "mcp__mcp-hub__context7-resolve-library-id",
+      "mcp__mcp-hub__context7-get-library-docs",
+      "Bash(./test_persistence.sh:*)",
+      "Bash(npm run tsc:*)",
+      "Bash(npm run build:*)",
+      "Bash(./test_cli_output.sh:*)",
+      "Read(//Users/sternelee/www/github/**)"
     ],
     "deny": []
   },

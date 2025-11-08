@@ -20,6 +20,17 @@ use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+use crate::shell::ShellDetector;
+
+/// Connection information for status display
+#[derive(Debug, Clone)]
+pub struct ConnectionInfo {
+    pub id: String,
+    pub node_id: iroh::PublicKey,
+    pub established_at: std::time::SystemTime,
+    pub last_activity: std::time::SystemTime,
+}
+
 /// 终端会话信息（序列化版本，不包含 PTY 对象）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalSession {
@@ -170,12 +181,21 @@ pub struct CliMessageServer {
     tcp_sessions: Arc<RwLock<HashMap<String, InternalTcpForwardingSession>>>,
     /// 系统状态
     system_status: Arc<RwLock<SystemStatus>>,
+    /// 默认终端路径
+    default_shell_path: String,
 }
 
 impl CliMessageServer {
     /// 创建新的 CLI 消息服务器
     pub async fn new(config: QuicMessageServerConfig) -> Result<Self> {
         info!("Initializing CLI message server...");
+
+        // 获取默认终端路径
+        let shell_config = ShellDetector::get_shell_config();
+        let default_shell_path = shell_config.shell_path.clone();
+        
+        #[cfg(debug_assertions)]
+        info!("🐚 Detected shell: {} at {}", shell_config.shell_type, default_shell_path);
 
         // 创建通信管理器
         let communication_manager =
@@ -198,6 +218,7 @@ impl CliMessageServer {
                 active_tcp_sessions: 0,
                 memory_usage: 0,
             })),
+            default_shell_path,
         };
 
         // 注册消息处理器
@@ -213,6 +234,7 @@ impl CliMessageServer {
             self.terminal_sessions.clone(),
             self.communication_manager.clone(),
             self.quic_server.clone(),
+            self.default_shell_path.clone(),
         ));
         self.communication_manager
             .register_message_handler(terminal_handler)
@@ -236,8 +258,33 @@ impl CliMessageServer {
             .register_message_handler(system_handler)
             .await;
 
+        // 启动定期连接清理任务
+        self.start_connection_cleanup_task().await;
+
         info!("All message handlers registered successfully");
         Ok(())
+    }
+
+    /// 启动定期连接清理任务
+    async fn start_connection_cleanup_task(&self) {
+        let quic_server = self.quic_server.clone();
+
+        tokio::spawn(async move {
+            let mut cleanup_interval = tokio::time::interval(std::time::Duration::from_secs(60));
+
+            loop {
+                cleanup_interval.tick().await;
+
+                // 清理超过5分钟不活跃的连接
+                let cleaned_count = quic_server
+                    .cleanup_inactive_connections(std::time::Duration::from_secs(300))
+                    .await;
+
+                if cleaned_count > 0 {
+                    info!("🔌 Cleaned up {} inactive connections", cleaned_count);
+                }
+            }
+        });
     }
 
     /// 获取节点 ID
@@ -251,6 +298,11 @@ impl CliMessageServer {
         } else {
             debug_str
         }
+    }
+
+    /// 获取默认shell路径
+    pub fn get_default_shell_path(&self) -> &str {
+        &self.default_shell_path
     }
 
     /// 生成连接票据 - 使用 NodeAddr (推荐，包含relay信息)
@@ -307,6 +359,11 @@ impl CliMessageServer {
         self.quic_server.get_active_connections_count().await
     }
 
+    /// 获取连接信息用于状态显示
+    pub async fn get_connection_info(&self) -> Result<Vec<riterm_shared::ConnectionInfo>> {
+        Ok(self.quic_server.get_connection_info().await)
+    }
+
     /// 关闭服务器
     pub async fn shutdown(&self) -> Result<()> {
         info!("Shutting down CLI message server");
@@ -331,6 +388,7 @@ pub struct TerminalMessageHandler {
     terminal_sessions: Arc<RwLock<HashMap<String, InternalTerminalSession>>>,
     communication_manager: Arc<CommunicationManager>,
     quic_server: QuicMessageServer,
+    default_shell_path: String,
 }
 
 impl TerminalMessageHandler {
@@ -338,11 +396,13 @@ impl TerminalMessageHandler {
         terminal_sessions: Arc<RwLock<HashMap<String, InternalTerminalSession>>>,
         communication_manager: Arc<CommunicationManager>,
         quic_server: QuicMessageServer,
+        default_shell_path: String,
     ) -> Self {
         Self {
             terminal_sessions,
             communication_manager,
             quic_server,
+            default_shell_path,
         }
     }
 
@@ -357,18 +417,6 @@ impl TerminalMessageHandler {
         let terminal_id = Uuid::new_v4().to_string();
         info!("Creating terminal session: {}", terminal_id);
 
-        // 确定 shell 路径
-        let shell = shell_path.unwrap_or_else(|| {
-            #[cfg(unix)]
-            {
-                std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
-            }
-            #[cfg(windows)]
-            {
-                "cmd.exe".to_string()
-            }
-        });
-
         // 确定 working directory
         let work_dir = working_dir.clone().unwrap_or_else(|| {
             std::env::current_dir()
@@ -376,6 +424,23 @@ impl TerminalMessageHandler {
                 .to_string_lossy()
                 .to_string()
         });
+
+        // 确定 shell 路径，优先使用启动时记录的默认路径
+        let shell = match &shell_path {
+            Some(custom_shell) => custom_shell.clone(),
+            None => self.default_shell_path.clone(),
+        };
+
+        #[cfg(debug_assertions)]
+        {
+            info!("🔧 Creating terminal with shell: {}", shell);
+            info!("📁 Working directory: {}", work_dir);
+            if let Some(custom_shell) = &shell_path {
+                info!("✨ Using custom shell: {}", custom_shell);
+            } else {
+                info!("🐚 Using default shell from CLI startup: {}", self.default_shell_path);
+            }
+        }
 
         // 创建 PTY 对
         let pty_pair = portable_pty::native_pty_system().openpty(PtySize {
@@ -389,6 +454,9 @@ impl TerminalMessageHandler {
         let mut cmd = CommandBuilder::new(shell.clone());
         if working_dir.is_some() {
             cmd.cwd(&work_dir);
+        } else {
+            // 如果没有指定工作目录，使用CLI启动时的工作目录
+            cmd.cwd(&std::env::current_dir().unwrap_or_default().to_string_lossy().as_ref());
         }
 
         // 启动 shell

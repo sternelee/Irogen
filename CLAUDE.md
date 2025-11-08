@@ -92,25 +92,83 @@ cargo test --workspace
 # Test specific components
 cd cli && cargo test
 cd shared && cargo test
+
+# Run specific test files
+cargo test --bin test_ticket
+cargo test --bin test_connection
+
+# Build and run test utilities
+rustc test_ticket.rs && ./test_ticket
+rustc test_connection.rs && ./test_connection
+```
+
+### Code Quality and Development Tools
+```bash
+# TypeScript type checking
+npm run tsc
+# or
+pnpm tsc
+
+# Frontend development server
+npm run dev
+# or
+pnpm dev
+
+# Build frontend only
+npm run build
+# or
+pnpm build
+
+# Preview built frontend
+npm run preview
+# or
+pnpm preview
+
+# Rust compilation check
+cargo check
+
+# Rust formatting
+cargo fmt
+
+# Rust linting
+cargo clippy
+
+# Build with debug information
+cargo build
+
+# Build optimized release
+cargo build --release
 ```
 
 ### Development Workflow
 ```bash
 # Install dependencies
 npm install
+# or
+pnpm install
 
 # Start development with hot reload
 npm run tauri dev
+# or
+pnpm tauri dev
 
 # For frontend-only development
 npm run dev
+# or
+pnpm dev
 
 # Type checking
 npm run tsc
+# or
+pnpm tsc
 
 # Build for production
 npm run build && npm run tauri build
+# or
+pnpm build && pnpm tauri build
 ```
+
+**Note**: The Tauri configuration (`app/tauri.conf.json`) references `pnpm` commands while the project root uses `npm`. Both package managers work, but be consistent within your development environment.
 
 ## Key Technical Details
 
@@ -197,11 +255,30 @@ The project has implemented a comprehensive message system replacing the previou
 - Message protocol validation
 - Terminal I/O synchronization testing
 
-## Build Targets
+## Build Targets and Workspace Structure
 
-- **CLI**: `cli/target/release/cli`
-- **Desktop**: `src-tauri/target/release/bundle/`
-- **Mobile**: Generated in `app/gen/android/` and `app/gen/apple/`
+### Project Structure
+```
+riterm/
+├── cli/                 # CLI tool (Rust) → builds to `cli/target/`
+├── app/                 # Tauri app (Rust + SolidJS) → builds to `app/target/`
+├── shared/              # Shared networking protocols (Rust library)
+├── src/                 # SolidJS frontend application
+└── dist/                # Built frontend assets
+```
+
+### Build Targets
+- **CLI**: `cli/target/release/cli` or `cli/target/debug/cli`
+- **Desktop App**: `app/target/release/bundle/` (macOS .app, Windows .exe, Linux AppImage)
+- **Mobile Apps**: Generated in `app/gen/android/` (APK) and `app/gen/apple/` (iOS .ipa)
+- **Frontend**: `dist/` directory (served by Tauri in production)
+
+### Build Process Notes
+- The project uses a Cargo workspace with three crates: `cli`, `app`, and `shared`
+- Frontend (SolidJS) builds to `dist/` which Tauri packages in the final app
+- The `app` directory contains the Tauri backend and mobile app code
+- Development server runs frontend on `http://localhost:1420` with hot reload
+- Mobile builds require platform-specific toolchains (Android SDK, Xcode)
 
 ## Common Development Patterns
 
