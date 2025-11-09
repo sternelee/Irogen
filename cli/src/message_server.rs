@@ -8,7 +8,8 @@ use portable_pty::{CommandBuilder, MasterPty, PtySize};
 use riterm_shared::{
     CommunicationManager, IODataType, Message, MessageHandler, MessagePayload, MessageType,
     QuicMessageServer, QuicMessageServerConfig, ResponseMessage, SystemAction, TcpForwardingAction,
-    TcpForwardingType, TerminalAction,
+    TcpForwardingType, TerminalAction, SystemInfoAction, SystemInfo, OSInfo, ShellInfo, AvailableTools,
+    PackageManager, Tool, UserInfo,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -17,6 +18,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener as TokioTcpListener, TcpStream as TokioTcpStream};
 use tokio::sync::{RwLock, mpsc};
+use tokio::process::Command;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -256,6 +258,12 @@ impl CliMessageServer {
         let system_handler = Arc::new(SystemControlMessageHandler::new(self.system_status.clone()));
         self.communication_manager
             .register_message_handler(system_handler)
+            .await;
+
+        // 注册系统信息处理器
+        let system_info_handler = Arc::new(SystemInfoMessageHandler::new());
+        self.communication_manager
+            .register_message_handler(system_info_handler)
             .await;
 
         // 启动定期连接清理任务
@@ -1652,5 +1660,517 @@ impl MessageHandler for SystemControlMessageHandler {
 
     fn supported_message_types(&self) -> Vec<MessageType> {
         vec![MessageType::SystemControl]
+    }
+}
+
+/// 系统信息消息处理器
+pub struct SystemInfoMessageHandler;
+
+impl SystemInfoMessageHandler {
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// 收集系统信息
+    async fn collect_system_info(&self) -> Result<SystemInfo> {
+        info!("Collecting system information...");
+
+        // 收集操作系统信息
+        let os_info = self.collect_os_info().await?;
+
+        // 收集 Shell 信息
+        let shell_info = self.collect_shell_info().await?;
+
+        // 收集可用工具信息
+        let available_tools = self.collect_available_tools().await?;
+
+        // 收集环境变量（选择性收集重要的环境变量）
+        let environment_vars = self.collect_environment_vars();
+
+        // 获取系统架构
+        let architecture = std::env::consts::ARCH.to_string();
+
+        // 获取主机名
+        let hostname = gethostname::gethostname()
+            .to_str()
+            .unwrap_or("unknown")
+            .to_string();
+
+        // 获取用户信息
+        let user_info = self.collect_user_info();
+
+        let system_info = SystemInfo {
+            os_info,
+            shell_info,
+            available_tools,
+            environment_vars,
+            architecture,
+            hostname,
+            user_info,
+        };
+
+        info!("System information collected successfully");
+        Ok(system_info)
+    }
+
+    /// 收集操作系统信息
+    async fn collect_os_info(&self) -> Result<OSInfo> {
+        let os_type = std::env::consts::OS.to_string();
+
+        // 获取详细的操作系统信息
+        let (name, version, kernel_version) = if cfg!(target_os = "macos") {
+            // macOS 特定的信息收集
+            match self.run_command("sw_vers", &["-productName"]).await {
+                Ok(product_name) => {
+                    let version = self.run_command("sw_vers", &["-productVersion"]).await.unwrap_or_default();
+                    let kernel_version = self.run_command("uname", &["-r"]).await.unwrap_or_default();
+                    (product_name, version, kernel_version)
+                }
+                Err(_) => ("macOS".to_string(), "Unknown".to_string(), "Unknown".to_string())
+            }
+        } else if cfg!(target_os = "linux") {
+            // Linux 特定的信息收集
+            let name = if let Ok(name) = self.run_command("lsb_release", &["-i", "-s"]).await {
+                name
+            } else if let Ok(_) = self.run_command("cat", &["/etc/os-release"]).await {
+                // Parse os-release for name
+                "Linux".to_string()
+            } else {
+                "Linux".to_string()
+            };
+
+            let version = self.run_command("lsb_release", &["-r", "-s"])
+                .await
+                .unwrap_or_else(|_| "Unknown".to_string());
+
+            let kernel_version = self.run_command("uname", &["-r"]).await.unwrap_or_default();
+            (name, version, kernel_version)
+        } else if cfg!(target_os = "windows") {
+            // Windows 特定的信息收集
+            let name = "Windows".to_string();
+            let version = self.run_command("cmd", &["/c", "ver"]).await.unwrap_or_else(|_| "Unknown".to_string());
+            let kernel_version = version.clone();
+            (name, version, kernel_version)
+        } else {
+            // 其他操作系统
+            (os_type.clone(), "Unknown".to_string(), "Unknown".to_string())
+        };
+
+        Ok(OSInfo {
+            os_type,
+            name,
+            version,
+            kernel_version,
+        })
+    }
+
+    /// 收集 Shell 信息
+    async fn collect_shell_info(&self) -> Result<ShellInfo> {
+        let shell_detector = ShellDetector::get_shell_config();
+
+        let default_shell = shell_detector.shell_path.clone();
+        let shell_type = shell_detector.shell_type.clone();
+        let shell_version = self.get_shell_version(&default_shell).await.unwrap_or_else(|_| "Unknown".to_string());
+
+        // 查找可用的 shells
+        let mut available_shells = Vec::new();
+
+        let potential_shells = if cfg!(target_os = "macos") || cfg!(target_os = "linux") {
+            vec!["/bin/bash", "/bin/zsh", "/bin/fish", "/bin/sh", "/usr/bin/fish"]
+        } else if cfg!(target_os = "windows") {
+            vec!["powershell", "cmd"]
+        } else {
+            vec![]
+        };
+
+        for shell in potential_shells {
+            if self.check_command_exists(shell).await {
+                available_shells.push(shell.to_string());
+            }
+        }
+
+        Ok(ShellInfo {
+            default_shell,
+            shell_type: shell_type.to_string(),
+            shell_version,
+            available_shells,
+        })
+    }
+
+    /// 收集可用工具信息
+    async fn collect_available_tools(&self) -> Result<AvailableTools> {
+        // 包管理器
+        let package_managers = self.collect_package_managers().await;
+
+        // 版本控制工具
+        let version_control = self.collect_version_control_tools().await;
+
+        // 文本编辑器
+        let text_editors = self.collect_text_editors().await;
+
+        // 搜索工具
+        let search_tools = self.collect_search_tools().await;
+
+        // 开发工具
+        let development_tools = self.collect_development_tools().await;
+
+        // 系统工具
+        let system_tools = self.collect_system_tools().await;
+
+        Ok(AvailableTools {
+            package_managers,
+            version_control,
+            text_editors,
+            search_tools,
+            development_tools,
+            system_tools,
+        })
+    }
+
+    /// 收集包管理器
+    async fn collect_package_managers(&self) -> Vec<PackageManager> {
+        let mut managers = Vec::new();
+
+        let potential_managers = [
+            ("brew", "brew", "Homebrew"),
+            ("apt", "apt", "APT"),
+            ("apt-get", "apt-get", "APT"),
+            ("yum", "yum", "YUM"),
+            ("dnf", "dnf", "DNF"),
+            ("pacman", "pacman", "Pacman"),
+            ("npm", "npm", "NPM"),
+            ("pip", "pip", "PIP"),
+            ("pip3", "pip3", "PIP3"),
+            ("cargo", "cargo", "Cargo"),
+        ];
+
+        for (cmd, name, display_name) in potential_managers {
+            if let Ok(version) = self.get_tool_version(cmd).await {
+                managers.push(PackageManager {
+                    name: display_name.to_string(),
+                    command: cmd.to_string(),
+                    version,
+                    available: true,
+                });
+            }
+        }
+
+        managers
+    }
+
+    /// 收集版本控制工具
+    async fn collect_version_control_tools(&self) -> Vec<Tool> {
+        let mut tools = Vec::new();
+
+        let vcs_tools = [
+            ("git", "Git", "分布式版本控制系统"),
+            ("svn", "Subversion", "集中式版本控制系统"),
+            ("hg", "Mercurial", "分布式版本控制系统"),
+        ];
+
+        for (cmd, name, description) in vcs_tools {
+            if let Ok(version) = self.get_tool_version(cmd).await {
+                tools.push(Tool {
+                    name: name.to_string(),
+                    command: cmd.to_string(),
+                    version,
+                    available: true,
+                    description: description.to_string(),
+                });
+            }
+        }
+
+        tools
+    }
+
+    /// 收集文本编辑器
+    async fn collect_text_editors(&self) -> Vec<Tool> {
+        let mut editors = Vec::new();
+
+        let editor_tools = [
+            ("vim", "Vim", "强大的文本编辑器"),
+            ("vi", "Vi", "经典文本编辑器"),
+            ("nvim", "Neovim", "现代 Vim 分支"),
+            ("emacs", "Emacs", "可扩展的文本编辑器"),
+            ("nano", "Nano", "简单易用的文本编辑器"),
+            ("code", "VS Code", "Visual Studio Code"),
+        ];
+
+        for (cmd, name, description) in editor_tools {
+            if let Ok(version) = self.get_tool_version(cmd).await {
+                editors.push(Tool {
+                    name: name.to_string(),
+                    command: cmd.to_string(),
+                    version,
+                    available: true,
+                    description: description.to_string(),
+                });
+            }
+        }
+
+        editors
+    }
+
+    /// 收集搜索工具
+    async fn collect_search_tools(&self) -> Vec<Tool> {
+        let mut tools = Vec::new();
+
+        let search_tools = [
+            ("rg", "ripgrep", "超快的文本搜索工具"),
+            ("grep", "grep", "经典文本搜索工具"),
+            ("find", "find", "文件查找工具"),
+            ("fd", "fd", "用户友好的文件查找工具"),
+            ("ag", "silver searcher", "快速的文本搜索工具"),
+        ];
+
+        for (cmd, name, description) in search_tools {
+            if let Ok(version) = self.get_tool_version(cmd).await {
+                tools.push(Tool {
+                    name: name.to_string(),
+                    command: cmd.to_string(),
+                    version,
+                    available: true,
+                    description: description.to_string(),
+                });
+            }
+        }
+
+        tools
+    }
+
+    /// 收集开发工具
+    async fn collect_development_tools(&self) -> Vec<Tool> {
+        let mut tools = Vec::new();
+
+        let dev_tools = [
+            ("node", "Node.js", "JavaScript 运行时"),
+            ("npm", "NPM", "Node.js 包管理器"),
+            ("python", "Python", "Python 编程语言"),
+            ("python3", "Python 3", "Python 3 编程语言"),
+            ("java", "Java", "Java 编程语言"),
+            ("javac", "Java Compiler", "Java 编译器"),
+            ("go", "Go", "Go 编程语言"),
+            ("rustc", "Rust", "Rust 编程语言"),
+            ("cargo", "Cargo", "Rust 包管理器"),
+            ("gcc", "GCC", "C/C++ 编译器"),
+            ("clang", "Clang", "C/C++ 编译器"),
+            ("make", "Make", "构建工具"),
+            ("cmake", "CMake", "构建系统"),
+            ("docker", "Docker", "容器化平台"),
+            ("curl", "cURL", "网络请求工具"),
+            ("wget", "wget", "文件下载工具"),
+        ];
+
+        for (cmd, name, description) in dev_tools {
+            if let Ok(version) = self.get_tool_version(cmd).await {
+                tools.push(Tool {
+                    name: name.to_string(),
+                    command: cmd.to_string(),
+                    version,
+                    available: true,
+                    description: description.to_string(),
+                });
+            }
+        }
+
+        tools
+    }
+
+    /// 收集系统工具
+    async fn collect_system_tools(&self) -> Vec<Tool> {
+        let mut tools = Vec::new();
+
+        let sys_tools = [
+            ("ps", "ps", "进程状态工具"),
+            ("top", "top", "系统监控工具"),
+            ("htop", "htop", "交互式进程查看器"),
+            ("ls", "ls", "列出目录内容"),
+            ("cat", "cat", "文件内容查看"),
+            ("less", "less", "文件分页查看"),
+            ("tail", "tail", "文件尾部查看"),
+            ("head", "head", "文件头部查看"),
+            ("sed", "sed", "流编辑器"),
+            ("awk", "awk", "文本处理工具"),
+            ("jq", "jq", "JSON 处理工具"),
+            ("tar", "tar", "归档工具"),
+            ("zip", "zip", "压缩工具"),
+            ("unzip", "unzip", "解压工具"),
+            ("ssh", "SSH", "安全远程连接"),
+            ("scp", "SCP", "安全文件传输"),
+        ];
+
+        for (cmd, name, description) in sys_tools {
+            if let Ok(version) = self.get_tool_version(cmd).await {
+                tools.push(Tool {
+                    name: name.to_string(),
+                    command: cmd.to_string(),
+                    version,
+                    available: true,
+                    description: description.to_string(),
+                });
+            }
+        }
+
+        tools
+    }
+
+    /// 收集环境变量
+    fn collect_environment_vars(&self) -> HashMap<String, String> {
+        let mut vars = HashMap::new();
+
+        // 收集重要的环境变量
+        let important_vars = [
+            "PATH",
+            "HOME",
+            "USER",
+            "SHELL",
+            "LANG",
+            "LC_ALL",
+            "TERM",
+            "EDITOR",
+            "VISUAL",
+            "GOPATH",
+            "GOROOT",
+            "NODE_PATH",
+            "PYTHONPATH",
+            "JAVA_HOME",
+            "RUST_HOME",
+            "CARGO_HOME",
+        ];
+
+        for var in important_vars {
+            if let Ok(value) = std::env::var(var) {
+                vars.insert(var.to_string(), value);
+            }
+        }
+
+        vars
+    }
+
+    /// 收集用户信息
+    fn collect_user_info(&self) -> UserInfo {
+        UserInfo {
+            username: std::env::var("USER").unwrap_or_else(|_| std::env::var("USERNAME").unwrap_or_default()),
+            home_directory: std::env::var("HOME").unwrap_or_else(|_| std::env::var("USERPROFILE").unwrap_or_default()),
+            current_directory: std::env::current_dir()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
+            user_id: std::env::var("UID").unwrap_or_else(|_| "unknown".to_string()),
+            group_id: std::env::var("GID").unwrap_or_else(|_| "unknown".to_string()),
+        }
+    }
+
+    /// 检查命令是否存在
+    async fn check_command_exists(&self, command: &str) -> bool {
+        self.run_command("which", &[command]).await.is_ok() ||
+        self.run_command("whereis", &[command]).await.is_ok() ||
+        self.run_command("command", &["-v", command]).await.is_ok()
+    }
+
+    /// 获取工具版本
+    async fn get_tool_version(&self, command: &str) -> Result<String> {
+        // 尝试不同的版本参数
+        let version_args = ["--version", "-V", "-v", "version"];
+
+        for arg in version_args {
+            if let Ok(output) = self.run_command(command, &[arg]).await {
+                let cleaned = output.trim().to_string();
+                if !cleaned.is_empty() && !cleaned.contains("not found") && !cleaned.contains("command not found") {
+                    return Ok(cleaned);
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!("Unable to get version for {}", command))
+    }
+
+    /// 获取 Shell 版本
+    async fn get_shell_version(&self, shell_path: &str) -> Result<String> {
+        // 根据不同 shell 类型使用不同的版本参数
+        if shell_path.contains("bash") {
+            self.run_command(shell_path, &["--version"]).await
+        } else if shell_path.contains("zsh") {
+            self.run_command(shell_path, &["--version"]).await
+        } else if shell_path.contains("fish") {
+            self.run_command(shell_path, &["--version"]).await
+        } else {
+            if let Ok(version) = self.run_command(shell_path, &["--version"]).await {
+                Ok(version)
+            } else if let Ok(version) = self.run_command(shell_path, &["-v"]).await {
+                Ok(version)
+            } else if let Ok(version) = self.run_command(shell_path, &["-V"]).await {
+                Ok(version)
+            } else {
+                Err(anyhow::anyhow!("Unable to get shell version"))
+            }
+        }
+    }
+
+    /// 运行命令并获取输出
+    async fn run_command(&self, command: &str, args: &[&str]) -> Result<String> {
+        let output = Command::new(command)
+            .args(args)
+            .output()
+            .await;
+
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+                } else {
+                    Err(anyhow::anyhow!("Command failed: {}", String::from_utf8_lossy(&output.stderr)))
+                }
+            }
+            Err(e) => Err(anyhow::anyhow!("Failed to run command {}: {}", command, e))
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl MessageHandler for SystemInfoMessageHandler {
+    async fn handle_message(&self, message: &Message) -> Result<Option<Message>> {
+        match &message.payload {
+            MessagePayload::SystemInfo(system_info_msg) => {
+                match &system_info_msg.action {
+                    SystemInfoAction::GetSystemInfo => {
+                        info!("Received system info request");
+                        match self.collect_system_info().await {
+                            Ok(system_info) => {
+                                let response_payload = MessagePayload::SystemInfo(
+                                    riterm_shared::message_protocol::SystemInfoMessage {
+                                        action: SystemInfoAction::SystemInfoResponse(system_info),
+                                        request_id: system_info_msg.request_id.clone(),
+                                    }
+                                );
+                                return Ok(Some(message.create_response(response_payload)));
+                            }
+                            Err(e) => {
+                                error!("Failed to collect system info: {}", e);
+                                return Ok(Some(message.create_response(
+                                    MessagePayload::Response(ResponseMessage {
+                                        request_id: message.id.clone(),
+                                        success: false,
+                                        data: None,
+                                        message: Some(format!("Failed to collect system info: {}", e)),
+                                    })
+                                )));
+                            }
+                        }
+                    }
+                    SystemInfoAction::SystemInfoResponse(_) => {
+                        // 服务器端不应该收到响应消息
+                        warn!("Received unexpected SystemInfoResponse message");
+                        return Ok(None);
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(None)
+    }
+
+    fn supported_message_types(&self) -> Vec<MessageType> {
+        vec![MessageType::SystemInfo]
     }
 }

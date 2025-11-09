@@ -1053,6 +1053,64 @@ async fn connect_to_terminal(
     Ok(())
 }
 
+#[tauri::command]
+async fn get_system_info(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let quic_client = {
+        let client_guard = state.quic_client.read().await;
+        match client_guard.as_ref() {
+            Some(c) => c.clone(),
+            None => return Err("QUIC client not initialized".to_string()),
+        }
+    };
+
+    let session = {
+        let sessions = state.sessions.read().await;
+        sessions
+            .get(&session_id)
+            .cloned()
+            .ok_or("Session not found")?
+    };
+
+    // Create system info request message
+    let message = MessageBuilder::system_info("riterm_app".to_string())
+        .with_session(session_id.clone());
+
+    // Send message via QUIC client and wait for response
+    send_message_via_client(&state, &session.connection_id, message, "system info").await?;
+
+    // For now, return a placeholder response
+    // In a real implementation, we would wait for the actual response from the CLI
+    Ok(serde_json::json!({
+        "os_info": {
+            "name": "Unknown",
+            "version": "Unknown",
+            "arch": "Unknown"
+        },
+        "shell_info": {
+            "shell_type": "Unknown",
+            "shell_path": "Unknown",
+            "version": null
+        },
+        "available_tools": {
+            "package_managers": [],
+            "editors": [],
+            "search_tools": [],
+            "version_control": [],
+            "development_tools": []
+        },
+        "environment_vars": {},
+        "architecture": "Unknown",
+        "hostname": "Unknown",
+        "user_info": {
+            "username": "Unknown",
+            "home_dir": "Unknown"
+        }
+    }))
+}
+
 /// Initialize tracing with conditional log levels based on build configuration
 fn init_tracing() {
     // Set different log levels based on build profile and features
@@ -1114,6 +1172,7 @@ pub fn run() {
             send_terminal_input_to_terminal,
             resize_terminal,
             connect_to_terminal, // Kept as no-op for compatibility
+            get_system_info,
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())

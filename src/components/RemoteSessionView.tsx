@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { CanvasAddon } from "@xterm/addon-canvas";
 import "@xterm/xterm/css/xterm.css";
 import { getDeviceCapabilities } from "../stores/deviceStore";
 import { useTerminalSessions } from "../stores/terminalSessionStore";
@@ -31,6 +32,7 @@ interface TerminalSession {
   terminalId: string;
   terminal: Terminal;
   fitAddon: FitAddon;
+  canvasAddon: CanvasAddon;
   isActive: boolean;
   terminalSession?: ReturnType<typeof useTerminalSession>;
 }
@@ -76,11 +78,63 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   const [isAiThinking, setIsAiThinking] = createSignal(false);
   const [showChatHistory, setShowChatHistory] = createSignal(false);
 
+  // OpenAI 响应相关状态
+  const [aiResponse, setAiResponse] = createSignal<{
+    commands: Array<{
+      id: string;
+      command: string;
+      description: string;
+      explanation: string;
+    }>;
+    explanation: string;
+  } | null>(null);
+
   // 侧边栏标签页状态
   const [activeSidebarTab, setActiveSidebarTab] = createSignal<'terminals' | 'services'>('terminals');
 
   // 侧边栏状态
   const [sidebarOpen, setSidebarOpen] = createSignal(true); // 默认开启，由CSS控制响应式
+
+  // TCP 转发相关状态
+  const [showTcpDialog, setShowTcpDialog] = createSignal(false);
+  const [tcpServices, setTcpServices] = createSignal<Array<{
+    id: string;
+    remotePort: number;
+    localPort: number;
+    status: 'active' | 'inactive' | 'error';
+    createdAt: number;
+  }>>([]);
+  const [tcpRemotePort, setTcpRemotePort] = createSignal("");
+  const [tcpLocalPort, setTcpLocalPort] = createSignal("");
+  const [tcpDialogInputFocused, setTcpDialogInputFocused] = createSignal(false);
+
+  // 系统信息相关状态
+  const [systemInfo, setSystemInfo] = createSignal<{
+    os_info: {
+      name: string;
+      version: string;
+      arch: string;
+    };
+    shell_info: {
+      shell_type: string;
+      shell_path: string;
+      version?: string;
+    };
+    available_tools: {
+      package_managers: string[];
+      editors: string[];
+      search_tools: string[];
+      version_control: string[];
+      development_tools: string[];
+    };
+    environment_vars: Record<string, string>;
+    architecture: string;
+    hostname: string;
+    user_info: {
+      username: string;
+      home_dir: string;
+    };
+  } | null>(null);
 
   const deviceCapabilities = getDeviceCapabilities();
   const isMobile = deviceCapabilities.isMobile;
@@ -134,6 +188,98 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       await invoke("get_terminal_list", { sessionId: props.sessionId });
     } catch (error) {
       console.error("Failed to fetch terminal list:", error);
+    }
+  };
+
+  // 获取系统信息
+  const fetchSystemInfo = async () => {
+    try {
+      const response = await invoke("get_system_info", { sessionId: props.sessionId });
+      console.log("System info received:", response);
+      setSystemInfo(response);
+      return response;
+    } catch (error) {
+      console.error("Failed to fetch system info:", error);
+      return null;
+    }
+  };
+
+  // 获取下一个可用的本地端口（从6001开始递增）
+  const getNextAvailableLocalPort = () => {
+    const services = tcpServices();
+    const usedPorts = services.map(service => service.localPort);
+    let nextPort = 6001;
+
+    while (usedPorts.includes(nextPort)) {
+      nextPort++;
+    }
+
+    return nextPort;
+  };
+
+  // 打开 TCP 转发对话框
+  const openTcpDialog = () => {
+    const nextPort = getNextAvailableLocalPort();
+    setTcpRemotePort("");
+    setTcpLocalPort(nextPort.toString());
+    setShowTcpDialog(true);
+  };
+
+  // 确认创建 TCP 转发
+  const confirmCreateTcpForwarding = async () => {
+    const remotePort = parseInt(tcpRemotePort());
+    const localPort = parseInt(tcpLocalPort());
+
+    if (isNaN(remotePort) || remotePort < 1 || remotePort > 65535) {
+      alert("请输入有效的远程端口（1-65535）");
+      return;
+    }
+
+    if (isNaN(localPort) || localPort < 1 || localPort > 65535) {
+      alert("请输入有效的本地端口（1-65535）");
+      return;
+    }
+
+    const newService = {
+      id: Date.now().toString(),
+      remotePort,
+      localPort,
+      status: 'active' as const,
+      createdAt: Date.now()
+    };
+
+    setTcpServices(prev => [...prev, newService]);
+    setShowTcpDialog(false);
+
+    // 这里可以调用后端API创建实际的TCP转发
+    try {
+      await invoke("create_tcp_forwarding", {
+        sessionId: props.sessionId,
+        remotePort,
+        localPort
+      });
+      console.log(`TCP转发创建成功: ${localPort} -> ${remotePort}`);
+    } catch (error) {
+      console.error("Failed to create TCP forwarding:", error);
+      // 如果创建失败，移除刚添加的服务
+      setTcpServices(prev => prev.filter(s => s.id !== newService.id));
+      alert("TCP转发创建失败，请检查端口是否可用");
+    }
+  };
+
+  // 停止 TCP 转发
+  const stopTcpForwarding = async (serviceId: string) => {
+    try {
+      await invoke("stop_tcp_forwarding", {
+        sessionId: props.sessionId,
+        serviceId
+      });
+
+      setTcpServices(prev => prev.filter(s => s.id !== serviceId));
+      console.log(`TCP转发已停止: ${serviceId}`);
+    } catch (error) {
+      console.error("Failed to stop TCP forwarding:", error);
+      alert("停止TCP转发失败");
     }
   };
 
@@ -277,13 +423,17 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       });
 
       const fitAddon = new FitAddon();
+      const canvasAddon = new CanvasAddon();
+      
       terminal.loadAddon(fitAddon);
+      terminal.loadAddon(canvasAddon);
 
       // 创建终端会话
       const terminalSession: TerminalSession = {
         terminalId,
         terminal,
         fitAddon,
+        canvasAddon,
         isActive: true,
       };
 
@@ -533,6 +683,9 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     // 初始加载数据
     await fetchTerminals();
 
+    // 获取系统信息
+    await fetchSystemInfo();
+
     setLoading(false);
 
     // 添加 resize 监听器 - 使用 debounce
@@ -661,7 +814,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
               </svg>
               TCP 服务
-              <div class="badge badge-neutral badge-xs">0</div>
+              <div class="badge badge-neutral badge-xs">{tcpServices().length}</div>
             </div>
           </a>
         </div>
@@ -753,6 +906,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
               <button
                 class="btn btn-primary btn-sm"
                 title="添加服务"
+                onClick={() => openTcpDialog()}
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -761,18 +915,55 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
             </div>
 
             {/* 服务列表 */}
-            <div class="text-center py-8">
-              <div class="mask mask-squircle w-14 h-14 mx-auto mb-3 bg-base-200 flex items-center justify-center">
-                <svg class="w-7 h-7 text-base-content/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                </svg>
+            <Show when={tcpServices().length > 0} fallback={
+              <div class="text-center py-8">
+                <div class="mask mask-squircle w-14 h-14 mx-auto mb-3 bg-base-200 flex items-center justify-center">
+                  <svg class="w-7 h-7 text-base-content/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                  </svg>
+                </div>
+                <div class="text-sm text-base-content/50 mb-3">暂无TCP服务</div>
+                <div class="text-xs text-base-content/40 space-y-1">
+                  <p>可以在此管理TCP端口转发服务</p>
+                  <p>支持本地端口映射到远程服务</p>
+                </div>
               </div>
-              <div class="text-sm text-base-content/50 mb-3">暂无TCP服务</div>
-              <div class="text-xs text-base-content/40 space-y-1">
-                <p>可以在此管理TCP端口转发服务</p>
-                <p>支持本地端口映射到远程服务</p>
+            }>
+              <div class="space-y-3">
+                <For each={tcpServices()}>
+                  {(service) => (
+                    <div class="card bg-base-200 shadow-sm p-4">
+                      <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                          <div class="flex items-center gap-2 mb-1">
+                            <div class={`w-2 h-2 rounded-full ${
+                              service.status === 'active' ? 'bg-green-400' :
+                              service.status === 'error' ? 'bg-red-400' : 'bg-gray-400'
+                            }`} />
+                            <span class="font-medium">端口转发</span>
+                          </div>
+                          <div class="text-sm text-base-content/70">
+                            {service.localPort} → {service.remotePort}
+                          </div>
+                          <div class="text-xs text-base-content/50">
+                            本地端口 {service.localPort} 转发到远程端口 {service.remotePort}
+                          </div>
+                        </div>
+                        <button
+                          class="btn btn-ghost btn-xs btn-circle text-error hover:bg-error/10"
+                          onClick={() => stopTcpForwarding(service.id)}
+                          title="停止转发"
+                        >
+                          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </For>
               </div>
-            </div>
+            </Show>
           </div>
         </Show>
       </div>
@@ -949,6 +1140,88 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
               </div>
             </div>
           </Show>
+
+          {/* Mobile AI Commands List */}
+          <Show when={aiResponse() && aiResponse()!.commands.length > 0}>
+            <div class="mt-2">
+              <div class="bg-base-100 rounded-lg border border-base-300">
+                <div class="p-2 border-b border-base-200">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-1">
+                      <svg class="w-3 h-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      <span class="text-xs font-medium">AI 命令</span>
+                    </div>
+                    <button
+                      class="btn btn-ghost btn-xs btn-square w-4 h-4"
+                      onClick={() => setAiResponse(null)}
+                      title="关闭"
+                    >
+                      <svg class="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="max-h-40 overflow-y-auto">
+                  <For each={aiResponse()!.commands}>
+                    {(command, index) => (
+                      <div class={`p-2 border-b border-base-200 last:border-b-0 ${index() === 0 ? 'bg-primary/5' : ''
+                        }`}>
+                        <div class="flex items-start justify-between gap-2">
+                          <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-1 mb-1">
+                              <div class="badge badge-primary badge-xs text-xs">
+                                {index() + 1}
+                              </div>
+                              <span class="text-xs font-medium truncate">
+                                {command.description}
+                              </span>
+                            </div>
+
+                            <div class="bg-base-200 rounded p-1 mb-1">
+                              <code class="text-xs font-mono break-all">
+                                {command.command}
+                              </code>
+                            </div>
+
+                            <div class="text-xs text-base-content/50 line-clamp-2">
+                              {command.explanation}
+                            </div>
+                          </div>
+
+                          <div class="flex flex-col gap-1">
+                            <button
+                              class="btn btn-primary btn-xs w-6 h-6 p-0"
+                              onClick={() => executeAiCommand(command.command)}
+                              title="执行"
+                            >
+                              <svg class="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            </button>
+
+                            <button
+                              class="btn btn-ghost btn-xs w-6 h-6 p-0"
+                              onClick={() => navigator.clipboard.writeText(command.command)}
+                              title="复制"
+                            >
+                              <svg class="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </div>
+            </div>
+          </Show>
         </div>
 
         {/* Traditional Shortcut Bar */}
@@ -1094,22 +1367,20 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
     try {
       // 生成AI响应和终端命令
-      const aiResponse = await generateAiResponse(message);
+      const response = await generateAiResponse(message);
+
+      // 保存AI响应到状态
+      setAiResponse(response);
 
       // 添加AI响应到聊天历史
       const aiMessage = {
         id: (Date.now() + 1).toString(),
         role: 'ai' as const,
-        content: aiResponse.explanation,
+        content: response.explanation,
         timestamp: Date.now(),
-        command: aiResponse.command
+        commands: response.commands
       };
       setChatMessages(prev => [...prev, aiMessage]);
-
-      // 如果生成了命令，发送到终端
-      if (aiResponse.command) {
-        await sendCommandToTerminal(aiResponse.command);
-      }
 
     } catch (error) {
       console.error("Failed to generate AI response:", error);
@@ -1127,72 +1398,461 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     }
   };
 
-  // 生成AI响应和终端命令
-  const generateAiResponse = async (userMessage: string): Promise<{
-    explanation: string;
-    command: string;
-  }> => {
-    // 简单的AI响应逻辑（在实际项目中，这里会调用真正的AI API）
-    const message = userMessage.toLowerCase();
+  // 执行AI生成的命令
+  const executeAiCommand = async (command: string) => {
+    const activeId = activeTerminalId();
+    if (!activeId) return;
 
-    // 基于关键词生成响应
-    if (message.includes('list') || message.includes('文件') || message.includes('目录')) {
+    try {
+      await sendCommandToTerminal(command);
+
+      // 添加命令执行记录到聊天历史
+      const executionMessage = {
+        id: Date.now().toString(),
+        role: 'user' as const,
+        content: `执行命令: ${command}`,
+        timestamp: Date.now(),
+        command: command
+      };
+      setChatMessages(prev => [...prev, executionMessage]);
+
+      // 清空AI响应，避免重复显示
+      setAiResponse(null);
+
+    } catch (error) {
+      console.error("Failed to execute command:", error);
+
+      // 添加错误消息
+      const errorMessage = {
+        id: Date.now().toString(),
+        role: 'ai' as const,
+        content: `命令执行失败: ${error}`,
+        timestamp: Date.now()
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
+    }
+  };
+
+  // 调用 OpenAI API 生成终端命令
+  const generateAiResponse = async (userMessage: string): Promise<{
+    commands: Array<{
+      id: string;
+      command: string;
+      description: string;
+      explanation: string;
+    }>;
+    explanation: string;
+  }> => {
+    try {
+      // 获取系统信息用于构建提示词
+      const sysInfo = systemInfo();
+
+      // 构建系统环境描述
+      const buildSystemContext = () => {
+        if (!sysInfo) {
+          // 如果没有系统信息，使用默认的通用描述
+          return `你是一个专业的终端命令助手。请根据用户的需求生成相应的终端命令。
+
+【系统环境信息】
+- 操作系统：通用 Unix-like 系统
+- 默认Shell：bash/zsh (兼容常用语法)
+- 可用工具：常见的 Unix 工具如 git, vim, curl, wget, grep, find, sed, awk 等
+
+请以以下 JSON 格式返回响应：
+{
+  "explanation": "对用户需求的整体解释和说明",
+  "commands": [
+    {
+      "id": "唯一标识符",
+      "command": "具体的终端命令",
+      "description": "命令的简短描述",
+      "explanation": "命令的详细解释，包括作用、参数说明等"
+    }
+  ]
+}`;
+        }
+
+        const { os_info, shell_info, available_tools, environment_vars, architecture, hostname, user_info } = sysInfo;
+
+        // 构建可用工具列表
+        const toolsList = [
+          ...available_tools.package_managers,
+          ...available_tools.editors,
+          ...available_tools.search_tools,
+          ...available_tools.version_control,
+          ...available_tools.development_tools
+        ].filter((tool, index, arr) => arr.indexOf(tool) === index); // 去重
+
+        // 构建包管理器说明
+        const packageManagerInfo = available_tools.package_managers.map(pm => {
+          switch (pm) {
+            case 'brew': return '- Homebrew (brew): macOS 包管理器，用于安装软件包';
+            case 'apt': return '- APT (apt): Debian/Ubuntu 包管理器';
+            case 'yum': return '- YUM: CentOS/RHEL 包管理器';
+            case 'dnf': return '- DNF: Fedora 包管理器';
+            case 'pacman': return '- Pacman: Arch Linux 包管理器';
+            case 'npm': return '- NPM: Node.js 包管理器';
+            case 'pip': return '- pip: Python 包管理器';
+            case 'cargo': return '- Cargo: Rust 包管理器';
+            default: return `- ${pm}: 包管理器`;
+          }
+        }).join('\n');
+
+        // 构建搜索工具说明
+        const searchToolInfo = available_tools.search_tools.map(tool => {
+          switch (tool) {
+            case 'rg': return '- ripgrep (rg): 超快的文本搜索工具，支持正则表达式和递归搜索';
+            case 'fd': return '- fd: find 的现代替代品，用户友好的文件查找工具';
+            case 'grep': return '- grep: 传统文本搜索工具';
+            case 'find': return '- find: 文件和目录查找工具';
+            case 'ack': return '- ack: 为程序员设计的文本搜索工具';
+            case 'ag': return '- ag (silversearcher-ag): 代码搜索工具';
+            default: return `- ${tool}: 搜索工具`;
+          }
+        }).join('\n');
+
+        // 构建编辑器说明
+        const editorInfo = available_tools.editors.map(editor => {
+          switch (editor) {
+            case 'vim': return '- vim: 强大的文本编辑器，支持插件和配置';
+            case 'nvim': return '- neovim: vim 的现代分支，有更好的性能和用户体验';
+            case 'nano': return '- nano: 简单易用的文本编辑器';
+            case 'emacs': return '- emacs: 功能强大的可扩展文本编辑器';
+            case 'code': return '- VS Code: 现代化的代码编辑器';
+            default: return `- ${editor}: 文本编辑器`;
+          }
+        }).join('\n');
+
+        return `你是一个专业的 ${os_info.name} 系统终端命令助手。请根据用户的需求生成相应的终端命令。
+
+【系统环境信息】
+- 操作系统：${os_info.name} ${os_info.version} (${os_info.arch})
+- 架构：${architecture}
+- 主机名：${hostname}
+- 用户：${user_info.username} (主目录: ${user_info.home_dir})
+- Shell：${shell_info.shell_type} (${shell_info.shell_path})${shell_info.version ? ` 版本: ${shell_info.version}` : ''}
+- 可用工具：${toolsList.join(', ')}
+
+【包管理器】
+${packageManagerInfo}
+
+【搜索工具】
+${searchToolInfo}
+
+【文本编辑器】
+${editorInfo}
+
+【重要环境变量】
+${Object.entries(environment_vars).slice(0, 5).map(([key, value]) => `- ${key}: ${value}`).join('\n')}
+
+请以以下 JSON 格式返回响应：
+{
+  "explanation": "对用户需求的整体解释和说明",
+  "commands": [
+    {
+      "id": "唯一标识符",
+      "command": "具体的终端命令",
+      "description": "命令的简短描述",
+      "explanation": "命令的详细解释，包括作用、参数说明等"
+    }
+  ]
+}
+
+【命令生成要求】
+1. 优先使用适合 ${os_info.name} 的命令和工具
+2. ${available_tools.search_tools.includes('rg') ? '推荐使用 ripgrep (rg) 而不是 grep 进行文本搜索' : '使用系统可用的搜索工具进行文本搜索'}
+3. ${available_tools.search_tools.includes('fd') ? '推荐使用 fd 而不是 find 进行文件查找' : '使用系统可用的工具进行文件查找'}
+4. 对于代码编辑，${available_tools.editors.length > 0 ? `推荐使用 ${available_tools.editors.slice(0, 2).join(' 或 ')}` : '使用系统可用的文本编辑器'}
+5. ${available_tools.package_managers.length > 0 ? `对于软件安装，使用 ${available_tools.package_managers[0]} install` : '使用系统适合的包管理器安装软件'}
+6. 命令必须安全且实用
+7. 提供清晰的解释，包括参数说明
+8. 如果涉及文件操作，提醒用户注意事项和备份建议
+9. 优先提供最常用和最有效的命令
+10. 如果有多个解决方案，提供2-3个最佳选项，并说明各自的优缺点
+11. 考虑 ${shell_info.shell_type} 的特性和语法
+12. 对于复杂的操作，提供步骤化的命令组合`;
+      };
+
+      // 构建 OpenAI API 请求
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY || 'your-openai-api-key'}`, // 实际使用时需要配置环境变量
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: buildSystemContext()
+            },
+            {
+              role: 'user',
+              content: userMessage
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 1000
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API 请求失败: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const aiContent = data.choices[0]?.message?.content;
+
+      if (!aiContent) {
+        throw new Error('OpenAI API 返回了空内容');
+      }
+
+      // 尝试解析 JSON 响应
+      let parsedResponse;
+      try {
+        // 查找 JSON 部分（可能包含在代码块中）
+        const jsonMatch = aiContent.match(/```json\s*([\s\S]*?)\s*```/) || aiContent.match(/\{[\s\S]*\}/);
+        const jsonStr = jsonMatch ? jsonMatch[1] || jsonMatch[0] : aiContent;
+        parsedResponse = JSON.parse(jsonStr);
+      } catch (parseError) {
+        console.error('解析 OpenAI 响应失败:', parseError);
+        // 如果解析失败，返回简单的文本响应
+        return {
+          explanation: aiContent,
+          commands: [{
+            id: 'default',
+            command: 'echo "请查看上方AI说明"',
+            description: '显示AI说明',
+            explanation: aiContent
+          }]
+        };
+      }
+
+      // 确保响应格式正确
+      if (!parsedResponse.commands || !Array.isArray(parsedResponse.commands)) {
+        return {
+          explanation: parsedResponse.explanation || aiContent,
+          commands: [{
+            id: 'default',
+            command: 'echo "请查看上方AI说明"',
+            description: '显示AI说明',
+            explanation: parsedResponse.explanation || aiContent
+          }]
+        };
+      }
+
       return {
-        explanation: "我来帮您列出当前目录的文件和文件夹。",
-        command: "ls -la"
+        explanation: parsedResponse.explanation || '根据您的需求，我为您生成了以下命令：',
+        commands: parsedResponse.commands.map((cmd: any, index: number) => ({
+          id: cmd.id || `cmd-${index}`,
+          command: cmd.command || '',
+          description: cmd.description || '执行命令',
+          explanation: cmd.explanation || cmd.command
+        }))
+      };
+
+    } catch (error) {
+      console.error('OpenAI API 调用失败:', error);
+
+      // 降级到本地规则匹配
+      return generateFallbackResponse(userMessage);
+    }
+  };
+
+  // 降级响应生成器（本地规则匹配）
+  const generateFallbackResponse = (userMessage: string): {
+    commands: Array<{
+      id: string;
+      command: string;
+      description: string;
+      explanation: string;
+    }>;
+    explanation: string;
+  } => {
+    const message = userMessage.toLowerCase();
+    const sysInfo = systemInfo();
+
+    // 获取系统相关信息
+    const getSystemSpecificInfo = () => {
+      if (!sysInfo) {
+        return {
+          osName: 'Unix-like 系统',
+          defaultShell: 'bash/zsh',
+          packageManager: '系统包管理器',
+          preferredSearchTool: 'grep',
+          preferredFindTool: 'find',
+          preferredEditor: 'vim'
+        };
+      }
+
+      const { os_info, shell_info, available_tools } = sysInfo;
+
+      return {
+        osName: os_info.name,
+        defaultShell: shell_info.shell_type,
+        packageManager: available_tools.package_managers[0] || '系统包管理器',
+        preferredSearchTool: available_tools.search_tools.includes('rg') ? 'rg' :
+                           available_tools.search_tools.includes('ag') ? 'ag' :
+                           available_tools.search_tools.includes('ack') ? 'ack' : 'grep',
+        preferredFindTool: available_tools.search_tools.includes('fd') ? 'fd' : 'find',
+        preferredEditor: available_tools.editors[0] || 'vim'
+      };
+    };
+
+    const systemInfo = getSystemSpecificInfo();
+
+    if (message.includes('list') || message.includes('文件') || message.includes('目录')) {
+      const lsOptions = systemInfo.osName.toLowerCase().includes('macos') ? '-laG' : '-la';
+      return {
+        explanation: `我来帮您列出当前目录的文件和文件夹。在 ${systemInfo.osName} 上，ls 命令支持详细显示和格式选项。`,
+        commands: [{
+          id: 'list-files',
+          command: `ls ${lsOptions}`,
+          description: "列出详细文件信息",
+          explanation: `ls ${lsOptions} 会显示当前目录下所有文件和文件夹的详细信息，包括隐藏文件、权限、所有者、大小和修改时间。${systemInfo.osName.toLowerCase().includes('macos') ? '在 macOS 上，-G 参数会启用颜色输出。' : ''}`
+        }]
       };
     } else if (message.includes('当前目录') || message.includes('pwd')) {
       return {
-        explanation: "显示当前工作目录的完整路径。",
-        command: "pwd"
+        explanation: `显示当前工作目录的完整路径。在 ${systemInfo.osName} 上，pwd 会显示当前工作目录。`,
+        commands: [{
+          id: 'show-pwd',
+          command: "pwd",
+          description: "显示当前目录路径",
+          explanation: "pwd (print working directory) 命令会显示当前所在工作目录的完整路径。"
+        }]
       };
     } else if (message.includes('创建目录') || message.includes('mkdir')) {
       const match = message.match(/创建\s*目录\s*["']?([^"'\s]+)["']?/);
       const dirName = match ? match[1] : 'new_folder';
       return {
-        explanation: `创建一个名为 "${dirName}" 的新目录。`,
-        command: `mkdir ${dirName}`
+        explanation: `创建一个名为 "${dirName}" 的新目录。在 ${systemInfo.osName} 上，mkdir 支持创建多级目录。`,
+        commands: [{
+          id: 'create-dir',
+          command: `mkdir -p ${dirName}`,
+          description: `创建目录 ${dirName}`,
+          explanation: `mkdir -p 命令用于创建新目录。-p 参数会自动创建父目录（如果不存在），并且如果目录已存在也不会报错。目录名 "${dirName}" 将在当前位置创建。`
+        }]
       };
-    } else if (message.includes('删除') || message.includes('rm')) {
-      return {
-        explanation: "⚠️ 删除操作不可逆，请确认您要删除的内容。您可以使用 'rm filename' 删除文件或 'rm -rf dirname' 删除目录。",
-        command: "echo '请确认删除操作'"
-      };
-    } else if (message.includes('git')) {
-      if (message.includes('状态') || message.includes('status')) {
+    } else if (message.includes('搜索') || message.includes('查找')) {
+      if (message.includes('文本') || message.includes('内容')) {
+        const searchCommand = systemInfo.preferredSearchTool === 'rg' ? "rg -i 'search_term' ." :
+                             systemInfo.preferredSearchTool === 'ag' ? "ag -i 'search_term'" :
+                             systemInfo.preferredSearchTool === 'ack' ? "ack -i 'search_term'" :
+                             "grep -r 'search_term' .";
         return {
-          explanation: "检查Git仓库的状态，显示修改的文件。",
-          command: "git status"
+          explanation: `在当前目录及其子目录中搜索文本内容。推荐使用 ${systemInfo.preferredSearchTool}，它在 ${systemInfo.osName} 上效率很高。`,
+          commands: [{
+            id: 'search-text',
+            command: searchCommand,
+            description: "递归搜索文本内容",
+            explanation: `${systemInfo.preferredSearchTool} 是一个高效的文本搜索工具。-i 参数表示不区分大小写，'search_term' 需要替换为实际搜索内容。${systemInfo.preferredSearchTool === 'rg' ? 'rg 递归搜索当前目录（. 表示当前目录）。' : ''}`
+          }]
         };
-      } else if (message.includes('提交') || message.includes('commit')) {
+      } else if (message.includes('文件') || message.includes('file')) {
+        const findCommand = systemInfo.preferredFindTool === 'fd' ? "fd -t f 'filename'" : "find . -name 'filename'";
         return {
-          explanation: "提交当前的更改到Git仓库。",
-          command: "git add . && git commit -m 'Update files'"
+          explanation: `查找文件。推荐使用 ${systemInfo.preferredFindTool} 工具，它在 ${systemInfo.osName} 上性能很好。`,
+          commands: [{
+            id: 'find-files',
+            command: findCommand,
+            description: "查找文件",
+            explanation: `${systemInfo.preferredFindTool} ${systemInfo.preferredFindTool === 'fd' ? '是 find 的现代替代品，' : ''}用于查找文件。-t f 参数表示只查找文件，'filename' 需要替换为实际文件名。`
+          }]
         };
       }
+    } else if (message.includes('git') && (message.includes('状态') || message.includes('status'))) {
+      return {
+        explanation: `检查Git仓库的状态，显示修改的文件。Git 在 ${systemInfo.osName} 上可以通过 ${systemInfo.packageManager} 安装和管理。`,
+        commands: [{
+          id: 'git-status',
+          command: "git status",
+          description: "查看Git仓库状态",
+          explanation: "git status 会显示工作目录和暂存区的状态，包括已修改、已添加和未跟踪的文件。"
+        }]
+      };
+    } else if (message.includes('安装') || message.includes('install')) {
+      if (message.includes(systemInfo.packageManager)) {
+        return {
+          explanation: `使用 ${systemInfo.packageManager} 安装软件包。${systemInfo.packageManager} 是 ${systemInfo.osName} 上的包管理器。`,
+          commands: [{
+            id: 'install-package',
+            command: `${systemInfo.packageManager} install package_name`,
+            description: `使用 ${systemInfo.packageManager} 安装软件包`,
+            explanation: `${systemInfo.packageManager} install 命令会从仓库下载并安装指定的软件包。package_name 需要替换为实际要安装的软件名称。`
+          }]
+        };
+      } else {
+        return {
+          explanation: `在 ${systemInfo.osName} 上，推荐使用 ${systemInfo.packageManager} 来安装软件和工具。`,
+          commands: [{
+            id: 'install-generic',
+            command: `${systemInfo.packageManager} install package_name`,
+            description: `使用 ${systemInfo.packageManager} 安装软件`,
+            explanation: `对于大多数软件，可以使用 '${systemInfo.packageManager} install 软件名' 来安装。如果不知道具体包名，可以使用 '${systemInfo.packageManager} search 关键词' 来搜索。`
+          }]
+        };
+      }
+    } else if (message.includes('编辑') || message.includes('edit')) {
+      return {
+        explanation: `打开文本编辑器。在 ${systemInfo.osName} 上，有多种编辑器可供选择。`,
+        commands: [
+          {
+            id: 'edit-main',
+            command: `${systemInfo.preferredEditor} filename`,
+            description: `使用 ${systemInfo.preferredEditor} 编辑器打开文件`,
+            explanation: `${systemInfo.preferredEditor} 是强大的文本编辑器，支持语法高亮和配置。`
+          }
+        ]
+      };
+    } else if (message.includes('系统信息') || message.includes('system')) {
+      const systemCommand = systemInfo.osName.toLowerCase().includes('macos') ? "system_profiler SPSoftwareDataType" :
+                           systemInfo.osName.toLowerCase().includes('linux') ? "uname -a && lsb_release -a" :
+                           "uname -a";
+      return {
+        explanation: `显示 ${systemInfo.osName} 系统信息。`,
+        commands: [{
+          id: 'system-info',
+          command: systemCommand,
+          description: "显示系统信息",
+          explanation: `${systemCommand} 会显示操作系统的详细信息，包括版本、架构、主机名等。`
+        }]
+      };
     } else if (message.includes('运行') || message.includes('执行') || message.includes('启动')) {
       if (message.includes('npm')) {
         return {
-          explanation: "使用npm运行项目。",
-          command: "npm start"
+          explanation: `使用npm运行项目。Node.js 在 ${systemInfo.osName} 上可以通过 ${systemInfo.packageManager} 安装。`,
+          commands: [{
+            id: 'npm-start',
+            command: "npm start",
+            description: "启动npm项目",
+            explanation: "npm start 会运行 package.json 中 scripts.start 定义的命令，通常用于启动开发服务器。"
+          }]
         };
       } else if (message.includes('python') || message.includes('py')) {
+        const pythonCommand = systemInfo.osName.toLowerCase().includes('macos') ? "python3 script.py" : "python3 script.py";
         return {
-          explanation: "运行Python脚本。",
-          command: "python main.py"
+          explanation: `运行 Python 脚本。在 ${systemInfo.osName} 上推荐使用 Python 3.x。`,
+          commands: [{
+            id: 'run-python',
+            command: pythonCommand,
+            description: "使用 Python 3 运行脚本",
+            explanation: `${pythonCommand.split(' ')[0]} 命令会使用 Python 3.x 解释器运行指定的 Python 脚本。`
+          }]
         };
       }
-    } else if (message.includes('帮助') || message.includes('help')) {
-      return {
-        explanation: "显示常用命令帮助。您可以询问关于：\n• 列出文件 (ls)\n• 查看当前目录 (pwd)\n• 创建目录 (mkdir)\n• Git操作 (git status, git commit)\n• 运行程序",
-        command: "echo 'RiTerm AI助手 - 您可以用自然语言描述您想要执行的操作'"
-      };
     }
 
     // 默认响应
     return {
-      explanation: "我理解您想要执行相关操作。如果需要帮助，请输入'帮助'查看支持的命令。",
-      command: `echo "用户询问: ${userMessage}"`
+      explanation: `我理解您想要执行相关操作。这是 ${systemInfo.osName} 系统，我可以帮您处理各种终端操作。您可以询问关于文件管理、软件安装、Git操作、系统信息等。`,
+      commands: [{
+        id: 'help-command',
+        command: `echo 'RiTerm AI助手 - ${systemInfo.osName} 终端助手。试试：列出文件、搜索内容、安装软件、查看系统信息等'`,
+        description: "显示帮助信息",
+        explanation: `这是一个帮助命令。我可以帮助您处理 ${systemInfo.osName} 系统上的各种终端操作，包括文件管理、软件安装、版本控制等。`
+      }]
     };
   };
 
@@ -1308,6 +1968,132 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         </div>
       </Show>
 
+      {/* TCP 转发对话框 */}
+      <Show when={showTcpDialog()}>
+        <div
+          class="modal modal-open"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowTcpDialog(false);
+            }
+          }}
+        >
+          <div
+            class="modal-box transition-all duration-300 max-w-md"
+            classList={{
+              "translate-y-0": !tcpDialogInputFocused() || !isMobile,
+              "-translate-y-32": tcpDialogInputFocused() && isMobile
+            }}
+            style={{
+              "margin-bottom": tcpDialogInputFocused() && isMobile ? `${MobileKeyboard.getKeyboardHeight()}px` : "0"
+            }}
+          >
+            <h3
+              class="font-bold transition-all duration-300"
+              classList={{
+                "text-lg mb-4": !tcpDialogInputFocused() || !isMobile,
+                "text-base mb-2": tcpDialogInputFocused() && isMobile
+              }}
+            >
+              新增 TCP 转发
+            </h3>
+
+            <div class="space-y-4">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">远程端口</span>
+                </label>
+                <input
+                  type="number"
+                  placeholder="例如：8080"
+                  class="input input-bordered text-base"
+                  value={tcpRemotePort()}
+                  onInput={(e) => setTcpRemotePort(e.currentTarget.value)}
+                  onFocus={() => {
+                    setTcpDialogInputFocused(true);
+                    setTimeout(() => {
+                      MobileKeyboard.forceScrollAdjustment();
+                    }, 300);
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setTcpDialogInputFocused(false), 100);
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter") {
+                      confirmCreateTcpForwarding();
+                    }
+                  }}
+                  min="1"
+                  max="65535"
+                />
+                <label class="label">
+                  <span class="label-text-alt text-base-content/50">远程服务器上的端口 (1-65535)</span>
+                </label>
+              </div>
+
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">本地端口</span>
+                </label>
+                <input
+                  type="number"
+                  placeholder="例如：6001"
+                  class="input input-bordered text-base"
+                  value={tcpLocalPort()}
+                  onInput={(e) => setTcpLocalPort(e.currentTarget.value)}
+                  onFocus={() => {
+                    setTcpDialogInputFocused(true);
+                    setTimeout(() => {
+                      MobileKeyboard.forceScrollAdjustment();
+                    }, 300);
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setTcpDialogInputFocused(false), 100);
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter") {
+                      confirmCreateTcpForwarding();
+                    }
+                  }}
+                  min="1"
+                  max="65535"
+                />
+                <label class="label">
+                  <span class="label-text-alt text-base-content/50">本地机器上的端口 (1-65535)</span>
+                </label>
+              </div>
+            </div>
+
+            <Show when={!tcpDialogInputFocused() || !isMobile}>
+              <div class="mt-4 p-3 bg-base-200 rounded-lg">
+                <div class="text-sm text-base-content/70">
+                  <p class="font-medium mb-1">端口转发说明：</p>
+                  <p>• 本地端口 {tcpLocalPort() || '6001'} 的连接将被转发到远程端口 {tcpRemotePort() || '目标端口'}</p>
+                  <p>• 确保本地端口未被其他程序占用</p>
+                  <p>• 支持HTTP、数据库、SSH等各种TCP服务</p>
+                </div>
+              </div>
+            </Show>
+
+            <div class="modal-action">
+              <button
+                class="btn btn-ghost"
+                onClick={() => setShowTcpDialog(false)}
+              >
+                取消
+              </button>
+              <button
+                class="btn btn-primary"
+                onClick={confirmCreateTcpForwarding}
+                disabled={!tcpRemotePort() || !tcpLocalPort()}
+              >
+                创建转发
+              </button>
+            </div>
+          </div>
+        </div>
+      </Show>
+
       {/* 侧边栏控制 */}
       <input
         id="left-sidebar-drawer"
@@ -1376,9 +2162,8 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
                     </li>
                     <li>
                       <button
-                        class="flex items-center gap-3 opacity-50 cursor-not-allowed"
-                        disabled
-                        title="TCP转发功能开发中"
+                        onClick={() => openTcpDialog()}
+                        class="flex items-center gap-3"
                       >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1536,6 +2321,16 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
                       <li>
                         <button
                           onClick={() => {
+                            openTcpDialog();
+                            setShowMainMenu(false);
+                          }}
+                        >
+                          🌐 TCP转发
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          onClick={() => {
                             props.onDisconnect();
                             setShowMainMenu(false);
                           }}
@@ -1682,6 +2477,106 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
                 </div>
               </Show>
 
+              {/* AI Commands List - 显示在输入框上方 */}
+              <Show when={aiResponse() && aiResponse()!.commands.length > 0}>
+                <div class="max-w-4xl mx-auto px-3 pb-2">
+                  <div class="bg-base-100 rounded-lg border border-base-300 shadow-sm">
+                    <div class="p-3 border-b border-base-200">
+                      <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                          <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          <span class="text-sm font-medium">AI 生成的命令</span>
+                        </div>
+                        <button
+                          class="btn btn-ghost btn-xs btn-circle"
+                          onClick={() => setAiResponse(null)}
+                          title="关闭命令列表"
+                        >
+                          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div class="text-xs text-base-content/60 mt-1">
+                        {aiResponse()!.explanation}
+                      </div>
+                    </div>
+
+                    <div class="max-h-64 overflow-y-auto">
+                      <For each={aiResponse()!.commands}>
+                        {(command, index) => (
+                          <div class={`p-3 border-b border-base-200 last:border-b-0 hover:bg-base-50 transition-colors ${index() === 0 ? 'bg-primary/5' : ''
+                            }`}>
+                            <div class="flex items-start justify-between gap-3">
+                              <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                  <div class="badge badge-primary badge-xs">
+                                    {index() + 1}
+                                  </div>
+                                  <span class="text-sm font-medium text-base-content">
+                                    {command.description}
+                                  </span>
+                                </div>
+
+                                <div class="bg-base-200 rounded p-2 mb-2">
+                                  <code class="text-xs font-mono text-base-content break-all">
+                                    {command.command}
+                                  </code>
+                                </div>
+
+                                <div class="text-xs text-base-content/60">
+                                  {command.explanation}
+                                </div>
+                              </div>
+
+                              <div class="flex flex-col gap-1">
+                                <button
+                                  class="btn btn-primary btn-xs"
+                                  onClick={() => executeAiCommand(command.command)}
+                                  title="执行此命令"
+                                >
+                                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  执行
+                                </button>
+
+                                <button
+                                  class="btn btn-ghost btn-xs"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(command.command);
+                                    // 可以添加一个临时的提示
+                                    const originalText = command.command;
+                                    setTimeout(() => {
+                                      // 可以显示复制成功的反馈
+                                    }, 100);
+                                  }}
+                                  title="复制命令"
+                                >
+                                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                  </svg>
+                                  复制
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+
+                    <div class="p-2 bg-base-50 border-t border-base-200">
+                      <div class="text-xs text-base-content/50 text-center">
+                        💡 提示：点击执行按钮直接运行命令，或复制命令自行修改后执行
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Show>
+
               {/* Main Chat Input */}
               <div class="p-3">
                 <div class="flex items-center gap-2 max-w-4xl mx-auto">
@@ -1763,42 +2658,65 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
                 {/* Quick Actions */}
                 <div class="flex items-center gap-2 mt-2 max-w-4xl mx-auto">
-                  <span class="text-xs text-base-content/50">快捷操作:</span>
+                  <span class="text-xs text-base-content/50">
+                    {(() => {
+                      const sysInfo = systemInfo();
+                      return sysInfo ? `${sysInfo.os_info.name} 快捷操作:` : '快捷操作:';
+                    })()}
+                  </span>
                   <button
                     class="badge badge-outline badge-xs hover:badge-primary cursor-pointer"
                     onClick={() => {
-                      setAiChatInput("列出当前目录的文件");
+                      setAiChatInput("列出当前目录文件并显示详细信息");
                       handleAiChatSubmit();
                     }}
+                    disabled={isAiThinking()}
                   >
                     列出文件
                   </button>
                   <button
                     class="badge badge-outline badge-xs hover:badge-primary cursor-pointer"
                     onClick={() => {
-                      setAiChatInput("查看当前目录");
+                      setAiChatInput("搜索文件中的文本内容");
                       handleAiChatSubmit();
                     }}
+                    disabled={isAiThinking()}
                   >
-                    当前目录
+                    搜索文本
                   </button>
                   <button
                     class="badge badge-outline badge-xs hover:badge-primary cursor-pointer"
                     onClick={() => {
-                      setAiChatInput("检查Git状态");
+                      setAiChatInput("检查Git仓库状态和修改");
                       handleAiChatSubmit();
                     }}
+                    disabled={isAiThinking()}
                   >
                     Git状态
                   </button>
                   <button
                     class="badge badge-outline badge-xs hover:badge-primary cursor-pointer"
                     onClick={() => {
-                      setAiChatInput("帮助");
+                      const sysInfo = systemInfo();
+                      const packageManager = sysInfo?.available_tools.package_managers[0] || '包管理器';
+                      setAiChatInput(`使用${packageManager}安装软件`);
                       handleAiChatSubmit();
                     }}
+                    disabled={isAiThinking()}
                   >
-                    帮助
+                    安装软件
+                  </button>
+                  <button
+                    class="badge badge-outline badge-xs hover:badge-primary cursor-pointer"
+                    onClick={() => {
+                      const sysInfo = systemInfo();
+                      const osName = sysInfo?.os_info.name || '系统';
+                      setAiChatInput(`查看${osName}系统信息`);
+                      handleAiChatSubmit();
+                    }}
+                    disabled={isAiThinking()}
+                  >
+                    系统信息
                   </button>
                 </div>
               </div>

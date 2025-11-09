@@ -31,6 +31,7 @@ hex = { workspace = true }
 regex = "1.10"
 lazy_static = "1.5"
 dirs = "5.0"
+gethostname = "0.5"
 riterm-shared = { path = "../shared" }
 
 # Terminal management dependencies

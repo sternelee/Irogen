@@ -34,6 +34,8 @@ pub enum MessageType {
     TcpData = 0x05,
     /// 系统控制消息
     SystemControl = 0x06,
+    /// 系统信息消息
+    SystemInfo = 0x09,
     /// 响应消息
     Response = 0x07,
     /// 错误消息
@@ -51,6 +53,7 @@ impl TryFrom<u8> for MessageType {
             0x04 => Ok(MessageType::TcpForwarding),
             0x05 => Ok(MessageType::TcpData),
             0x06 => Ok(MessageType::SystemControl),
+            0x09 => Ok(MessageType::SystemInfo),
             0x07 => Ok(MessageType::Response),
             0x08 => Ok(MessageType::Error),
             _ => Err(anyhow::anyhow!("Invalid message type: {}", value)),
@@ -255,6 +258,8 @@ pub enum MessagePayload {
     TcpData(TcpDataMessage),
     /// 系统控制载荷
     SystemControl(SystemControlMessage),
+    /// 系统信息载荷
+    SystemInfo(SystemInfoMessage),
     /// 响应载荷
     Response(ResponseMessage),
     /// 错误载荷
@@ -341,6 +346,127 @@ pub struct ErrorMessage {
     pub code: i32,
     pub message: String,
     pub details: Option<String>,
+}
+
+/// 系统信息消息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemInfoMessage {
+    pub action: SystemInfoAction,
+    pub request_id: Option<String>,
+}
+
+/// 系统信息动作
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SystemInfoAction {
+    /// 获取系统信息
+    GetSystemInfo,
+    /// 响应系统信息
+    SystemInfoResponse(SystemInfo),
+}
+
+/// 系统信息结构
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemInfo {
+    /// 操作系统信息
+    pub os_info: OSInfo,
+    /// Shell 信息
+    pub shell_info: ShellInfo,
+    /// 可用工具列表
+    pub available_tools: AvailableTools,
+    /// 环境变量
+    pub environment_vars: std::collections::HashMap<String, String>,
+    /// 系统架构
+    pub architecture: String,
+    /// 主机名
+    pub hostname: String,
+    /// 用户信息
+    pub user_info: UserInfo,
+}
+
+/// 操作系统信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OSInfo {
+    /// 操作系统类型 (Linux, macOS, Windows)
+    pub os_type: String,
+    /// 操作系统名称 (Ubuntu, CentOS, macOS, Windows 10, etc.)
+    pub name: String,
+    /// 操作系统版本
+    pub version: String,
+    /// 内核版本
+    pub kernel_version: String,
+}
+
+/// Shell 信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShellInfo {
+    /// 默认 Shell 路径
+    pub default_shell: String,
+    /// Shell 类型 (bash, zsh, fish, powershell, cmd)
+    pub shell_type: String,
+    /// Shell 版本
+    pub shell_version: String,
+    /// 支持的 Shell 列表
+    pub available_shells: Vec<String>,
+}
+
+/// 可用工具信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableTools {
+    /// 包管理器
+    pub package_managers: Vec<PackageManager>,
+    /// 版本控制工具
+    pub version_control: Vec<Tool>,
+    /// 文本编辑器
+    pub text_editors: Vec<Tool>,
+    /// 搜索工具
+    pub search_tools: Vec<Tool>,
+    /// 开发工具
+    pub development_tools: Vec<Tool>,
+    /// 系统工具
+    pub system_tools: Vec<Tool>,
+}
+
+/// 包管理器信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackageManager {
+    /// 包管理器名称 (brew, apt, yum, npm, pip, etc.)
+    pub name: String,
+    /// 包管理器命令
+    pub command: String,
+    /// 版本
+    pub version: String,
+    /// 是否可用
+    pub available: bool,
+}
+
+/// 工具信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tool {
+    /// 工具名称
+    pub name: String,
+    /// 工具命令
+    pub command: String,
+    /// 版本
+    pub version: String,
+    /// 是否可用
+    pub available: bool,
+    /// 工具描述
+    pub description: String,
+}
+
+/// 用户信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserInfo {
+    /// 用户名
+    pub username: String,
+    /// 用户主目录
+    pub home_directory: String,
+    /// 当前工作目录
+    pub current_directory: String,
+    /// 用户 ID
+    pub user_id: String,
+    /// 组 ID
+    pub group_id: String,
 }
 
 /// 消息处理器trait
@@ -536,6 +662,17 @@ impl MessageBuilder {
         });
         Message::new(MessageType::Response, sender_id, payload)
             .with_priority(MessagePriority::Normal)
+    }
+
+    /// 创建系统信息消息
+    pub fn system_info(sender_id: String) -> Message {
+        let payload = MessagePayload::SystemInfo(SystemInfoMessage {
+            action: SystemInfoAction::GetSystemInfo,
+            request_id: None
+        });
+        Message::new(MessageType::SystemInfo, sender_id, payload)
+            .with_priority(MessagePriority::Normal)
+            .requires_response()
     }
 
     /// 创建错误消息
