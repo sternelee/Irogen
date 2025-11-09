@@ -47,6 +47,7 @@
     "tauri:ios:dev": "tauri ios dev",
     "tauri:ios:build": "tauri ios build"
   },
+  "packageManager": "pnpm@10.0.0",
   "browserslist": {
     "production": [
       ">0.2%",

@@ -53,23 +53,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          version: 10
+          run_install: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
+          cache: "pnpm"
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install
 
       - name: Type check
-        run: npm run tsc
+        run: pnpm tsc
 
       - name: Build frontend
-        run: npm run build
+        run: pnpm build
 
       - name: Run preview build
-        run: npm run preview &
+        run: pnpm preview &
 
       # Add browser tests if needed
       # - name: Run browser tests
@@ -137,11 +143,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          version: 10
+          run_install: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
+          cache: "pnpm"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -153,13 +165,13 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Install frontend dependencies
-        run: npm ci
+        run: pnpm install
 
       - name: Build frontend
-        run: npm run build
+        run: pnpm build
 
       - name: Build Tauri app (development mode)
-        run: npm run tauri build -- --debug
+        run: pnpm tauri build -- --debug
 
       - name: Upload development artifacts
         uses: actions/upload-artifact@v4

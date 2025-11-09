@@ -26,7 +26,7 @@ riterm/
 #### Prerequisites
 - **Rust** (latest stable)
 - **Node.js** 20+
-- **npm** or **pnpm**
+- **pnpm** (version 10+)
 - For mobile development: **Android Studio** (Android) / **Xcode** (iOS)
 
 #### Setup
@@ -36,7 +36,7 @@ git clone https://github.com/sternelee/riterm.git
 cd riterm
 
 # Install frontend dependencies
-npm install
+pnpm install
 
 # Build all components
 cargo build --workspace
@@ -45,35 +45,35 @@ cargo build --workspace
 #### Development Commands
 ```bash
 # Frontend development server
-npm run dev
+pnpm dev
 
 # Tauri desktop app development
-npm run tauri:dev
+pnpm tauri:dev
 
 # CLI development (use workspace)
 cargo run -p cli -- host
 
 # Android development
-npm run tauri:android:dev
+pnpm tauri:android:dev
 
 # iOS development (macOS only)
-npm run tauri:ios:dev
+pnpm tauri:ios:dev
 ```
 
 #### Building
 ```bash
 # Build frontend only
-npm run build
+pnpm build
 
 # Build desktop apps
-npm run tauri:build
+pnpm tauri:build
 
 # Build CLI
 cargo build -p cli --release
 
 # Build mobile apps
-npm run tauri:android:build
-npm run tauri:ios:build  # macOS only
+pnpm tauri:android:build
+pnpm tauri:ios:build  # macOS only
 ```
 
 ## 🔄 CI/CD Pipeline
@@ -128,7 +128,7 @@ npm run tauri:ios:build  # macOS only
 1. **Update version numbers**:
    ```bash
    # Update package.json
-   npm version patch|minor|major
+   pnpm version patch|minor|major
 
    # Update app/tauri.conf.json version field
    ```
@@ -160,7 +160,7 @@ npm run tauri:ios:build  # macOS only
 cargo test --workspace
 
 # Frontend tests (if available)
-npm test
+pnpm test
 
 # Integration tests
 cargo test --workspace -- --ignored
@@ -175,7 +175,7 @@ cargo fmt --all
 cargo clippy --workspace -- -D warnings
 
 # TypeScript checking
-npm run tsc
+pnpm tsc
 ```
 
 ## 🔧 Configuration
@@ -216,7 +216,7 @@ RUST_LOG=debug ./target/debug/cli host
 ### App Debugging
 ```bash
 # Development mode with detailed logs
-RUST_LOG=debug npm run tauri:dev
+RUST_LOG=debug pnpm tauri:dev
 
 # Check app logs
 # Windows: %APPDATA%\RiTerm\logs\
