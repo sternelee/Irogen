@@ -16,14 +16,15 @@ jobs:
     strategy:
       matrix:
         include:
-          - binary_name: riterm-x86_64-unknown-linux-musl
-            binary_path: target/x86_64-unknown-linux-musl/release/cli
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-          - binary_name: riterm-aarch64-unknown-linux-musl
-            binary_path: target/aarch64-unknown-linux-musl/release/cli
-            os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
+          # Temporarily disable musl targets due to cross-compilation issues
+          # - binary_name: riterm-x86_64-unknown-linux-musl
+          #   binary_path: target/x86_64-unknown-linux-musl/release/cli
+          #   os: ubuntu-latest
+          #   target: x86_64-unknown-linux-musl
+          # - binary_name: riterm-aarch64-unknown-linux-musl
+          #   binary_path: target/aarch64-unknown-linux-musl/release/cli
+          #   os: ubuntu-latest
+          #   target: aarch64-unknown-linux-musl
           - binary_name: riterm-x86_64-unknown-linux-gnu
             binary_path: target/x86_64-unknown-linux-gnu/release/cli
             os: ubuntu-latest
@@ -66,6 +67,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu gcc-mingw-w64-x86-64
+
+      - name: Set cross-compilation environment variables
+        if: matrix.os == 'ubuntu-latest' && matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
@@ -332,12 +339,12 @@ jobs:
             Pre-compiled CLI binaries are available below:
             - **Linux x64**: `riterm-x86_64-unknown-linux-gnu`
             - **Linux ARM64**: `riterm-aarch64-unknown-linux-gnu`
-            - **Linux x64 (musl)**: `riterm-x86_64-unknown-linux-musl`
-            - **Linux ARM64 (musl)**: `riterm-aarch64-unknown-linux-musl`
             - **macOS Intel**: `riterm-x86_64-apple-darwin`
             - **macOS Apple Silicon**: `riterm-aarch64-apple-darwin`
             - **Windows x64**: `riterm-x86_64-pc-windows-msvc.exe`
             - **Windows ARM64**: `riterm-aarch64-pc-windows-msvc.exe`
+
+            *Note: musl builds are temporarily disabled due to cross-compilation issues. glibc builds are provided for Linux.*
 
             ### 📱 Mobile Applications
             Mobile apps are available when built:
