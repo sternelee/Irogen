@@ -16,23 +16,16 @@ jobs:
     strategy:
       matrix:
         include:
-          # Temporarily disable musl targets due to cross-compilation issues
-          # - binary_name: riterm-x86_64-unknown-linux-musl
-          #   binary_path: target/x86_64-unknown-linux-musl/release/cli
-          #   os: ubuntu-latest
-          #   target: x86_64-unknown-linux-musl
-          # - binary_name: riterm-aarch64-unknown-linux-musl
-          #   binary_path: target/aarch64-unknown-linux-musl/release/cli
-          #   os: ubuntu-latest
-          #   target: aarch64-unknown-linux-musl
+          # Focus on stable builds without complex cross-compilation
           - binary_name: riterm-x86_64-unknown-linux-gnu
             binary_path: target/x86_64-unknown-linux-gnu/release/cli
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - binary_name: riterm-aarch64-unknown-linux-gnu
-            binary_path: target/aarch64-unknown-linux-gnu/release/cli
-            os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
+          # Temporarily disable ARM64 Linux builds due to OpenSSL cross-compilation issues
+          # - binary_name: riterm-aarch64-unknown-linux-gnu
+          #   binary_path: target/aarch64-unknown-linux-gnu/release/cli
+          #   os: ubuntu-latest
+          #   target: aarch64-unknown-linux-gnu
           - binary_name: riterm-x86_64-apple-darwin
             binary_path: target/x86_64-apple-darwin/release/cli
             os: macos-latest
@@ -62,17 +55,11 @@ jobs:
       - name: Add Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Install cross-compilation tools (Linux)
+      - name: Install build dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-mingw-w64-x86-64
-
-      - name: Set cross-compilation environment variables
-        if: matrix.os == 'ubuntu-latest' && matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          sudo apt-get install -y libssl-dev pkg-config
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
@@ -338,13 +325,12 @@ jobs:
             ### 💻 CLI Tools
             Pre-compiled CLI binaries are available below:
             - **Linux x64**: `riterm-x86_64-unknown-linux-gnu`
-            - **Linux ARM64**: `riterm-aarch64-unknown-linux-gnu`
             - **macOS Intel**: `riterm-x86_64-apple-darwin`
             - **macOS Apple Silicon**: `riterm-aarch64-apple-darwin`
             - **Windows x64**: `riterm-x86_64-pc-windows-msvc.exe`
             - **Windows ARM64**: `riterm-aarch64-pc-windows-msvc.exe`
 
-            *Note: musl builds are temporarily disabled due to cross-compilation issues. glibc builds are provided for Linux.*
+            *Note: Linux ARM64 builds are temporarily disabled due to OpenSSL cross-compilation issues. Use Linux x64 builds or compile from source for ARM64 Linux systems.*
 
             ### 📱 Mobile Applications
             Mobile apps are available when built:
