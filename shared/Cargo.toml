@@ -24,4 +24,5 @@ base64 = { workspace = true }
 hex = { workspace = true }
 uuid = { workspace = true }
 async-trait = "0.1"
+iroh-base = { workspace = true }
 tracing-subscriber = "0.3"

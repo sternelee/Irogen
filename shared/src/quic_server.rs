@@ -410,15 +410,15 @@ impl QuicMessageServer {
     ) -> Result<()> {
         // 执行握手
         let connection = incoming.await?;
-        let remote_node_id_result = connection.remote_node_id();
-        let endpoint_addr = format!("{:?}", remote_node_id_result);
+        let remote_node_id = connection.remote_node_id();
+        let endpoint_addr = format!("{:?}", remote_node_id);
 
         // 检查是否已有相同node_id的连接
         let connection_id = {
             let mut conns = connections.write().await;
 
             // 先获取node_id，然后使用
-            let remote_id = remote_node_id_result?;
+            let remote_id = remote_node_id?;
 
             info!("Message connection established with: {:?}", remote_id);
 
