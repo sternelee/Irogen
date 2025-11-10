@@ -149,11 +149,9 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
       console.log("Sending buffered input:", dataToSend);
       invoke("send_terminal_input_to_terminal", {
-        request: {
-          session_id: sessionId,
-          terminal_id: terminalId,
-          input: dataToSend,
-        },
+        sessionId: sessionId,
+        terminalId: terminalId,
+        input: dataToSend,
       }).catch((error) => {
         console.error("Failed to send terminal input:", error);
         // 发送失败时重置标记
@@ -287,11 +285,9 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     if (data) {
       // 发送到后端终端
       invoke("send_terminal_input_to_terminal", {
-        request: {
-          session_id: props.sessionId,
-          terminal_id: activeId,
-          input: data,
-        },
+        sessionId: props.sessionId,
+        terminalId: activeId,
+        input: data,
       }).catch((error) => {
         console.error("Failed to send terminal input:", error);
       });
@@ -301,7 +297,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   // 获取终端列表
   const fetchTerminals = async () => {
     try {
-      await invoke("get_terminal_list", { session_id: props.sessionId });
+      await invoke("get_terminal_list", { sessionId: props.sessionId });
     } catch (error) {
       console.error("Failed to fetch terminal list:", error);
     }
@@ -357,7 +353,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     // 这里可以调用后端API创建实际的TCP转发
     try {
       await invoke("create_tcp_forwarding", {
-        session_id: props.sessionId,
+        sessionId: props.sessionId,
         remotePort,
         localPort,
       });
@@ -374,7 +370,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   const stopTcpForwarding = async (serviceId: string) => {
     try {
       await invoke("stop_tcp_forwarding", {
-        session_id: props.sessionId,
+        sessionId: props.sessionId,
         serviceId,
       });
 
@@ -432,7 +428,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   }) => {
     try {
       const terminalId = await invoke<string>("create_terminal", {
-        session_id: props.sessionId,
+        sessionId: props.sessionId,
         name: config?.name,
         shell_path: config?.shell_path,
         working_dir: config?.working_dir,
@@ -460,8 +456,8 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   const stopTerminal = async (terminalId: string) => {
     try {
       await invoke("stop_terminal", {
-        session_id: props.sessionId,
-        terminal_id: terminalId,
+        sessionId: props.sessionId,
+        terminalId: terminalId,
       });
 
       // 清理本地终端会话
@@ -673,8 +669,8 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
       // 告诉CLI端我们连接到了这个终端
       await invoke("connect_to_terminal", {
-        session_id: props.sessionId,
-        terminal_id: terminalId,
+        sessionId: props.sessionId,
+        terminalId: terminalId,
       });
 
       // 更新连接状态
@@ -2481,11 +2477,9 @@ ${Object.entries(environment_vars)
 
     try {
       await invoke("send_terminal_input_to_terminal", {
-        request: {
-          session_id: props.sessionId,
-          terminal_id: activeId,
-          input: command + "\n",
-        },
+        sessionId: props.sessionId,
+        terminalId: activeId,
+        input: command + "\n",
       });
     } catch (error) {
       console.error("Failed to send command to terminal:", error);
