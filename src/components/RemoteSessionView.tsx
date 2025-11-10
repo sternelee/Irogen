@@ -462,8 +462,8 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     try {
       await invoke("stop_terminal", {
         request: {
-          sessionId: props.sessionId,
-          terminalId,
+          session_id: props.sessionId,
+          terminal_id: terminalId,
         },
       });
 
@@ -676,10 +676,8 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
       // 告诉CLI端我们连接到了这个终端
       await invoke("connect_to_terminal", {
-        request: {
-          sessionId: props.sessionId,
-          terminalId,
-        },
+        session_id: props.sessionId,
+        terminal_id: terminalId,
       });
 
       // 更新连接状态
