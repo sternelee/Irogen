@@ -313,37 +313,7 @@ pub struct DirectedMessageRequest {
     pub message: String,
 }
 
-// === Terminal Management Types ===
-
-#[derive(Serialize, Deserialize)]
-pub struct TerminalCreateRequest {
-    pub session_id: String,
-    pub name: Option<String>,
-    pub shell_path: Option<String>,
-    pub working_dir: Option<String>,
-    pub size: Option<(u16, u16)>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct TerminalStopRequest {
-    pub session_id: String,
-    pub terminal_id: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct TerminalInputRequest {
-    pub session_id: String,
-    pub terminal_id: String,
-    pub input: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct TerminalResizeRequest {
-    pub session_id: String,
-    pub terminal_id: String,
-    pub rows: u16,
-    pub cols: u16,
-}
+// === Terminal Management Commands ===
 
 #[tauri::command]
 async fn initialize_network_with_relay(
@@ -730,13 +700,7 @@ async fn execute_remote_command(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     // Convert to use the new terminal input protocol
-    let input_request = TerminalInputRequest {
-        session_id,
-        terminal_id,
-        input: format!("{}\n", command),
-    };
-
-    send_terminal_input_to_terminal(input_request, state).await
+    send_terminal_input_to_terminal(session_id, terminal_id, format!("{}\n", command), state).await
 }
 
 #[tauri::command]
@@ -840,7 +804,11 @@ async fn start_cleanup_task(state: &State<'_, AppState>) {
 
 #[tauri::command]
 async fn create_terminal(
-    request: TerminalCreateRequest,
+    session_id: String,
+    name: Option<String>,
+    shell_path: Option<String>,
+    working_dir: Option<String>,
+    size: Option<(u16, u16)>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let quic_client = {
@@ -854,25 +822,25 @@ async fn create_terminal(
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&request.session_id)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
 
     // Create terminal management message
     let action = TerminalAction::Create {
-        name: request.name,
-        shell_path: request.shell_path,
-        working_dir: request.working_dir,
-        size: request.size.unwrap_or((24, 80)),
+        name,
+        shell_path,
+        working_dir,
+        size: size.unwrap_or((24, 80)),
     };
 
     let message = MessageBuilder::terminal_management(
         "riterm_app".to_string(),
         action,
-        Some(request.session_id.clone()),
+        Some(session_id.clone()),
     )
-    .with_session(request.session_id.clone());
+    .with_session(session_id.clone());
 
     // Send message via QUIC client
     send_message_via_client(&state, &session.connection_id, message, "terminal creation").await?;
@@ -882,7 +850,8 @@ async fn create_terminal(
 
 #[tauri::command]
 async fn stop_terminal(
-    request: TerminalStopRequest,
+    session_id: String,
+    terminal_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let quic_client = {
@@ -896,22 +865,22 @@ async fn stop_terminal(
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&request.session_id)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
 
     // Create terminal management message for stopping terminal
     let action = TerminalAction::Stop {
-        terminal_id: request.terminal_id,
+        terminal_id,
     };
 
     let message = MessageBuilder::terminal_management(
         "riterm_app".to_string(),
         action,
-        Some(request.session_id.clone()),
+        Some(session_id.clone()),
     )
-    .with_session(request.session_id.clone());
+    .with_session(session_id.clone());
 
     // Send message via QUIC client
     send_message_via_client(&state, &session.connection_id, message, "terminal stop").await?;
@@ -953,7 +922,9 @@ async fn list_terminals(session_id: String, state: State<'_, AppState>) -> Resul
 
 #[tauri::command]
 async fn send_terminal_input_to_terminal(
-    request: TerminalInputRequest,
+    session_id: String,
+    terminal_id: String,
+    input: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let quic_client = {
@@ -967,7 +938,7 @@ async fn send_terminal_input_to_terminal(
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&request.session_id)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
@@ -975,11 +946,11 @@ async fn send_terminal_input_to_terminal(
     // Create terminal I/O message
     let message = MessageBuilder::terminal_io(
         "riterm_app".to_string(),
-        request.terminal_id,
+        terminal_id,
         IODataType::Input,
-        request.input.as_bytes().to_vec(),
+        input.as_bytes().to_vec(),
     )
-    .with_session(request.session_id.clone());
+    .with_session(session_id.clone());
 
     // Send message via QUIC client
     send_message_via_client(&state, &session.connection_id, message, "terminal input").await?;
@@ -989,7 +960,10 @@ async fn send_terminal_input_to_terminal(
 
 #[tauri::command]
 async fn resize_terminal(
-    request: TerminalResizeRequest,
+    session_id: String,
+    terminal_id: String,
+    rows: u16,
+    cols: u16,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let quic_client = {
@@ -1003,24 +977,24 @@ async fn resize_terminal(
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&request.session_id)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
 
     // Create terminal management message for resizing terminal
     let action = TerminalAction::Resize {
-        terminal_id: request.terminal_id,
-        rows: request.rows,
-        cols: request.cols,
+        terminal_id: terminal_id.clone(),
+        rows,
+        cols,
     };
 
     let message = MessageBuilder::terminal_management(
         "riterm_app".to_string(),
         action,
-        Some(request.session_id.clone()),
+        Some(session_id.clone()),
     )
-    .with_session(request.session_id.clone());
+    .with_session(session_id.clone());
 
     // Send message via QUIC client
     send_message_via_client(&state, &session.connection_id, message, "terminal resize").await?;

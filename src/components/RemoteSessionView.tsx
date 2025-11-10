@@ -301,7 +301,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   // 获取终端列表
   const fetchTerminals = async () => {
     try {
-      await invoke("get_terminal_list", { sessionId: props.sessionId });
+      await invoke("get_terminal_list", { session_id: props.sessionId });
     } catch (error) {
       console.error("Failed to fetch terminal list:", error);
     }
@@ -357,7 +357,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     // 这里可以调用后端API创建实际的TCP转发
     try {
       await invoke("create_tcp_forwarding", {
-        sessionId: props.sessionId,
+        session_id: props.sessionId,
         remotePort,
         localPort,
       });
@@ -374,7 +374,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   const stopTcpForwarding = async (serviceId: string) => {
     try {
       await invoke("stop_tcp_forwarding", {
-        sessionId: props.sessionId,
+        session_id: props.sessionId,
         serviceId,
       });
 
@@ -431,15 +431,14 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     cols?: number;
   }) => {
     try {
-      const request = {
+      const terminalId = await invoke<string>("create_terminal", {
         session_id: props.sessionId,
         name: config?.name,
         shell_path: config?.shell_path,
         working_dir: config?.working_dir,
         size:
           config?.rows && config?.cols ? [config.rows, config.cols] : undefined,
-      };
-      const terminalId = await invoke<string>("create_terminal", { request });
+      });
 
       // 创建会话记录
       const session = terminalSessionManager.getSession(props.sessionId);
@@ -461,10 +460,8 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   const stopTerminal = async (terminalId: string) => {
     try {
       await invoke("stop_terminal", {
-        request: {
-          session_id: props.sessionId,
-          terminal_id: terminalId,
-        },
+        session_id: props.sessionId,
+        terminal_id: terminalId,
       });
 
       // 清理本地终端会话
