@@ -106,6 +106,7 @@ impl InternalTerminalSession {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TcpForwardingSession {
     pub id: String,
+    pub client_node_id: String, // 创建此会话的客户端节点ID
     pub local_addr: String,
     pub remote_target: String,
     pub forwarding_type: String, // "local-to-remote" or "remote-to-local"
@@ -146,6 +147,7 @@ impl Default for TcpForwardingSession {
     fn default() -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
+            client_node_id: "".to_string(), // 将在创建时设置
             local_addr: "127.0.0.1:0".to_string(),
             remote_target: "127.0.0.1:0".to_string(),
             forwarding_type: "local-to-remote".to_string(),
@@ -1133,6 +1135,7 @@ impl TcpForwardingMessageHandler {
     /// 创建 TCP 转发会话
     async fn create_tcp_forwarding_session(
         &self,
+        client_node_id: String,
         local_addr: String,
         remote_host: Option<String>,
         remote_port: Option<u16>,
@@ -1147,9 +1150,26 @@ impl TcpForwardingMessageHandler {
         };
 
         info!(
-            "Creating TCP forwarding session: {} -> {}",
-            local_addr, remote_target
+            "Creating TCP forwarding session for client {}: {} -> {}",
+            client_node_id, local_addr, remote_target
         );
+
+        // 检查端口冲突 - 同一个客户端不能创建相同本地地址的会话
+        {
+            let sessions = self.tcp_sessions.read().await;
+            for existing_session in sessions.values() {
+                if existing_session.session.client_node_id == client_node_id
+                    && existing_session.session.local_addr == local_addr
+                    && existing_session.session.status == "running"
+                {
+                    return Err(anyhow::anyhow!(
+                        "Port conflict: Client {} already has a running session on {}",
+                        client_node_id,
+                        local_addr
+                    ));
+                }
+            }
+        }
 
         // 验证地址格式
         let local_socket_addr: SocketAddr = local_addr
@@ -1162,6 +1182,7 @@ impl TcpForwardingMessageHandler {
         // 创建会话对象
         let mut session = TcpForwardingSession::default();
         session.id = session_id.clone();
+        session.client_node_id = client_node_id;
         session.local_addr = local_addr;
         session.remote_target = remote_target;
         session.forwarding_type = format!("{:?}", forwarding_type);
@@ -1370,11 +1391,29 @@ impl TcpForwardingMessageHandler {
         Ok(())
     }
 
-    /// 停止 TCP 转发会话
-    async fn stop_tcp_forwarding_session(&self, session_id: &str) -> Result<()> {
-        debug!("Stopping TCP forwarding session: {}", session_id);
+    /// 停止 TCP 转发会话（带客户端所有权验证）
+    async fn stop_tcp_forwarding_session(
+        &self,
+        client_node_id: &str,
+        session_id: &str,
+    ) -> Result<()> {
+        debug!(
+            "Stopping TCP forwarding session: {} for client: {}",
+            session_id, client_node_id
+        );
 
         let mut sessions = self.tcp_sessions.write().await;
+        if let Some(mut session) = sessions.get(session_id) {
+            // 验证客户端所有权
+            if session.session.client_node_id != client_node_id {
+                return Err(anyhow::anyhow!(
+                    "Access denied: Client {} cannot stop session owned by {}",
+                    client_node_id,
+                    session.session.client_node_id
+                ));
+            }
+        }
+
         if let Some(mut session) = sessions.remove(session_id) {
             // 发送关闭信号
             if let Some(shutdown_tx) = session.shutdown_tx.take() {
@@ -1384,7 +1423,10 @@ impl TcpForwardingMessageHandler {
             // 更新状态
             session.session.status = "stopped".to_string();
 
-            info!("TCP forwarding session stopped: {}", session_id);
+            info!(
+                "TCP forwarding session stopped: {} by client: {}",
+                session_id, client_node_id
+            );
             Ok(())
         } else {
             Err(anyhow::anyhow!(
@@ -1394,23 +1436,35 @@ impl TcpForwardingMessageHandler {
         }
     }
 
-    /// 列出所有 TCP 转发会话
-    async fn list_tcp_forwarding_sessions(&self) -> Result<Vec<TcpForwardingSession>> {
+    /// 列出 TCP 转发会话（可选按客户端过滤）
+    async fn list_tcp_forwarding_sessions(
+        &self,
+        client_node_id: Option<String>,
+    ) -> Result<Vec<TcpForwardingSession>> {
         let sessions = self.tcp_sessions.read().await;
         let mut tcp_sessions = Vec::new();
 
         for internal_session in sessions.values() {
-            let mut session = internal_session.session.clone();
+            let session = internal_session.session.clone();
 
-            // 更新活跃连接数和字节数统计
-            {
-                let connections = internal_session.connections.read().await;
-                session.active_connections = connections.len() as u32;
-                session.bytes_sent = connections.values().map(|c| c.bytes_sent).sum();
-                session.bytes_received = connections.values().map(|c| c.bytes_received).sum();
+            // 如果指定了客户端ID，则只返回该客户端的会话
+            if let Some(ref client_id) = client_node_id {
+                if session.client_node_id != *client_id {
+                    continue;
+                }
             }
 
-            tcp_sessions.push(session);
+            // 更新活跃连接数和字节数统计
+            let mut session_with_stats = session.clone();
+            {
+                let connections = internal_session.connections.read().await;
+                session_with_stats.active_connections = connections.len() as u32;
+                session_with_stats.bytes_sent = connections.values().map(|c| c.bytes_sent).sum();
+                session_with_stats.bytes_received =
+                    connections.values().map(|c| c.bytes_received).sum();
+            }
+
+            tcp_sessions.push(session_with_stats);
         }
 
         Ok(tcp_sessions)
@@ -1455,6 +1509,7 @@ impl MessageHandler for TcpForwardingMessageHandler {
                     } => {
                         match self
                             .create_tcp_forwarding_session(
+                                message.sender_id.clone(), // 使用消息发送者作为客户端ID
                                 local_addr.clone(),
                                 remote_host.clone(),
                                 *remote_port,
@@ -1464,7 +1519,10 @@ impl MessageHandler for TcpForwardingMessageHandler {
                         {
                             Ok(session_id) => {
                                 // 创建会话成功后，获取最新的会话列表并包含在响应中
-                                match self.list_tcp_forwarding_sessions().await {
+                                match self
+                                    .list_tcp_forwarding_sessions(Some(message.sender_id.clone()))
+                                    .await
+                                {
                                     Ok(sessions) => {
                                         let response_data = serde_json::json!({
                                             "session_id": session_id,
@@ -1523,10 +1581,16 @@ impl MessageHandler for TcpForwardingMessageHandler {
                         }
                     }
                     TcpForwardingAction::StopSession { session_id } => {
-                        match self.stop_tcp_forwarding_session(session_id).await {
+                        match self
+                            .stop_tcp_forwarding_session(&message.sender_id, session_id)
+                            .await
+                        {
                             Ok(()) => {
                                 // 停止会话成功后，获取最新的会话列表并包含在响应中
-                                match self.list_tcp_forwarding_sessions().await {
+                                match self
+                                    .list_tcp_forwarding_sessions(Some(message.sender_id.clone()))
+                                    .await
+                                {
                                     Ok(sessions) => {
                                         let response_data = serde_json::json!({
                                             "session_id": session_id,
@@ -1585,7 +1649,10 @@ impl MessageHandler for TcpForwardingMessageHandler {
                         }
                     }
                     TcpForwardingAction::ListSessions => {
-                        match self.list_tcp_forwarding_sessions().await {
+                        match self
+                            .list_tcp_forwarding_sessions(Some(message.sender_id.clone()))
+                            .await
+                        {
                             Ok(sessions) => {
                                 let response_data = serde_json::json!({
                                     "sessions": sessions

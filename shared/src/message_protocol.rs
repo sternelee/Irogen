@@ -668,7 +668,7 @@ impl MessageBuilder {
     pub fn system_info(sender_id: String) -> Message {
         let payload = MessagePayload::SystemInfo(SystemInfoMessage {
             action: SystemInfoAction::GetSystemInfo,
-            request_id: None
+            request_id: None,
         });
         Message::new(MessageType::SystemInfo, sender_id, payload)
             .with_priority(MessagePriority::Normal)

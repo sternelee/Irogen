@@ -257,6 +257,9 @@ The project has implemented a comprehensive message system replacing the previou
 - Enhanced mobile viewport management and keyboard handling
 - Added AI chat integration for natural language commands
 - Improved session recovery and connection management
+- **NEW**: Implemented TCP service forwarding with full app-CLI coordination
+- Added comprehensive TCP session management UI with real-time statistics
+- Integrated TCP data message handling for bidirectional data forwarding
 
 ### Message Flow Architecture
 1. **Frontend** sends actions via Tauri invoke commands
@@ -264,6 +267,25 @@ The project has implemented a comprehensive message system replacing the previou
 3. **Communication Manager** handles P2P message routing
 4. **CLI Host** processes messages and manages terminal operations
 5. **Response Messages** flow back through the same chain
+
+### TCP Service Forwarding (Recent Addition)
+The project now includes TCP service forwarding capabilities allowing users to:
+- Create TCP forwarding sessions through the P2P network
+- Forward local TCP services to remote clients (and vice versa)
+- Manage forwarding sessions with real-time statistics
+- Support for both "Listen to Remote" and "Connect to Remote" forwarding modes
+
+**Key Components:**
+- `shared/src/message_protocol.rs` - Defines `TcpForwardingAction`, `TcpForwardingType`, and `TcpDataType` enums
+- `cli/src/message_server.rs` - Implements `TcpForwardingMessageHandler` and `TcpDataMessageHandler`
+- `app/src/lib.rs` - Provides Tauri commands for TCP forwarding management
+- `src/components/TcpForwardingManager.tsx` - Frontend UI for managing TCP sessions
+
+**Message Types:**
+- `TcpForwardingAction::CreateSession` - Create new forwarding sessions
+- `TcpForwardingAction::ListSessions` - List existing sessions
+- `TcpForwardingAction::StopSession` - Stop specific sessions
+- `TcpDataType::Data` - Forward actual TCP data between endpoints
 
 ### Mobile Considerations
 - Viewport height management with keyboard awareness
@@ -308,10 +330,17 @@ riterm/
 
 ### Adding New Terminal Features
 1. Define message types in `shared/src/message_protocol.rs`
-2. Implement CLI handlers in `cli/src/message_handler.rs`
+2. Implement CLI handlers in `cli/src/message_server.rs` (MessageHandler implementations)
 3. Add Tauri commands in `app/src/lib.rs`
 4. Create frontend components in `src/components/`
 5. Update mobile viewport management if needed
+
+### Adding New TCP Forwarding Features
+1. Define new TCP message types in `shared/src/message_protocol.rs`
+2. Implement TCP handlers in the existing `TcpForwardingMessageHandler` or `TcpDataMessageHandler`
+3. Add corresponding Tauri commands in `app/src/lib.rs`
+4. Update the `TcpForwardingManager.tsx` frontend component
+5. Test with both forwarding modes: "ListenToRemote" and "ConnectToRemote"
 
 ### Mobile Development Tips
 - Use the `ViewportManager` for keyboard-aware layouts
