@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RiTerm Web Terminal</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .terminal-container {
+            background-color: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .terminal-output {
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            margin-bottom: 15px;
+        }
+
+        .terminal-input {
+            width: 100%;
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 10px;
+            color: #ffffff;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn {
+            background-color: #007acc;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .btn:hover {
+            background-color: #005a9e;
+        }
+
+        .btn:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-bottom: 10px;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .loading {
+            color: #007acc;
+        }
+
+        .error {
+            color: #ff6b6b;
+        }
+
+        .success {
+            color: #51cf66;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>RiTerm Web Terminal</h1>
+            <p>Connect to remote terminal sessions from your browser</p>
+        </div>
+
+        <div class="terminal-container">
+            <div class="status" id="status">Initializing...</div>
+
+            <div class="controls">
+                <button class="btn" id="connectBtn" disabled>Connect</button>
+                <button class="btn" id="createTerminalBtn" disabled>Create Terminal</button>
+                <button class="btn" id="clearBtn" disabled>Clear Output</button>
+            </div>
+
+            <div class="terminal-output" id="output">
+RiTerm Web Terminal v0.1.0
+=========================
+Waiting for connection...
+            </div>
+
+            <input
+                type="text"
+                class="terminal-input"
+                id="input"
+                placeholder="Enter terminal commands here..."
+                disabled
+                autocomplete="off"
+            />
+        </div>
+
+        <div class="controls">
+            <div style="flex: 1;">
+                <label for="sessionTicket">Session Ticket:</label>
+                <input
+                    type="text"
+                    id="sessionTicket"
+                    placeholder="Paste session ticket here..."
+                    style="width: 100%; margin-top: 5px;"
+                />
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, { TerminalNode } from './pkg/riterm_browser.js';
+
+        let terminalNode = null;
+        let currentSession = null;
+        let currentTerminalId = null;
+
+        const statusEl = document.getElementById('status');
+        const outputEl = document.getElementById('output');
+        const inputEl = document.getElementById('input');
+        const connectBtn = document.getElementById('connectBtn');
+        const createTerminalBtn = document.getElementById('createTerminalBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const sessionTicketEl = document.getElementById('sessionTicket');
+
+        function appendOutput(text, className = '') {
+            const span = document.createElement('span');
+            span.textContent = text;
+            span.className = className;
+            outputEl.appendChild(span);
+            outputEl.appendChild(document.createTextNode('\n'));
+            outputEl.scrollTop = outputEl.scrollHeight;
+        }
+
+        function updateStatus(message, className = '') {
+            statusEl.textContent = message;
+            statusEl.className = `status ${className}`;
+        }
+
+        async function initialize() {
+            try {
+                updateStatus('Loading WASM module...', 'loading');
+                await init();
+
+                updateStatus('Initializing terminal node...', 'loading');
+                terminalNode = new TerminalNode();
+                await terminalNode.spawn();
+
+                updateStatus(`Terminal node ready. Node ID: ${terminalNode.node_id()}`, 'success');
+                appendOutput(`Node ID: ${terminalNode.node_id()}`);
+                appendOutput('Ready to connect to session...');
+
+                connectBtn.disabled = false;
+            } catch (error) {
+                updateStatus(`Initialization failed: ${error}`, 'error');
+                appendOutput(`ERROR: ${error}`, 'error');
+                console.error('Initialization error:', error);
+            }
+        }
+
+        async function connect() {
+            const ticket = sessionTicketEl.value.trim();
+            if (!ticket) {
+                updateStatus('Please enter a session ticket', 'error');
+                return;
+            }
+
+            try {
+                updateStatus('Connecting to session...', 'loading');
+                appendOutput(`Connecting with ticket: ${ticket.substring(0, 20)}...`);
+
+                currentSession = await terminalNode.connect_to_session(ticket);
+
+                updateStatus(`Connected. Session ID: ${currentSession.session_id()}`, 'success');
+                appendOutput(`Connected to session: ${currentSession.session_id()}`);
+
+                // Start listening for messages
+                const reader = currentSession.receiver.getReader();
+                readMessages(reader);
+
+                connectBtn.disabled = true;
+                createTerminalBtn.disabled = false;
+                inputEl.disabled = false;
+                clearBtn.disabled = false;
+            } catch (error) {
+                updateStatus(`Connection failed: ${error}`, 'error');
+                appendOutput(`ERROR: ${error}`, 'error');
+                console.error('Connection error:', error);
+            }
+        }
+
+        async function createTerminal() {
+            try {
+                updateStatus('Creating terminal...', 'loading');
+                const config = {
+                    name: "browser-terminal",
+                    shell: "/bin/bash",
+                    rows: 24,
+                    cols: 80
+                };
+
+                currentTerminalId = await currentSession.create_terminal(config);
+
+                updateStatus(`Terminal created: ${currentTerminalId}`, 'success');
+                appendOutput(`Terminal created: ${currentTerminalId}`);
+            } catch (error) {
+                updateStatus(`Terminal creation failed: ${error}`, 'error');
+                appendOutput(`ERROR: ${error}`, 'error');
+                console.error('Terminal creation error:', error);
+            }
+        }
+
+        async function readMessages(reader) {
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    if (value && value.type) {
+                        appendOutput(`[${value.type.toUpperCase()}] ${value.data}`);
+                    } else if (value) {
+                        appendOutput(`${value}`);
+                    }
+                }
+            } catch (error) {
+                appendOutput(`Message stream error: ${error}`, 'error');
+                console.error('Message reading error:', error);
+            }
+        }
+
+        async function sendInput() {
+            const input = inputEl.value;
+            if (!input.trim() || !currentSession || !currentTerminalId) return;
+
+            try {
+                await currentSession.send_input(currentTerminalId, input);
+                appendOutput(`> ${input}`);
+                inputEl.value = '';
+            } catch (error) {
+                appendOutput(`Failed to send input: ${error}`, 'error');
+                console.error('Input sending error:', error);
+            }
+        }
+
+        // Event listeners
+        connectBtn.addEventListener('click', connect);
+        createTerminalBtn.addEventListener('click', createTerminal);
+        clearBtn.addEventListener('click', () => {
+            outputEl.textContent = 'RiTerm Web Terminal v0.1.0\n=========================\nOutput cleared.\n';
+        });
+
+        inputEl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendInput();
+            }
+        });
+
+        // Initialize on load
+        initialize().catch(console.error);
+    </script>
+</body>
+</html>
