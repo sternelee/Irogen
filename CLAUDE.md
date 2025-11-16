@@ -247,7 +247,6 @@ The project has implemented a comprehensive message system replacing the previou
 - **solid-js** (1.9.9) - Reactive UI framework
 - **@xterm/xterm** (5.5.0) - Terminal emulator with addons
 - **daisyui** (5.0.50) - TailwindCSS component library
-- **fast_qr** (0.13.0) - QR code generation for session sharing
 - **lucide-solid** (0.540.0) - Icon library
 
 ### Key Features

@@ -136,10 +136,11 @@ async fn run_host(
     let server = CliMessageServer::new(config).await?;
 
     // 生成连接票据
-    let ticket = server.generate_connection_ticket()?;
     let node_id = server.get_node_id();
     let shell_path = server.get_default_shell_path();
+    let ticket = server.generate_connection_ticket()?;
 
+    // 显示票据信息
     print_host_info(&node_id, &ticket, shell_path);
 
     // 设置 Ctrl+C 处理

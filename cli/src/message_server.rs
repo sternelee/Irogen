@@ -22,6 +22,7 @@ use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+
 use crate::shell::ShellDetector;
 
 /// Connection information for status display
@@ -368,7 +369,7 @@ impl CliMessageServer {
 
         // 生成 base32 编码的 ticket
         let ticket_json = serde_json::to_string(&ticket_data)?;
-        let ticket = format!("ticket:{}", BASE32.encode(ticket_json.as_bytes()));
+        let ticket = BASE32.encode(ticket_json.as_bytes());
 
         tracing::info!("✅ Connection ticket generated successfully");
         tracing::info!("🎫 NodeId: {:?}", node_id);
@@ -381,6 +382,7 @@ impl CliMessageServer {
         Ok(ticket)
     }
 
+  
     /// 获取活跃连接数
     pub async fn get_active_connections_count(&self) -> usize {
         self.quic_server.get_active_connections_count().await
@@ -2495,5 +2497,45 @@ impl MessageHandler for TcpDataMessageHandler {
 
     fn supported_message_types(&self) -> Vec<MessageType> {
         vec![MessageType::TcpData]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use riterm_shared::QuicMessageServerConfig;
+
+    #[tokio::test]
+    async fn test_ticket_generation_without_prefix() {
+        // Test that ticket generation doesn't include 'ticket:' prefix
+        let config = QuicMessageServerConfig {
+            bind_addr: Some("127.0.0.1:0".parse().unwrap()),
+            relay_url: None,
+            max_connections: 1,
+            heartbeat_interval: std::time::Duration::from_secs(30),
+            timeout: std::time::Duration::from_secs(300),
+            secret_key_path: None, // Use temporary key for testing
+        };
+
+        // Create a CLI message server
+        let server = CliMessageServer::new(config).await;
+        assert!(server.is_ok(), "Failed to create CLI message server: {:?}", server.err());
+
+        let server = server.unwrap();
+
+        // Generate ticket
+        let ticket = server.generate_connection_ticket();
+        assert!(ticket.is_ok(), "Failed to generate ticket: {:?}", ticket.err());
+
+        let ticket = ticket.unwrap();
+
+        // Verify ticket doesn't have 'ticket:' prefix
+        assert!(!ticket.starts_with("ticket:"), "Ticket should not start with 'ticket:' prefix, but got: {}", ticket);
+
+        // Verify ticket is properly formatted (not empty and has reasonable length)
+        assert!(!ticket.is_empty(), "Ticket should not be empty");
+        assert!(ticket.len() > 20, "Ticket should be reasonably long, got {} characters", ticket.len());
+
+        println!("✅ Test passed! Generated ticket without prefix: {}...", &ticket[..50.min(ticket.len())]);
     }
 }

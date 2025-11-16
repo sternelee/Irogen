@@ -50,9 +50,6 @@ importers:
       daisyui:
         specifier: ^5.0.50
         version: 5.3.10
-      fast_qr:
-        specifier: ^0.13.0
-        version: 0.13.0
       lucide-solid:
         specifier: ^0.540.0
         version: 0.540.0(solid-js@1.9.9)
@@ -771,9 +768,6 @@ packages:
   escalade@3.2.0:
     resolution: {integrity: sha512-WUj2qlxaQtO4g6Pq5c29GTcWGDyd8itL8zTlipgECz3JesAiiOKotd8JU6otB3PACgG6xkJUyVhboMS+bje/jA==}
     engines: {node: '>=6'}
-
-  fast_qr@0.13.0:
-    resolution: {integrity: sha512-6QRi+feU6CFiC/WX7FrTxyhwdNkcJP5LAQmYias8uC1tEQ9MaSVd+/bIJA5Jb1EAz/mdo8qS57n5SN4cmT5P1Q==}
 
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
@@ -1631,8 +1625,6 @@ snapshots:
       '@esbuild/win32-x64': 0.25.11
 
   escalade@3.2.0: {}
-
-  fast_qr@0.13.0: {}
 
   fdir@6.5.0(picomatch@4.0.3):
     optionalDependencies:

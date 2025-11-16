@@ -26,8 +26,8 @@ const CLEANUP_INTERVAL_SECS: u64 = 300; // 5 minutes
 
 // Helper function to validate session ticket format
 fn is_valid_session_ticket(ticket: &str) -> bool {
-    // Basic validation for the new ticket format
-    ticket.starts_with("ticket:") && ticket.len() > 20
+    // Basic validation for the new ticket format (without prefix)
+    ticket.len() > 20
 }
 
 // Parse ticket and extract EndpointId
@@ -37,10 +37,12 @@ fn parse_ticket_node_addr(
     use data_encoding::BASE32;
     use serde_json;
 
-    // Remove "ticket:" prefix
-    let encoded = ticket
-        .strip_prefix("ticket:")
-        .ok_or("Invalid ticket format")?;
+    // Handle both old format (with "ticket:" prefix) and new format (without prefix)
+    let encoded = if let Some(stripped) = ticket.strip_prefix("ticket:") {
+        stripped // Old format with prefix
+    } else {
+        ticket // New format without prefix
+    };
 
     // Decode base32
     let ticket_json_bytes = BASE32.decode(encoded.as_bytes())?;
