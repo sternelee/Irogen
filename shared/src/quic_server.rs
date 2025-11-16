@@ -7,13 +7,15 @@ use crate::event_manager::*;
 use crate::message_protocol::*;
 use anyhow::Result;
 use async_trait::async_trait;
-pub use iroh::NodeAddr;
-use iroh::{Endpoint, SecretKey, discovery::dns::DnsDiscovery};
+use iroh::{Endpoint, SecretKey, discovery::dns::DnsDiscovery, EndpointId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
+
+// Type aliases for compatibility - using simplified approach for now
+pub type NodeId = EndpointId;
 
 // 端点地址序列化辅助结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,24 +27,13 @@ pub struct SerializableEndpointAddr {
 }
 
 impl SerializableEndpointAddr {
-    /// 从 iroh NodeAddr 创建可序列化的端点地址（推荐使用，包含relay信息）
-    pub fn from_node_addr(node_addr: &NodeAddr) -> Result<Self> {
-        let node_id = node_addr.node_id.to_string();
-        let relay_url = node_addr
-            .relay_url
-            .as_ref()
-            .map(|url: &iroh::RelayUrl| url.to_string());
-        let direct_addresses: Vec<String> = node_addr
-            .direct_addresses
-            .iter()
-            .map(|addr: &std::net::SocketAddr| addr.to_string())
-            .collect();
-
+    /// 从 endpoint_id 创建可序列化的端点地址
+    pub fn from_endpoint_id(endpoint_id: EndpointId, alpn: &[u8]) -> Result<Self> {
         Ok(Self {
-            node_id,
-            relay_url,
-            direct_addresses,
-            alpn: std::str::from_utf8(QUIC_MESSAGE_ALPN)?.to_string(),
+            node_id: endpoint_id.to_string(),
+            relay_url: None,
+            direct_addresses: vec![],
+            alpn: std::str::from_utf8(alpn)?.to_string(),
         })
     }
 
@@ -113,43 +104,15 @@ impl SerializableEndpointAddr {
         }
     }
 
-    /// 重建 NodeAddr (推荐使用，包含relay信息)
-    pub fn try_to_node_addr(&self) -> Result<NodeAddr> {
+    /// 重建 EndpointId
+    pub fn try_to_endpoint_id(&self) -> Result<EndpointId> {
         use std::str::FromStr;
 
-        // 解析 node_id
-        let node_id = iroh::PublicKey::from_str(&self.node_id)
-            .map_err(|e| anyhow::anyhow!("Failed to parse node_id: {}", e))?;
+        // 解析 endpoint_id
+        let endpoint_id = EndpointId::from_str(&self.node_id)
+            .map_err(|e| anyhow::anyhow!("Failed to parse endpoint_id: {}", e))?;
 
-        // 解析 relay_url
-        let relay_url = if let Some(ref url_str) = self.relay_url {
-            Some(
-                iroh::RelayUrl::from_str(url_str)
-                    .map_err(|e| anyhow::anyhow!("Failed to parse relay URL: {}", e))?,
-            )
-        } else {
-            None
-        };
-
-        // 解析 direct_addresses
-        let direct_addresses: Result<Vec<_>, _> = self
-            .direct_addresses
-            .iter()
-            .map(|addr_str| addr_str.parse::<std::net::SocketAddr>())
-            .collect();
-        let direct_addresses = direct_addresses
-            .map_err(|e| anyhow::anyhow!("Failed to parse direct address: {}", e))?;
-
-        // 构建 NodeAddr
-        let mut node_addr = NodeAddr::new(node_id);
-        if let Some(relay) = relay_url {
-            node_addr = node_addr.with_relay_url(relay);
-        }
-        for addr in direct_addresses {
-            node_addr = node_addr.with_direct_addresses([addr]);
-        }
-
-        Ok(node_addr)
+        Ok(endpoint_id)
     }
 }
 
@@ -220,7 +183,7 @@ impl Default for QuicMessageServerConfig {
 #[derive(Debug, Clone)]
 pub struct QuicConnection {
     pub id: String,
-    pub node_id: iroh::PublicKey,
+    pub node_id: EndpointId,
     pub endpoint_addr: String,
     pub established_at: std::time::SystemTime,
     pub last_activity: std::time::SystemTime,
@@ -231,7 +194,7 @@ pub struct QuicConnection {
 #[derive(Debug, Clone)]
 pub struct ConnectionInfo {
     pub id: String,
-    pub node_id: iroh::PublicKey,
+    pub node_id: EndpointId,
     pub established_at: std::time::SystemTime,
     pub last_activity: std::time::SystemTime,
 }
@@ -331,8 +294,7 @@ impl QuicMessageServer {
                 .bind()
                 .await?
         };
-        let node_addr = endpoint.node_addr();
-        let node_id = node_addr.node_id;
+        let node_id = endpoint.id();
         info!("QUIC server node ID: {:?}", node_id);
 
         // 等待endpoint上线 - 这对于NAT穿透至关重要
@@ -410,24 +372,21 @@ impl QuicMessageServer {
     ) -> Result<()> {
         // 执行握手
         let connection = incoming.await?;
-        let remote_node_id = connection.remote_node_id();
-        let endpoint_addr = format!("{:?}", remote_node_id);
+        let remote_endpoint_id = connection.remote_id();
+        let endpoint_addr = format!("{:?}", remote_endpoint_id);
 
-        // 检查是否已有相同node_id的连接
+        // 检查是否已有相同endpoint_id的连接
         let connection_id = {
             let mut conns = connections.write().await;
 
-            // 先获取node_id，然后使用
-            let remote_id = remote_node_id?;
+            info!("Message connection established with: {:?}", remote_endpoint_id);
 
-            info!("Message connection established with: {:?}", remote_id);
-
-            // 查找是否有相同node_id的连接
-            let existing_conn = conns.iter_mut().find(|(_, conn)| conn.node_id == remote_id);
+            // 查找是否有相同endpoint_id的连接
+            let existing_conn = conns.iter_mut().find(|(_, conn)| conn.node_id == remote_endpoint_id);
 
             if let Some((existing_id, existing_conn)) = existing_conn {
-                // 找到相同node_id的连接，更新连接信息但保持相同ID
-                info!("🔄 Reconnected from same node: {:?}", remote_id);
+                // 找到相同endpoint_id的连接，更新连接信息但保持相同ID
+                info!("🔄 Reconnected from same node: {:?}", remote_endpoint_id);
                 existing_conn.connection = connection.clone();
                 existing_conn.last_activity = std::time::SystemTime::now();
                 existing_conn.endpoint_addr = endpoint_addr.clone();
@@ -437,7 +396,7 @@ impl QuicMessageServer {
                 let new_connection_id = format!("conn_{}", uuid::Uuid::new_v4());
                 let conn_state = QuicConnection {
                     id: new_connection_id.clone(),
-                    node_id: remote_id,
+                    node_id: remote_endpoint_id,
                     endpoint_addr: endpoint_addr.clone(),
                     established_at: std::time::SystemTime::now(),
                     last_activity: std::time::SystemTime::now(),
@@ -598,7 +557,7 @@ impl QuicMessageServer {
     /// 发送消息到特定节点
     pub async fn send_message_to_node(
         &self,
-        node_id: &iroh::PublicKey,
+        node_id: &EndpointId,
         message: Message,
     ) -> Result<()> {
         #[cfg(debug_assertions)]
@@ -609,7 +568,7 @@ impl QuicMessageServer {
             let connections = self.connections.read().await;
             connections
                 .values()
-                .find(|c| &c.node_id == node_id)
+                .find(|c| c.node_id == *node_id)
                 .map(|c| c.connection.clone())
                 .ok_or_else(|| anyhow::anyhow!("Connection not found for node: {:?}", node_id))?
         };
@@ -646,19 +605,9 @@ impl QuicMessageServer {
         Ok(())
     }
 
-    /// 获取端点地址 (返回NodeAddr，包含relay信息)
-    pub fn get_endpoint_addr(&self) -> NodeAddr {
-        self.get_node_addr()
-    }
-
-    /// 获取节点地址（包含relay信息）- 推荐使用此方法进行连接
-    pub fn get_node_addr(&self) -> NodeAddr {
-        self.endpoint.node_addr()
-    }
-
     /// 获取节点ID
-    pub fn get_node_id(&self) -> iroh::PublicKey {
-        self.endpoint.node_addr().node_id
+    pub fn get_node_id(&self) -> EndpointId {
+        self.endpoint.id()
     }
 
     /// 获取活跃连接数
@@ -687,8 +636,8 @@ impl QuicMessageServer {
             .collect()
     }
 
-    /// 主动清理指定node_id的连接
-    pub async fn cleanup_connection_by_node_id(&self, node_id: &iroh::PublicKey) -> bool {
+    /// 主动清理指定endpoint_id的连接
+    pub async fn cleanup_connection_by_node_id(&self, node_id: &EndpointId) -> bool {
         let mut connections = self.connections.write().await;
 
         // 找到要删除的连接ID
@@ -816,8 +765,7 @@ impl QuicMessageClient {
                 .await?
         };
 
-        let node_addr = endpoint.node_addr();
-        let node_id = node_addr.node_id;
+        let node_id = endpoint.id();
         info!("QUIC client node ID: {:?}", node_id);
 
         // 创建消息广播通道
@@ -832,31 +780,29 @@ impl QuicMessageClient {
         })
     }
 
-    /// 连接到QUIC消息服务器 - 使用 NodeAddr (统一接口)
-    pub async fn connect_to_server(&mut self, node_addr: &NodeAddr) -> Result<String> {
+    /// 连接到QUIC消息服务器 - 使用 EndpointId
+    pub async fn connect_to_server(&mut self, node_addr: &EndpointId) -> Result<String> {
         self.connect_to_server_with_node_addr(node_addr).await
     }
 
-    /// 连接到QUIC消息服务器 - 使用 NodeAddr (推荐，包含relay信息)
+    /// 连接到QUIC消息服务器 - 使用 EndpointId
     pub async fn connect_to_server_with_node_addr(
         &mut self,
-        node_addr: &NodeAddr,
+        node_addr: &EndpointId,
     ) -> Result<String> {
         info!("🔗 Connecting to QUIC message server via NodeAddr");
-        info!("🔗 Node ID: {:?}", node_addr.node_id);
-        info!("🔗 Relay URL: {:?}", node_addr.relay_url);
-        info!("🔗 Direct addresses: {:?}", node_addr.direct_addresses);
+        info!("🔗 Node ID: {:?}", node_addr);
 
-        // 使用 iroh 的 connect 方法建立连接，NodeAddr 包含relay信息
+        // 使用 iroh 的 connect 方法建立连接
         let connection = self
             .endpoint
-            .connect(node_addr.clone(), QUIC_MESSAGE_ALPN)
+            .connect(*node_addr, QUIC_MESSAGE_ALPN)
             .await
             .map_err(|e| {
-                anyhow::anyhow!("Failed to connect to node {:?}: {}", node_addr.node_id, e)
+                anyhow::anyhow!("Failed to connect to node {:?}: {}", node_addr, e)
             })?;
 
-        let server_node_id = connection.remote_node_id()?;
+        let server_node_id = connection.remote_id();
         let connection_id = format!("conn_{}", uuid::Uuid::new_v4());
 
         info!("✅ Connected to server: {:?}", server_node_id);
@@ -977,8 +923,8 @@ impl QuicMessageClient {
     }
 
     /// 获取客户端节点ID
-    pub fn get_node_id(&self) -> iroh::PublicKey {
-        self.endpoint.node_addr().node_id
+    pub fn get_node_id(&self) -> EndpointId {
+        self.endpoint.id()
     }
 
     /// 获取消息接收器
@@ -1070,20 +1016,20 @@ impl QuicMessageClientHandle {
     }
 
     /// 获取节点ID
-    pub async fn get_node_id(&self) -> iroh::PublicKey {
+    pub async fn get_node_id(&self) -> EndpointId {
         let client = self.client.lock().await;
         client.get_node_id()
     }
 
-    /// 连接到QUIC消息服务器 - 使用 EndpointAddr
-    pub async fn connect_to_server(&self, node_addr: &NodeAddr) -> Result<String> {
+    /// 连接到QUIC消息服务器 - 使用 EndpointId
+    pub async fn connect_to_server(&self, node_addr: &EndpointId) -> Result<String> {
         let mut client = self.client.lock().await;
         client.connect_to_server(node_addr).await
     }
 
-    /// 使用 NodeAddr 连接到服务器 (推荐，包含relay信息)
-    pub async fn connect_to_server_with_node_addr(&self, node_addr: &NodeAddr) -> Result<String> {
-        // connect_to_server 现在已经使用 NodeAddr，这个方法保留作为别名
+    /// 使用 EndpointId 连接到服务器
+    pub async fn connect_to_server_with_node_addr(&self, node_addr: &EndpointId) -> Result<String> {
+        // connect_to_server 现在已经使用 EndpointId，这个方法保留作为别名
         self.connect_to_server(node_addr).await
     }
 

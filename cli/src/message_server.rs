@@ -346,21 +346,19 @@ impl CliMessageServer {
         use data_encoding::BASE32;
         use riterm_shared::SerializableEndpointAddr;
 
-        // 使用 get_node_addr 获取包含relay信息的完整节点地址
-        let node_addr = self.quic_server.get_node_addr();
-        tracing::info!("🎫 Generating ticket for node: {:?}", node_addr.node_id);
-        tracing::info!("🎫 Relay URL: {:?}", node_addr.relay_url);
-        tracing::info!("🎫 Direct addresses: {:?}", node_addr.direct_addresses);
+        // 使用 get_node_id 获取节点ID
+        let node_id = self.quic_server.get_node_id();
+        tracing::info!("🎫 Generating ticket for node: {:?}", node_id);
 
-        // 使用 SerializableEndpointAddr::from_node_addr 包含relay信息
-        let serializable_addr = SerializableEndpointAddr::from_node_addr(&node_addr)?;
+        // 使用 SerializableEndpointAddr::from_endpoint_id 创建地址
+        let serializable_addr = SerializableEndpointAddr::from_endpoint_id(node_id, riterm_shared::QUIC_MESSAGE_ALPN)?;
         let encoded_addr = serializable_addr.to_base64()?;
 
         // 创建 ticket 结构
         let ticket_data = serde_json::json!({
-            "node_id": node_addr.node_id.to_string(),
+            "node_id": node_id.to_string(),
             "endpoint_addr": encoded_addr,
-            "relay_url": node_addr.relay_url.as_ref().map(|url| url.to_string()),
+            "relay_url": None::<String>, // 简化版本，不包含relay信息
             "alpn": "riterm_quic",
             "created_at": std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -373,7 +371,7 @@ impl CliMessageServer {
         let ticket = format!("ticket:{}", BASE32.encode(ticket_json.as_bytes()));
 
         tracing::info!("✅ Connection ticket generated successfully");
-        tracing::info!("🎫 NodeId: {:?}", node_addr.node_id);
+        tracing::info!("🎫 NodeId: {:?}", node_id);
         tracing::info!(
             "🎫 ALPN: {}",
             std::str::from_utf8(riterm_shared::QUIC_MESSAGE_ALPN)?

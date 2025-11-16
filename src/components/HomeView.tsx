@@ -37,7 +37,7 @@ export function HomeView(props: HomeViewProps) {
     if (lastTicket && !props.sessionTicket) {
       props.onTicketInput(lastTicket);
     }
-    
+
     // Load ticket history
     setTicketHistory(getTicketHistory());
   });
@@ -91,7 +91,7 @@ export function HomeView(props: HomeViewProps) {
           class="bg-base-100 w-full max-w-md rounded-t-3xl md:rounded-2xl p-6 transform transition-all duration-300"
           onClick={(e) => e.stopPropagation()}
         >
-          <div 
+          <div
             class="text-center transition-all duration-300"
             classList={{
               "mb-6": !loginInputFocused() || !isMobile,
@@ -99,7 +99,7 @@ export function HomeView(props: HomeViewProps) {
             }}
           >
             <div class="w-12 h-1 bg-base-300 rounded-full mx-auto mb-4 md:hidden"></div>
-            <h2 
+            <h2
               class="font-bold transition-all duration-300"
               classList={{
                 "text-2xl mb-2": !loginInputFocused() || !isMobile,
@@ -174,12 +174,12 @@ export function HomeView(props: HomeViewProps) {
     </Show>
   );
 
-  
+
   // 主页渲染 - 简洁设计
   const renderMainView = () => (
     <div class="min-h-screen bg-base-100 flex flex-col">
       {/* 主内容区域 - Logo 和 Slogan */}
-      <div 
+      <div
         class="flex-1 flex flex-col items-center p-6 transition-all duration-300"
         classList={{
           "justify-center": !inputFocused() || !isMobile,
@@ -187,14 +187,14 @@ export function HomeView(props: HomeViewProps) {
         }}
       >
         {/* Logo */}
-        <div 
+        <div
           class="text-center transition-all duration-300"
           classList={{
             "mb-12": !inputFocused() || !isMobile,
             "mb-8 scale-90": inputFocused() && isMobile
           }}
         >
-          <div 
+          <div
             class="text-6xl text-primary transition-all duration-300"
             classList={{
               "mb-6": !inputFocused() || !isMobile,
@@ -203,7 +203,7 @@ export function HomeView(props: HomeViewProps) {
           >
             ⚡
           </div>
-          <h1 
+          <h1
             class="font-bold transition-all duration-300"
             classList={{
               "text-4xl mb-3": !inputFocused() || !isMobile,

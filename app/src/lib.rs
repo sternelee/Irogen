@@ -30,10 +30,10 @@ fn is_valid_session_ticket(ticket: &str) -> bool {
     ticket.starts_with("ticket:") && ticket.len() > 20
 }
 
-// Parse ticket and extract NodeAddr (推荐，包含relay信息)
+// Parse ticket and extract EndpointId
 fn parse_ticket_node_addr(
     ticket: &str,
-) -> Result<riterm_shared::NodeAddr, Box<dyn std::error::Error>> {
+) -> Result<iroh::EndpointId, Box<dyn std::error::Error>> {
     use data_encoding::BASE32;
     use serde_json;
 
@@ -58,8 +58,8 @@ fn parse_ticket_node_addr(
     // Parse the SerializableEndpointAddr from base64
     let serializable_addr = SerializableEndpointAddr::from_base64(endpoint_addr_b64)?;
 
-    // Try to reconstruct NodeAddr with relay information
-    Ok(serializable_addr.try_to_node_addr()?)
+    // Try to reconstruct EndpointId from SerializableEndpointAddr
+    Ok(serializable_addr.try_to_endpoint_id()?)
 }
 
 // Parse structured events from terminal data - DEPRECATED
@@ -409,7 +409,7 @@ async fn connect_to_peer(
         }
     };
 
-    // Parse the ticket to extract NodeAddr (包含relay信息)
+    // Parse the ticket to extract EndpointId
     let node_addr = parse_ticket_node_addr(&session_ticket)
         .map_err(|e| format!("Failed to parse session ticket: {}", e))?;
 
@@ -433,18 +433,14 @@ async fn connect_to_peer(
             #[cfg(debug_assertions)]
             tracing::info!("🔗 Establishing connection to server via NodeAddr");
             #[cfg(debug_assertions)]
-            tracing::info!("🔗 Node ID: {:?}", node_addr.node_id);
-            #[cfg(debug_assertions)]
-            tracing::info!("🔗 Relay URL: {:?}", node_addr.relay_url);
-            #[cfg(debug_assertions)]
-            tracing::info!("🔗 Direct addresses: {:?}", node_addr.direct_addresses);
+            tracing::info!("🔗 Node ID: {:?}", node_addr);
 
             // Get message receiver
             let receiver = quic_client.get_message_receiver().await;
 
-            // Establish actual QUIC connection using NodeAddr
+            // Establish actual QUIC connection using EndpointId
             let connection_id = match quic_client
-                .connect_to_server_with_node_addr(&node_addr)
+                .connect_to_server(&node_addr)
                 .await
             {
                 Ok(actual_connection_id) => {
@@ -473,7 +469,7 @@ async fn connect_to_peer(
     let terminal_session = TerminalSession {
         id: session_id.clone(),
         connection_id: connection_id.clone(),
-        node_id: node_addr.node_id.to_string(),
+        node_id: node_addr.to_string(),
         last_activity: Arc::new(RwLock::new(Instant::now())),
         cancellation_token: cancellation_token.clone(),
         event_count: Arc::new(std::sync::atomic::AtomicUsize::new(0)),

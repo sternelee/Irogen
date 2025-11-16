@@ -8,20 +8,30 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 anyhow = "1.0.86"
-riterm-shared = { version = "0.1.0", path = "../shared" }
 console_error_panic_hook = "0.1.7"
 futures = "0.3"
 serde = "1.0.217"
 serde-wasm-bindgen = "0.6.5"
+serde_json = "1.0.117"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 tracing-subscriber-wasm = "0.1.0"
-uuid = { version = "1.17", features = ["v4", "js"] }
 wasm-bindgen = "=0.2.100"
 wasm-bindgen-futures = "0.4"
 wasm-streams = "0.4.2"
 js-sys = "0.3"
 web-sys = "0.3"
+gloo-timers = { version = "0.3.0", features = ["futures"] }
+async-stream = "0.3.5"
+futures-util = "0.3.30"
+data-encoding = "2.6.0"
+n0-future = "0.1.2"
+iroh = { version = "0.95", default-features = false }
+iroh-tickets = "0.2"
+iroh-base = { version = "0.95", default-features = false }
+postcard = "1.1.1"
+tokio = { version = "1.47", default-features = false, features = ["sync"] }
+getrandom = { version = "0.3", features = [] }
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = [
@@ -29,3 +39,4 @@ wasm-opt = [
   "--enable-bulk-memory",
   "--enable-sign-ext",
 ]
+

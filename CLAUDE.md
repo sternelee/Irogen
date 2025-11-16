@@ -8,11 +8,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-The project is organized as a Cargo workspace with three main components:
+The project is organized as a Cargo workspace with four main components:
 
 - **cli/** - Command-line interface tool for hosting terminal sessions
 - **app/** - Tauri-based multi-platform application (desktop + mobile)
 - **shared/** - Common networking and messaging protocols
+- **browser/** - Web browser client implementation
 - **src/** - SolidJS frontend application
 
 ### Core Components
@@ -95,6 +96,8 @@ cargo test --workspace
 # Test specific components
 cd cli && cargo test
 cd shared && cargo test
+cd app && cargo test
+cd browser && cargo test
 
 # Run specific test files
 cargo test --bin test_ticket
@@ -103,6 +106,9 @@ cargo test --bin test_connection
 # Build and run test utilities
 rustc test_ticket.rs && ./test_ticket
 rustc test_connection.rs && ./test_connection
+
+# Browser integration tests
+cd browser && cargo test --features integration-tests
 ```
 
 ### Code Quality and Development Tools
@@ -141,6 +147,12 @@ cargo build
 
 # Build optimized release
 cargo build --release
+
+# Browser client development
+cd browser && wasm-pack build --target web
+
+# Browser client build for release
+cd browser && wasm-pack build --target web --release
 ```
 
 ### Development Workflow
@@ -260,13 +272,17 @@ The project has implemented a comprehensive message system replacing the previou
 - **NEW**: Implemented TCP service forwarding with full app-CLI coordination
 - Added comprehensive TCP session management UI with real-time statistics
 - Integrated TCP data message handling for bidirectional data forwarding
+- **NEW**: Added browser client with WebAssembly support for direct web access
+- Enhanced cross-platform compatibility with dedicated web interface
+- Improved message serialization with bincode for performance optimization
 
 ### Message Flow Architecture
-1. **Frontend** sends actions via Tauri invoke commands
-2. **Tauri Backend** converts to structured Message objects
-3. **Communication Manager** handles P2P message routing
+1. **Frontend** sends actions via Tauri invoke commands or browser WASM calls
+2. **Tauri Backend/WASM** converts to structured Message objects
+3. **Communication Manager** handles P2P message routing using iroh
 4. **CLI Host** processes messages and manages terminal operations
 5. **Response Messages** flow back through the same chain
+6. **Browser Client** can directly connect using WebAssembly P2P implementation
 
 ### TCP Service Forwarding (Recent Addition)
 The project now includes TCP service forwarding capabilities allowing users to:
@@ -280,12 +296,20 @@ The project now includes TCP service forwarding capabilities allowing users to:
 - `cli/src/message_server.rs` - Implements `TcpForwardingMessageHandler` and `TcpDataMessageHandler`
 - `app/src/lib.rs` - Provides Tauri commands for TCP forwarding management
 - `src/components/TcpForwardingManager.tsx` - Frontend UI for managing TCP sessions
+- `browser/src/` - WebAssembly implementation for browser-based terminal access only
 
 **Message Types:**
 - `TcpForwardingAction::CreateSession` - Create new forwarding sessions
 - `TcpForwardingAction::ListSessions` - List existing sessions
 - `TcpForwardingAction::StopSession` - Stop specific sessions
 - `TcpDataType::Data` - Forward actual TCP data between endpoints
+
+**Browser Client Architecture:**
+- Uses WebAssembly for P2P networking in the browser
+- Leverages `wasm-bindgen` for JavaScript interop
+- Implements terminal-only functionality (no TCP forwarding support)
+- Provides a web-only interface accessible without installation
+- Focuses purely on terminal data interaction capabilities
 
 ### Mobile Considerations
 - Viewport height management with keyboard awareness
@@ -309,6 +333,7 @@ riterm/
 ├── cli/                 # CLI tool (Rust) → builds to `cli/target/`
 ├── app/                 # Tauri app (Rust + SolidJS) → builds to `app/target/`
 ├── shared/              # Shared networking protocols (Rust library)
+├── browser/             # Browser client (Rust + WebAssembly)
 ├── src/                 # SolidJS frontend application
 └── dist/                # Built frontend assets
 ```
@@ -317,14 +342,17 @@ riterm/
 - **CLI**: `cli/target/release/cli` or `cli/target/debug/cli`
 - **Desktop App**: `app/target/release/bundle/` (macOS .app, Windows .exe, Linux AppImage)
 - **Mobile Apps**: Generated in `app/gen/android/` (APK) and `app/gen/apple/` (iOS .ipa)
+- **Browser Client**: `browser/dist/` (WASM + HTML/JS/CSS for web deployment)
 - **Frontend**: `dist/` directory (served by Tauri in production)
 
 ### Build Process Notes
-- The project uses a Cargo workspace with three crates: `cli`, `app`, and `shared`
+- The project uses a Cargo workspace with four crates: `cli`, `app`, `shared`, and `browser`
 - Frontend (SolidJS) builds to `dist/` which Tauri packages in the final app
 - The `app` directory contains the Tauri backend and mobile app code
+- The `browser` directory contains a pure web client using WebAssembly
 - Development server runs frontend on `http://localhost:1420` with hot reload
 - Mobile builds require platform-specific toolchains (Android SDK, Xcode)
+- Browser client uses `wasm-pack` for WASM compilation and web bundling
 
 ## Common Development Patterns
 
@@ -341,6 +369,20 @@ riterm/
 3. Add corresponding Tauri commands in `app/src/lib.rs`
 4. Update the `TcpForwardingManager.tsx` frontend component
 5. Test with both forwarding modes: "ListenToRemote" and "ConnectToRemote"
+
+### Browser Client Development
+1. Implement browser-specific features in `browser/src/lib.rs`
+2. Use WebAssembly for P2P networking via `wasm-bindgen`
+3. Focus on terminal data interaction only (no TCP forwarding)
+4. Build with wasm-pack: `wasm-pack build --target web`
+5. Test browser compatibility and WASM functionality
+6. Deploy browser client to static hosting for web access
+
+**Browser Client Limitations:**
+- Only supports terminal creation and basic interaction
+- No TCP forwarding capabilities (security and technical limitations)
+- Simplified message handling compared to native clients
+- Dependent on browser WebAssembly support and security constraints
 
 ### Mobile Development Tips
 - Use the `ViewportManager` for keyboard-aware layouts
