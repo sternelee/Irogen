@@ -40,12 +40,250 @@ interface TerminalSession {
   localInputLength?: number; // 记录本次本地输入的字符数
   hasPendingInput?: boolean; // 是否有待发送的输入
   smartCtrlCHandler?: SmartCtrlCHandler; // 智能 Ctrl+C 处理器
+  lastLocalInput?: string; // 记录最后一次本地输入的内容，用于更精确的去重
 }
 
 // 截断路径，显示末尾部分，前面用...省略
 const truncatePath = (path: string, maxLength: number = 24): string => {
   if (path.length <= maxLength) return path;
   return "..." + path.slice(-(maxLength - 3));
+};
+
+// 生成退格序列来删除本地输入
+const generateBackspaceSequence = (input: string): string => {
+  if (!input) return "";
+  
+  // 计算需要删除的可见字符数（排除ANSI转义序列和控制字符）
+  let visibleChars = 0;
+  let inEscape = false;
+  
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    
+    if (char === '\x1b') {
+      inEscape = true;
+      continue;
+    }
+    
+    if (inEscape) {
+      // ANSI 转义序列以 a-z, A-Z, @, [, ], ^, _, {, |, }, ~ 结束
+      if (/[a-zA-Z@[\]^_`{|}~]/.test(char)) {
+        inEscape = false;
+      }
+      continue;
+    }
+    
+    // 跳过控制字符（除了可显示字符）
+    if (char >= ' ' && char <= '~') {
+      // 检查是否是多字节UTF-8字符的开始
+      const code = char.charCodeAt(0);
+      if (code > 0x7F) {
+        // 多字节字符，计算显示宽度
+        if (code >= 0x4E00 && code <= 0x9FFF) {
+          // 中日韩统一表意文字，通常占用2个显示位置
+          visibleChars += 2;
+        } else {
+          // 其他多字节字符，通常占用1个显示位置
+          visibleChars += 1;
+        }
+      } else {
+        visibleChars++;
+      }
+    }
+  }
+  
+  // 生成对应数量的退格键
+  return '\x08'.repeat(visibleChars);
+};
+
+// 检测远程输出是否已经包含退格键来删除本地输入
+const hasRemoteBackspaceHandling = (outputData: string, localInput: string): boolean => {
+  if (!localInput) return false;
+  
+  // 计算本地输入的可见字符数
+  const localVisibleChars = generateBackspaceSequence(localInput).length;
+  
+  // 检查输出开头是否包含相应数量的退格键
+  const backspacePattern = new RegExp(`^\\x08{${localVisibleChars},}`);
+  return backspacePattern.test(outputData);
+};
+
+// 智能处理远程输出 - 优化版本，改进ANSI颜色处理和重复数据过滤
+const handleRemoteOutput = (
+  session: TerminalSession,
+  outputData: string
+): string => {
+  // 如果有待处理的本地输入
+  if (session.hasPendingInput && session.lastLocalInput && session.lastLocalInput.length > 0) {
+    console.log("🧹 Analyzing remote output for local input:", {
+      lastLocalInput: JSON.stringify(session.lastLocalInput),
+      outputData: JSON.stringify(outputData),
+    });
+
+    // 保存本地输入用于过滤
+    const localInputToFilter = session.lastLocalInput;
+
+    // 重置标记（在使用之前重置，避免状态泄露）
+    session.lastLocalInput = "";
+    session.localInputLength = 0;
+    session.hasPendingInput = false;
+
+    // 使用改进的过滤函数
+    const filteredOutput = filterLocalEchoImproved(outputData, localInputToFilter);
+    return filteredOutput;
+  }
+
+  return outputData;
+};
+
+// 改进的本地输入回显过滤函数 - 更好地处理ANSI颜色代码和复杂场景
+const filterLocalEchoImproved = (outputData: string, localInput: string): string => {
+  if (!localInput || !outputData) return outputData;
+
+  console.log("🔍 Improved filtering:", {
+    original: JSON.stringify(outputData),
+    localInput: JSON.stringify(localInput)
+  });
+
+  // 1. 首先尝试简单的无ANSI代码情况
+  if (outputData.startsWith(localInput)) {
+    const result = outputData.substring(localInput.length);
+    console.log("✅ Simple plain match filtered:", { result: JSON.stringify(result) });
+    return result;
+  }
+
+  // 2. 处理带ANSI颜色代码的情况 - 使用更精确的算法
+  const filtered = filterAnsiLocalEcho(outputData, localInput);
+  if (filtered !== outputData) {
+    console.log("✅ ANSI filtered:", { result: JSON.stringify(filtered) });
+    return filtered;
+  }
+
+  // 3. 处理复杂情况：检查是否是命令补全或自动修正
+  if (isCommandCompletion(outputData, localInput)) {
+    console.log("✅ Command completion detected, no filtering");
+    return outputData;
+  }
+
+  // 4. 处理退格键情况
+  if (outputData.startsWith('\x08') || outputData.includes('\x08')) {
+    return handleBackspaceCase(outputData, localInput);
+  }
+
+  console.log("⚠️ No filtering applied, output as-is");
+  return outputData;
+};
+
+// 辅助函数：处理ANSI颜色代码的本地输入过滤
+const filterAnsiLocalEcho = (outputData: string, localInput: string): string => {
+  // 移除ANSI颜色代码后进行比较
+  const stripAnsi = (text: string): string => {
+    return text.replace(/\x1b\[[0-9;]*[mGKHJAB]/g, '');
+  };
+
+  // 找到第一个可能的本地输入位置
+  let outputIndex = 0;
+  let inputIndex = 0;
+  let foundMatch = false;
+
+  while (outputIndex < outputData.length && inputIndex < localInput.length) {
+    const char = outputData[outputIndex];
+
+    if (char === '\x1b') {
+      // 跳过ANSI转义序列
+      let escapeEnd = outputIndex + 1;
+      while (escapeEnd < outputData.length &&
+             escapeEnd < outputIndex + 20 && // 限制搜索长度
+             !/[a-zA-Z@[\]^_`{|}~]/.test(outputData[escapeEnd])) {
+        escapeEnd++;
+      }
+      if (escapeEnd < outputData.length) {
+        escapeEnd++; // 包含结束字符
+      }
+      outputIndex = escapeEnd;
+      continue;
+    }
+
+    if (char === localInput[inputIndex]) {
+      foundMatch = true;
+      inputIndex++;
+      outputIndex++;
+    } else {
+      break;
+    }
+  }
+
+  if (foundMatch && inputIndex === localInput.length) {
+    return outputData.substring(outputIndex);
+  }
+
+  return outputData;
+};
+
+// 辅助函数：检查是否是命令补全情况
+const isCommandCompletion = (outputData: string, localInput: string): boolean => {
+  // 如果输出包含本地输入但还有额外内容，可能是命令补全
+  const strippedOutput = outputData.replace(/\x1b\[[0-9;]*[mGKHJAB]/g, '');
+  const strippedLocal = localInput.replace(/\x1b\[[0-9;]*[mGKHJAB]/g, '');
+
+  return strippedOutput.startsWith(strippedLocal) &&
+         strippedOutput.length > strippedLocal.length &&
+         !strippedOutput.substring(strippedLocal.length).match(/^\s/);
+};
+
+// 辅助函数：处理退格键情况
+const handleBackspaceCase = (outputData: string, localInput: string): string => {
+  // 如果输出以退格键开始，说明远程端已经在处理回退
+  const backspaceCount = outputData.match(/^\x08+/)?.[0].length || 0;
+
+  if (backspaceCount >= localInput.length) {
+    // 足够的退格键，返回去掉退格键后的内容
+    return outputData.substring(backspaceCount);
+  }
+
+  return outputData;
+};
+
+// 保留原函数作为后备（已弃用）
+const filterLocalEcho = (outputData: string, localInput: string): string => {
+  console.warn("⚠️ Using deprecated filterLocalEcho, consider migrating to filterLocalEchoImproved");
+  return filterLocalEchoImproved(outputData, localInput);
+};
+
+// 调试工具：测试过滤逻辑
+const testFilteringLogic = () => {
+  const testCases = [
+    {
+      name: "Git command without colors",
+      output: "git status",
+      localInput: "git"
+    },
+    {
+      name: "Git command with colors",
+      output: "\x1b[32mgit\x1b[0m status",
+      localInput: "git"
+    },
+    {
+      name: "Command completion",
+      output: "git status",
+      localInput: "git"
+    },
+    {
+      name: "Backspace handling",
+      output: "\x08\x08\x08\x08ls",
+      localInput: "git"
+    }
+  ];
+
+  console.log("🧪 Testing filtering logic:");
+  testCases.forEach((testCase, index) => {
+    const result = filterLocalEchoImproved(testCase.output, testCase.localInput);
+    console.log(`Test ${index + 1}: ${testCase.name}`);
+    console.log(`  Input: ${JSON.stringify(testCase.output)}`);
+    console.log(`  Local: ${JSON.stringify(testCase.localInput)}`);
+    console.log(`  Result: ${JSON.stringify(result)}`);
+    console.log("");
+  });
 };
 
 // 智能 Ctrl+C 处理器
@@ -135,30 +373,73 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     null,
   );
 
-  // 创建发送输入到远程终端的函数
-  const sendBufferedInput = (
+  // 优化后的输入发送函数
+  const sendInputImmediately = (
     sessionId: string,
     terminalId: string,
     session: TerminalSession,
   ) => {
+    // 清除防抖定时器
+    if (session.sendTimeout) {
+      clearTimeout(session.sendTimeout);
+      session.sendTimeout = null;
+    }
+
     if (session.inputBuffer && session.inputBuffer.length > 0) {
       const dataToSend = session.inputBuffer;
-      session.inputBuffer = ""; // 清空缓冲区
-      session.hasPendingInput = false; // 重置待发送标记
-      // 注意：保留 localInputLength，用于远程输出去重
+      console.log("🚀 Sending input immediately:", JSON.stringify(dataToSend));
 
-      console.log("Sending buffered input:", dataToSend);
+      // 重要：不要立即重置 lastLocalInput，需要等待远程输出处理
+      // 只清空输入缓冲区和重置部分状态
+      session.inputBuffer = "";
+      // session.lastLocalInput 和 session.hasPendingInput 将在 handleRemoteOutput 中处理
+
+      // 保存命令到会话（如果有实际内容）
+      const trimmedCommand = dataToSend.trim();
+      if (trimmedCommand) {
+        // 从会话管理器获取对应的 Hook 来保存命令
+        const terminalSessionHook = session.terminalSession;
+        if (terminalSessionHook) {
+          terminalSessionHook.saveCommand(trimmedCommand);
+        }
+      }
+
       invoke("send_terminal_input_to_terminal", {
         sessionId: sessionId,
         terminalId: terminalId,
         input: dataToSend,
       }).catch((error) => {
-        console.error("Failed to send terminal input:", error);
-        // 发送失败时重置标记
+        console.error("❌ Failed to send terminal input:", error);
+        // 发送失败时完全重置状态
         session.hasPendingInput = false;
+        session.lastLocalInput = "";
         session.localInputLength = 0;
       });
     }
+  };
+
+  // 防抖输入发送调度
+  const scheduleInputSend = (
+    session: TerminalSession,
+    sendCallback: () => void,
+  ) => {
+    // 清除现有定时器
+    if (session.sendTimeout) {
+      clearTimeout(session.sendTimeout);
+    }
+
+    // 设置新的防抖定时器（减少到200ms提高响应性）
+    session.sendTimeout = setTimeout(sendCallback, 200);
+  };
+
+  // 保留旧函数以兼容现有代码（已弃用）
+  const sendBufferedInput = (
+    sessionId: string,
+    terminalId: string,
+    session: TerminalSession,
+  ) => {
+    console.warn("⚠️ Using deprecated sendBufferedInput, consider migrating to sendInputImmediately");
+    sendInputImmediately(sessionId, terminalId, session);
   };
 
   // 全局会话管理
@@ -581,6 +862,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         sendTimeout: null,
         localInputLength: 0,
         hasPendingInput: false,
+        lastLocalInput: "",
       };
 
       // 创建智能 Ctrl+C 处理器
@@ -639,65 +921,53 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       // 将智能处理器添加到终端会话
       terminalSession.smartCtrlCHandler = smartCtrlCHandler;
 
-      // 设置终端数据处理器
+      // 设置终端数据处理器 - 优化版本
       terminal.onData((data) => {
-        console.log("data:", data);
+        console.log("📝 Terminal input:", JSON.stringify(data));
 
         // 特殊处理 Ctrl+C
         if (data === "\x03") {
           console.log("🎯 检测到 Ctrl+C 输入");
           smartCtrlCHandler.handleCtrlC();
-          // 立即在本地显示
+          // 立即在本地显示并发送
           terminal.write(data);
+          // 立即发送，不经过缓冲
+          invoke("send_terminal_input_to_terminal", {
+            sessionId: props.sessionId,
+            terminalId: terminalId,
+            input: data,
+          }).catch((error) => {
+            console.error("Failed to send Ctrl+C:", error);
+          });
           return;
         }
 
         // 累积输入到会话缓冲区
-        terminalSession.inputBuffer += data;
-        terminalSession.localInputLength =
-          (terminalSession.localInputLength || 0) + data.length;
+        terminalSession.inputBuffer = (terminalSession.inputBuffer || "") + data;
+
+        // 更新本地输入状态用于去重
+        terminalSession.lastLocalInput = (terminalSession.lastLocalInput || "") + data;
         terminalSession.hasPendingInput = true;
 
-        // 立即在本地显示所有输入以保持响应性
-        terminal.write(data);
-        console.log("📝 Buffer updated:", {
-          data: JSON.stringify(data),
-          buffer: JSON.stringify(terminalSession.inputBuffer || ""),
-          length: (terminalSession.inputBuffer || "").length,
-        });
+        // 注意：不再使用 localInputLength，改用 lastLocalInput.length
 
-        // 保存命令到会话（如果有实际内容）
-        if (data.trim()) {
-          terminalSessionHook.saveCommand(
-            (terminalSession.inputBuffer || "").trim(),
-          );
-        }
+        // 立即在本地显示以保持响应性
+        terminal.write(data);
+
+        console.log("📝 Input buffer updated:", {
+          buffer: JSON.stringify(terminalSession.inputBuffer),
+          lastLocalInput: JSON.stringify(terminalSession.lastLocalInput),
+        });
 
         // 检查是否是回车键，如果是则立即发送
         if (data === "\r" || data === "\n") {
           console.log("🚀 Enter key detected, sending immediately");
-
-          // 清除防抖定时器
-          if (terminalSession.sendTimeout) {
-            clearTimeout(terminalSession.sendTimeout);
-            terminalSession.sendTimeout = null;
-          }
-
-          // 立即发送缓冲区内容
-          sendBufferedInput(props.sessionId, terminalId, terminalSession);
+          sendInputImmediately(props.sessionId, terminalId, terminalSession);
         } else {
-          // 对于其他输入，使用1秒防抖
-          if (terminalSession.sendTimeout) {
-            clearTimeout(terminalSession.sendTimeout);
-          }
-
-          terminalSession.sendTimeout = setTimeout(() => {
-            console.log(
-              "⏰ Timer triggered, checking buffer:",
-              terminalSession.inputBuffer,
-            );
-            sendBufferedInput(props.sessionId, terminalId, terminalSession);
-          }, 300);
+          // 对于其他输入，使用防抖机制
+          scheduleInputSend(terminalSession, () => {
+            sendInputImmediately(props.sessionId, terminalId, terminalSession);
+          });
         }
       });
 
@@ -814,31 +1084,8 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         // 确保数据是字符串类型
         let outputData = typeof data === "string" ? data : String(data || "");
 
-        // 如果有待发送的输入，去除重复的回显
-        if (
-          session.hasPendingInput &&
-          session.localInputLength &&
-          session.localInputLength > 0
-        ) {
-          const charsToRemove = Math.min(
-            session.localInputLength,
-            outputData.length,
-          );
-          if (charsToRemove > 0) {
-            console.log("🧹 Removing duplicate echo:", {
-              localInputLength: session.localInputLength,
-              outputDataLength: outputData.length,
-              removing: charsToRemove,
-            });
-
-            // 移除与本地输入重复的部分
-            outputData = outputData.substring(charsToRemove);
-
-            // 重置标记
-            session.localInputLength = 0;
-            session.hasPendingInput = false;
-          }
-        }
+        // 使用新的输出处理方法 - 先删除本地输入，再显示远程输出
+        outputData = handleRemoteOutput(session, outputData);
 
         // 只有当还有数据时才写入
         if (outputData.length > 0) {
@@ -935,34 +1182,8 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
                   ? outputData
                   : String(outputData || "");
 
-              // 如果有待发送的输入，去除重复的回显
-              if (
-                session.hasPendingInput &&
-                session.localInputLength &&
-                session.localInputLength > 0
-              ) {
-                const charsToRemove = Math.min(
-                  session.localInputLength,
-                  dataStr.length,
-                );
-                if (charsToRemove > 0) {
-                  console.log(
-                    "🧹 Removing duplicate echo from structured data:",
-                    {
-                      localInputLength: session.localInputLength,
-                      dataStrLength: dataStr.length,
-                      removing: charsToRemove,
-                    },
-                  );
-
-                  // 移除与本地输入重复的部分
-                  dataStr = dataStr.substring(charsToRemove);
-
-                  // 重置标记
-                  session.localInputLength = 0;
-                  session.hasPendingInput = false;
-                }
-              }
+              // 使用新的输出处理方法 - 先删除本地输入，再显示远程输出
+              dataStr = handleRemoteOutput(session, dataStr);
 
               // 只有当还有数据时才写入
               if (dataStr.length > 0) {

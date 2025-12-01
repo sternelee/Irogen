@@ -187,41 +187,88 @@ pnpm build && pnpm tauri build
 
 ## Key Technical Details
 
-### Unified Message Protocol (Recent Update)
-The project has implemented a comprehensive message system replacing the previous TerminalCommand/Response approach:
-- `Message` struct with structured payload types
-- `MessageType` enum for different message categories
-- Message routing and priority handling
-- Response correlation and error handling
-- Network serialization with length prefixes
+### Architecture Overview
 
-### Session Management
-- Sessions support up to 50 concurrent connections
-- Event buffering limits (5000 events per session)
-- Automatic cleanup of inactive sessions
-- Memory management with periodic cleanup tasks (5-minute intervals)
-- Session tickets with NodeAddr for P2P connections
+**RiTerm** is a P2P terminal session sharing tool built as a Cargo workspace with four main components:
 
-### P2P Architecture
-- Uses iroh for P2P networking with NAT traversal
-- ChaCha20Poly1305 end-to-end encryption
-- Session tickets for connection sharing (Base32 encoded)
-- QUIC-based communication with connection management
-- No central server required
+1. **CLI Tool** (`cli/`) - Rust-based command-line interface for hosting terminal sessions
+2. **Tauri App** (`app/`) - Cross-platform desktop/mobile application (Rust backend + SolidJS frontend)  
+3. **Shared Library** (`shared/`) - Common networking protocols, message types, and utilities
+4. **Browser Client** (`browser/`) - WebAssembly-based browser client for terminal access only
+5. **Frontend** (`src/`) - SolidJS application with mobile-first responsive design
 
-### Terminal I/O System
-- Real-time terminal input/output synchronization
-- Based on sshx-style I/O loop with tokio::select!
-- Cross-platform shell detection (Zsh, Bash, Fish, Nushell, PowerShell)
-- Terminal creation, resizing, and management
-- Mobile-optimized terminal interface with adaptive layouts
+The project uses **iroh** for P2P networking with NAT traversal and end-to-end encryption, enabling real-time terminal collaboration without requiring a central server.
 
-### Frontend Features
-- **Mobile-First Design**: Responsive layouts with mobile viewport management
-- **Keyboard Management**: Advanced mobile keyboard handling with viewport adjustment
-- **AI Assistant**: Natural language terminal command generation
-- **Multi-Terminal Support**: Tab-based terminal management
-- **Gesture Controls**: Touch-optimized interface for mobile devices
+### Message Protocol Architecture
+
+The project implements a unified message system through `shared/src/message_protocol.rs`:
+
+- **Message Struct**: Central message type with structured payload and routing
+- **MessageType Enum**: Categories for terminal data, TCP forwarding, session management, etc.
+- **MessageHandler Trait**: Extensible handler system for different message types
+- **Serialization**: Uses bincode for efficient network serialization with length prefixes
+
+Key message flows:
+1. Frontend → Tauri/WASM → Message struct → P2P Network → CLI Host
+2. CLI processes terminal operations and sends responses back through the chain
+3. Browser client can connect directly using WebAssembly P2P implementation
+
+### Session and Connection Management
+
+- **Session Tickets**: Base32-encoded NodeAddr for secure P2P connection sharing
+- **Concurrent Connections**: Supports up to 50 simultaneous participants per session
+- **Event Buffering**: 5000 event limit per session with automatic cleanup
+- **Memory Management**: 5-minute interval cleanup tasks for inactive sessions
+- **Recovery**: Session recovery utilities for connection resilience
+
+### Core Components
+
+#### P2P Networking (`shared/src/`)
+- `quic_server.rs` - QUIC-based server with connection multiplexing and message routing
+- `event_manager.rs` - Event coordination, buffering, and session lifecycle management
+- `communication_manager.rs` - High-level P2P communication and connection handling
+- `message_protocol.rs` - Unified message system with extensible handler architecture
+
+#### CLI Tool (`cli/src/`)
+- `message_server.rs` - Host server with MessageHandler implementations for different message types
+- `terminal_runner.rs` - Terminal session management with real-time I/O synchronization
+- `shell.rs` - Cross-platform shell detection (Zsh, Bash, Fish, Nushell, PowerShell)
+- `message_handler.rs` - Message processing, routing, and response generation
+
+#### Tauri App (`app/src/`)
+- `lib.rs` - Main Tauri backend with session management and P2P coordination
+- Terminal creation, input handling, and real-time output forwarding
+- Mobile/desktop capability management with conditional compilation
+- TCP forwarding session management and statistics tracking
+
+#### Frontend (`src/`)
+- SolidJS with TypeScript for reactive UI development
+- Mobile-first responsive design with viewport management
+- Terminal UI using xterm.js with mobile-optimized keyboard handling
+- AI chat integration for natural language terminal command generation
+- Tab-based multi-terminal support with gesture controls
+
+#### Browser Client (`browser/src/`)
+- WebAssembly implementation using wasm-bindgen for browser P2P networking
+- Terminal-only functionality (no TCP forwarding due to security constraints)
+- Direct P2P connection capability without native app installation
+
+### P2P Architecture and Terminal I/O
+- **iroh Networking**: P2P communication with NAT traversal and no central server dependency
+- **End-to-End Encryption**: ChaCha20Poly1305 encryption for all terminal data
+- **QUIC Protocol**: Reliable message delivery with connection multiplexing
+- **Session Tickets**: Base32-encoded connection tokens for secure session sharing
+- **Real-time Terminal I/O**: sshx-style asynchronous I/O loop using tokio::select!
+- **Cross-Platform Shell Support**: Automatic detection and configuration of Zsh, Bash, Fish, Nushell, PowerShell
+- **Mobile Optimization**: Adaptive terminal interface with viewport-aware layouts
+
+### Frontend Architecture
+- **Mobile-First Design**: Responsive layouts with dynamic viewport management
+- **Touch Optimization**: Gesture controls and appropriate tap targets for mobile devices  
+- **Keyboard Management**: Advanced mobile keyboard handling with automatic viewport adjustment
+- **AI Integration**: Natural language terminal command generation through chat interface
+- **Multi-Terminal Support**: Tab-based terminal management with session persistence
+- **Real-time Updates**: Reactive UI using SolidJS with immediate terminal output synchronization
 
 ## Configuration Files
 
