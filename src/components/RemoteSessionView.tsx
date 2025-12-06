@@ -8,7 +8,7 @@ import "@xterm/xterm/css/xterm.css";
 import { getDeviceCapabilities } from "../stores/deviceStore";
 import { useTerminalSessions } from "../stores/terminalSessionStore";
 import { useTerminalSession } from "../hooks/useTerminalSession";
-import { MobileKeyboard } from "../utils/mobile";
+
 // Import types from the shared library
 interface TerminalInfo {
   id: string;
@@ -39,7 +39,6 @@ interface TerminalSession {
   sendTimeout?: ReturnType<typeof setTimeout> | null;
   localInputLength?: number; // 记录本次本地输入的字符数
   hasPendingInput?: boolean; // 是否有待发送的输入
-  smartCtrlCHandler?: SmartCtrlCHandler; // 智能 Ctrl+C 处理器
   lastLocalInput?: string; // 记录最后一次本地输入的内容，用于更精确的去重
 }
 
@@ -49,323 +48,16 @@ const truncatePath = (path: string, maxLength: number = 24): string => {
   return "..." + path.slice(-(maxLength - 3));
 };
 
-// 生成退格序列来删除本地输入
-const generateBackspaceSequence = (input: string): string => {
-  if (!input) return "";
-  
-  // 计算需要删除的可见字符数（排除ANSI转义序列和控制字符）
-  let visibleChars = 0;
-  let inEscape = false;
-  
-  for (let i = 0; i < input.length; i++) {
-    const char = input[i];
-    
-    if (char === '\x1b') {
-      inEscape = true;
-      continue;
-    }
-    
-    if (inEscape) {
-      // ANSI 转义序列以 a-z, A-Z, @, [, ], ^, _, {, |, }, ~ 结束
-      if (/[a-zA-Z@[\]^_`{|}~]/.test(char)) {
-        inEscape = false;
-      }
-      continue;
-    }
-    
-    // 跳过控制字符（除了可显示字符）
-    if (char >= ' ' && char <= '~') {
-      // 检查是否是多字节UTF-8字符的开始
-      const code = char.charCodeAt(0);
-      if (code > 0x7F) {
-        // 多字节字符，计算显示宽度
-        if (code >= 0x4E00 && code <= 0x9FFF) {
-          // 中日韩统一表意文字，通常占用2个显示位置
-          visibleChars += 2;
-        } else {
-          // 其他多字节字符，通常占用1个显示位置
-          visibleChars += 1;
-        }
-      } else {
-        visibleChars++;
-      }
-    }
-  }
-  
-  // 生成对应数量的退格键
-  return '\x08'.repeat(visibleChars);
-};
-
-// 检测远程输出是否已经包含退格键来删除本地输入
-const hasRemoteBackspaceHandling = (outputData: string, localInput: string): boolean => {
-  if (!localInput) return false;
-  
-  // 计算本地输入的可见字符数
-  const localVisibleChars = generateBackspaceSequence(localInput).length;
-  
-  // 检查输出开头是否包含相应数量的退格键
-  const backspacePattern = new RegExp(`^\\x08{${localVisibleChars},}`);
-  return backspacePattern.test(outputData);
-};
-
-// 智能处理远程输出 - 优化版本，改进ANSI颜色处理和重复数据过滤
+// 远程输出直接展示，不做本地裁剪或过滤
 const handleRemoteOutput = (
-  session: TerminalSession,
+  _session: TerminalSession,
   outputData: string
 ): string => {
-  // 如果有待处理的本地输入
-  if (session.hasPendingInput && session.lastLocalInput && session.lastLocalInput.length > 0) {
-    console.log("🧹 Analyzing remote output for local input:", {
-      lastLocalInput: JSON.stringify(session.lastLocalInput),
-      outputData: JSON.stringify(outputData),
-    });
-
-    // 保存本地输入用于过滤
-    const localInputToFilter = session.lastLocalInput;
-
-    // 重置标记（在使用之前重置，避免状态泄露）
-    session.lastLocalInput = "";
-    session.localInputLength = 0;
-    session.hasPendingInput = false;
-
-    // 使用改进的过滤函数
-    const filteredOutput = filterLocalEchoImproved(outputData, localInputToFilter);
-    return filteredOutput;
-  }
-
-  return outputData;
+  return typeof outputData === "string" ? outputData : String(outputData ?? "");
 };
-
-// 改进的本地输入回显过滤函数 - 更好地处理ANSI颜色代码和复杂场景
-const filterLocalEchoImproved = (outputData: string, localInput: string): string => {
-  if (!localInput || !outputData) return outputData;
-
-  console.log("🔍 Improved filtering:", {
-    original: JSON.stringify(outputData),
-    localInput: JSON.stringify(localInput)
-  });
-
-  // 1. 首先尝试简单的无ANSI代码情况
-  if (outputData.startsWith(localInput)) {
-    const result = outputData.substring(localInput.length);
-    console.log("✅ Simple plain match filtered:", { result: JSON.stringify(result) });
-    return result;
-  }
-
-  // 2. 处理带ANSI颜色代码的情况 - 使用更精确的算法
-  const filtered = filterAnsiLocalEcho(outputData, localInput);
-  if (filtered !== outputData) {
-    console.log("✅ ANSI filtered:", { result: JSON.stringify(filtered) });
-    return filtered;
-  }
-
-  // 3. 处理复杂情况：检查是否是命令补全或自动修正
-  if (isCommandCompletion(outputData, localInput)) {
-    console.log("✅ Command completion detected, no filtering");
-    return outputData;
-  }
-
-  // 4. 处理退格键情况
-  if (outputData.startsWith('\x08') || outputData.includes('\x08')) {
-    return handleBackspaceCase(outputData, localInput);
-  }
-
-  console.log("⚠️ No filtering applied, output as-is");
-  return outputData;
-};
-
-// 辅助函数：处理ANSI颜色代码的本地输入过滤
-const filterAnsiLocalEcho = (outputData: string, localInput: string): string => {
-  // 移除ANSI颜色代码后进行比较
-  const stripAnsi = (text: string): string => {
-    return text.replace(/\x1b\[[0-9;]*[mGKHJAB]/g, '');
-  };
-
-  // 找到第一个可能的本地输入位置
-  let outputIndex = 0;
-  let inputIndex = 0;
-  let foundMatch = false;
-
-  while (outputIndex < outputData.length && inputIndex < localInput.length) {
-    const char = outputData[outputIndex];
-
-    if (char === '\x1b') {
-      // 跳过ANSI转义序列
-      let escapeEnd = outputIndex + 1;
-      while (escapeEnd < outputData.length &&
-             escapeEnd < outputIndex + 20 && // 限制搜索长度
-             !/[a-zA-Z@[\]^_`{|}~]/.test(outputData[escapeEnd])) {
-        escapeEnd++;
-      }
-      if (escapeEnd < outputData.length) {
-        escapeEnd++; // 包含结束字符
-      }
-      outputIndex = escapeEnd;
-      continue;
-    }
-
-    if (char === localInput[inputIndex]) {
-      foundMatch = true;
-      inputIndex++;
-      outputIndex++;
-    } else {
-      break;
-    }
-  }
-
-  if (foundMatch && inputIndex === localInput.length) {
-    return outputData.substring(outputIndex);
-  }
-
-  return outputData;
-};
-
-// 辅助函数：检查是否是命令补全情况
-const isCommandCompletion = (outputData: string, localInput: string): boolean => {
-  // 如果输出包含本地输入但还有额外内容，可能是命令补全
-  const strippedOutput = outputData.replace(/\x1b\[[0-9;]*[mGKHJAB]/g, '');
-  const strippedLocal = localInput.replace(/\x1b\[[0-9;]*[mGKHJAB]/g, '');
-
-  return strippedOutput.startsWith(strippedLocal) &&
-         strippedOutput.length > strippedLocal.length &&
-         !strippedOutput.substring(strippedLocal.length).match(/^\s/);
-};
-
-// 辅助函数：处理退格键情况
-const handleBackspaceCase = (outputData: string, localInput: string): string => {
-  // 如果输出以退格键开始，说明远程端已经在处理回退
-  const backspaceCount = outputData.match(/^\x08+/)?.[0].length || 0;
-
-  if (backspaceCount >= localInput.length) {
-    // 足够的退格键，返回去掉退格键后的内容
-    return outputData.substring(backspaceCount);
-  }
-
-  return outputData;
-};
-
-// 保留原函数作为后备（已弃用）
-const filterLocalEcho = (outputData: string, localInput: string): string => {
-  console.warn("⚠️ Using deprecated filterLocalEcho, consider migrating to filterLocalEchoImproved");
-  return filterLocalEchoImproved(outputData, localInput);
-};
-
-// 调试工具：测试过滤逻辑
-const testFilteringLogic = () => {
-  const testCases = [
-    {
-      name: "Git command without colors",
-      output: "git status",
-      localInput: "git"
-    },
-    {
-      name: "Git command with colors",
-      output: "\x1b[32mgit\x1b[0m status",
-      localInput: "git"
-    },
-    {
-      name: "Command completion",
-      output: "git status",
-      localInput: "git"
-    },
-    {
-      name: "Backspace handling",
-      output: "\x08\x08\x08\x08ls",
-      localInput: "git"
-    }
-  ];
-
-  console.log("🧪 Testing filtering logic:");
-  testCases.forEach((testCase, index) => {
-    const result = filterLocalEchoImproved(testCase.output, testCase.localInput);
-    console.log(`Test ${index + 1}: ${testCase.name}`);
-    console.log(`  Input: ${JSON.stringify(testCase.output)}`);
-    console.log(`  Local: ${JSON.stringify(testCase.localInput)}`);
-    console.log(`  Result: ${JSON.stringify(result)}`);
-    console.log("");
-  });
-};
-
-// 智能 Ctrl+C 处理器
-class SmartCtrlCHandler {
-  private lastCtrlCTime: number = 0;
-  private pendingCtrlCCount: number = 0;
-  private readonly rapidPressThreshold = 500; // 500ms内视为快速连按
-  private readonly maxRetries = 3;
-
-  constructor(private onSendData: (data: string) => void) { }
-
-  handleCtrlC(): void {
-    const now = Date.now();
-    const timeSinceLastCtrlC = now - this.lastCtrlCTime;
-
-    // 检测快速连按
-    if (timeSinceLastCtrlC < this.rapidPressThreshold) {
-      this.pendingCtrlCCount++;
-      console.log(
-        `🔄 检测到快速连按 Ctrl+C (第 ${this.pendingCtrlCCount + 1} 次)`,
-      );
-
-      // 如果是第三次或更多次快速连按，发送更强力的中断信号
-      if (this.pendingCtrlCCount >= this.maxRetries - 1) {
-        console.log("🚨 发送强力的中断信号序列");
-        this.sendForcefulInterrupt();
-        this.reset();
-        return;
-      }
-    } else {
-      this.pendingCtrlCCount = 0;
-    }
-
-    this.lastCtrlCTime = now;
-
-    // 发送标准的 Ctrl+C 信号
-    console.log("⚡ 发送 Ctrl+C 信号");
-    this.onSendData("\x03");
-
-    // 设置延迟检查，看看是否需要重试
-    setTimeout(() => {
-      this.checkRetryNeeded();
-    }, 1000);
-  }
-
-  private checkRetryNeeded(): void {
-    // 这个方法可以结合终端输出来判断是否需要重试
-    // 目前简化为如果有待处理的 Ctrl+C 计数，则自动重试
-    if (this.pendingCtrlCCount > 0) {
-      console.log("🔄 检测到可能需要重试中断");
-      setTimeout(() => {
-        if (this.pendingCtrlCCount > 0) {
-          console.log("🔁 自动重试发送 Ctrl+C");
-          this.onSendData("\x03");
-          this.pendingCtrlCCount--;
-        }
-      }, 500);
-    }
-  }
-
-  private sendForcefulInterrupt(): void {
-    // 发送更强力的中断序列：多次 Ctrl+C + Ctrl+Z + Ctrl+D
-    const interruptSequence = "\x03\x03\x1a\x04"; // Ctrl+C Ctrl+C Ctrl+Z Ctrl+D
-    this.onSendData(interruptSequence);
-  }
-
-  private reset(): void {
-    this.pendingCtrlCCount = 0;
-    this.lastCtrlCTime = 0;
-  }
-
-  resetOnOutput(): void {
-    // 当检测到新的终端输出时，重置状态
-    if (Date.now() - this.lastCtrlCTime > 2000) {
-      this.reset();
-    }
-  }
-}
 
 export function RemoteSessionView(props: RemoteSessionViewProps) {
   const [terminals, setTerminals] = createSignal<TerminalInfo[]>([]);
-  const [loading, setLoading] = createSignal(true);
   const [terminalSessions, setTerminalSessions] = createSignal<
     Map<string, TerminalSession>
   >(new Map());
@@ -448,9 +140,6 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   // 创建终端相关状态
   const [terminalName, setTerminalName] = createSignal("");
 
-  // 移动端下拉菜单状态
-  const [showTerminalMenu, setShowTerminalMenu] = createSignal(false);
-  const [showMainMenu, setShowMainMenu] = createSignal(false);
   const [showAddMenu, setShowAddMenu] = createSignal(false);
   const [showCreateTerminalModal, setShowCreateTerminalModal] = createSignal(false);
   const [showTcpForwardingModal, setShowTcpForwardingModal] = createSignal(false);
@@ -683,11 +372,6 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     return new Date(timestamp).toLocaleString();
   };
 
-  // 提取端口号
-  const extractPort = (address: string): string => {
-    const parts = address.split(':');
-    return parts[parts.length - 1] || address;
-  };
 
   // 获取转发类型的简短显示
   const getForwardingTypeLabel = (type: string): string => {
@@ -865,11 +549,6 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         lastLocalInput: "",
       };
 
-      // 创建智能 Ctrl+C 处理器
-      const createSmartCtrlCHandler = (onSendData: (data: string) => void) => {
-        return new SmartCtrlCHandler(onSendData);
-      };
-
       // 添加到会话映射
       const newSessions = new Map(sessions);
       newSessions.set(terminalId, terminalSession);
@@ -910,16 +589,6 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         },
       );
 
-      // 创建智能 Ctrl+C 处理器
-      const smartCtrlCHandler = createSmartCtrlCHandler((data: string) => {
-        console.log("🔗 Smart Ctrl+C Handler sending:", JSON.stringify(data));
-        // 创建临时会话对象发送数据
-        const tempSession = { ...terminalSession, inputBuffer: data };
-        sendBufferedInput(props.sessionId, terminalId, tempSession);
-      });
-
-      // 将智能处理器添加到终端会话
-      terminalSession.smartCtrlCHandler = smartCtrlCHandler;
 
       // 设置终端数据处理器 - 优化版本
       terminal.onData((data) => {
@@ -928,10 +597,8 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         // 特殊处理 Ctrl+C
         if (data === "\x03") {
           console.log("🎯 检测到 Ctrl+C 输入");
-          smartCtrlCHandler.handleCtrlC();
-          // 立即在本地显示并发送
-          terminal.write(data);
-          // 立即发送，不经过缓冲
+          // Ctrl+C handled directly by sending to remote
+          // 依赖远端回显，不在本地写入
           invoke("send_terminal_input_to_terminal", {
             sessionId: props.sessionId,
             terminalId: terminalId,
@@ -942,7 +609,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
           return;
         }
 
-        // 累积输入到会话缓冲区
+        // 累积输入到会话缓冲区（仅用于发送，避免本地写入）
         terminalSession.inputBuffer = (terminalSession.inputBuffer || "") + data;
 
         // 更新本地输入状态用于去重
@@ -951,8 +618,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
         // 注意：不再使用 localInputLength，改用 lastLocalInput.length
 
-        // 立即在本地显示以保持响应性
-        terminal.write(data);
+        // 依赖远端回显，取消本地即时写入
 
         console.log("📝 Input buffer updated:", {
           buffer: JSON.stringify(terminalSession.inputBuffer),
@@ -1016,7 +682,6 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
           if (data.terminals) {
             console.log("Setting terminal list:", data.terminals);
             setTerminals(data.terminals);
-            setLoading(false);
           }
 
           // 如果是终端创建响应
@@ -1092,10 +757,6 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
           session.terminal.write(outputData);
         }
 
-        // 重置智能 Ctrl+C 处理器状态（当有新输出时）
-        if (session.smartCtrlCHandler) {
-          session.smartCtrlCHandler.resetOnOutput();
-        }
 
         // 触发会话保存（通过解析输出更新工作目录等）
         if (session.terminalSession) {
@@ -1226,8 +887,6 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     // 初始加载数据
     await fetchTerminals();
     await loadTcpSessions();
-
-    setLoading(false);
 
     // 添加 resize 监听器 - 使用 debounce
     let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -1660,77 +1319,6 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     </>
   );
 
-  // 渲染终端列表 - 移动端用
-  const renderTerminalList = (inDropdown = false) => (
-    <div class={inDropdown ? "space-y-2" : "space-y-2"}>
-      <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-semibold">终端列表</h3>
-        <button
-          class="btn btn-primary btn-sm"
-          onClick={() => {
-            openCreateDialog();
-            if (inDropdown) setShowTerminalMenu(false);
-          }}
-          title="创建新终端"
-        >
-          ➕ 新建
-        </button>
-      </div>
-
-      <For each={terminals()}>
-        {(terminal) => (
-          <div
-            class={`card bg-base-200 shadow-sm p-3 ${activeTerminalId() === terminal.id ? "ring-2 ring-primary" : ""
-              }`}
-          >
-            <div class="flex flex-col gap-1">
-              <div class="flex justify-between items-center">
-                <div class="font-medium truncate flex-1">
-                  {terminal.name || `Terminal ${terminal.id.slice(0, 8)}`}
-                </div>
-                <div class="flex space-x-1 ml-2">
-                  {activeTerminalId() === terminal.id ? (
-                    <div class="badge badge-primary badge-sm">活动</div>
-                  ) : (
-                    <button
-                      class="btn btn-primary btn-xs"
-                      onClick={() => {
-                        connectToTerminal(terminal.id);
-                        if (inDropdown) setShowTerminalMenu(false);
-                      }}
-                      disabled={terminal.status !== "Running"}
-                    >
-                      连接
-                    </button>
-                  )}
-                  <button
-                    class="btn btn-ghost btn-xs"
-                    onClick={() => stopTerminal(terminal.id)}
-                    title="停止终端"
-                  >
-                    🛑
-                  </button>
-                </div>
-              </div>
-              <div class="text-xs opacity-70 truncate">
-                {terminal.shell_type} • {truncatePath(terminal.current_dir)}
-              </div>
-              <div class="text-xs opacity-50">
-                {terminal.status} • {terminal.size[0]}x{terminal.size[1]}
-              </div>
-            </div>
-          </div>
-        )}
-      </For>
-
-      {terminals().length === 0 && (
-        <div class="text-center py-8 opacity-50">
-          <div class="text-4xl mb-2">💻</div>
-          <div>暂无终端</div>
-        </div>
-      )}
-    </div>
-  );
 
   // 渲染快捷键按钮栏
   const renderShortcutBar = () => {
@@ -2939,7 +2527,7 @@ ${Object.entries(environment_vars)
         {/* 统一顶部栏 - 桌面端和移动端通用 */}
         <div class="bg-base-100 border-b border-base-300">
           {/* 导航栏 */}
-          <div class="navbar min-h-[48px] px-2 md:px-4">
+          <div class="navbar min-h-12 px-2 md:px-4">
             <div class="flex-none">
               {/* 侧边栏切换按钮 */}
               <label
@@ -3100,14 +2688,6 @@ ${Object.entries(environment_vars)
                         ? "从左侧边栏选择终端"
                         : "点击左侧边栏新建按钮创建第一个终端"}
                   </div>
-                  <Show when={isMobile && terminals().length === 0}>
-                    <button
-                      class="btn btn-primary btn-sm mt-4"
-                      onClick={() => setShowMainMenu(true)}
-                    >
-                      打开菜单
-                    </button>
-                  </Show>
                 </div>
               </div>
             }

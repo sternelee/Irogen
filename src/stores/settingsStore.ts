@@ -42,7 +42,7 @@ const defaultSettings: UserSettings = {
   autoConnect: false,
   rememberLastSession: true,
   saveConnectionHistory: true,
-  maxHistoryEntries: 100,
+  maxHistoryEntries: 3,
   terminalOpacity: 0.95,
   customCSSFilters: "",
   networkTimeout: 30000,

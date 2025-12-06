@@ -4,7 +4,7 @@
 
 const STORAGE_KEY_LAST_TICKET = 'riterm_last_ticket';
 const STORAGE_KEY_TICKET_HISTORY = 'riterm_ticket_history';
-const MAX_HISTORY_SIZE = 5;
+const MAX_HISTORY_SIZE = 3;
 
 /**
  * Save a ticket to localStorage
