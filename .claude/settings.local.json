@@ -61,7 +61,8 @@
       "Bash(pnpm view:*)",
       "Bash(pnpm tauri android build:*)",
       "Bash(npm ls:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(bun add:*)"
     ],
     "deny": []
   },
