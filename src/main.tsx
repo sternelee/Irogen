@@ -1,5 +1,5 @@
 import { render } from "solid-js/web";
-// import VConsole from 'vconsole';
+import VConsole from 'vconsole';
 
 import App from "./App";
 import "./index.css";
@@ -11,7 +11,7 @@ import { getViewportManager } from "./utils/mobile/ViewportManager";
 import { getAdaptiveLayoutManager } from "./utils/mobile/AdaptiveLayoutManager";
 import { initializePerformanceOptimizations } from "./utils/performance";
 
-// new VConsole();
+new VConsole();
 
 // Initialize device detection first (Tauri OS plugin)
 initializeDeviceDetection();

@@ -198,7 +198,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   const [tcpRemotePort, setTcpRemotePort] = createSignal("");
   const [tcpLocalAddr, setTcpLocalAddr] = createSignal("127.0.0.1:8080");
   const [tcpRemoteHost, setTcpRemoteHost] = createSignal("127.0.0.1");
-  const [tcpForwardingType, setTcpForwardingType] = createSignal<"ListenToRemote" | "ConnectToRemote">("ConnectToRemote");
+  const [tcpForwardingType, setTcpForwardingType] = createSignal<"ListenToRemote" | "ConnectToRemote">("ListenToRemote");
 
   // TCP会话详情Modal状态
   const [selectedTcpSession, setSelectedTcpSession] = createSignal<{
@@ -1529,7 +1529,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
           <h3 class="font-bold text-lg">新增 TCP 转发</h3>
           <div class="space-y-4 mt-4">
             {/* 转发类型选择 */}
-            <div class="form-control">
+            <div class="form-control hidden">
               <label class="label">
                 <span class="label-text">转发类型</span>
               </label>
