@@ -47,6 +47,43 @@ const truncatePath = (path: string, maxLength: number = 24): string => {
   return "..." + path.slice(-(maxLength - 3));
 };
 
+// 检测系统是否支持 Nerd Font
+const detectNerdFontSupport = (): { supported: boolean; availableFonts: string[] } => {
+  const nerdFonts = [
+    'CaskaydiaMono Nerd Font',
+    'JetBrainsMono Nerd Font',
+    'FiraCode Nerd Font',
+    'SourceCodePro Nerd Font',
+    'Hack Nerd Font',
+    'MesloLGS NF',
+    'DejaVuSansM Nerd Font'
+  ];
+
+  const availableFonts: string[] = [];
+
+  // 检测每个 Nerd Font 是否可用
+  nerdFonts.forEach(font => {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (context) {
+      context.font = `16px ${font}`;
+      // 测试一些 Nerd Font 图标字符
+      const testChar = '\uf0e7'; // Git 图标
+      const width = context.measureText(testChar).width;
+
+      // 如果测量宽度大于 0，说明字体支持该字符
+      if (width > 0) {
+        availableFonts.push(font);
+      }
+    }
+  });
+
+  return {
+    supported: availableFonts.length > 0,
+    availableFonts
+  };
+};
+
 export function RemoteSessionView(props: RemoteSessionViewProps) {
   const [terminals, setTerminals] = createSignal<TerminalInfo[]>([]);
   const [terminalSessions, setTerminalSessions] = createSignal<
@@ -513,7 +550,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       const terminal = new Terminal({
         cursorBlink: true,
         fontSize: 14,
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        fontFamily: '"CaskaydiaMono Nerd Font", "JetBrainsMono Nerd Font", "FiraCode Nerd Font", "Source Code Pro", "Menlo", "Monaco", "Courier New", monospace',
         theme: {
           background: "#000000",
           foreground: "#ffffff",
@@ -863,6 +900,19 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   // 组件挂载时初始化
   onMount(async () => {
     await setupTerminalEventListeners();
+
+    // 检测 Nerd Font 支持情况
+    const fontSupport = detectNerdFontSupport();
+    console.log("🔤 Nerd Font Support Detection:", fontSupport);
+
+    if (fontSupport.supported) {
+      console.log("✅ Available Nerd Fonts:", fontSupport.availableFonts);
+    } else {
+      console.warn("⚠️ No Nerd Fonts detected. Some icons may not display correctly.");
+      console.log("💡 To fix this, install a Nerd Font:");
+      console.log("   - macOS: brew install font-cascaydia-mono-nerd-font");
+      console.log("   - Or download from: https://www.nerdfonts.com/font-downloads");
+    }
 
     // 初始加载数据
     await fetchTerminals();
