@@ -403,8 +403,17 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         tcpSessionId
       });
 
-      // 延迟刷新列表
-      setTimeout(() => loadTcpSessions(), 500);
+      // 立即从前端TCP会话列表中移除
+      const currentSessions = tcpSessions();
+      const updatedSessions = currentSessions.filter(s => s.id !== tcpSessionId);
+      setTcpSessions(updatedSessions);
+      console.log("🗑️ Removed TCP session from list:", tcpSessionId);
+
+      // 关闭详情模态框（如果显示的是被删除的会话）
+      const selectedSession = selectedTcpSession();
+      if (selectedSession && selectedSession.id === tcpSessionId) {
+        setSelectedTcpSession(null);
+      }
     } catch (error) {
       console.error("Failed to stop TCP forwarding session:", error);
       alert("停止 TCP 转发会话失败: " + error);
@@ -536,6 +545,12 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         sessionId: props.sessionId,
         terminalId: terminalId,
       });
+
+      // 立即从前端终端列表中移除
+      const currentTerminals = terminals();
+      const updatedTerminals = currentTerminals.filter(t => t.id !== terminalId);
+      setTerminals(updatedTerminals);
+      console.log("🗑️ Removed terminal from list:", terminalId);
 
       // 清理本地终端会话
       const sessions = terminalSessions();
