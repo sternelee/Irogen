@@ -9,6 +9,7 @@ import { getDeviceCapabilities } from "../stores/deviceStore";
 import { useTerminalSessions } from "../stores/terminalSessionStore";
 import { useTerminalSession } from "../hooks/useTerminalSession";
 import { AIHelper } from "./AIHelper";
+import { showError, showSuccess } from "../utils/toast";
 
 // Import types from the shared library
 interface TerminalInfo {
@@ -38,9 +39,7 @@ interface TerminalSession {
   terminalSession?: ReturnType<typeof useTerminalSession>;
   inputBuffer?: string;
   sendTimeout?: ReturnType<typeof setTimeout> | null;
-  localInputLength?: number; // 记录本次本地输入的字符数
   hasPendingInput?: boolean; // 是否有待发送的输入
-  lastLocalInput?: string; // 记录最后一次本地输入的内容，用于更精确的去重
 }
 
 // 截断路径，显示末尾部分，前面用...省略
@@ -49,14 +48,79 @@ const truncatePath = (path: string, maxLength: number = 24): string => {
   return "..." + path.slice(-(maxLength - 3));
 };
 
-// 远程输出直接展示，不做本地裁剪或过滤
-const handleRemoteOutput = (
-  _session: TerminalSession,
-  outputData: string
-): string => {
-  return typeof outputData === "string" ? outputData : String(outputData ?? "");
+// 加载本地 Nerd Font 字体文件
+const loadLocalFont = async (): Promise<{ loaded: boolean; fontName: string }> => {
+  try {
+    // 尝试不同的字体文件路径
+    const fontPaths = [
+      './src/FiraCodeNerdFont-Regular.ttf',
+      '/src/FiraCodeNerdFont-Regular.ttf',
+      './FiraCodeNerdFont-Regular.ttf',
+      '/FiraCodeNerdFont-Regular.ttf'
+    ];
+
+    let loadedFont = null;
+
+    for (const fontPath of fontPaths) {
+      try {
+        console.log(`🔍 Trying font path: ${fontPath}`);
+        const font = new FontFace(
+          'FiraCode Nerd Font',
+          `url(${fontPath}) format('truetype')`
+        );
+
+        // 尝试加载字体
+        await font.load();
+        document.fonts.add(font);
+        loadedFont = font;
+        console.log(`✅ FiraCode Nerd Font loaded successfully from: ${fontPath}`);
+        break;
+      } catch (pathError) {
+        console.log(`❌ Failed to load from ${fontPath}:`, pathError);
+        continue;
+      }
+    }
+
+    if (loadedFont) {
+      return { loaded: true, fontName: 'FiraCode Nerd Font' };
+    } else {
+      throw new Error("All font paths failed");
+    }
+  } catch (error) {
+    showError("加载本地 FiraCode Nerd Font 失败: " + error, "字体加载错误");
+    return { loaded: false, fontName: '' };
+  }
 };
 
+// 检测系统字体支持
+const detectFontSupport = () => {
+  const testFonts = [
+    { name: 'FiraCode Nerd Font', type: 'local' },
+    { name: 'Menlo', type: 'system' },
+    { name: 'Monaco', type: 'system' },
+    { name: '"Courier New"', type: 'system' },
+    { name: 'monospace', type: 'fallback' }
+  ];
+
+  // 测试字体是否可用
+  for (const font of testFonts) {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (context) {
+      context.font = `16px ${font.name}`;
+      const testChar = '\uf0e7'; // Git 图标
+      const width = context.measureText(testChar).width;
+
+      if (width > 0) {
+        console.log(`✅ Font available: ${font.name} (${font.type})`);
+        return font;
+      }
+    }
+  }
+
+  console.warn("⚠️ No suitable fonts found, using fallback");
+  return { name: 'monospace', type: 'fallback' };
+};
 
 export function RemoteSessionView(props: RemoteSessionViewProps) {
   const [terminals, setTerminals] = createSignal<TerminalInfo[]>([]);
@@ -66,6 +130,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   const [activeTerminalId, setActiveTerminalId] = createSignal<string | null>(
     null,
   );
+  const [bestFont, setBestFont] = createSignal<string>('monospace');
 
   // 优化后的输入发送函数
   const sendInputImmediately = (
@@ -83,10 +148,8 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       const dataToSend = session.inputBuffer;
       console.log("🚀 Sending input immediately:", JSON.stringify(dataToSend));
 
-      // 重要：不要立即重置 lastLocalInput，需要等待远程输出处理
-      // 只清空输入缓冲区和重置部分状态
+      // 清空输入缓冲区
       session.inputBuffer = "";
-      // session.lastLocalInput 和 session.hasPendingInput 将在 handleRemoteOutput 中处理
 
       // 保存命令到会话（如果有实际内容）
       const trimmedCommand = dataToSend.trim();
@@ -103,11 +166,9 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         terminalId: terminalId,
         input: dataToSend,
       }).catch((error) => {
-        console.error("❌ Failed to send terminal input:", error);
-        // 发送失败时完全重置状态
+        showError("发送终端输入失败: " + error, "输入错误");
+        // 发送失败时重置状态
         session.hasPendingInput = false;
-        session.lastLocalInput = "";
-        session.localInputLength = 0;
       });
     }
   };
@@ -124,16 +185,6 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
     // 设置新的防抖定时器（减少到200ms提高响应性）
     session.sendTimeout = setTimeout(sendCallback, 200);
-  };
-
-  // 保留旧函数以兼容现有代码（已弃用）
-  const sendBufferedInput = (
-    sessionId: string,
-    terminalId: string,
-    session: TerminalSession,
-  ) => {
-    console.warn("⚠️ Using deprecated sendBufferedInput, consider migrating to sendInputImmediately");
-    sendInputImmediately(sessionId, terminalId, session);
   };
 
   // 全局会话管理
@@ -167,7 +218,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         input: command + "\n",
       });
     } catch (error) {
-      console.error("Failed to execute command:", error);
+      showError("执行命令失败: " + error, "命令执行错误");
     }
   };
 
@@ -280,7 +331,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         terminalId: activeId,
         input: data,
       }).catch((error) => {
-        console.error("Failed to send terminal input:", error);
+        showError("发送终端输入失败: " + error, "输入发送错误");
       });
     }
   };
@@ -290,7 +341,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     try {
       await invoke("get_terminal_list", { sessionId: props.sessionId });
     } catch (error) {
-      console.error("Failed to fetch terminal list:", error);
+      showError("获取终端列表失败: " + error, "列表加载错误");
     }
   };
 
@@ -319,8 +370,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       // 延迟刷新列表
       setTimeout(() => loadTcpSessions(), 500);
     } catch (error) {
-      console.error("Failed to create TCP forwarding session:", error);
-      alert("创建 TCP 转发会话失败: " + error);
+      showError("创建 TCP 转发会话失败: " + error, "TCP 转发错误");
     }
   };
 
@@ -329,7 +379,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
     try {
       await invoke("list_tcp_forwarding_sessions", { sessionId: props.sessionId });
     } catch (error) {
-      console.error("Failed to load TCP forwarding sessions:", error);
+      showError("加载 TCP 转发会话列表失败: " + error, "TCP 列表错误");
     }
   };
 
@@ -352,11 +402,19 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         tcpSessionId
       });
 
-      // 延迟刷新列表
-      setTimeout(() => loadTcpSessions(), 500);
+      // 立即从前端TCP会话列表中移除
+      const currentSessions = tcpSessions();
+      const updatedSessions = currentSessions.filter(s => s.id !== tcpSessionId);
+      setTcpSessions(updatedSessions);
+      console.log("🗑️ Removed TCP session from list:", tcpSessionId);
+
+      // 关闭详情模态框（如果显示的是被删除的会话）
+      const selectedSession = selectedTcpSession();
+      if (selectedSession && selectedSession.id === tcpSessionId) {
+        setSelectedTcpSession(null);
+      }
     } catch (error) {
-      console.error("Failed to stop TCP forwarding session:", error);
-      alert("停止 TCP 转发会话失败: " + error);
+      showError("停止 TCP 转发会话失败: " + error, "TCP 停止错误");
     }
   };
 
@@ -381,8 +439,30 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   };
 
   // 处理TCP会话点击
-  const handleTcpSessionClick = (session: any) => {
-    setSelectedTcpSession(session);
+  const handleTcpSessionClick = async (session: any) => {
+    // 先刷新TCP会话列表以获取最新统计信息
+    console.log("🔄 Refreshing TCP sessions before showing details");
+    try {
+      await loadTcpSessions();
+
+      // 等待一小段时间确保数据已更新
+      setTimeout(() => {
+        // 根据ID找到最新的会话数据
+        const currentSessions = tcpSessions();
+        const updatedSession = currentSessions.find(s => s.id === session.id);
+        if (updatedSession) {
+          console.log("📊 Updated session data:", updatedSession);
+          setSelectedTcpSession(updatedSession);
+        } else {
+          // 如果找不到，使用原始数据
+          setSelectedTcpSession(session);
+        }
+      }, 300);
+    } catch (error) {
+      showError("刷新 TCP 会话失败: " + error, "刷新错误");
+      // 如果刷新失败，使用原始数据
+      setSelectedTcpSession(session);
+    }
   };
 
   // 计算终端大小（基于容器宽度）
@@ -451,7 +531,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
       return terminalId;
     } catch (error) {
-      console.error("Failed to create terminal:", error);
+      showError("创建终端失败: " + error, "终端创建错误");
       throw error;
     }
   };
@@ -464,12 +544,16 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         terminalId: terminalId,
       });
 
+      // 立即从前端终端列表中移除
+      const currentTerminals = terminals();
+      const updatedTerminals = currentTerminals.filter(t => t.id !== terminalId);
+      setTerminals(updatedTerminals);
+      console.log("🗑️ Removed terminal from list:", terminalId);
+
       // 清理本地终端会话
       const sessions = terminalSessions();
       const session = sessions.get(terminalId);
       if (session) {
-        // 先发送剩余的缓冲数据
-        sendBufferedInput(props.sessionId, terminalId, session);
 
         // 清理定时器
         if (session.sendTimeout) {
@@ -487,7 +571,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         setActiveTerminalId(null);
       }
     } catch (error) {
-      console.error("Failed to stop terminal:", error);
+      showError("停止终端失败: " + error, "终端停止错误");
     }
   };
 
@@ -506,7 +590,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
             try {
               existingSession.fitAddon.fit();
             } catch (error) {
-              console.error("Error refitting existing terminal:", error);
+              showError("终端适配失败: " + error, "终端适配错误");
             }
           }, 100);
         }
@@ -517,7 +601,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       const terminal = new Terminal({
         cursorBlink: true,
         fontSize: 14,
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        fontFamily: bestFont(),
         theme: {
           background: "#000000",
           foreground: "#ffffff",
@@ -546,9 +630,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         isActive: true,
         inputBuffer: "",
         sendTimeout: null,
-        localInputLength: 0,
         hasPendingInput: false,
-        lastLocalInput: "",
       };
 
       // 添加到会话映射
@@ -606,26 +688,17 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
             terminalId: terminalId,
             input: data,
           }).catch((error) => {
-            console.error("Failed to send Ctrl+C:", error);
+            showError("发送 Ctrl+C 命令失败: " + error, "快捷键发送错误");
           });
           return;
         }
 
-        // 累积输入到会话缓冲区（仅用于发送，避免本地写入）
+        // 累积输入到会话缓冲区（仅用于发送）
         terminalSession.inputBuffer = (terminalSession.inputBuffer || "") + data;
-
-        // 更新本地输入状态用于去重
-        terminalSession.lastLocalInput = (terminalSession.lastLocalInput || "") + data;
         terminalSession.hasPendingInput = true;
 
-        // 注意：不再使用 localInputLength，改用 lastLocalInput.length
-
-        // 依赖远端回显，取消本地即时写入
-
-        console.log("📝 Input buffer updated:", {
-          buffer: JSON.stringify(terminalSession.inputBuffer),
-          lastLocalInput: JSON.stringify(terminalSession.lastLocalInput),
-        });
+        // 依赖远程终端的输出来显示，不做本地输入处理
+        console.log("📝 Terminal input:", JSON.stringify(data));
 
         // 检查是否是回车键，如果是则立即发送
         if (data === "\r" || data === "\n") {
@@ -661,7 +734,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         }
       }, 100);
     } catch (error) {
-      console.error("Failed to connect to terminal:", error);
+      showError("连接终端失败: " + error, "终端连接错误");
       // 更新连接状态为失败
       terminalSessionManager.updateConnectionState(terminalId, "disconnected");
     }
@@ -738,10 +811,10 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       const terminalId = payload.terminal_id || payload.terminalId;
       const data = payload.data;
 
-      console.log("📤 Received terminal output:", {
-        terminalId,
-        dataLength: data?.length,
-      });
+      // console.log("📤 Received terminal output:", {
+      //   terminalId,
+      //   dataLength: data?.length,
+      // });
       console.log("   Preview:", data);
 
       const sessions = terminalSessions();
@@ -751,14 +824,10 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         // 确保数据是字符串类型
         let outputData = typeof data === "string" ? data : String(data || "");
 
-        // 使用新的输出处理方法 - 先删除本地输入，再显示远程输出
-        outputData = handleRemoteOutput(session, outputData);
-
         // 只有当还有数据时才写入
         if (outputData.length > 0) {
           session.terminal.write(outputData);
         }
-
 
         // 触发会话保存（通过解析输出更新工作目录等）
         if (session.terminalSession) {
@@ -845,9 +914,6 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
                   ? outputData
                   : String(outputData || "");
 
-              // 使用新的输出处理方法 - 先删除本地输入，再显示远程输出
-              dataStr = handleRemoteOutput(session, dataStr);
-
               // 只有当还有数据时才写入
               if (dataStr.length > 0) {
                 session.terminal.write(dataStr);
@@ -885,6 +951,27 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
   // 组件挂载时初始化
   onMount(async () => {
     await setupTerminalEventListeners();
+
+    // 尝试加载本地字体文件
+    console.log("🔤 Loading local FiraCode Nerd Font...");
+    const localFontResult = await loadLocalFont();
+
+    if (localFontResult.loaded) {
+      // 本地字体加载成功，使用它
+      setBestFont('FiraCode Nerd Font');
+      console.log("✅ Using local FiraCode Nerd Font");
+    } else {
+      // 本地字体加载失败，检测系统字体
+      console.log("🔍 Local font failed, checking system fonts...");
+      const detectedFont = detectFontSupport();
+      setBestFont(detectedFont.name);
+
+      if (detectedFont.type !== 'fallback') {
+        console.log(`✅ Using system font: ${detectedFont.name}`);
+      } else {
+        console.warn("⚠️ Using fallback font. Icons may not display correctly.");
+      }
+    }
 
     // 初始加载数据
     await fetchTerminals();
@@ -973,6 +1060,15 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       !availableTerminalIds.includes(hasActiveTerminal)
     ) {
       setActiveTerminalId(null);
+    }
+  });
+
+  // 监听标签页切换，自动刷新TCP会话列表
+  createEffect(() => {
+    const currentTab = activeSidebarTab();
+    if (currentTab === "services") {
+      console.log("🔄 Switched to services tab, refreshing TCP sessions");
+      loadTcpSessions();
     }
   });
 

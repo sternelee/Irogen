@@ -4,35 +4,7 @@
 /* Primary Nerd Font Faces */
 @font-face {
   font-family: 'FiraCode Nerd Font';
-  src: url('./fonts/FiraCodeNerdFont-Regular.woff2') format('woff2'),
-       url('./fonts/FiraCodeNerdFont-Regular.woff') format('woff');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'FiraCode Nerd Font';
-  src: url('./fonts/FiraCodeNerdFont-Bold.woff2') format('woff2'),
-       url('./fonts/FiraCodeNerdFont-Bold.woff') format('woff');
-  font-weight: bold;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'CascadiaCode Nerd Font';
-  src: url('./fonts/CascadiaCodeNerdFont-Regular.woff2') format('woff2'),
-       url('./fonts/CascadiaCodeNerdFont-Regular.woff') format('woff');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'JetBrainsMono Nerd Font';
-  src: url('./fonts/JetBrainsMonoNerdFont-Regular.woff2') format('woff2'),
-       url('./fonts/JetBrainsMonoNerdFont-Regular.woff') format('woff');
+  src: url('./fonts/FiraCodeNerdFont-Regular.woff') format('woff');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -42,16 +14,7 @@
 :root {
   --terminal-font-family:
     "FiraCode Nerd Font",
-    "CascadiaCode Nerd Font",
-    "JetBrainsMono Nerd Font",
-    /* Fallback to system fonts */
-    "SF Mono",
-    "Monaco",
-    "Cascadia Code",
-    "Fira Code",
-    "JetBrains Mono",
     "Consolas",
-    "Liberation Mono",
     "Ubuntu Mono",
     "Courier New",
     monospace;

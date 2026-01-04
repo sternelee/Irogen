@@ -9,6 +9,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { Toaster } from "solid-toast";
 import "./App.css";
 import { SettingsModal } from "./components/SettingsModal";
 import { HomeView } from "./components/HomeView";
@@ -273,16 +274,45 @@ function App() {
 
 
   return (
-    <div
-      class="w-full font-mono mobile-viewport"
-      data-theme="dark"
-      style={{
-        height: keyboardVisible() ? `${effectiveViewportHeight()}px` : "100vh",
-        "max-height": keyboardVisible()
-          ? `${effectiveViewportHeight()}px`
-          : "100vh",
-        "padding-top": "env(safe-area-inset-top)",
-        "padding-bottom": keyboardVisible()
+    <>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: '#1f2937',
+            color: '#f3f4f6',
+            border: '1px solid #374151',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            fontSize: '14px',
+            fontWeight: '500',
+            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)',
+          },
+          success: {
+            iconTheme: {
+              primary: '#10b981',
+              secondary: '#ffffff',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#ffffff',
+            },
+          },
+        }}
+      />
+      <div
+        class="w-full font-mono mobile-viewport"
+        data-theme="dark"
+        style={{
+          height: keyboardVisible() ? `${effectiveViewportHeight()}px` : "100vh",
+          "max-height": keyboardVisible()
+            ? `${effectiveViewportHeight()}px`
+            : "100vh",
+          "padding-top": "env(safe-area-inset-top)",
+          "padding-bottom": keyboardVisible()
           ? "0px"
           : "env(safe-area-inset-bottom)",
         overflow: "hidden",
@@ -359,6 +389,7 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
       />
     </div>
+    </>
   );
 }
 

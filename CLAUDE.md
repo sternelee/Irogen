@@ -134,6 +134,10 @@ rustc test_connection.rs && ./test_connection
 
 # Browser integration tests
 cd browser && cargo test --features integration-tests
+
+# GitHub Actions (CI/CD)
+# - .github/workflows/build-and-test.yml - Automated builds and tests
+# - .github/workflows/publish-to-auto-release.yml - Automated releases
 ```
 
 ### Code Quality and Development Tools
@@ -186,6 +190,9 @@ cd browser && wasm-pack build --target web
 
 # Browser client build for release
 cd browser && wasm-pack build --target web --release
+
+# Run test scripts
+./test_ticket_output.sh  # Test CLI ticket generation
 ```
 
 ### Development Workflow
@@ -226,7 +233,7 @@ npm run build && npm run tauri build
 pnpm build && pnpm tauri build
 ```
 
-**Package Manager Note**: The project specifies `pnpm@10.0.0` as the package manager in `package.json`, but `bun` is recommended for better performance. The Tauri configuration (`app/tauri.conf.json`) references `pnpm` commands with `beforeDevCommand: "pnpm dev"` and `beforeBuildCommand: "pnpm build"`.
+**Package Manager Note**: The project specifies `pnpm@10.0.0` as the package manager in `package.json`. The Tauri configuration (`app/tauri.conf.json`) references `pnpm` commands with `beforeDevCommand: "pnpm dev"` and `beforeBuildCommand: "pnpm build"`. While bun can be used for better performance, the project officially supports pnpm.
 
 ## Key Technical Details
 
@@ -425,6 +432,8 @@ The project now includes TCP service forwarding capabilities allowing users to:
 - CLI ticket generation testing with `test_ticket_output.sh`
 - Mobile debugging with `vconsole` for in-app console during development
 - Frontend development server runs on `http://localhost:1420` with hot reload
+- GitHub Actions CI/CD pipeline for automated testing and releases
+- Browser client WebAssembly debugging with browser dev tools
 
 ## Build Targets and Workspace Structure
 
