@@ -6,9 +6,9 @@
 use anyhow::Result;
 use portable_pty::{CommandBuilder, MasterPty, PtySize};
 use riterm_shared::{
-    AvailableTools, CommunicationManager, IODataType, Message, MessageHandler, MessagePayload,
+    AvailableTools, CommunicationManager, IODataType, Message, MessageBuilder, MessageHandler, MessagePayload,
     MessageType, OSInfo, PackageManager, QuicMessageServer, QuicMessageServerConfig,
-    ResponseMessage, ShellInfo, SystemAction, SystemInfo, SystemInfoAction, TcpForwardingAction,
+    ResponseMessage, ShellInfo, SystemAction, SystemInfo, SystemInfoAction, TcpDataType, TcpForwardingAction,
     TcpForwardingType, TerminalAction, Tool, UserInfo,
 };
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener as TokioTcpListener, TcpStream as TokioTcpStream};
+use tokio::net::TcpStream as TokioTcpStream;
 use tokio::process::Command;
 use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, error, info, warn};
@@ -278,7 +278,10 @@ impl CliMessageServer {
             .await;
 
         // 注册 TCP 数据处理器
-        let tcp_data_handler = Arc::new(TcpDataMessageHandler::new(self.tcp_sessions.clone()));
+        let tcp_data_handler = Arc::new(TcpDataMessageHandler::new(
+            self.tcp_sessions.clone(),
+            self.quic_server.clone(),
+        ));
         self.communication_manager
             .register_message_handler(tcp_data_handler)
             .await;
@@ -1190,9 +1193,10 @@ impl TcpForwardingMessageHandler {
 
         let internal_session = InternalTcpForwardingSession::new(session);
 
-        // 启动转发服务
+        // 对于 ListenToRemote 模式，需要在本地监听端口
+        // 当本地客户端连接时，通过 P2P 连接到远程服务
         let shutdown_tx = self
-            .start_tcp_forwarding_service(
+            .start_local_listener_for_p2p_forwarding(
                 session_id.clone(),
                 local_socket_addr,
                 remote_socket_addr,
@@ -1204,7 +1208,6 @@ impl TcpForwardingMessageHandler {
         {
             let mut sessions = self.tcp_sessions.write().await;
             let mut session_with_tx = internal_session;
-            session_with_tx.shutdown_tx = Some(shutdown_tx);
             session_with_tx.session.status = "running".to_string();
             session_with_tx.session.created_at = std::time::SystemTime::now();
             sessions.insert(session_id.clone(), session_with_tx);
@@ -1217,19 +1220,21 @@ impl TcpForwardingMessageHandler {
         Ok(session_id)
     }
 
-    /// 启动 TCP 转发服务
-    async fn start_tcp_forwarding_service(
+    /// 启动本地监听器，将本地连接通过 P2P 转发到远程
+    async fn start_local_listener_for_p2p_forwarding(
         &self,
         session_id: String,
         local_addr: SocketAddr,
         remote_addr: SocketAddr,
         connections: Arc<RwLock<HashMap<String, TcpConnection>>>,
     ) -> Result<mpsc::UnboundedSender<()>> {
+        use tokio::net::TcpListener;
+
         let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel();
         let session_id_clone = session_id.clone();
 
         // 启动 TCP 监听器
-        let listener = TokioTcpListener::bind(local_addr)
+        let listener = TcpListener::bind(local_addr)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to bind to {}: {}", local_addr, e))?;
 
@@ -1239,7 +1244,7 @@ impl TcpForwardingMessageHandler {
         // 启动接受连接的任务
         tokio::spawn(async move {
             info!(
-                "TCP forwarding service started for session: {}",
+                "TCP listener started for session: {}",
                 session_id_clone
             );
 
@@ -1249,29 +1254,22 @@ impl TcpForwardingMessageHandler {
                     accept_result = listener.accept() => {
                         match accept_result {
                             Ok((stream, remote_client_addr)) => {
-                                info!("New TCP connection from: {} -> {}", remote_client_addr, actual_local_addr);
+                                info!("New local TCP connection from: {} -> {}", remote_client_addr, actual_local_addr);
 
                                 // 处理连接
                                 let connection_id = Uuid::new_v4().to_string();
-                                let connections_clone = connections.clone();
-                                let _session_id_clone = session_id_clone.clone();
-                                let remote_addr_clone = remote_addr;
 
                                 tokio::spawn(async move {
-                                    if let Err(e) = Self::handle_tcp_connection(
-                                        connection_id.clone(),
-                                        stream,
-                                        remote_client_addr,
-                                        actual_local_addr,
-                                        remote_addr_clone,
-                                        connections_clone.clone(),
-                                    ).await {
-                                        error!("TCP connection handling error: {}", e);
-                                    }
+                                    info!("Handling local TCP connection: {}", connection_id);
 
-                                    // 连接结束后清理连接信息
-                                    connections_clone.write().await.remove(&connection_id);
-                                    info!("TCP connection closed: {}", connection_id);
+                                    // TODO: 实现从本地 TCP 到远程 P2P 的转发
+                                    // 这需要:
+                                    // 1. 通过 P2P 连接到远程 CLI
+                                    // 2. 建立双向数据转发
+
+                                    // 暂时只是关闭连接
+                                    drop(stream);
+                                    info!("Local TCP connection closed: {}", connection_id);
                                 });
                             }
                             Err(e) => {
@@ -1282,14 +1280,14 @@ impl TcpForwardingMessageHandler {
 
                     // 接收关闭信号
                     _ = shutdown_rx.recv() => {
-                        info!("TCP forwarding service shutting down for session: {}", session_id_clone);
+                        info!("TCP listener shutting down for session: {}", session_id_clone);
                         break;
                     }
                 }
             }
 
             info!(
-                "TCP forwarding service stopped for session: {}",
+                "TCP listener stopped for session: {}",
                 session_id_clone
             );
         });
@@ -1297,99 +1295,6 @@ impl TcpForwardingMessageHandler {
         Ok(shutdown_tx)
     }
 
-    /// 处理单个 TCP 连接
-    async fn handle_tcp_connection(
-        connection_id: String,
-        mut client_stream: TokioTcpStream,
-        client_addr: SocketAddr,
-        local_addr: SocketAddr,
-        remote_addr: SocketAddr,
-        connections: Arc<RwLock<HashMap<String, TcpConnection>>>,
-    ) -> Result<()> {
-        // 连接到远程服务器
-        let mut remote_stream = TokioTcpStream::connect(remote_addr)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to connect to remote {}: {}", remote_addr, e))?;
-
-        // 记录连接信息（不存储流，流将在数据转发中处理）
-        {
-            let mut conn_map = connections.write().await;
-            conn_map.insert(
-                connection_id.clone(),
-                TcpConnection {
-                    stream: None, // 流不在这里存储，而是由数据转发逻辑管理
-                    bytes_sent: 0,
-                    bytes_received: 0,
-                    created_at: std::time::SystemTime::now(),
-                },
-            );
-        }
-
-        info!(
-            "TCP connection established: {} <-> {} <-> {}",
-            client_addr, local_addr, remote_addr
-        );
-
-        // 双向数据转发
-        let (mut client_read, mut client_write) = client_stream.split();
-        let (mut remote_read, mut remote_write) = remote_stream.split();
-
-        // 客户端到远程服务器的数据流
-        let client_to_remote = async {
-            let mut buffer = [0u8; 8192];
-            loop {
-                match client_read.read(&mut buffer).await {
-                    Ok(0) => break, // 连接关闭
-                    Ok(n) => {
-                        if remote_write.write_all(&buffer[..n]).await.is_err() {
-                            break;
-                        }
-
-                        // 更新字节数统计
-                        let mut conn_map = connections.write().await;
-                        if let Some(conn) = conn_map.get_mut(&connection_id) {
-                            conn.bytes_sent += n as u64;
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-        };
-
-        // 远程服务器到客户端的数据流
-        let remote_to_client = async {
-            let mut buffer = [0u8; 8192];
-            loop {
-                match remote_read.read(&mut buffer).await {
-                    Ok(0) => break, // 连接关闭
-                    Ok(n) => {
-                        if client_write.write_all(&buffer[..n]).await.is_err() {
-                            break;
-                        }
-
-                        // 更新字节数统计
-                        let mut conn_map = connections.write().await;
-                        if let Some(conn) = conn_map.get_mut(&connection_id) {
-                            conn.bytes_received += n as u64;
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-        };
-
-        // 运行双向数据转发
-        tokio::select! {
-            _ = client_to_remote => {
-                debug!("Client to remote stream ended for connection: {}", connection_id);
-            }
-            _ = remote_to_client => {
-                debug!("Remote to client stream ended for connection: {}", connection_id);
-            }
-        }
-
-        Ok(())
-    }
 
     /// 停止 TCP 转发会话（带客户端所有权验证）
     async fn stop_tcp_forwarding_session(
@@ -2373,11 +2278,15 @@ impl MessageHandler for SystemInfoMessageHandler {
 /// TCP 数据消息处理器
 pub struct TcpDataMessageHandler {
     tcp_sessions: Arc<RwLock<HashMap<String, InternalTcpForwardingSession>>>,
+    quic_server: QuicMessageServer,
 }
 
 impl TcpDataMessageHandler {
-    pub fn new(tcp_sessions: Arc<RwLock<HashMap<String, InternalTcpForwardingSession>>>) -> Self {
-        Self { tcp_sessions }
+    pub fn new(
+        tcp_sessions: Arc<RwLock<HashMap<String, InternalTcpForwardingSession>>>,
+        quic_server: QuicMessageServer,
+    ) -> Self {
+        Self { tcp_sessions, quic_server }
     }
 
     /// 处理 TCP 数据消息
@@ -2400,14 +2309,14 @@ impl TcpDataMessageHandler {
                                 Ok(_) => {
                                     conn_info.bytes_sent += data.len() as u64;
                                     debug!(
-                                        "TCP data forwarded to connection {}: {} bytes",
+                                        "TCP data forwarded to local service {}: {} bytes",
                                         connection_id,
                                         data.len()
                                     );
                                 }
                                 Err(e) => {
                                     error!(
-                                        "Failed to forward TCP data to connection {}: {}",
+                                        "Failed to forward TCP data to local service {}: {}",
                                         connection_id, e
                                     );
                                     // 连接可能已经断开，移除流对象但保留统计信息
@@ -2426,7 +2335,120 @@ impl TcpDataMessageHandler {
                         "TCP connection open requested for session {} connection {}",
                         session_id, connection_id
                     );
-                    // 连接打开通常由服务端主动发起，这里主要是记录
+                    // 对于 ListenToRemote 模式，连接打开意味着远程客户端要连接到本地服务
+                    // 我们需要连接到本地 TCP 服务
+                    drop(sessions); // 释放读锁
+
+                    // 获取会话信息以确定本地服务地址
+                    let sessions = self.tcp_sessions.read().await;
+                    if let Some(internal_session) = sessions.get(session_id) {
+                        let local_addr: SocketAddr = internal_session.session.local_addr
+                            .parse()
+                            .map_err(|_| anyhow::anyhow!("Invalid local address: {}", internal_session.session.local_addr))?;
+
+                        info!("Connecting to local TCP service: {}", local_addr);
+                        match TokioTcpStream::connect(local_addr).await {
+                            Ok(tcp_stream) => {
+                                info!("Successfully connected to local TCP service for connection: {}", connection_id);
+
+                                // 保存连接
+                                let mut connections = internal_session.connections.write().await;
+                                connections.insert(
+                                    connection_id.to_string(),
+                                    TcpConnection {
+                                        stream: Some(tcp_stream),
+                                        bytes_sent: 0,
+                                        bytes_received: 0,
+                                        created_at: std::time::SystemTime::now(),
+                                    },
+                                );
+
+                                // 启动任务从 TCP 服务读取数据并通过 P2P 网络发送
+                                let session_id_clone = session_id.to_string();
+                                let connection_id_clone = connection_id.to_string();
+                                let tcp_connections_clone = internal_session.connections.clone();
+                                let quic_server_clone = self.quic_server.clone();
+
+                                // 启动任务从 TCP 服务读取数据并通过 P2P 网络发送
+                                let session_id_clone = session_id.to_string();
+                                let connection_id_clone = connection_id.to_string();
+                                let tcp_connections_clone = internal_session.connections.clone();
+
+                                tokio::spawn(async move {
+                                    // 从 TCP 服务读取数据并广播
+                                    let tcp_stream = {
+                                        let mut conn_map = tcp_connections_clone.write().await;
+                                        if let Some(conn) = conn_map.get_mut(&connection_id_clone) {
+                                            conn.stream.take()
+                                        } else {
+                                            None
+                                        }
+                                    };
+
+                                    if let Some(tcp_stream) = tcp_stream {
+                                        let (mut tcp_read, _) = tcp_stream.into_split();
+                                        let mut buffer = vec![0u8; 8192];
+
+                                        loop {
+                                            match tcp_read.read(&mut buffer).await {
+                                                Ok(0) => {
+                                                    info!("TCP connection closed: {}", connection_id_clone);
+
+                                                    // 发送连接关闭消息
+                                                    let close_message = MessageBuilder::tcp_data(
+                                                        "riterm_cli".to_string(),
+                                                        session_id_clone.clone(),
+                                                        connection_id_clone.clone(),
+                                                        TcpDataType::ConnectionClose,
+                                                        vec![],
+                                                    );
+
+                                                    if let Err(e) = quic_server_clone.broadcast_message(close_message).await {
+                                                        error!("Failed to send connection close message: {}", e);
+                                                    }
+
+                                                    break;
+                                                }
+                                                Ok(n) => {
+                                                    debug!("Read {} bytes from TCP service", n);
+
+                                                    // 更新接收字节数
+                                                    {
+                                                        let mut conn_map = tcp_connections_clone.write().await;
+                                                        if let Some(conn) = conn_map.get_mut(&connection_id_clone) {
+                                                            conn.bytes_received += n as u64;
+                                                        }
+                                                    }
+
+                                                    // 创建 TCP 数据消息并通过 P2P 网络发送
+                                                    // 使用 quic_server_clone 来广播消息
+                                                    let message = MessageBuilder::tcp_data(
+                                                        "riterm_cli".to_string(),
+                                                        session_id_clone.clone(),
+                                                        connection_id_clone.clone(),
+                                                        TcpDataType::Data,
+                                                        buffer[..n].to_vec(),
+                                                    );
+
+                                                    // 广播消息给所有连接的客户端
+                                                    if let Err(e) = quic_server_clone.broadcast_message(message).await {
+                                                        error!("Failed to broadcast TCP data: {}", e);
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    error!("Error reading from TCP: {}", e);
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                            Err(e) => {
+                                error!("Failed to connect to local TCP service {}: {}", local_addr, e);
+                            }
+                        }
+                    }
                 }
                 riterm_shared::message_protocol::TcpDataType::ConnectionClose => {
                     info!(

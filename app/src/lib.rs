@@ -11,11 +11,15 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
+mod tcp_forwarding;
+
 use riterm_shared::{
     CommunicationManager, Event, EventListener, EventType, IODataType, Message, MessageBuilder,
     MessagePayload, QuicMessageClientHandle, SerializableEndpointAddr, TcpDataType,
     TcpForwardingAction, TcpForwardingType, TerminalAction,
 };
+
+use crate::tcp_forwarding::TcpForwardingManager;
 
 /// Maximum number of concurrent sessions to prevent memory exhaustion
 const MAX_CONCURRENT_SESSIONS: usize = 50;
@@ -153,12 +157,24 @@ fn parse_structured_event(data: &str) -> Result<serde_json::Value, Box<dyn std::
     Err("No structured event found".into())
 }
 
-#[derive(Default)]
 pub struct AppState {
     sessions: RwLock<HashMap<String, TerminalSession>>,
     communication_manager: RwLock<Option<Arc<CommunicationManager>>>,
     quic_client: RwLock<Option<QuicMessageClientHandle>>,
     cleanup_token: RwLock<Option<CancellationToken>>,
+    tcp_forwarding_manager: Arc<tokio::sync::Mutex<TcpForwardingManager>>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            sessions: RwLock::new(HashMap::new()),
+            communication_manager: RwLock::new(None),
+            quic_client: RwLock::new(None),
+            cleanup_token: RwLock::new(None),
+            tcp_forwarding_manager: Arc::new(tokio::sync::Mutex::new(TcpForwardingManager::new())),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -1105,25 +1121,10 @@ async fn create_tcp_forwarding_session(
     remote_port: Option<u16>,
     forwarding_type: String,
     state: State<'_, AppState>,
-) -> Result<(), String> {
-    let quic_client = {
-        let client_guard = state.quic_client.read().await;
-        match client_guard.as_ref() {
-            Some(c) => c.clone(),
-            None => return Err("QUIC client not initialized".to_string()),
-        }
-    };
-
-    let session = {
-        let sessions = state.sessions.read().await;
-        sessions
-            .get(&sessionId)
-            .cloned()
-            .ok_or("Session not found")?
-    };
-
-    // 解析转发类型 - 只支持 ListenToRemote
-    let fwd_type = match forwarding_type.as_str() {
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    // 验证转发类型 - 只支持 ListenToRemote
+    let _fwd_type = match forwarding_type.as_str() {
         "ListenToRemote" | "listen-to-remote" => TcpForwardingType::ListenToRemote,
         _ => {
             return Err(
@@ -1132,28 +1133,69 @@ async fn create_tcp_forwarding_session(
         }
     };
 
-    // 创建 TCP 转发管理消息
-    let action = TcpForwardingAction::CreateSession {
-        local_addr,
-        remote_host,
-        remote_port,
-        forwarding_type: fwd_type,
+    // 获取远程主机和端口
+    let remote_host = remote_host.ok_or("Remote host is required")?;
+    let remote_port = remote_port.ok_or("Remote port is required")?;
+
+    // 获取 QUIC 客户端用于发送数据
+    let quic_client = {
+        let client_guard = state.quic_client.read().await;
+        match client_guard.as_ref() {
+            Some(c) => c.clone(),
+            None => return Err("QUIC client not initialized".to_string()),
+        }
     };
 
-    let message =
-        MessageBuilder::tcp_forwarding("riterm_app".to_string(), action, Some(sessionId.clone()))
-            .with_session(sessionId.clone());
+    // 在本地创建 TCP 转发会话（暂时不设置消息发送器）
+    let session_id_result = {
+        let mut manager = state.tcp_forwarding_manager.lock().await;
+        manager.create_session(
+            local_addr.clone(),
+            remote_host.clone(),
+            remote_port,
+        ).await.map_err(|e| format!("Failed to create TCP forwarding session: {}", e))?
+    };
 
-    // 发送消息 via QUIC 客户端
-    send_message_via_client(
-        &state,
-        &session.connection_id,
-        message,
-        "TCP forwarding session creation",
-    )
-    .await?;
+    // 启动一个任务来处理数据转发
+    let quic_client_clone = quic_client.clone();
+    let session_id_for_task = sessionId.clone();
+    tokio::spawn(async move {
+        // 这里可以监听 TCP 连接并发送数据
+        // 暂时只记录日志
+        info!("TCP forwarding task started for session {}", session_id_for_task);
+    });
 
-    Ok(())
+    // 发送会话创建通知给 CLI 端
+    let session = {
+        let sessions = state.sessions.read().await;
+        sessions
+            .get(&sessionId)
+            .cloned()
+            .ok_or("Session not found")?
+    };
+
+    let action = TcpForwardingAction::CreateSession {
+        local_addr,
+        remote_host: Some(remote_host),
+        remote_port: Some(remote_port),
+        forwarding_type: TcpForwardingType::ListenToRemote,
+    };
+
+    let message = MessageBuilder::tcp_forwarding(
+        "riterm_app".to_string(),
+        action,
+        Some(sessionId.clone())
+    ).with_session(sessionId.clone());
+
+    // 获取正确的 connection_id
+    let connection_id = session.connection_id;
+
+    // 使用直接发送
+    if let Err(e) = quic_client.send_message_to_server(&connection_id, message).await {
+        return Err(format!("Failed to notify CLI about TCP session: {}", e));
+    }
+
+    Ok(session_id_result)
 }
 
 #[tauri::command]
