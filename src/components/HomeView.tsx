@@ -1,6 +1,7 @@
 import { createSignal, Show, For, onMount, onCleanup } from "solid-js";
 import { getDeviceCapabilities } from "../utils/mobile";
 import { getLastTicket, saveTicket, getTicketHistory } from "../utils/localStorage";
+import { getTicketDisplayId } from "../utils/ticketParser";
 
 interface HomeViewProps {
   sessionTicket: string;
@@ -262,13 +263,16 @@ export function HomeView(props: HomeViewProps) {
               <For each={ticketHistory()}>
                 {(ticket) => (
                   <div
-                    class="p-2 bg-base-200 rounded-lg cursor-pointer hover:bg-base-300 transition-colors"
+                    class="p-2 bg-base-200 rounded-lg cursor-pointer hover:bg-base-300 transition-colors flex items-center justify-between"
                     onClick={() => {
                       props.onTicketInput(ticket);
                       handleConnect();
                     }}
                   >
-                    <div class="font-mono text-xs truncate">{ticket}</div>
+                    <div class="font-mono text-sm font-medium">
+                      {getTicketDisplayId(ticket)}
+                    </div>
+                    <div class="text-xs opacity-50">点击连接</div>
                   </div>
                 )}
               </For>
