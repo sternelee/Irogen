@@ -15,6 +15,7 @@ use riterm_shared::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream as TokioTcpStream;
@@ -2443,6 +2444,8 @@ impl TcpDataMessageHandler {
 
                                 // 启动任务从 TCP 服务读取数据并通过 P2P 网络发送
                                 let quic_server_clone = self.quic_server.clone();
+                                // 获取客户端节点ID，用于定向发送数据
+                                let client_node_id = internal_session.session.client_node_id.clone();
 
                                 // 启动任务从 TCP 服务读取数据并通过 P2P 网络发送
                                 let session_id_clone = session_id.to_string();
@@ -2450,7 +2453,16 @@ impl TcpDataMessageHandler {
                                 let tcp_connections_clone = internal_session.connections.clone();
 
                                 tokio::spawn(async move {
-                                    // 从 TCP 服务读取数据并广播
+                                    // 解析客户端节点ID
+                                    let client_endpoint_id = match iroh::EndpointId::from_str(&client_node_id) {
+                                        Ok(id) => id,
+                                        Err(e) => {
+                                            error!("Failed to parse client_node_id '{}': {}", client_node_id, e);
+                                            return;
+                                        }
+                                    };
+
+                                    // 从 TCP 服务读取数据并发送给特定客户端
                                     let tcp_stream = {
                                         let mut conn_map = tcp_connections_clone.write().await;
                                         if let Some(conn) = conn_map.get_mut(&connection_id_clone) {
@@ -2472,7 +2484,7 @@ impl TcpDataMessageHandler {
                                                         connection_id_clone
                                                     );
 
-                                                    // 发送连接关闭消息
+                                                    // 发送连接关闭消息给特定客户端
                                                     let close_message = MessageBuilder::tcp_data(
                                                         "riterm_cli".to_string(),
                                                         session_id_clone.clone(),
@@ -2482,7 +2494,7 @@ impl TcpDataMessageHandler {
                                                     );
 
                                                     if let Err(e) = quic_server_clone
-                                                        .broadcast_message(close_message)
+                                                        .send_message_to_node(&client_endpoint_id, close_message)
                                                         .await
                                                     {
                                                         error!(
@@ -2507,8 +2519,7 @@ impl TcpDataMessageHandler {
                                                         }
                                                     }
 
-                                                    // 创建 TCP 数据消息并通过 P2P 网络发送
-                                                    // 使用 quic_server_clone 来广播消息
+                                                    // 创建 TCP 数据消息并发送给特定客户端
                                                     let message = MessageBuilder::tcp_data(
                                                         "riterm_cli".to_string(),
                                                         session_id_clone.clone(),
@@ -2517,13 +2528,13 @@ impl TcpDataMessageHandler {
                                                         buffer[..n].to_vec(),
                                                     );
 
-                                                    // 广播消息给所有连接的客户端
+                                                    // 发送消息给创建此转发会话的客户端
                                                     if let Err(e) = quic_server_clone
-                                                        .broadcast_message(message)
+                                                        .send_message_to_node(&client_endpoint_id, message)
                                                         .await
                                                     {
                                                         error!(
-                                                            "Failed to broadcast TCP data: {}",
+                                                            "Failed to send TCP data to client: {}",
                                                             e
                                                         );
                                                     }
