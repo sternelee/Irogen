@@ -10,6 +10,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use tracing::info;
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 
@@ -218,6 +219,16 @@ impl TerminalLogger {
 
         Ok(())
     }
+
+    /// 删除日志文件
+    pub fn delete_log_file(&self) -> Result<()> {
+        if self.log_path.exists() {
+            std::fs::remove_file(&self.log_path)
+                .context("Failed to delete log file")?;
+            info!("Log file deleted: {:?}", self.log_path);
+        }
+        Ok(())
+    }
 }
 
 /// 获取当前时间戳（秒）
@@ -314,6 +325,20 @@ impl TerminalLogManager {
     pub fn remove_logger(&self, terminal_id: &str) {
         let mut loggers = self.loggers.lock().unwrap();
         loggers.remove(terminal_id);
+    }
+
+    /// 移除终端日志记录器并删除日志文件
+    pub fn remove_logger_with_file(&self, terminal_id: &str) -> Result<()> {
+        let logger = {
+            let mut loggers = self.loggers.lock().unwrap();
+            loggers.remove(terminal_id)
+        };
+
+        if let Some(logger) = logger {
+            logger.delete_log_file()?;
+        }
+
+        Ok(())
     }
 
     /// 清理所有日志

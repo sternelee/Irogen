@@ -794,13 +794,19 @@ impl TerminalMessageHandler {
             // 读取线程在通道关闭后会自动退出
 
             info!("Terminal session stopped and cleaned up: {}", terminal_id);
-            Ok(())
         } else {
-            Err(anyhow::anyhow!(
+            return Err(anyhow::anyhow!(
                 "Terminal session not found: {}",
                 terminal_id
-            ))
+            ));
         }
+
+        // 删除终端日志文件
+        if let Err(e) = self.log_manager.remove_logger_with_file(terminal_id) {
+            warn!("Failed to delete log file for terminal {}: {}", terminal_id, e);
+        }
+
+        Ok(())
     }
 
     /// 列出所有终端
