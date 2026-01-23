@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use tauri::Manager;
 use tauri::{Emitter, State};
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
@@ -516,6 +516,7 @@ async fn connect_to_peer(
     let cancellation_token_receiver = cancellation_token.clone();
     let last_activity_receiver = terminal_session.last_activity.clone();
     let event_count_receiver = terminal_session.event_count.clone();
+    let tcp_forwarding_manager = state.tcp_forwarding_manager.clone();
 
     tokio::spawn(async move {
         let mut receiver = message_receiver;
@@ -632,12 +633,23 @@ async fn connect_to_peer(
                                     );
                                 }
                                 MessagePayload::TcpData(tcp_data_msg) => {
-                                    // Handle TCP data messages
+                                    // Handle TCP data messages from CLI
                                     #[cfg(debug_assertions)]
                                     tracing::debug!("Received TCP data message: session_id={}, connection_id={}, data_type={:?}",
                                         tcp_data_msg.session_id, tcp_data_msg.connection_id, tcp_data_msg.data_type);
 
-                                    // Emit TCP data event to frontend
+                                    // Forward data to TcpForwardingManager
+                                    if let Err(e) = tcp_forwarding_manager.lock().await.handle_tcp_data_from_cli(
+                                        &tcp_data_msg.session_id,
+                                        &tcp_data_msg.connection_id,
+                                        &tcp_data_msg.data,
+                                        &tcp_data_msg.data_type,
+                                    ).await {
+                                        #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                        tracing::error!("Failed to handle TCP data from CLI: {}", e);
+                                    }
+
+                                    // Emit TCP data event to frontend for UI updates
                                     let _ = app_handle_clone.emit(
                                         &format!("tcp-data-{}", session_id_clone),
                                         &serde_json::json!({
@@ -673,6 +685,137 @@ async fn connect_to_peer(
         tracing::info!(
             "Message receiver task ended for session: {}",
             session_id_clone
+        );
+    });
+
+    // Start TCP message forwarding task
+    // This task listens on the TcpForwardingManager's message channel
+    // and forwards messages to the CLI via P2P network
+    let connection_id_for_tcp = connection_id.clone();
+    let session_id_for_tcp = session_id.clone();
+    let tcp_manager_for_tcp = state.tcp_forwarding_manager.clone();
+    let cancellation_token_for_tcp = cancellation_token.clone();
+
+    // Create a channel to send messages from the listener task to the sender task
+    let (tcp_msg_tx, mut tcp_msg_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+
+    // Get a clone of the quic_client handle for sending messages
+    let quic_client_handle_opt = {
+        let client_guard = state.quic_client.read().await;
+        client_guard.as_ref().cloned()
+    };
+
+    // Spawn the message sender task
+    let session_id_for_sender = session_id_for_tcp.clone();
+    let cancellation_token_for_sender = cancellation_token.clone();
+
+    tokio::spawn(async move {
+        #[cfg(debug_assertions)]
+        tracing::info!(
+            "Starting TCP message sender task for session: {}",
+            session_id_for_sender
+        );
+
+        let Some(quic_client_handle) = quic_client_handle_opt else {
+            #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+            tracing::error!("QUIC client not available for TCP message forwarding");
+            return;
+        };
+
+        loop {
+            tokio::select! {
+                result = tcp_msg_rx.recv() => {
+                    match result {
+                        Some(message) => {
+                            // Send message via QUIC client handle
+                            if let Err(e) = quic_client_handle.send_message_to_server(
+                                &connection_id_for_tcp,
+                                message,
+                            ).await {
+                                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                tracing::error!("Failed to send TCP message to CLI: {}", e);
+                            }
+                        }
+                        None => {
+                            #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                            tracing::info!("TCP message sender channel closed for session: {}", session_id_for_sender);
+                            break;
+                        }
+                    }
+                }
+                _ = cancellation_token_for_sender.cancelled() => {
+                    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                    tracing::info!("TCP message sender task cancelled for session: {}", session_id_for_sender);
+                    break;
+                }
+            }
+        }
+
+        #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+        tracing::info!("TCP message sender task ended for session: {}", session_id_for_sender);
+    });
+
+    // Spawn the message listener task
+    let session_id_for_listener = session_id_for_tcp.clone();
+    tokio::spawn(async move {
+        #[cfg(debug_assertions)]
+        tracing::info!(
+            "Starting TCP message listener task for session: {}",
+            session_id_for_listener
+        );
+
+        // Subscribe to the TCP message channel
+        let mut tcp_message_receiver = {
+            tcp_manager_for_tcp.lock().await.subscribe_message_receiver()
+        };
+
+        loop {
+            tokio::select! {
+                result = tcp_message_receiver.recv() => {
+                    match result {
+                        Ok(msg) => {
+                            #[cfg(debug_assertions)]
+                            tracing::debug!("TCP message to forward: session_id={}, connection_id={}, data_type={:?}",
+                                msg.session_id, msg.connection_id, msg.data_type);
+
+                            // Convert TcpMessageRequest to Message and send to sender task
+                            let message = MessageBuilder::tcp_data(
+                                "riterm_app".to_string(),
+                                msg.session_id,
+                                msg.connection_id,
+                                msg.data_type,
+                                msg.data,
+                            ).with_session(session_id_for_listener.clone());
+
+                            // Send to the sender task
+                            let _ = tcp_msg_tx.send(message);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                            tracing::info!("TCP message channel closed for session: {}", session_id_for_listener);
+                            break;
+                        }
+                        Err(broadcast::error::RecvError::Lagged(count)) => {
+                            #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                            tracing::warn!("TCP message channel lagged by {} messages for session: {}", count, session_id_for_listener);
+                        }
+                    }
+                }
+                _ = cancellation_token_for_tcp.cancelled() => {
+                    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                    tracing::info!(
+                        "TCP message listener task cancelled for session: {}",
+                        session_id_for_listener
+                    );
+                    break;
+                }
+            }
+        }
+
+        #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+        tracing::info!(
+            "TCP message listener task ended for session: {}",
+            session_id_for_listener
         );
     });
 
