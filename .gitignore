@@ -5,3 +5,4 @@ logs
 *.jks
 keystore.properties
 riterm_secret_key
+.claude/tsc-cache
