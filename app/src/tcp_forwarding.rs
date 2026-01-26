@@ -297,6 +297,69 @@ impl TcpForwardingManager {
         let sessions = self.sessions.read().await;
         sessions.values().cloned().collect()
     }
+
+    /// 恢复现有的 TCP 转发会话（用于重连后恢复会话）
+    ///
+    /// # 参数
+    /// * `session_id` - CLI 端的会话 ID
+    /// * `local_addr` - 本地监听地址
+    /// * `remote_host` - 远程主机
+    /// * `remote_port` - 远程端口
+    ///
+    /// # 返回
+    /// 成功返回 session_id，失败返回错误
+    pub async fn restore_session(
+        &self,
+        session_id: String,
+        local_addr: String,
+        remote_host: String,
+        remote_port: u16,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // 检查会话是否已存在
+        {
+            let sessions = self.sessions.read().await;
+            if sessions.contains_key(&session_id) {
+                warn!("Session {} already exists, skipping restore", session_id);
+                return Ok(());
+            }
+        }
+
+        let session = TcpForwardingSession {
+            id: session_id.clone(),
+            local_addr: local_addr.clone(),
+            remote_host: remote_host.clone(),
+            remote_port,
+            status: "starting".to_string(),
+        };
+
+        // 保存会话
+        {
+            let mut sessions = self.sessions.write().await;
+            sessions.insert(session_id.clone(), session);
+        }
+
+        // 启动本地监听器
+        let local_addr_parsed: SocketAddr = local_addr.parse()?;
+        let remote_host_for_listener = remote_host.clone();
+        let _shutdown_tx = self
+            .start_listener(session_id.clone(), local_addr_parsed, remote_host_for_listener, remote_port)
+            .await?;
+
+        // 更新会话状态
+        {
+            let mut sessions = self.sessions.write().await;
+            if let Some(session) = sessions.get_mut(&session_id) {
+                session.status = "running".to_string();
+            }
+        }
+
+        info!(
+            "TCP forwarding session restored: {} ({} -> {}:{})",
+            session_id, local_addr, remote_host, remote_port
+        );
+
+        Ok(())
+    }
 }
 
 /// 处理单个 TCP 连接

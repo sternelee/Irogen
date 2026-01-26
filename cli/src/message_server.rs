@@ -235,7 +235,7 @@ impl CliMessageServer {
             .unwrap_or_default()
             .join(".riterm")
             .join("logs");
-        let log_manager = Arc::new(TerminalLogManager::new(log_dir, Some(1000)));
+        let log_manager = Arc::new(TerminalLogManager::new(log_dir.clone(), Some(1000)));
         info!("📝 Terminal log directory: {:?}", log_manager.log_dir());
 
         // 创建服务器实例
@@ -315,33 +315,8 @@ impl CliMessageServer {
             .register_message_handler(system_info_handler)
             .await;
 
-        // 启动定期连接清理任务
-        self.start_connection_cleanup_task().await;
-
         info!("All message handlers registered successfully");
         Ok(())
-    }
-
-    /// 启动定期连接清理任务
-    async fn start_connection_cleanup_task(&self) {
-        let quic_server = self.quic_server.clone();
-
-        tokio::spawn(async move {
-            let mut cleanup_interval = tokio::time::interval(std::time::Duration::from_secs(60));
-
-            loop {
-                cleanup_interval.tick().await;
-
-                // 清理超过5分钟不活跃的连接
-                let cleaned_count = quic_server
-                    .cleanup_inactive_connections(std::time::Duration::from_secs(300))
-                    .await;
-
-                if cleaned_count > 0 {
-                    info!("🔌 Cleaned up {} inactive connections", cleaned_count);
-                }
-            }
-        });
     }
 
     /// 获取节点 ID
@@ -792,7 +767,10 @@ impl TerminalMessageHandler {
 
         // 删除终端日志文件
         if let Err(e) = self.log_manager.remove_logger_with_file(terminal_id) {
-            warn!("Failed to delete log file for terminal {}: {}", terminal_id, e);
+            warn!(
+                "Failed to delete log file for terminal {}: {}",
+                terminal_id, e
+            );
         }
 
         Ok(())
@@ -1623,10 +1601,7 @@ impl MessageHandler for TcpForwardingMessageHandler {
                         }
                     }
                     TcpForwardingAction::ListSessions => {
-                        match self
-                            .list_tcp_forwarding_sessions(Some(message.sender_id.clone()))
-                            .await
-                        {
+                        match self.list_tcp_forwarding_sessions(None).await {
                             Ok(sessions) => {
                                 let response_data = serde_json::json!({
                                     "sessions": sessions
@@ -2445,7 +2420,8 @@ impl TcpDataMessageHandler {
                                 // 启动任务从 TCP 服务读取数据并通过 P2P 网络发送
                                 let quic_server_clone = self.quic_server.clone();
                                 // 获取客户端节点ID，用于定向发送数据
-                                let client_node_id = internal_session.session.client_node_id.clone();
+                                let client_node_id =
+                                    internal_session.session.client_node_id.clone();
 
                                 // 启动任务从 TCP 服务读取数据并通过 P2P 网络发送
                                 let session_id_clone = session_id.to_string();
@@ -2454,13 +2430,17 @@ impl TcpDataMessageHandler {
 
                                 tokio::spawn(async move {
                                     // 解析客户端节点ID
-                                    let client_endpoint_id = match iroh::EndpointId::from_str(&client_node_id) {
-                                        Ok(id) => id,
-                                        Err(e) => {
-                                            error!("Failed to parse client_node_id '{}': {}", client_node_id, e);
-                                            return;
-                                        }
-                                    };
+                                    let client_endpoint_id =
+                                        match iroh::EndpointId::from_str(&client_node_id) {
+                                            Ok(id) => id,
+                                            Err(e) => {
+                                                error!(
+                                                    "Failed to parse client_node_id '{}': {}",
+                                                    client_node_id, e
+                                                );
+                                                return;
+                                            }
+                                        };
 
                                     // 从 TCP 服务读取数据并发送给特定客户端
                                     let tcp_stream = {
@@ -2494,7 +2474,10 @@ impl TcpDataMessageHandler {
                                                     );
 
                                                     if let Err(e) = quic_server_clone
-                                                        .send_message_to_node(&client_endpoint_id, close_message)
+                                                        .send_message_to_node(
+                                                            &client_endpoint_id,
+                                                            close_message,
+                                                        )
                                                         .await
                                                     {
                                                         error!(
@@ -2530,7 +2513,10 @@ impl TcpDataMessageHandler {
 
                                                     // 发送消息给创建此转发会话的客户端
                                                     if let Err(e) = quic_server_clone
-                                                        .send_message_to_node(&client_endpoint_id, message)
+                                                        .send_message_to_node(
+                                                            &client_endpoint_id,
+                                                            message,
+                                                        )
                                                         .await
                                                     {
                                                         error!(

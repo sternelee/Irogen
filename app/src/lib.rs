@@ -513,10 +513,15 @@ async fn connect_to_peer(
     // Start message receiver task
     let app_handle_clone = app_handle.clone();
     let session_id_clone = session_id.clone();
+    let connection_id_clone = connection_id.clone();
     let cancellation_token_receiver = cancellation_token.clone();
     let last_activity_receiver = terminal_session.last_activity.clone();
     let event_count_receiver = terminal_session.event_count.clone();
     let tcp_forwarding_manager = state.tcp_forwarding_manager.clone();
+    let quic_client_for_receiver = {
+        let client_guard = state.quic_client.read().await;
+        client_guard.as_ref().cloned()
+    };
 
     tokio::spawn(async move {
         let mut receiver = message_receiver;
@@ -559,6 +564,102 @@ async fn connect_to_peer(
                                     #[cfg(debug_assertions)]
                                     tracing::debug!("Received response for session {}: success={}",
                                         session_id_clone, response.success);
+
+                                    // Check if this is a terminals list response
+                                    if let Some(ref data_str) = response.data {
+                                        if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(data_str) {
+                                            if data_json.get("terminals").is_some() {
+                                                // This is a terminals list response - fetch logs for each
+                                                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                                tracing::info!("Received terminals list, fetching logs...");
+
+                                                // Emit terminals list to frontend
+                                                let _ = app_handle_clone.emit(
+                                                    &format!("terminals-list-{}", session_id_clone),
+                                                    &data_json,
+                                                );
+
+                                                // Fetch logs for each terminal
+                                                if let Some(terminals_array) = data_json["terminals"].as_array() {
+                                                    for terminal_obj in terminals_array {
+                                                        if let Some(terminal_id) = terminal_obj["id"].as_str() {
+                                                            // Send get_terminal_logs request
+                                                            if let Some(ref quic_client) = quic_client_for_receiver {
+                                                                let logs_message = MessageBuilder::terminal_management(
+                                                                    "riterm_app".to_string(),
+                                                                    TerminalAction::GetLogs {
+                                                                        terminal_id: terminal_id.to_string(),
+                                                                    },
+                                                                    Some(session_id_clone.clone()),
+                                                                )
+                                                                .with_session(session_id_clone.clone());
+
+                                                                let _ = quic_client.send_message_to_server(
+                                                                    &connection_id_clone,
+                                                                    logs_message,
+                                                                ).await;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            else if data_json.get("entries").is_some() && data_json.get("terminal_id").is_some() {
+                                                // This is a terminal logs response
+                                                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                                tracing::info!("Received terminal logs for: {}", data_json["terminal_id"]);
+
+                                                // Emit terminal logs to frontend
+                                                let _ = app_handle_clone.emit(
+                                                    &format!("terminal-logs-{}", session_id_clone),
+                                                    &data_json,
+                                                );
+                                            }
+                                            else if data_json.get("sessions").is_some() {
+                                                // This is a TCP sessions list response
+                                                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                                tracing::info!("Received TCP sessions list, restoring sessions...");
+
+                                                if let Some(sessions_array) = data_json["sessions"].as_array() {
+                                                    for session_obj in sessions_array {
+                                                        if let (Some(session_id), Some(local_addr), Some(remote_target), Some(fwd_type)) = (
+                                                            session_obj["id"].as_str(),
+                                                            session_obj["local_addr"].as_str(),
+                                                            session_obj["remote_target"].as_str(),
+                                                            session_obj["forwarding_type"].as_str(),
+                                                        ) {
+                                                            // Parse remote_target (format: "host:port")
+                                                            let (remote_host, remote_port) = if let Some(colon_pos) = remote_target.find(':') {
+                                                                (
+                                                                    remote_target[..colon_pos].to_string(),
+                                                                    remote_target[colon_pos + 1..].parse::<u16>().unwrap_or(0)
+                                                                )
+                                                            } else {
+                                                                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                                                tracing::warn!("Invalid remote_target format: {}", remote_target);
+                                                                continue;
+                                                            };
+
+                                                            // Restore the session (only for ListenToRemote type)
+                                                            if fwd_type == "local-to-remote" {
+                                                                if let Err(e) = tcp_forwarding_manager.lock().await.restore_session(
+                                                                    session_id.to_string(),
+                                                                    local_addr.to_string(),
+                                                                    remote_host,
+                                                                    remote_port,
+                                                                ).await {
+                                                                    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                                                    tracing::error!("Failed to restore TCP session {}: {}", session_id, e);
+                                                                } else {
+                                                                    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                                                    tracing::info!("Successfully restored TCP session: {}", session_id);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
 
                                     // Emit response to frontend
                                     let _ = app_handle_clone.emit(
@@ -816,6 +917,88 @@ async fn connect_to_peer(
         tracing::info!(
             "TCP message listener task ended for session: {}",
             session_id_for_listener
+        );
+    });
+
+    // Sync existing terminals and their logs from CLI
+    // This allows the app to restore terminal sessions with their history
+    let session_id_for_terminal_sync = session_id.clone();
+    let connection_id_for_terminal_sync = connection_id.clone();
+    let cancellation_token_for_terminal_sync = cancellation_token.clone();
+    let app_handle_for_terminal_sync = app_handle.clone();
+    let quic_client_for_terminal_sync = {
+        let client_guard = state.quic_client.read().await;
+        client_guard.as_ref().cloned()
+    };
+
+    tokio::spawn(async move {
+        // Wait a short delay to ensure the connection is stable
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        if cancellation_token_for_terminal_sync.is_cancelled() {
+            return;
+        }
+
+        #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+        tracing::info!("Syncing existing terminals for session: {}", session_id_for_terminal_sync);
+
+        // Send list_terminals request to CLI
+        if let Some(quic_client) = quic_client_for_terminal_sync {
+            let list_message = MessageBuilder::terminal_management(
+                "riterm_app".to_string(),
+                TerminalAction::List,
+                Some(session_id_for_terminal_sync.clone()),
+            )
+            .with_session(session_id_for_terminal_sync.clone());
+
+            if let Err(e) = quic_client.send_message_to_server(
+                &connection_id_for_terminal_sync,
+                list_message,
+            ).await {
+                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                tracing::error!("Failed to send list_terminals request: {}", e);
+            }
+        }
+    });
+
+    // Sync existing TCP forwarding sessions from CLI
+    // This allows the app to restore TCP sessions created by other clients
+    let session_id_for_sync = session_id.clone();
+    let connection_id_for_sync = connection_id.clone();
+    let tcp_manager_for_sync = state.tcp_forwarding_manager.clone();
+    let cancellation_token_for_sync = cancellation_token.clone();
+    let app_handle_for_sync = app_handle.clone();
+
+    tokio::spawn(async move {
+        // Wait a short delay to ensure the connection is stable
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        if cancellation_token_for_sync.is_cancelled() {
+            return;
+        }
+
+        #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+        tracing::info!("Syncing existing TCP sessions for session: {}", session_id_for_sync);
+
+        // Send list request to CLI
+        let list_message = MessageBuilder::tcp_forwarding(
+            "riterm_app".to_string(),
+            TcpForwardingAction::ListSessions,
+            Some(session_id_for_sync.clone()),
+        )
+        .with_session(session_id_for_sync.clone());
+
+        // Send the message and wait for response
+        // We'll handle the response in the message receiver task
+        // But we need to store a pending sync request
+
+        // For now, we'll emit an event to frontend to trigger the list
+        let _ = app_handle_for_sync.emit(
+            &format!("sync-tcp-sessions-{}", session_id_for_sync),
+            &serde_json::json!({
+                "action": "list",
+                "session_id": session_id_for_sync,
+            }),
         );
     });
 
