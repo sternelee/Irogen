@@ -138,11 +138,30 @@ fn is_valid_base64(s: &str) -> bool {
 }
 
 use std::sync::Arc;
+use std::pin::Pin;
+use std::future::Future;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// ALPN协议标识符
 pub const QUIC_MESSAGE_ALPN: &[u8] = b"com.riterm.messages/1";
+
+/// TCP转发握手协议魔数
+/// 格式: [魔数(5字节)] [session_id长度(4字节u32BE)] [session_id(UTF-8字符串)]
+pub const TCP_STREAM_HANDSHAKE: &[u8] = &[0x00, 0x01, 0x02, 0x03, 0x04];
+
+/// TCP 流处理器类型
+/// 接收 (send_stream, recv_stream, remote_endpoint_id, session_id)，返回 Future
+pub type TcpStreamHandler = Arc<
+    dyn Fn(
+            iroh::endpoint::SendStream,
+            iroh::endpoint::RecvStream,
+            EndpointId,
+            String, // session_id
+        ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>
+        + Send
+        + Sync,
+>;
 
 /// QUIC消息服务器配置
 #[derive(Debug, Clone)]
@@ -208,6 +227,8 @@ pub struct QuicMessageServer {
     #[allow(dead_code)] // 配置字段用于未来扩展
     config: QuicMessageServerConfig,
     shutdown_tx: mpsc::Sender<()>,
+    /// TCP 流处理器（用于处理 TCP 转发流）
+    tcp_stream_handler: Arc<RwLock<Option<TcpStreamHandler>>>,
 }
 
 impl QuicMessageServer {
@@ -310,6 +331,7 @@ impl QuicMessageServer {
             communication_manager,
             config,
             shutdown_tx,
+            tcp_stream_handler: Arc::new(RwLock::new(None)),
         };
 
         // 启动连接接受器
@@ -318,11 +340,20 @@ impl QuicMessageServer {
         Ok(server)
     }
 
+    /// 设置 TCP 流处理器
+    /// 当收到 TCP 转发流时，会调用此处理器
+    pub async fn set_tcp_stream_handler(&self, handler: TcpStreamHandler) {
+        let mut guard = self.tcp_stream_handler.write().await;
+        *guard = Some(handler);
+        info!("TCP stream handler registered");
+    }
+
     /// 启动连接接受器
     async fn start_connection_acceptor(&self, shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
         let endpoint = self.endpoint.clone();
         let connections = self.connections.clone();
         let comm_manager = self.communication_manager.clone();
+        let tcp_handler = self.tcp_stream_handler.clone();
 
         tokio::spawn(async move {
             let mut shutdown_rx = shutdown_rx;
@@ -335,6 +366,7 @@ impl QuicMessageServer {
 
                                 let conn = connections.clone();
                                 let cm = comm_manager.clone();
+                                let handler = tcp_handler.clone();
 
                                 tokio::spawn(async move {
                                     // Directly handle the incoming connection by accepting it
@@ -342,6 +374,7 @@ impl QuicMessageServer {
                                         connecting,
                                         conn,
                                         cm,
+                                        handler,
                                     ).await {
                                         error!("Error handling message connection: {}", e);
                                     }
@@ -369,6 +402,7 @@ impl QuicMessageServer {
         incoming: iroh::endpoint::Incoming,
         connections: Arc<RwLock<HashMap<String, QuicConnection>>>,
         communication_manager: Arc<CommunicationManager>,
+        tcp_stream_handler: Arc<RwLock<Option<TcpStreamHandler>>>,
     ) -> Result<()> {
         // 执行握手
         let connection = incoming.await?;
@@ -414,7 +448,7 @@ impl QuicMessageServer {
         };
 
         // 处理消息流
-        Self::handle_message_streams(connection, connection_id, communication_manager).await
+        Self::handle_message_streams(connection, connection_id, communication_manager, tcp_stream_handler).await
     }
 
     /// 处理消息流
@@ -422,19 +456,88 @@ impl QuicMessageServer {
         connection: iroh::endpoint::Connection,
         connection_id: String,
         communication_manager: Arc<CommunicationManager>,
+        tcp_stream_handler: Arc<RwLock<Option<TcpStreamHandler>>>,
     ) -> Result<()> {
+        let remote_endpoint_id = connection.remote_id();
+        
         // 接受双向流用于消息通信
         loop {
             match connection.accept_bi().await {
-                Ok((send_stream, recv_stream)) => {
+                Ok((send_stream, mut recv_stream)) => {
                     let cm = communication_manager.clone();
                     let conn_id = connection_id.clone();
+                    let handler = tcp_stream_handler.clone();
+                    let remote_id = remote_endpoint_id;
 
                     tokio::spawn(async move {
-                        if let Err(e) =
-                            Self::handle_message_stream(send_stream, recv_stream, cm, conn_id).await
-                        {
-                            error!("Error handling message stream: {}", e);
+                        // 首先读取前几个字节来判断是 TCP 流还是消息流
+                        let mut peek_buf = vec![0u8; TCP_STREAM_HANDSHAKE.len()];
+                        match recv_stream.read_exact(&mut peek_buf).await {
+                            Ok(()) => {
+                                if peek_buf == TCP_STREAM_HANDSHAKE {
+                                    // 这是 TCP 转发流，继续读取 session_id
+                                    info!("🔌 Detected TCP forwarding stream from {:?}", remote_id);
+                                    
+                                    // 读取 session_id 长度 (4字节 u32 BE)
+                                    let mut len_buf = [0u8; 4];
+                                    if let Err(e) = recv_stream.read_exact(&mut len_buf).await {
+                                        error!("Failed to read session_id length: {}", e);
+                                        return;
+                                    }
+                                    let session_id_len = u32::from_be_bytes(len_buf) as usize;
+                                    
+                                    // 防止过大的 session_id
+                                    if session_id_len > 1024 {
+                                        error!("Session ID too long: {}", session_id_len);
+                                        return;
+                                    }
+                                    
+                                    // 读取 session_id
+                                    let mut session_id_buf = vec![0u8; session_id_len];
+                                    if let Err(e) = recv_stream.read_exact(&mut session_id_buf).await {
+                                        error!("Failed to read session_id: {}", e);
+                                        return;
+                                    }
+                                    
+                                    let session_id = match String::from_utf8(session_id_buf) {
+                                        Ok(s) => s,
+                                        Err(e) => {
+                                            error!("Invalid session_id (not UTF-8): {}", e);
+                                            return;
+                                        }
+                                    };
+                                    
+                                    info!("🔌 TCP stream for session: {}", session_id);
+                                    
+                                    // 获取 TCP 流处理器
+                                    let tcp_handler = {
+                                        let guard = handler.read().await;
+                                        guard.clone()
+                                    };
+                                    
+                                    if let Some(tcp_handler) = tcp_handler {
+                                        if let Err(e) = tcp_handler(send_stream, recv_stream, remote_id, session_id).await {
+                                            error!("Error handling TCP stream: {}", e);
+                                        }
+                                    } else {
+                                        warn!("Received TCP stream but no handler registered");
+                                    }
+                                } else {
+                                    // 这是消息流，需要将已读取的字节传递给消息处理器
+                                    if let Err(e) = Self::handle_message_stream_with_initial_data(
+                                        send_stream,
+                                        recv_stream,
+                                        cm,
+                                        conn_id,
+                                        peek_buf,
+                                    ).await {
+                                        error!("Error handling message stream: {}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                error!("Error reading stream header: {}", e);
+                            }
                         }
                     });
                 }
@@ -448,81 +551,106 @@ impl QuicMessageServer {
         Ok(())
     }
 
-    /// 处理单个消息流
-    async fn handle_message_stream(
+    /// 处理单个消息流（带有初始数据）
+    async fn handle_message_stream_with_initial_data(
         mut send_stream: iroh::endpoint::SendStream,
         mut recv_stream: iroh::endpoint::RecvStream,
         communication_manager: Arc<CommunicationManager>,
         _connection_id: String,
+        initial_data: Vec<u8>,
     ) -> Result<()> {
         let mut buffer = vec![0u8; 8192];
-
+        
+        // 首先处理初始数据
+        let mut pending_data = initial_data;
+        
         loop {
-            match recv_stream.read(&mut buffer).await {
-                Ok(Some(n)) => {
-                    let data = &buffer[..n];
+            // 如果有待处理的数据，先处理它
+            let data = if !pending_data.is_empty() {
+                // 尝试读取更多数据来组成完整的消息
+                match recv_stream.read(&mut buffer).await {
+                    Ok(Some(n)) => {
+                        pending_data.extend_from_slice(&buffer[..n]);
+                        std::mem::take(&mut pending_data)
+                    }
+                    Ok(None) => {
+                        // 流关闭，尝试处理剩余数据
+                        if pending_data.is_empty() {
+                            break;
+                        }
+                        std::mem::take(&mut pending_data)
+                    }
+                    Err(e) => {
+                        error!("Error reading from stream: {}", e);
+                        break;
+                    }
+                }
+            } else {
+                // 正常读取
+                match recv_stream.read(&mut buffer).await {
+                    Ok(Some(n)) => buffer[..n].to_vec(),
+                    Ok(None) => {
+                        debug!("Stream closed by peer");
+                        break;
+                    }
+                    Err(e) => {
+                        error!("Error reading from stream: {}", e);
+                        break;
+                    }
+                }
+            };
 
-                    // 尝试反序列化消息
-                    match MessageSerializer::deserialize_from_network(data) {
-                        Ok(message) => {
-                            info!(
-                                "📨 Received message: type={:?}, sender={}, requires_response={}",
-                                message.message_type, message.sender_id, message.requires_response
-                            );
+            // 尝试反序列化消息
+            match MessageSerializer::deserialize_from_network(&data) {
+                Ok(message) => {
+                    info!(
+                        "📨 Received message: type={:?}, sender={}, requires_response={}",
+                        message.message_type, message.sender_id, message.requires_response
+                    );
 
-                            // 处理传入消息
-                            match communication_manager
-                                .receive_incoming_message(message.clone())
-                                .await
+                    // 处理传入消息
+                    match communication_manager
+                        .receive_incoming_message(message.clone())
+                        .await
+                    {
+                        Ok(Some(response)) => {
+                            // 处理器返回了响应，发送它
+                            info!("📤 Sending handler-generated response");
+                            if let Err(e) =
+                                Self::send_message(&mut send_stream, &response).await
                             {
-                                Ok(Some(response)) => {
-                                    // 处理器返回了响应，发送它
-                                    info!("📤 Sending handler-generated response");
-                                    if let Err(e) =
-                                        Self::send_message(&mut send_stream, &response).await
-                                    {
-                                        error!("Failed to send response: {}", e);
-                                    }
-                                }
-                                Ok(None) => {
-                                    info!("✅ Message processed, no response needed");
-                                    // 处理成功但没有响应，如果需要则发送默认响应
-                                    if message.requires_response {
-                                        let response = Self::create_default_response(&message);
-                                        if let Err(e) =
-                                            Self::send_message(&mut send_stream, &response).await
-                                        {
-                                            error!("Failed to send default response: {}", e);
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Failed to process incoming message: {}", e);
-                                    // 发送错误响应
-                                    let error_response = message.create_error_response(format!(
-                                        "Failed to process message: {}",
-                                        e
-                                    ));
-                                    if let Err(e) =
-                                        Self::send_message(&mut send_stream, &error_response).await
-                                    {
-                                        error!("Failed to send error response: {}", e);
-                                    }
+                                error!("Failed to send response: {}", e);
+                            }
+                        }
+                        Ok(None) => {
+                            info!("✅ Message processed, no response needed");
+                            // 处理成功但没有响应，如果需要则发送默认响应
+                            if message.requires_response {
+                                let response = Self::create_default_response(&message);
+                                if let Err(e) =
+                                    Self::send_message(&mut send_stream, &response).await
+                                {
+                                    error!("Failed to send default response: {}", e);
                                 }
                             }
                         }
                         Err(e) => {
-                            error!("Failed to deserialize message: {}", e);
+                            error!("Failed to process incoming message: {}", e);
+                            // 发送错误响应
+                            let error_response = message.create_error_response(format!(
+                                "Failed to process message: {}",
+                                e
+                            ));
+                            if let Err(e) =
+                                Self::send_message(&mut send_stream, &error_response).await
+                            {
+                                error!("Failed to send error response: {}", e);
+                            }
                         }
                     }
                 }
-                Ok(None) => {
-                    debug!("Stream closed by peer");
-                    break;
-                }
                 Err(e) => {
-                    error!("Error reading from stream: {}", e);
-                    break;
+                    error!("Failed to deserialize message: {}", e);
                 }
             }
         }
@@ -694,6 +822,80 @@ impl QuicMessageServer {
         }
 
         count
+    }
+
+    /// 打开到远程的 TCP 转发流
+    /// session_id 用于标识这个 TCP 流属于哪个转发会话
+    /// 每个 TCP 连接都会创建一个新的 QUIC bidi 流
+    pub async fn open_tcp_stream(
+        &self,
+        remote_endpoint_id: &EndpointId,
+        session_id: &str,
+    ) -> Result<(
+        iroh::endpoint::SendStream,
+        iroh::endpoint::RecvStream,
+    )> {
+        // 查找或建立到远程的连接
+        let connection = {
+            let connections = self.connections.read().await;
+            connections
+                .values()
+                .find(|c| c.node_id == *remote_endpoint_id)
+                .map(|c| c.connection.clone())
+        };
+
+        let connection = match connection {
+            Some(conn) => conn,
+            None => {
+                // 需要建立新连接
+                return Err(anyhow::anyhow!(
+                    "No active connection to endpoint {:?}. Please ensure message protocol connection is established first.",
+                    remote_endpoint_id
+                ));
+            }
+        };
+
+        // 打开 bidi 流
+        let (mut send_stream, recv_stream) = connection
+            .open_bi()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to open bidi stream: {}", e))?;
+
+        // 发送握手协议：魔数 + session_id长度 + session_id
+        send_stream
+            .write_all(TCP_STREAM_HANDSHAKE)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to write handshake magic: {}", e))?;
+        
+        let session_id_bytes = session_id.as_bytes();
+        let len_bytes = (session_id_bytes.len() as u32).to_be_bytes();
+        send_stream
+            .write_all(&len_bytes)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to write session_id length: {}", e))?;
+        send_stream
+            .write_all(session_id_bytes)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to write session_id: {}", e))?;
+
+        info!(
+            "TCP forwarding stream opened to endpoint {:?} for session {}",
+            remote_endpoint_id, session_id
+        );
+
+        Ok((send_stream, recv_stream))
+    }
+
+    /// 获取与指定 endpoint_id 的连接
+    pub async fn get_connection(
+        &self,
+        endpoint_id: &EndpointId,
+    ) -> Option<iroh::endpoint::Connection> {
+        let connections = self.connections.read().await;
+        connections
+            .values()
+            .find(|c| c.node_id == *endpoint_id)
+            .map(|c| c.connection.clone())
     }
 
     /// 关闭服务器
@@ -888,9 +1090,12 @@ impl QuicMessageClient {
                         let response_data = &buffer[..n];
                         match MessageSerializer::deserialize_from_network(response_data) {
                             Ok(response) => {
-                                debug!("Received response: {:?}", response.message_type);
+                                debug!("Received response: type={:?}, broadcasting to {} subscribers", 
+                                    response.message_type, self.message_tx.receiver_count());
                                 // 广播接收到的响应
-                                let _ = self.message_tx.send(response);
+                                if let Err(e) = self.message_tx.send(response) {
+                                    error!("Failed to broadcast response: {} (no receivers?)", e);
+                                }
                             }
                             Err(e) => {
                                 error!("Failed to deserialize response: {}", e);
@@ -930,6 +1135,63 @@ impl QuicMessageClient {
     /// 获取消息接收器
     pub fn get_message_receiver(&self) -> broadcast::Receiver<Message> {
         self.message_tx.subscribe()
+    }
+
+    /// 打开到远程服务器的 TCP 转发流
+    /// session_id 用于标识这个 TCP 流属于哪个转发会话
+    pub async fn open_tcp_stream(
+        &self,
+        remote_endpoint_id: &EndpointId,
+        session_id: &str,
+    ) -> Result<(
+        iroh::endpoint::SendStream,
+        iroh::endpoint::RecvStream,
+    )> {
+        // 查找已建立的连接
+        let connections = self.server_connections.read().await;
+        let connection = connections
+            .values()
+            .find(|c| c.remote_id() == *remote_endpoint_id)
+            .cloned();
+
+        drop(connections); // 释放锁
+
+        let connection = connection.ok_or_else(|| {
+            anyhow::anyhow!(
+                "No active connection to endpoint {:?}. Please connect via message protocol first.",
+                remote_endpoint_id
+            )
+        })?;
+
+        // 打开 bidi 流
+        let (mut send_stream, recv_stream) = connection
+            .open_bi()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to open bidi stream: {}", e))?;
+
+        // 发送握手协议：魔数 + session_id长度 + session_id
+        send_stream
+            .write_all(TCP_STREAM_HANDSHAKE)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to write handshake magic: {}", e))?;
+        
+        let session_id_bytes = session_id.as_bytes();
+        let len_bytes = (session_id_bytes.len() as u32).to_be_bytes();
+        send_stream
+            .write_all(&len_bytes)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to write session_id length: {}", e))?;
+        send_stream
+            .write_all(session_id_bytes)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to write session_id: {}", e))?;
+
+        info!(
+            "TCP forwarding stream opened from client to endpoint {:?} for session {}",
+            remote_endpoint_id, session_id
+        );
+
+        Ok((send_stream, recv_stream))
     }
 
     /// 处理传入的数据流
@@ -1053,6 +1315,19 @@ impl QuicMessageClientHandle {
     pub async fn get_message_receiver(&self) -> broadcast::Receiver<Message> {
         let client = self.client.lock().await;
         client.get_message_receiver()
+    }
+
+    /// 打开到远程服务器的 TCP 转发流（用于 App 端的 connect-tcp 模式）
+    pub async fn open_tcp_stream(
+        &self,
+        remote_endpoint_id: &EndpointId,
+        session_id: &str,
+    ) -> Result<(
+        iroh::endpoint::SendStream,
+        iroh::endpoint::RecvStream,
+    )> {
+        let client = self.client.lock().await;
+        client.open_tcp_stream(remote_endpoint_id, session_id).await
     }
 
     // Note: get_active_connections_count and list_active_connections are not available in QuicMessageClient

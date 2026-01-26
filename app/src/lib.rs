@@ -498,6 +498,16 @@ async fn connect_to_peer(
         sessions.insert(session_id.clone(), terminal_session.clone());
     }
 
+    // Set CLI endpoint ID on TCP forwarding manager for P2P stream opening
+    {
+        let mut tcp_manager = state.tcp_forwarding_manager.lock().await;
+        tcp_manager.set_cli_endpoint_id(node_addr.to_string()).await;
+        // Also set the quic_client reference
+        if let Some(quic_client) = (*state.quic_client.read().await).clone() {
+            tcp_manager.set_quic_client(quic_client);
+        }
+    }
+
     // Create and register event listener for this session
     let event_listener = Arc::new(AppEventListener::new(
         app_handle.clone(),
@@ -562,7 +572,7 @@ async fn connect_to_peer(
                                 MessagePayload::Response(response) => {
                                     // Handle response messages
                                     #[cfg(debug_assertions)]
-                                    tracing::debug!("Received response for session {}: success={}",
+                                    tracing::debug!("Received response for session {}: success={}", 
                                         session_id_clone, response.success);
 
                                     // Check if this is a terminals list response
@@ -614,8 +624,24 @@ async fn connect_to_peer(
                                                     &data_json,
                                                 );
                                             }
+                                            // Check if this is a TCP forwarding session creation response
+                                            // NOTE: This must be checked BEFORE the sessions-only check because
+                                            // session creation responses include both session_id+status AND sessions
+                                            else if data_json.get("session_id").is_some() && data_json.get("status").and_then(|s: &serde_json::Value| s.as_str()) == Some("created") {
+                                                if let Some(tcp_session_id) = data_json["session_id"].as_str() {
+                                                    // Start the listener for this session
+                                                    match tcp_forwarding_manager.lock().await.start_session_listener(tcp_session_id).await {
+                                                        Ok(()) => {
+                                                            tracing::info!("TCP listener started for session: {}", tcp_session_id);
+                                                        }
+                                                        Err(e) => {
+                                                            tracing::error!("Failed to start TCP listener for session {}: {}", tcp_session_id, e);
+                                                        }
+                                                    }
+                                                }
+                                            }
                                             else if data_json.get("sessions").is_some() {
-                                                // This is a TCP sessions list response
+                                                // This is a TCP sessions list response (no session_id+status=created)
                                                 #[cfg(any(debug_assertions, not(feature = "release-logging")))]
                                                 tracing::info!("Received TCP sessions list, restoring sessions...");
 
@@ -1472,27 +1498,16 @@ async fn create_tcp_forwarding_session(
         }
     };
 
-    // 在本地创建 TCP 转发会话（暂时不设置消息发送器）
+    // 在本地创建 TCP 转发会话（pending 状态，不启动监听器）
     let session_id_result = {
         let manager = state.tcp_forwarding_manager.lock().await;
         manager
-            .create_session(local_addr.clone(), remote_host.clone(), remote_port)
+            .create_session_pending(local_addr.clone(), remote_host.clone(), remote_port)
             .await
             .map_err(|e| format!("Failed to create TCP forwarding session: {}", e))?
     };
 
-    // 启动一个任务来处理数据转发
-    let session_id_for_task = sessionId.clone();
-    tokio::spawn(async move {
-        // 这里可以监听 TCP 连接并发送数据
-        // 暂时只记录日志
-        info!(
-            "TCP forwarding task started for session {}",
-            session_id_for_task
-        );
-    });
-
-    // 发送会话创建通知给 CLI 端
+    // 发送会话创建通知给 CLI 端（携带我们的 session_id）
     let session = {
         let sessions = state.sessions.read().await;
         sessions
@@ -1506,6 +1521,7 @@ async fn create_tcp_forwarding_session(
         remote_host: Some(remote_host),
         remote_port: Some(remote_port),
         forwarding_type: TcpForwardingType::ListenToRemote,
+        session_id: Some(session_id_result.clone()),  // 发送我们的 session_id 给 CLI
     };
 
     let message =

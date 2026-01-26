@@ -98,6 +98,9 @@ pub enum TcpForwardingAction {
         remote_host: Option<String>,
         remote_port: Option<u16>,
         forwarding_type: TcpForwardingType,
+        /// Optional session_id provided by client. If set, CLI will use this instead of generating a new one.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        session_id: Option<String>,
     },
     /// 列出TCP转发会话
     ListSessions,

@@ -11,7 +11,8 @@ use tokio::sync::{RwLock, broadcast, mpsc};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use riterm_shared::TcpDataType;
+use riterm_shared::{TcpDataType, quic_server::QuicMessageClientHandle};
+use std::sync::Arc as StdArc;
 
 /// TCP 转发会话信息
 #[derive(Debug, Clone)]
@@ -27,7 +28,7 @@ pub struct TcpForwardingSession {
 #[derive(Debug, Clone)]
 pub struct TcpConnectionInfo {
     pub connection_id: String,
-    pub stream: Arc<RwLock<TcpStream>>,
+    pub stream: Option<Arc<RwLock<TcpStream>>>,  // Option for dumbpipe mode where stream is not stored
     pub session_id: String,
     pub bytes_sent: u64,
     pub bytes_received: u64,
@@ -51,6 +52,12 @@ pub struct TcpForwardingManager {
     tcp_connections: Arc<RwLock<HashMap<String, TcpConnectionInfo>>>,
     /// Channel for sending messages to CLI through P2P network
     message_tx: broadcast::Sender<TcpMessageRequest>,
+    /// Quic client for opening direct P2P streams (dumbpipe-style)
+    quic_client: Option<StdArc<QuicMessageClientHandle>>,
+    /// CLI endpoint ID for opening P2P streams
+    cli_endpoint_id: Arc<RwLock<Option<String>>>,
+    /// Shutdown senders for each session's TCP listener
+    shutdown_senders: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<()>>>>,
 }
 
 impl Default for TcpForwardingManager {
@@ -60,6 +67,9 @@ impl Default for TcpForwardingManager {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             tcp_connections: Arc::new(RwLock::new(HashMap::new())),
             message_tx,
+            quic_client: None,
+            cli_endpoint_id: Arc::new(RwLock::new(None)),
+            shutdown_senders: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -67,6 +77,17 @@ impl Default for TcpForwardingManager {
 impl TcpForwardingManager {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 设置 Quic 客户端（用于直接 P2P 流转发）
+    pub fn set_quic_client(&mut self, quic_client: QuicMessageClientHandle) {
+        self.quic_client = Some(StdArc::new(quic_client));
+    }
+
+    /// 设置 CLI endpoint ID（用于打开 P2P 流）
+    pub async fn set_cli_endpoint_id(&self, endpoint_id: String) {
+        let mut id = self.cli_endpoint_id.write().await;
+        *id = Some(endpoint_id);
     }
 
     /// 获取消息发送通道的发送端
@@ -82,6 +103,7 @@ impl TcpForwardingManager {
 
     /// 处理从 CLI 接收到的 TCP 数据
     /// 当 CLI 发送数据回来时，写入到本地 TCP 连接
+    /// 注意：此方法用于旧的消息协议方式，dumbpipe 模式不再使用此方法
     pub async fn handle_tcp_data_from_cli(
         &self,
         session_id: &str,
@@ -100,14 +122,20 @@ impl TcpForwardingManager {
                 // 查找对应的 TCP 连接并写入数据
                 let connections = self.tcp_connections.read().await;
                 if let Some(conn_info) = connections.get(connection_id) {
-                    let mut stream = conn_info.stream.write().await;
-                    stream.write_all(data).await?;
-                    stream.flush().await?;
+                    // 处理 Option<Arc<RwLock<TcpStream>>>
+                    if let Some(stream_ref) = &conn_info.stream {
+                        let mut stream = stream_ref.write().await;
+                        stream.write_all(data).await?;
+                        stream.flush().await?;
 
-                    debug!(
-                        "Successfully wrote {} bytes to local TCP stream",
-                        data.len()
-                    );
+                        debug!(
+                            "Successfully wrote {} bytes to local TCP stream",
+                            data.len()
+                        );
+                    } else {
+                        // dumbpipe 模式下 stream 为 None，数据转发在 handle_connection 中处理
+                        debug!("Connection {} is using dumbpipe mode, data handled separately", connection_id);
+                    }
                     Ok(())
                 } else {
                     warn!(
@@ -153,7 +181,89 @@ impl TcpForwardingManager {
         }
     }
 
-    /// 创建 TCP 转发会话
+    /// 创建 TCP 转发会话（但不启动监听器）
+    pub async fn create_session_pending(
+        &self,
+        local_addr: String,
+        remote_host: String,
+        remote_port: u16,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let session_id = Uuid::new_v4().to_string();
+
+        let session = TcpForwardingSession {
+            id: session_id.clone(),
+            local_addr: local_addr.clone(),
+            remote_host: remote_host.clone(),
+            remote_port,
+            status: "pending".to_string(),  // 等待 CLI 响应
+        };
+
+        // 保存会话
+        {
+            let mut sessions = self.sessions.write().await;
+            sessions.insert(session_id.clone(), session);
+        }
+
+        info!(
+            "TCP forwarding session created (pending): {} ({} -> {}:{})",
+            session_id, local_addr, remote_host, remote_port
+        );
+
+        Ok(session_id)
+    }
+
+    /// 启动会话监听器（在收到 CLI 响应后调用）
+    pub async fn start_session_listener(
+        &self,
+        session_id: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // 获取会话信息
+        let (local_addr, remote_host, remote_port) = {
+            let sessions = self.sessions.read().await;
+            let session = sessions.get(session_id)
+                .ok_or_else(|| format!("Session not found: {}", session_id))?;
+            (
+                session.local_addr.clone(),
+                session.remote_host.clone(),
+                session.remote_port,
+            )
+        };
+
+        // 启动本地监听器
+        let local_addr_parsed: SocketAddr = local_addr.parse()?;
+        let remote_host_for_listener = remote_host.clone();
+        let shutdown_tx = self
+            .start_listener(
+                session_id.to_string(),
+                local_addr_parsed,
+                remote_host_for_listener,
+                remote_port,
+            )
+            .await?;
+
+        // 保存 shutdown_tx 以防止 listener 被立即关闭
+        {
+            let mut shutdown_senders = self.shutdown_senders.write().await;
+            shutdown_senders.insert(session_id.to_string(), shutdown_tx);
+        }
+
+        // 更新会话状态
+        {
+            let mut sessions = self.sessions.write().await;
+            if let Some(session) = sessions.get_mut(session_id) {
+                session.status = "running".to_string();
+            }
+        }
+
+        info!(
+            "TCP forwarding listener started for session: {}",
+            session_id
+        );
+
+        Ok(())
+    }
+
+    /// 创建 TCP 转发会话（旧的同步方式，保留用于兼容）
     pub async fn create_session(
         &self,
         local_addr: String,
@@ -220,6 +330,8 @@ impl TcpForwardingManager {
         // 获取共享资源的克隆
         let tcp_connections_clone = self.tcp_connections.clone();
         let message_tx_clone = self.message_tx.clone();
+        let quic_client_clone = self.quic_client.clone();
+        let cli_endpoint_id_clone = self.cli_endpoint_id.clone();
 
         tokio::spawn(async move {
             let listener = match TcpListener::bind(local_addr).await {
@@ -235,9 +347,6 @@ impl TcpForwardingManager {
                 local_addr, session_id_clone
             );
 
-            // Clone remote_host for use in the loop
-            let remote_host_for_loop = remote_host.clone();
-
             loop {
                 tokio::select! {
                     result = listener.accept() => {
@@ -251,16 +360,17 @@ impl TcpForwardingManager {
                                 let session_id_for_task = session_id_clone.clone();
                                 let tcp_connections_for_task = tcp_connections_clone.clone();
                                 let message_tx_for_task = message_tx_clone.clone();
-                                let remote_host_for_task = remote_host_for_loop.clone();
+                                let quic_client_for_task = quic_client_clone.clone();
+                                let cli_endpoint_id_for_task = cli_endpoint_id_clone.clone();
 
                                 tokio::spawn(async move {
                                     if let Err(e) = handle_connection(
                                         stream,
                                         session_id_for_task,
-                                        remote_host_for_task,
-                                        remote_port,
                                         tcp_connections_for_task,
                                         message_tx_for_task,
+                                        quic_client_for_task,
+                                        cli_endpoint_id_for_task,
                                     )
                                     .await
                                     {
@@ -292,6 +402,15 @@ impl TcpForwardingManager {
         &self,
         session_id: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // 发送 shutdown 信号给 listener
+        {
+            let mut shutdown_senders = self.shutdown_senders.write().await;
+            if let Some(shutdown_tx) = shutdown_senders.remove(session_id) {
+                let _ = shutdown_tx.send(());
+                info!("Shutdown signal sent to TCP listener for session: {}", session_id);
+            }
+        }
+
         // 从会话列表中移除
         let mut sessions = self.sessions.write().await;
         if let Some(mut session) = sessions.remove(session_id) {
@@ -378,14 +497,14 @@ impl TcpForwardingManager {
     }
 }
 
-/// 处理单个 TCP 连接
+/// 处理单个 TCP 连接（dumbpipe 风格：直接 P2P 流转发）
 async fn handle_connection(
     stream: TcpStream,
     session_id: String,
-    _remote_host: String,
-    _remote_port: u16,
     tcp_connections: Arc<RwLock<HashMap<String, TcpConnectionInfo>>>,
-    message_tx: broadcast::Sender<TcpMessageRequest>,
+    _message_tx: broadcast::Sender<TcpMessageRequest>, // 保留用于兼容性，但不再使用
+    quic_client: Option<StdArc<QuicMessageClientHandle>>,
+    cli_endpoint_id: Arc<RwLock<Option<String>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let connection_id = Uuid::new_v4().to_string();
     let peer_addr = stream.peer_addr().ok();
@@ -395,92 +514,113 @@ async fn handle_connection(
         peer_addr, connection_id
     );
 
-    // 1. 保存连接信息
-    let conn_info = TcpConnectionInfo {
-        connection_id: connection_id.clone(),
-        stream: Arc::new(RwLock::new(stream)),
-        session_id: session_id.clone(),
-        bytes_sent: 0,
-        bytes_received: 0,
-        created_at: std::time::SystemTime::now(),
-    };
-    {
-        let mut connections = tcp_connections.write().await;
-        connections.insert(connection_id.clone(), conn_info);
-    }
+    // 获取 quic client
+    let quic_client = quic_client.ok_or("Quic client not available")?;
 
-    // 2. 发送 ConnectionOpen 消息到 CLI（通过通道）
-    if let Err(e) = message_tx.send(TcpMessageRequest {
-        session_id: session_id.clone(),
-        connection_id: connection_id.clone(),
-        data: vec![],
-        data_type: TcpDataType::ConnectionOpen,
-    }) {
-        error!("Failed to send ConnectionOpen message: {}", e);
-        return Err("Failed to send ConnectionOpen message".into());
-    }
+    // 获取远程 CLI endpoint_id
+    let remote_endpoint_id = {
+        let id_guard = cli_endpoint_id.read().await;
+        id_guard.as_ref().ok_or("CLI endpoint ID not set")?.clone()
+    };
+
+    // 解析 endpoint_id
+    use std::str::FromStr;
+    let endpoint_id = iroh::EndpointId::from_str(&remote_endpoint_id)
+        .map_err(|e| format!("Invalid endpoint ID: {}", e))?;
+
+    // 打开 P2P TCP 流到 CLI，包含 session_id 用于 CLI 查找目标地址
+    let (mut p2p_send, mut p2p_recv) = quic_client
+        .open_tcp_stream(&endpoint_id, &session_id)
+        .await
+        .map_err(|e| format!("Failed to open P2P TCP stream: {}", e))?;
+
     info!(
-        "Sent ConnectionOpen to CLI for connection {}",
-        connection_id
+        "Opened P2P TCP stream for connection {} in session {}",
+        connection_id, session_id
     );
 
-    // 获取流引用用于读取
-    let stream_arc = {
-        let connections = tcp_connections.read().await;
-        connections.get(&connection_id).map(|c| c.stream.clone())
-    };
+    // 分离本地 TCP 流
+    let (mut tcp_read, mut tcp_write) = stream.into_split();
 
-    if let Some(stream_ref) = stream_arc {
-        let mut stream_read = stream_ref.write().await;
+    // 初始化连接统计（不存储实际的 stream，因为 OwnedWriteHalf 无法被克隆）
+    // 注意：对于 dumbpipe 模式，stream 为 None，只用于统计信息
+    {
+        let mut connections = tcp_connections.write().await;
+        connections.insert(
+            connection_id.clone(),
+            TcpConnectionInfo {
+                connection_id: connection_id.clone(),
+                stream: None,  // dumbpipe mode doesn't store the stream
+                session_id: session_id.clone(),
+                bytes_sent: 0,
+                bytes_received: 0,
+                created_at: std::time::SystemTime::now(),
+            },
+        );
+    }
 
-        // 3. 循环读取本地客户端数据并转发到 CLI
+    // 双向转发
+    let tcp_to_p2p = async {
         let mut buffer = vec![0u8; 8192];
         loop {
-            match stream_read.read(&mut buffer).await {
+            match tcp_read.read(&mut buffer).await {
                 Ok(0) => {
-                    info!("Client disconnected for connection {}", connection_id);
+                    info!("TCP connection closed for connection {}", connection_id);
                     break;
                 }
                 Ok(n) => {
-                    debug!(
-                        "Read {} bytes from local client for connection {}",
-                        n, connection_id
-                    );
-
-                    // 发送数据到 CLI（通过通道）
-                    let data = buffer[..n].to_vec();
-                    if let Err(e) = message_tx.send(TcpMessageRequest {
-                        session_id: session_id.clone(),
-                        connection_id: connection_id.clone(),
-                        data,
-                        data_type: TcpDataType::Data,
-                    }) {
-                        error!("Failed to send TCP data message: {}", e);
+                    if p2p_send.write_all(&buffer[..n]).await.is_err() {
+                        error!("Failed to write to P2P stream for connection {}", connection_id);
                         break;
+                    }
+                    // 更新统计
+                    let mut conns = tcp_connections.write().await;
+                    if let Some(conn) = conns.get_mut(&connection_id) {
+                        conn.bytes_sent += n as u64;
                     }
                 }
                 Err(e) => {
-                    error!("Error reading from local client: {}", e);
+                    error!("Error reading from TCP: {}", e);
                     break;
                 }
             }
         }
+    };
+
+    let p2p_to_tcp = async {
+        let mut buffer = vec![0u8; 8192];
+        loop {
+            match p2p_recv.read(&mut buffer).await {
+                Ok(Some(n)) => {
+                    if tcp_write.write_all(&buffer[..n]).await.is_err() {
+                        error!("Failed to write to TCP for connection {}", connection_id);
+                        break;
+                    }
+                    // 更新统计
+                    let mut conns = tcp_connections.write().await;
+                    if let Some(conn) = conns.get_mut(&connection_id) {
+                        conn.bytes_received += n as u64;
+                    }
+                }
+                Ok(None) => {
+                    info!("P2P stream closed for connection {}", connection_id);
+                    break;
+                }
+                Err(e) => {
+                    error!("Error reading from P2P stream: {}", e);
+                    break;
+                }
+            }
+        }
+    };
+
+    // 运行双向转发，任一方向结束则停止
+    tokio::select! {
+        _ = tcp_to_p2p => {},
+        _ = p2p_to_tcp => {},
     }
 
-    // 4. 清理连接并关闭
-    if let Err(e) = message_tx.send(TcpMessageRequest {
-        session_id: session_id.clone(),
-        connection_id: connection_id.clone(),
-        data: vec![],
-        data_type: TcpDataType::ConnectionClose,
-    }) {
-        error!("Failed to send ConnectionClose message: {}", e);
-    }
-    info!(
-        "Sent ConnectionClose to CLI for connection {}",
-        connection_id
-    );
-
+    // 清理连接
     {
         let mut connections = tcp_connections.write().await;
         connections.remove(&connection_id);
