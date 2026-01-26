@@ -10,6 +10,16 @@ use tracing::info;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
+/// Generate a string representation of a QR code for the given ticket.
+fn generate_qr_string(ticket: &str) -> String {
+    use fast_qr::{QRBuilder, ECL};
+
+    match QRBuilder::new(ticket).ecl(ECL::M).build() {
+        Ok(qr) => qr.to_str(),
+        Err(_) => "[QR Code Error]".to_string(),
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "riterm")]
 #[command(about = "RiTerm - P2P Terminal Session Sharing Tool")]
@@ -167,13 +177,20 @@ async fn run_host(
 }
 
 fn print_host_info(node_id: &str, ticket: &str, shell_path: &str) {
+    // Generate QR code
+    let qr_code = generate_qr_string(ticket);
+
     // 在release模式下，只显示标题、shell和ticket
     #[cfg(not(debug_assertions))]
     {
         println!("🚀 RiTerm Host Server");
         println!("🐚 Shell: {}", shell_path);
         println!();
-        println!("🎫 Ticket:");
+        println!("🎫 Scan QR code or use ticket below:");
+        println!();
+        println!("{}", qr_code);
+        println!();
+        println!("Ticket:");
         println!("{}", ticket);
         println!();
         println!("Press Ctrl+C to stop");
@@ -189,16 +206,17 @@ fn print_host_info(node_id: &str, ticket: &str, shell_path: &str) {
 
         println!("🎫 Connection Ticket:");
         println!();
+        println!("{}", qr_code);
+        println!();
         println!("{}", &ticket);
         println!();
 
         println!("📱 App Connection Instructions:");
-        println!("   1. Start the Riterm app");
-        println!("   2. Copy the connection ticket above");
-        println!("   3. Paste the ticket in the app and connect");
+        println!("   1. Open RiTerm app on your mobile device");
+        println!("   2. Tap the camera button to scan QR code");
+        println!("   3. Or copy the ticket above and paste it in the app");
         println!();
         println!("✨ Your app is now ready to connect!");
-        println!("💡 The ticket contains all connection information needed");
         println!();
         println!("Press Ctrl+C to stop the server");
     }

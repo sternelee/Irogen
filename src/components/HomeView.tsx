@@ -1,7 +1,20 @@
-import { createSignal, Show, For, onMount, onCleanup } from "solid-js";
+import { createSignal, Show, For, onMount } from "solid-js";
 import { getDeviceCapabilities } from "../utils/mobile";
 import { getLastTicket, saveTicket, getTicketHistory } from "../utils/localStorage";
 import { getTicketDisplayId } from "../utils/ticketParser";
+
+/**
+ * Validate a session ticket format.
+ * Tickets should be Base32-encoded strings with reasonable length.
+ */
+function is_valid_session_ticket(ticket: string): boolean {
+  if (!ticket || ticket.trim().length === 0) {
+    return false;
+  }
+  // Basic validation - ticket should be > 20 chars and contain valid characters
+  const trimmed = ticket.trim();
+  return trimmed.length > 20 && /^[a-z2-7]+$/.test(trimmed);
+}
 
 interface HomeViewProps {
   sessionTicket: string;
@@ -69,11 +82,20 @@ export function HomeView(props: HomeViewProps) {
       const { scan } = await import("@tauri-apps/plugin-barcode-scanner");
       const result = await scan();
       console.log(result);
-      if (result) {
-        props.onTicketInput(result.content);
+      if (result && result.content) {
+        // Validate ticket format before setting
+        if (is_valid_session_ticket(result.content)) {
+          props.onTicketInput(result.content);
+          // Auto-connect on successful scan
+          handleQuickConnect(result.content);
+        } else {
+          console.error("Invalid ticket format");
+          // Could show a toast notification here
+        }
       }
     } catch (error) {
       console.error("QR Scanner error:", error);
+      // Handle user cancellation vs actual errors
     }
   };
 

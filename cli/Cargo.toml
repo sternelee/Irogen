@@ -30,6 +30,8 @@ lazy_static = "1.5"
 dirs = "5.0"
 gethostname = "0.5"
 riterm-shared = { path = "../shared" }
+fast_qr = "0.13"
+
 
 # Terminal management dependencies
 pin-project = "1.1.3"
