@@ -442,26 +442,25 @@ impl CliMessageServer {
         &self.default_shell_path
     }
 
-    /// 生成连接票据 - 简化版本，直接编码端点信息
+    /// 生成连接票据 - 使用 iroh-tickets 标准格式
     pub fn generate_connection_ticket(&self) -> Result<String> {
-        use data_encoding::BASE32_NOPAD;
-        use riterm_shared::SerializableEndpointAddr;
+        use iroh_tickets::endpoint::EndpointTicket;
+        use iroh::EndpointAddr;
 
-        // 使用 get_node_id 获取节点ID
         let node_id = self.quic_server.get_node_id();
         tracing::info!("Generating ticket for node: {:?}", node_id);
 
-        // 使用 SerializableEndpointAddr::from_endpoint_id 创建地址
-        let serializable_addr =
-            SerializableEndpointAddr::from_endpoint_id(node_id, riterm_shared::QUIC_MESSAGE_ALPN)?;
+        // 创建 EndpointAddr 并使用 iroh-tickets 的标准 ticket 格式
+        let node_addr = EndpointAddr::new(node_id);
+        let ticket = EndpointTicket::new(node_addr);
 
-        // 直接序列化为 JSON 并 base32 编码（小写，无填充，与 iroh-tickets 格式一致）
-        let ticket_json = serde_json::to_string(&serializable_addr)?;
-        let ticket = BASE32_NOPAD.encode(ticket_json.as_bytes()).to_ascii_lowercase();
+        let ticket_str = ticket.to_string();
+        tracing::info!(
+            "Connection ticket generated, length: {} bytes (iroh-tickets format)",
+            ticket_str.len()
+        );
 
-        tracing::info!("Connection ticket generated, length: {} bytes", ticket.len());
-
-        Ok(ticket)
+        Ok(ticket_str)
     }
 
     /// 获取活跃连接数

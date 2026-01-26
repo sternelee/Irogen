@@ -31,6 +31,7 @@ dirs = "5.0"
 gethostname = "0.5"
 riterm-shared = { path = "../shared" }
 fast_qr = "0.13"
+iroh-tickets = { workspace = true }
 
 
 # Terminal management dependencies

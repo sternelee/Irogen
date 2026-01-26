@@ -5,15 +5,25 @@ import { getTicketDisplayId } from "../utils/ticketParser";
 
 /**
  * Validate a session ticket format.
- * Tickets should be Base32-encoded strings with reasonable length.
+ * Supports both new iroh-tickets format (base64) and legacy format (base32 lowercase).
  */
 function is_valid_session_ticket(ticket: string): boolean {
   if (!ticket || ticket.trim().length === 0) {
     return false;
   }
-  // Basic validation - ticket should be > 20 chars and contain valid characters
   const trimmed = ticket.trim();
-  return trimmed.length > 20 && /^[a-z2-7]+$/.test(trimmed);
+
+  // New iroh-tickets format: base64 (alphanumeric + + / =), ~44-52 chars
+  if (/^[A-Za-z0-9+/=]{40,60}$/.test(trimmed)) {
+    return true;
+  }
+
+  // Legacy format: base32 lowercase (a-z2-7), ~150+ chars
+  if (/^[a-z2-7]{100,}$/.test(trimmed)) {
+    return true;
+  }
+
+  return false;
 }
 
 interface HomeViewProps {

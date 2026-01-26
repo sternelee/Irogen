@@ -1,6 +1,7 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -30,23 +31,32 @@ const CLEANUP_INTERVAL_SECS: u64 = 300; // 5 minutes
 
 // Helper function to validate session ticket format
 fn is_valid_session_ticket(ticket: &str) -> bool {
-    // Basic validation for the new ticket format (without prefix)
-    ticket.len() > 20
+    // iroh-tickets format is typically 44-52 characters (base64)
+    ticket.len() > 20 && ticket.len() < 100
 }
 
 // Parse ticket and extract EndpointId
+// Supports both new iroh-tickets format and legacy custom format
 fn parse_ticket_node_addr(ticket: &str) -> Result<iroh::EndpointId, Box<dyn std::error::Error>> {
     use data_encoding::BASE32_NOPAD;
+    use iroh_tickets::endpoint::EndpointTicket;
 
-    // Handle both old format (with "ticket:" prefix) and new format (without prefix)
-    let encoded = if let Some(stripped) = ticket.strip_prefix("ticket:") {
-        stripped // Old format with prefix
+    // Handle old format with "ticket:" prefix
+    let ticket_str = if let Some(stripped) = ticket.strip_prefix("ticket:") {
+        stripped
     } else {
-        ticket // New format without prefix
+        ticket
     };
 
-    // Decode base32 (convert to uppercase for decoding, as BASE32 requires uppercase)
-    let ticket_json_bytes = BASE32_NOPAD.decode(encoded.to_ascii_uppercase().as_bytes())?;
+    // Try new iroh-tickets format first (base64, shorter)
+    if let Ok(endpoint_ticket) = EndpointTicket::from_str(ticket_str) {
+        let node_addr = endpoint_ticket.endpoint_addr();
+        return Ok(node_addr.id);
+    }
+
+    // Fall back to legacy custom format (base32 + JSON)
+    // Decode base32 (convert to uppercase for decoding)
+    let ticket_json_bytes = BASE32_NOPAD.decode(ticket_str.to_ascii_uppercase().as_bytes())?;
     let ticket_json = String::from_utf8(ticket_json_bytes)?;
 
     // Parse JSON directly as SerializableEndpointAddr
