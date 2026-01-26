@@ -36,7 +36,7 @@ fn is_valid_session_ticket(ticket: &str) -> bool {
 
 // Parse ticket and extract EndpointId
 fn parse_ticket_node_addr(ticket: &str) -> Result<iroh::EndpointId, Box<dyn std::error::Error>> {
-    use data_encoding::BASE32;
+    use data_encoding::BASE32_NOPAD;
 
     // Handle both old format (with "ticket:" prefix) and new format (without prefix)
     let encoded = if let Some(stripped) = ticket.strip_prefix("ticket:") {
@@ -45,8 +45,8 @@ fn parse_ticket_node_addr(ticket: &str) -> Result<iroh::EndpointId, Box<dyn std:
         ticket // New format without prefix
     };
 
-    // Decode base32
-    let ticket_json_bytes = BASE32.decode(encoded.as_bytes())?;
+    // Decode base32 (convert to uppercase for decoding, as BASE32 requires uppercase)
+    let ticket_json_bytes = BASE32_NOPAD.decode(encoded.to_ascii_uppercase().as_bytes())?;
     let ticket_json = String::from_utf8(ticket_json_bytes)?;
 
     // Parse JSON directly as SerializableEndpointAddr

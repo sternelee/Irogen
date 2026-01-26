@@ -444,29 +444,22 @@ impl CliMessageServer {
 
     /// 生成连接票据 - 简化版本，直接编码端点信息
     pub fn generate_connection_ticket(&self) -> Result<String> {
-        use data_encoding::BASE32;
+        use data_encoding::BASE32_NOPAD;
         use riterm_shared::SerializableEndpointAddr;
 
         // 使用 get_node_id 获取节点ID
         let node_id = self.quic_server.get_node_id();
-        tracing::info!("🎫 Generating ticket for node: {:?}", node_id);
+        tracing::info!("Generating ticket for node: {:?}", node_id);
 
         // 使用 SerializableEndpointAddr::from_endpoint_id 创建地址
         let serializable_addr =
             SerializableEndpointAddr::from_endpoint_id(node_id, riterm_shared::QUIC_MESSAGE_ALPN)?;
 
-        // 直接序列化为 JSON 并 base32 编码，去掉外层包装
+        // 直接序列化为 JSON 并 base32 编码（小写，无填充，与 iroh-tickets 格式一致）
         let ticket_json = serde_json::to_string(&serializable_addr)?;
-        let ticket = BASE32.encode(ticket_json.as_bytes());
+        let ticket = BASE32_NOPAD.encode(ticket_json.as_bytes()).to_ascii_lowercase();
 
-        tracing::info!("✅ Connection ticket generated successfully");
-        tracing::info!("🎫 NodeId: {:?}", node_id);
-        tracing::info!(
-            "🎫 ALPN: {}",
-            std::str::from_utf8(riterm_shared::QUIC_MESSAGE_ALPN)?
-        );
-        tracing::info!("🎫 Ticket length: {} bytes", ticket.len());
-        tracing::info!("🎫 Ticket preview: {}...", &ticket[..50.min(ticket.len())]);
+        tracing::info!("Connection ticket generated, length: {} bytes", ticket.len());
 
         Ok(ticket)
     }
