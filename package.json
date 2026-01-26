@@ -1,6 +1,7 @@
 {
   "name": "riterm",
   "version": "0.3.1",
+  "type": "module",
   "private": true,
   "dependencies": {
     "@tauri-apps/plugin-barcode-scanner": "~2",
@@ -35,11 +36,11 @@
     "vite-plugin-solid": "^2.11.10"
   },
   "scripts": {
-    "dev": "vite",
-    "tsc": "tsc && vite build",
-    "build": "vite build",
-    "build:release": "vite build",
-    "preview": "vite preview",
+    "start": "vinxi start",
+    "dev": "vinxi dev",
+    "build": "vinxi build",
+    "serve": "vinxi serve",
+    "tsc": "tsc",
     "tauri": "tauri",
     "tauri:build": "tauri build",
     "tauri:dev": "tauri dev",

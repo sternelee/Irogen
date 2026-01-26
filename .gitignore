@@ -6,3 +6,5 @@ logs
 keystore.properties
 riterm_secret_key
 .claude/tsc-cache
+.output
+.vinxi
