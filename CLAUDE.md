@@ -37,10 +37,11 @@ The project is organized as a Cargo workspace with four main components:
    - Terminal creation, input handling, and P2P coordination
 
 4. **Frontend** (`src/`)
-   - SolidJS with TypeScript
+   - SolidJS (not React) with TypeScript
    - Mobile-first responsive design with adaptive layouts
    - Terminal UI components using xterm.js
    - Components: `HomeView.tsx`, `RemoteSessionView.tsx`, `SettingsModal.tsx`, `P2PBackground.tsx`
+   - UI Components: `CyberComponents`, `CyberEffects`, `EnhancedComponents`, `GestureSettings`, `KeyboardAwareContainer`, `MobileNavigation`, `QuickAccessToolbar`, `ThemeSwitcher`
 
 ## Development Commands
 
@@ -174,10 +175,10 @@ pnpm build && pnpm tauri build
 **RiTerm** is a P2P terminal session sharing tool built as a Cargo workspace with four main components:
 
 1. **CLI Tool** (`cli/`) - Rust-based command-line interface for hosting terminal sessions
-2. **Tauri App** (`app/`) - Cross-platform desktop/mobile application (Rust backend + SolidJS frontend)  
+2. **Tauri App** (`app/`) - Cross-platform desktop/mobile application (Rust backend + SolidJS frontend)
 3. **Shared Library** (`shared/`) - Common networking protocols, message types, and utilities
 4. **Browser Client** (`browser/`) - WebAssembly-based browser client for terminal access only
-5. **Frontend** (`src/`) - SolidJS application with mobile-first responsive design
+5. **Frontend** (`src/`) - **SolidJS application** (not React) with mobile-first responsive design
 
 The project uses **iroh** for P2P networking with NAT traversal and end-to-end encryption, enabling real-time terminal collaboration without requiring a central server.
 
@@ -189,6 +190,8 @@ The project implements a unified message system through `shared/src/message_prot
 - **MessageType Enum**: Categories for terminal data, TCP forwarding, session management, etc.
 - **MessageHandler Trait**: Extensible handler system for different message types
 - **Serialization**: Uses bincode for efficient network serialization with length prefixes
+
+**Important**: The frontend uses **SolidJS**, not React. SolidJS is a reactive framework with fine-grained reactivity, distinct from React's component model.
 
 Key message flows:
 1. Frontend → Tauri/WASM → Message struct → P2P Network → CLI Host
@@ -235,6 +238,7 @@ Key message flows:
 - Mobile-first responsive design with viewport management
 - Terminal UI using xterm.js with mobile-optimized keyboard handling
 - Main components: `HomeView.tsx`, `RemoteSessionView.tsx`, `SettingsModal.tsx`, `P2PBackground.tsx`
+- UI components: `CyberComponents`, `CyberEffects`, `EnhancedComponents`, `GestureSettings`, `KeyboardAwareContainer`, `MobileNavigation`, `QuickAccessToolbar`, `ThemeSwitcher`
 
 #### Browser Client (`browser/src/`)
 - WebAssembly implementation using wasm-bindgen for browser P2P networking
@@ -282,25 +286,35 @@ Key message flows:
 - **iroh** (0.95) - P2P networking with NAT traversal and QUIC protocol
 - **tokio** (1.47) - Async runtime with full features (net, fs, rt-multi-thread)
 - **portable-pty** (0.9) - Cross-platform pseudo-terminal
-- **tauri** (2) - Cross-platform desktop/mobile framework
+- **tauri** (2) - Cross-platform desktop/mobile framework (with macos-private-api feature)
 - **crossterm** (0.29) - Cross-platform terminal manipulation
 - **bincode** (1.3) - Efficient binary serialization for message protocol
 - **chacha20poly1305** (0.10) - End-to-end encryption for P2P communication
+- **Rust 2024 Edition**: The `app` crate uses Rust 2024 edition
 
 ### Frontend Dependencies
-- **solid-js** (1.9.9) - Reactive UI framework
+- **solid-js** (1.9.9) - Reactive UI framework (SolidJS, not React)
 - **@xterm/xterm** (5.5.0) - Terminal emulator with addons (canvas, fit, search, web-links, webgl)
 - **daisyui** (5.0.50) - TailwindCSS component library
 - **lucide-solid** (0.540.0) - Icon library
 - **vconsole** (3.15.1) - Mobile debugging console for development
+- **solid-toast** (0.5.0) - Toast notifications for SolidJS
 
 ### Key Features
 - **Package Manager**: pnpm@10.0.0 (specified in package.json)
-- **Build Profiles**: 
+- **Build Profiles**:
   - Release with LTO, strip, and single codegen-unit optimization
   - Production profile inherits release with panic=abort for smaller binaries
 - **Workspace Dependencies**: Centralized dependency management in root Cargo.toml
 - **Development Tools**: TypeScript strict mode, comprehensive linting with clippy and fmt
+- **Tauri Plugins**:
+  - `tauri-plugin-notification` - In-app notifications
+  - `tauri-plugin-clipboard-manager` - Clipboard operations
+  - `tauri-plugin-http` - HTTP requests
+  - `tauri-plugin-os` - OS information
+  - `tauri-plugin-barcode-scanner` - QR code scanning (mobile only)
+  - `tauri-plugin-single-instance` - Single instance enforcement (desktop only)
+  - `tauri-plugin-updater` - App updates (desktop only)
 
 ## Development Notes
 
