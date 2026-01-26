@@ -471,7 +471,7 @@ impl TcpForwardingManager {
         // 启动本地监听器
         let local_addr_parsed: SocketAddr = local_addr.parse()?;
         let remote_host_for_listener = remote_host.clone();
-        let _shutdown_tx = self
+        let shutdown_tx = self
             .start_listener(
                 session_id.clone(),
                 local_addr_parsed,
@@ -479,6 +479,12 @@ impl TcpForwardingManager {
                 remote_port,
             )
             .await?;
+
+        // 保存 shutdown_tx 以防止 listener 被立即关闭
+        {
+            let mut shutdown_senders = self.shutdown_senders.write().await;
+            shutdown_senders.insert(session_id.clone(), shutdown_tx);
+        }
 
         // 更新会话状态
         {

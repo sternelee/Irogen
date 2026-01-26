@@ -642,9 +642,6 @@ async fn connect_to_peer(
                                             }
                                             else if data_json.get("sessions").is_some() {
                                                 // This is a TCP sessions list response (no session_id+status=created)
-                                                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                                                tracing::info!("Received TCP sessions list, restoring sessions...");
-
                                                 if let Some(sessions_array) = data_json["sessions"].as_array() {
                                                     for session_obj in sessions_array {
                                                         if let (Some(session_id), Some(local_addr), Some(remote_target), Some(fwd_type)) = (
@@ -660,24 +657,19 @@ async fn connect_to_peer(
                                                                     remote_target[colon_pos + 1..].parse::<u16>().unwrap_or(0)
                                                                 )
                                                             } else {
-                                                                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
                                                                 tracing::warn!("Invalid remote_target format: {}", remote_target);
                                                                 continue;
                                                             };
 
-                                                            // Restore the session (only for ListenToRemote type)
-                                                            if fwd_type == "local-to-remote" {
+                                                            // Restore the session (ListenToRemote or local-to-remote)
+                                                            if fwd_type == "ListenToRemote" || fwd_type == "local-to-remote" {
                                                                 if let Err(e) = tcp_forwarding_manager.lock().await.restore_session(
                                                                     session_id.to_string(),
                                                                     local_addr.to_string(),
                                                                     remote_host,
                                                                     remote_port,
                                                                 ).await {
-                                                                    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
                                                                     tracing::error!("Failed to restore TCP session {}: {}", session_id, e);
-                                                                } else {
-                                                                    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                                                                    tracing::info!("Successfully restored TCP session: {}", session_id);
                                                                 }
                                                             }
                                                         }
