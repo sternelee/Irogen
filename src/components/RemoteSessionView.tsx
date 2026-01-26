@@ -1,10 +1,7 @@
 import { createSignal, createEffect, onMount, Show, For } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import { CanvasAddon } from "@xterm/addon-canvas";
-import "@xterm/xterm/css/xterm.css";
+import { init, Terminal, FitAddon } from "ghostty-web";
 import { getDeviceCapabilities } from "../stores/deviceStore";
 import { useTerminalSessions } from "../stores/terminalSessionStore";
 import { showError } from "../utils/toast";
@@ -32,7 +29,6 @@ interface TerminalSession {
   terminalId: string;
   terminal: Terminal;
   fitAddon: FitAddon;
-  canvasAddon: CanvasAddon;
   isActive: boolean;
   inputBuffer?: string;
   sendTimeout?: ReturnType<typeof setTimeout> | null;
@@ -549,17 +545,13 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
       } as any);
 
       const fitAddon = new FitAddon();
-      const canvasAddon = new CanvasAddon();
-
       terminal.loadAddon(fitAddon);
-      terminal.loadAddon(canvasAddon);
 
       // 创建终端会话
       const terminalSession: TerminalSession = {
         terminalId,
         terminal,
         fitAddon,
-        canvasAddon,
         isActive: true,
         inputBuffer: "",
         sendTimeout: null,
@@ -859,6 +851,11 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
 
   // 组件挂载时初始化
   onMount(async () => {
+    // Initialize ghostty-web WASM module first
+    console.log("🔧 Initializing ghostty-web WASM...");
+    await init();
+    console.log("✅ ghostty-web initialized");
+
     await setupTerminalEventListeners();
 
     // 尝试加载本地字体文件

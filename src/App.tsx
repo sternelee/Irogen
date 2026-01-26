@@ -5,8 +5,7 @@ import {
   createMemo,
   onCleanup,
 } from "solid-js";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
+import type { Terminal, FitAddon } from "ghostty-web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Toaster } from "solid-toast";
@@ -313,82 +312,82 @@ function App() {
             : "100vh",
           "padding-top": "env(safe-area-inset-top)",
           "padding-bottom": keyboardVisible()
-          ? "0px"
-          : "env(safe-area-inset-bottom)",
-        overflow: "hidden",
-        position: "relative",
-      }}
-    >
-      {/* P2P Background */}
-      <P2PBackground />
-
-      {/* Main Layout - Mobile First */}
-      <div
-        class="relative z-20 w-full flex flex-col overflow-hidden"
-        style={{
-          height: keyboardVisible() ? `${effectiveViewportHeight()}px` : "100%",
-          "max-height": keyboardVisible()
-            ? `${effectiveViewportHeight()}px`
-            : "100%",
+            ? "0px"
+            : "env(safe-area-inset-bottom)",
+          overflow: "hidden",
+          position: "relative",
         }}
       >
+        {/* P2P Background */}
+        <P2PBackground />
 
-        {/* Debug Info - 开发时显示 */}
-        {/* {window.location.hostname === "localhost" && ( */}
-        {/*   <div class="bg-yellow-100 text-black text-xs p-2 border-b shrink-0"> */}
-        {/*     Debug: {debugInfo()} | KB: {keyboardVisible() ? "Yes" : "No"} | */}
-        {/*     EffectiveVH: {effectiveViewportHeight()}px | KH: {keyboardHeight()} */}
-        {/*     px */}
-        {/*   </div> */}
-        {/* )} */}
-
-        {/* Main Content */}
+        {/* Main Layout - Mobile First */}
         <div
-          class="flex-1 overflow-hidden"
+          class="relative z-20 w-full flex flex-col overflow-hidden"
           style={{
-            height: keyboardVisible()
-              ? `${effectiveViewportHeight() - 48}px` // 终端头部高度约48px
-              : "auto",
+            height: keyboardVisible() ? `${effectiveViewportHeight()}px` : "100%",
             "max-height": keyboardVisible()
-              ? `${effectiveViewportHeight() - 48}px`
-              : "none",
+              ? `${effectiveViewportHeight()}px`
+              : "100%",
           }}
         >
-          {currentView() === "home" && (
-            <HomeView
-              sessionTicket={sessionTicket()}
-              onTicketInput={setSessionTicket}
-              onConnect={handleConnect}
-              onShowSettings={() => setIsSettingsOpen(true)}
-              connecting={connecting()}
-              connectionError={connectionError()}
-              isLoggedIn={isLoggedIn()}
-              onLogin={handleLogin}
-              onSkipLogin={handleSkipLogin}
-              isConnected={isConnected()}
-              activeTicket={activeTicket()}
-              onReturnToSession={() => setCurrentView("remote")}
-              onDisconnect={handleDisconnect}
-            />
-          )}
 
-          {currentView() === "remote" && isConnected() && sessionIdRef && (
-            <RemoteSessionView
-              sessionId={sessionIdRef}
-              onDisconnect={handleDisconnect}
-              onBack={() => setCurrentView("home")}
-            />
-          )}
+          {/* Debug Info - 开发时显示 */}
+          {/* {window.location.hostname === "localhost" && ( */}
+          {/*   <div class="bg-yellow-100 text-black text-xs p-2 border-b shrink-0"> */}
+          {/*     Debug: {debugInfo()} | KB: {keyboardVisible() ? "Yes" : "No"} | */}
+          {/*     EffectiveVH: {effectiveViewportHeight()}px | KH: {keyboardHeight()} */}
+          {/*     px */}
+          {/*   </div> */}
+          {/* )} */}
 
+          {/* Main Content */}
+          <div
+            class="flex-1 overflow-hidden"
+            style={{
+              height: keyboardVisible()
+                ? `${effectiveViewportHeight() - 48}px` // 终端头部高度约48px
+                : "auto",
+              "max-height": keyboardVisible()
+                ? `${effectiveViewportHeight() - 48}px`
+                : "none",
+            }}
+          >
+            {currentView() === "home" && (
+              <HomeView
+                sessionTicket={sessionTicket()}
+                onTicketInput={setSessionTicket}
+                onConnect={handleConnect}
+                onShowSettings={() => setIsSettingsOpen(true)}
+                connecting={connecting()}
+                connectionError={connectionError()}
+                isLoggedIn={isLoggedIn()}
+                onLogin={handleLogin}
+                onSkipLogin={handleSkipLogin}
+                isConnected={isConnected()}
+                activeTicket={activeTicket()}
+                onReturnToSession={() => setCurrentView("remote")}
+                onDisconnect={handleDisconnect}
+              />
+            )}
+
+            {currentView() === "remote" && isConnected() && sessionIdRef && (
+              <RemoteSessionView
+                sessionId={sessionIdRef}
+                onDisconnect={handleDisconnect}
+                onBack={() => setCurrentView("home")}
+              />
+            )}
+
+          </div>
         </div>
-      </div>
 
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen()}
-        onClose={() => setIsSettingsOpen(false)}
-      />
-    </div>
+        {/* Settings Modal */}
+        <SettingsModal
+          isOpen={isSettingsOpen()}
+          onClose={() => setIsSettingsOpen(false)}
+        />
+      </div>
     </>
   );
 }

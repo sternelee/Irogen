@@ -278,7 +278,6 @@ Key message flows:
 - `app/capabilities/` - Platform-specific permission configurations
 - `vite.config.ts` - Vite build configuration for SolidJS (dev server on localhost:1420)
 - `tailwind.config.js` - TailwindCSS configuration with DaisyUI themes
-- `postcss.config.js` - PostCSS configuration for TailwindCSS processing
 
 ## Dependencies and Ecosystem
 
