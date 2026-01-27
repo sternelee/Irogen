@@ -37,7 +37,7 @@
   },
   "scripts": {
     "start": "vinxi start",
-    "dev": "vinxi dev",
+    "dev": "PORT=1420 vinxi dev",
     "build": "vinxi build",
     "serve": "vinxi serve",
     "tsc": "tsc",

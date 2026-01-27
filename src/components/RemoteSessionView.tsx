@@ -1390,7 +1390,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
               el.style.height = "100%";
               el.style.width = "100%";
               el.style.overflow = "hidden";
-              el.style.backgroundColor = "#000000";
+              el.style.backgroundColor = "#1D1F21";
               el.style.padding = "10px";
               el.style.boxSizing = "border-box";
 
@@ -1442,7 +1442,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         class="w-full h-full"
         style={{
           overflow: "hidden",
-          "background-color": "#000000",
+          "background-color": "#1D1F21",
           "font-family": 'Menlo, Monaco, "Courier New", monospace',
         }}
       />
@@ -1519,7 +1519,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
         <div class="modal-box" onClick={(e) => e.stopPropagation()}>
           <h3 class="font-bold text-lg">新增 TCP 转发 (监听模式)</h3>
           <div class="space-y-4 mt-4">
-            
+
             {/* 监听地址 */}
             <div class="form-control">
               <label class="label">
@@ -1776,7 +1776,7 @@ export function RemoteSessionView(props: RemoteSessionViewProps) {
           <Show
             when={activeTerminalId()}
             fallback={
-              <div class="w-full h-full flex items-center justify-center bg-base-200">
+              <div class="w-full h-full flex items-center justify-center">
                 <div class="text-center opacity-50 px-4">
                   <div class="text-6xl mb-4">💻</div>
                   <div class="text-xl">选择一个终端开始</div>

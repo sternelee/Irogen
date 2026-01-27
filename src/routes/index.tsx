@@ -9,7 +9,6 @@ import type { Terminal, FitAddon } from "ghostty-web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Toaster } from "solid-toast";
-import "../App.css";
 import { SettingsModal } from "../components/SettingsModal";
 import { HomeView } from "../components/HomeView";
 import { RemoteSessionView } from "../components/RemoteSessionView";
