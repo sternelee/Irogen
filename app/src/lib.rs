@@ -342,6 +342,16 @@ async fn initialize_network_with_relay_internal(
     relay_url: Option<String>,
     state: &State<'_, AppState>,
 ) -> Result<String, String> {
+    // Check if already initialized - reuse existing client
+    {
+        let client_guard = state.quic_client.read().await;
+        if let Some(quic_client) = client_guard.as_ref() {
+            let node_id = quic_client.get_node_id().await.to_string();
+            tracing::info!("Network already initialized, reusing existing client: {}", node_id);
+            return Ok(node_id);
+        }
+    }
+
     // Create communication manager
     let communication_manager = Arc::new(CommunicationManager::new("riterm_app".to_string()));
     communication_manager
@@ -444,6 +454,28 @@ async fn connect_to_peer(
     let node_addr = parse_ticket_node_addr(&session_ticket)
         .map_err(|e| format!("Failed to parse session ticket: {}", e))?;
 
+    let node_id_str = node_addr.to_string();
+
+    // Check if there's already a session to the same node - reuse it
+    {
+        let sessions = state.sessions.read().await;
+        for (existing_session_id, session) in sessions.iter() {
+            if session.node_id == node_id_str {
+                // Update last activity for the existing session
+                {
+                    let mut last_activity = session.last_activity.write().await;
+                    *last_activity = Instant::now();
+                }
+                tracing::info!(
+                    "Reusing existing session {} for node {}",
+                    existing_session_id,
+                    node_id_str
+                );
+                return Ok(existing_session_id.clone());
+            }
+        }
+    }
+
     let session_id = format!("session_{}", uuid::Uuid::new_v4());
 
     // Check session limits before creating new session
@@ -497,7 +529,7 @@ async fn connect_to_peer(
     let terminal_session = TerminalSession {
         id: session_id.clone(),
         connection_id: connection_id.clone(),
-        node_id: node_addr.to_string(),
+        node_id: node_id_str.clone(),
         last_activity: Arc::new(RwLock::new(Instant::now())),
         cancellation_token: cancellation_token.clone(),
         event_count: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
@@ -511,7 +543,7 @@ async fn connect_to_peer(
     // Set CLI endpoint ID on TCP forwarding manager for P2P stream opening
     {
         let mut tcp_manager = state.tcp_forwarding_manager.lock().await;
-        tcp_manager.set_cli_endpoint_id(node_addr.to_string()).await;
+        tcp_manager.set_cli_endpoint_id(node_id_str.clone()).await;
         // Also set the quic_client reference
         if let Some(quic_client) = (*state.quic_client.read().await).clone() {
             tcp_manager.set_quic_client(quic_client);
