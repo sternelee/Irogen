@@ -17,7 +17,7 @@ mod tcp_forwarding;
 use riterm_shared::{
     CommunicationManager, Event, EventListener, EventType, IODataType, Message, MessageBuilder,
     MessagePayload, QuicMessageClientHandle, SerializableEndpointAddr, TcpDataType,
-    TcpForwardingAction, TcpForwardingType, TerminalAction,
+    TcpForwardingAction, TcpForwardingType, TerminalAction, SystemInfoAction,
 };
 
 use crate::tcp_forwarding::TcpForwardingManager;
@@ -562,6 +562,21 @@ async fn connect_to_peer(
         .register_event_listener(event_listener.clone())
         .await;
 
+    // Send GetSystemInfo request to CLI host to get hostname
+    if let Some(ref quic_client) = (*state.quic_client.read().await).clone() {
+        let system_info_message = MessageBuilder::system_info("riterm_app".to_string());
+        match quic_client.send_message_to_server(&connection_id, system_info_message).await {
+            Ok(_) => {
+                #[cfg(debug_assertions)]
+                tracing::info!("Sent GetSystemInfo request to CLI host");
+            }
+            Err(e) => {
+                #[cfg(debug_assertions)]
+                tracing::warn!("Failed to send GetSystemInfo request: {}", e);
+            }
+        }
+    }
+
     // Start message receiver task
     let app_handle_clone = app_handle.clone();
     let session_id_clone = session_id.clone();
@@ -614,13 +629,30 @@ async fn connect_to_peer(
                                 MessagePayload::Response(response) => {
                                     // Handle response messages
                                     #[cfg(debug_assertions)]
-                                    tracing::debug!("Received response for session {}: success={}", 
+                                    tracing::debug!("Received response for session {}: success={}",
                                         session_id_clone, response.success);
 
                                     // Check if this is a terminals list response
                                     if let Some(ref data_str) = response.data {
                                         if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(data_str) {
-                                            if data_json.get("terminals").is_some() {
+                                            // Check if this is a SystemInfo response
+                                            if data_json.get("hostname").is_some() && data_json.get("os_info").is_some() {
+                                                #[cfg(debug_assertions)]
+                                                tracing::info!("Received SystemInfo response from CLI: hostname={}",
+                                                    data_json.get("hostname").and_then(|h| h.as_str()).unwrap_or("unknown"));
+
+                                                // Extract hostname and emit to frontend
+                                                if let Some(hostname) = data_json.get("hostname").and_then(|h| h.as_str()) {
+                                                    let _ = app_handle_clone.emit(
+                                                        "system-info-received",
+                                                        &serde_json::json!({
+                                                            "hostname": hostname,
+                                                            "node_id": session_id_clone,
+                                                        })
+                                                    );
+                                                }
+                                            }
+                                            else if data_json.get("terminals").is_some() {
                                                 // This is a terminals list response - fetch logs for each
                                                 #[cfg(any(debug_assertions, not(feature = "release-logging")))]
                                                 tracing::info!("Received terminals list, fetching logs...");

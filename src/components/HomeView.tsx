@@ -1,7 +1,8 @@
-import { createSignal, Show, For, onMount } from "solid-js";
+import { createSignal, Show, For, onMount, onCleanup } from "solid-js";
 import { getDeviceCapabilities } from "../utils/mobile";
-import { getLastTicket, saveTicket, getTicketHistory } from "../utils/localStorage";
+import { getLastTicket, saveTicket, getTicketHistory, updateTicketHostname, type TicketHistoryItem } from "../utils/localStorage";
 import { getTicketDisplayId } from "../utils/ticketParser";
+import { listen } from "@tauri-apps/api/event";
 
 /**
  * Validate a session ticket format.
@@ -48,7 +49,7 @@ export function HomeView(props: HomeViewProps) {
   const [password, setPassword] = createSignal("");
   const [inputFocused, setInputFocused] = createSignal(false);
   const [loginInputFocused, setLoginInputFocused] = createSignal(false);
-  const [ticketHistory, setTicketHistory] = createSignal<string[]>([]);
+  const [ticketHistory, setTicketHistory] = createSignal<TicketHistoryItem[]>([]);
 
   // 检测设备类型
   const deviceCapabilities = getDeviceCapabilities();
@@ -64,6 +65,30 @@ export function HomeView(props: HomeViewProps) {
 
     // Load ticket history
     setTicketHistory(getTicketHistory());
+
+    // Listen for system-info-received event from backend
+    const unlisten = listen<{ hostname: string; node_id: string }>("system-info-received", (event) => {
+      const { hostname } = event.payload;
+      console.log("🖥️ Received system info - hostname:", hostname);
+
+      // Get the current ticket from localStorage (most reliable source)
+      const currentTicket = getLastTicket();
+      console.log("🎫 Current ticket from storage:", currentTicket?.substring(0, 8) + "...");
+
+      if (currentTicket) {
+        updateTicketHostname(currentTicket, hostname);
+        // Refresh the ticket history display
+        setTicketHistory(getTicketHistory());
+        console.log("✅ Updated hostname for ticket");
+      } else {
+        console.warn("⚠️ No current ticket found to update hostname");
+      }
+    });
+
+    // Cleanup listener on unmount
+    onCleanup(() => {
+      unlisten.then((fn) => fn());
+    });
   });
 
   const handleLogin = () => {
@@ -315,23 +340,26 @@ export function HomeView(props: HomeViewProps) {
             </div>
             <div class="space-y-2 mt-3">
               <For each={ticketHistory()}>
-                {(ticket) => (
+                {(item) => (
                   <div
                     class="terminal-list-item flex items-center justify-between"
                     onClick={() => {
-                      props.onTicketInput(ticket);
+                      props.onTicketInput(item.ticket);
                       handleConnect();
                     }}
                   >
-                    <div class="flex-1">
-                      <div class="font-mono text-sm font-medium text-primary">
-                        {getTicketDisplayId(ticket)}
+                    <div class="flex-1 min-w-0">
+                      <div class="font-mono text-sm font-medium text-primary truncate">
+                        {item.hostname || getTicketDisplayId(item.ticket)}
                       </div>
-                      <div class="text-xs text-base-content/50 mt-1">
-                        点击连接 / 按回车
+                      <div class="text-xs text-base-content/50 mt-1 flex items-center gap-2">
+                        <Show when={item.hostname}>
+                          <span>({getTicketDisplayId(item.ticket)})</span>
+                        </Show>
+                        <span>点击连接</span>
                       </div>
                     </div>
-                    <div class="text-primary">
+                    <div class="text-primary ml-2">
                       <span class="text-lg">→</span>
                     </div>
                   </div>
