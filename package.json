@@ -1,11 +1,9 @@
 {
   "name": "riterm",
   "version": "0.3.1",
-  "type": "module",
   "private": true,
   "dependencies": {
     "@solidjs/router": "^0.15.4",
-    "@solidjs/start": "^1.2.1",
     "@tailwindcss/vite": "^4.1.18",
     "@tauri-apps/api": "2.9.1",
     "@tauri-apps/plugin-barcode-scanner": "~2",
@@ -20,14 +18,12 @@
     "lucide-solid": "^0.540.0",
     "solid-js": "^1.9.11",
     "solid-toast": "^0.5.0",
-    "vconsole": "^3.15.1",
-    "vinxi": "^0.5.11"
+    "vconsole": "^3.15.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.8.3",
     "@types/node": "^24.3.0",
     "autoprefixer": "^10.4.23",
-    "internal-ip": "^8.0.1",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "tailwindcss": "^4.1.12",
@@ -36,30 +32,17 @@
     "vite-plugin-solid": "^2.11.10"
   },
   "scripts": {
-    "start": "vinxi start",
-    "dev": "PORT=1420 vinxi dev",
-    "build": "vinxi build",
-    "serve": "vinxi serve",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "tsc": "tsc",
     "tauri": "tauri",
-    "tauri:build": "tauri build",
     "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
     "tauri:android:dev": "tauri android dev",
     "tauri:android:build": "tauri android build",
     "tauri:ios:dev": "tauri ios dev",
     "tauri:ios:build": "tauri ios build"
   },
-  "packageManager": "pnpm@10.28.2",
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
-  }
+  "packageManager": "pnpm@10.28.2"
 }

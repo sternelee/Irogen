@@ -44,12 +44,10 @@ const truncatePath = (path: string, maxLength: number = 24): string => {
 // 加载本地 Nerd Font 字体文件
 const loadLocalFont = async (): Promise<{ loaded: boolean; fontName: string }> => {
   try {
-    // 尝试不同的字体文件路径
+    // Vite public 目录中的字体文件在构建后会被复制到 dist 根目录
     const fontPaths = [
-      './src/FiraCodeNerdFont-Regular.ttf',
-      '/src/FiraCodeNerdFont-Regular.ttf',
-      './FiraCodeNerdFont-Regular.ttf',
-      '/FiraCodeNerdFont-Regular.ttf'
+      '/FiraCodeNerdFont-Regular.ttf',
+      './FiraCodeNerdFont-Regular.ttf'
     ];
 
     let loadedFont = null;

@@ -4,7 +4,7 @@
   "version": "0.3.1",
   "identifier": "com.example.riterm",
   "build": {
-    "frontendDist": "../.output/public",
+    "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build"
