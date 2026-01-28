@@ -14,6 +14,7 @@ export default defineConfig({
   ssr: false,
   server: { preset: "static" },
   vite: () => ({
+    base: "./",
     plugins: [tailwindcss()],
     // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
     // 1. tauri expects a fixed port, fail if that port is not available

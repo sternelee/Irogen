@@ -333,14 +333,18 @@ pub struct DirectedMessageRequest {
 // === Terminal Management Commands ===
 
 /// Internal version of initialize_network that works with State references
-async fn initialize_network_internal(state: &State<'_, AppState>) -> Result<String, String> {
-    initialize_network_with_relay_internal(None, state).await
+async fn initialize_network_internal(
+    state: &State<'_, AppState>,
+    app_handle: Option<&tauri::AppHandle>,
+) -> Result<String, String> {
+    initialize_network_with_relay_internal(None, state, app_handle).await
 }
 
 /// Internal version of initialize_network_with_relay that works with State references
 async fn initialize_network_with_relay_internal(
     relay_url: Option<String>,
     state: &State<'_, AppState>,
+    app_handle: Option<&tauri::AppHandle>,
 ) -> Result<String, String> {
     // Check if already initialized - reuse existing client
     {
@@ -368,14 +372,35 @@ async fn initialize_network_with_relay_internal(
         None
     } else {
         // On desktop platforms, use persistent secret key storage
-        let app_data_dir =
-            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        let path = app_data_dir.join("riterm_app_secret_key");
-        info!(
-            "🔑 Using persistent secret key in startup directory: {:?}",
-            path
-        );
-        Some(path)
+        // Use Tauri's app data directory instead of current_dir() to avoid read-only filesystem errors
+        match app_handle {
+            Some(handle) => {
+                let app_data_dir = handle.path().app_data_dir()
+                    .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+                // Ensure the directory exists
+                std::fs::create_dir_all(&app_data_dir)
+                    .map_err(|e| format!("Failed to create app data directory: {}", e))?;
+
+                let path = app_data_dir.join("riterm_app_secret_key");
+                info!(
+                    "🔑 Using persistent secret key in app data directory: {:?}",
+                    path
+                );
+                Some(path)
+            }
+            None => {
+                // Fallback for testing or contexts without app_handle
+                let app_data_dir =
+                    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+                let path = app_data_dir.join("riterm_app_secret_key");
+                info!(
+                    "🔑 Using persistent secret key in current directory (fallback): {:?}",
+                    path
+                );
+                Some(path)
+            }
+        }
     };
 
     // Create QUIC client with secret key (temporary on mobile, persistent on desktop)
@@ -410,13 +435,17 @@ async fn initialize_network_with_relay_internal(
 async fn initialize_network_with_relay(
     relay_url: Option<String>,
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
-    initialize_network_with_relay_internal(relay_url, &state).await
+    initialize_network_with_relay_internal(relay_url, &state, Some(&app_handle)).await
 }
 
 #[tauri::command]
-async fn initialize_network(state: State<'_, AppState>) -> Result<String, String> {
-    initialize_network_internal(&state).await
+async fn initialize_network(
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    initialize_network_internal(&state, Some(&app_handle)).await
 }
 
 #[tauri::command]
@@ -614,7 +643,7 @@ async fn connect_to_peer(
                                 MessagePayload::Response(response) => {
                                     // Handle response messages
                                     #[cfg(debug_assertions)]
-                                    tracing::debug!("Received response for session {}: success={}", 
+                                    tracing::debug!("Received response for session {}: success={}",
                                         session_id_clone, response.success);
 
                                     // Check if this is a terminals list response
@@ -1235,7 +1264,8 @@ async fn ensure_quic_client_initialized(
             tracing::info!("QUIC client not initialized, attempting auto-initialization...");
 
             // Initialize network - use internal function that works with references
-            initialize_network_internal(state).await?;
+            // Note: passing None for app_handle as this is auto-initialization path
+            initialize_network_internal(state, None).await?;
 
             // Try again
             let client_guard = state.quic_client.read().await;
