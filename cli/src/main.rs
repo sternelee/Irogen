@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 mod agent_wrapper;
+mod client;
 mod message_server;
 mod shell;
 mod terminal_logger;
@@ -63,6 +64,15 @@ enum Commands {
         #[arg(long)]
         temp_key: bool,
     },
+    /// Connect to a remote RiTerm host server (P2P client mode)
+    Connect {
+        /// Connection ticket from remote host
+        #[arg(long)]
+        ticket: String,
+        /// Relay server URL (optional, for NAT traversal)
+        #[arg(long)]
+        relay: Option<String>,
+    },
     /// Start background runner for remote session spawning
     Runner {
         /// Bind address for the runner server
@@ -90,6 +100,9 @@ async fn main() -> Result<()> {
             secret_key_file,
             temp_key,
         }) => run_host(relay, max_connections, bind_addr, secret_key_file, temp_key).await,
+        Some(Commands::Connect { ticket, relay }) => {
+            run_connect(ticket, relay).await
+        }
         Some(Commands::Runner { bind_addr }) => {
             run_runner(bind_addr).await
         }
@@ -404,6 +417,36 @@ async fn run_runner(bind_addr: String) -> Result<()> {
     tokio::signal::ctrl_c().await?;
     println!();
     println!("🛑 Runner stopped");
+
+    Ok(())
+}
+
+/// 连接到远程 RiTerm host（P2P 客户端模式）
+async fn run_connect(ticket: String, relay: Option<String>) -> Result<()> {
+    use client::InteractiveClient;
+
+    println!();
+    println!("🔗 RiTerm P2P Client Mode");
+    println!();
+    println!("🎫 Connecting to remote host...");
+    println!();
+
+    // 创建交互式客户端
+    let mut client = InteractiveClient::new(ticket, relay);
+
+    // 连接到远程 host
+    client.connect().await?;
+
+    println!();
+    println!("✅ Connected! You can now:");
+    println!("   • Type messages to send to AI agents");
+    println!("   • Use /spawn to create new AI agent sessions");
+    println!("   • Use /list to see available sessions");
+    println!("   • Use /quit to disconnect");
+    println!();
+
+    // 运行交互式循环
+    client.run_interactive().await?;
 
     Ok(())
 }
