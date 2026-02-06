@@ -482,21 +482,22 @@ impl CliMessageServer {
         &self.default_shell_path
     }
 
-    /// 生成连接票据 - 使用 iroh-tickets 标准格式
+    /// 生成连接票据 - 使用 base64 编码的 SerializableEndpointAddr 格式
     pub fn generate_connection_ticket(&self) -> Result<String> {
-        use iroh_tickets::endpoint::EndpointTicket;
-        use iroh::EndpointAddr;
+        use riterm_shared::quic_server::SerializableEndpointAddr;
 
         let node_id = self.quic_server.get_node_id();
         tracing::info!("Generating ticket for node: {:?}", node_id);
 
-        // 创建 EndpointAddr 并使用 iroh-tickets 的标准 ticket 格式
-        let node_addr = EndpointAddr::new(node_id);
-        let ticket = EndpointTicket::new(node_addr);
+        // 创建 SerializableEndpointAddr 并转换为 base64
+        let endpoint_addr = SerializableEndpointAddr::from_endpoint_id(
+            node_id,
+            riterm_shared::quic_server::QUIC_MESSAGE_ALPN,
+        )?;
 
-        let ticket_str = ticket.to_string();
+        let ticket_str = endpoint_addr.to_base64()?;
         tracing::info!(
-            "Connection ticket generated, length: {} bytes (iroh-tickets format)",
+            "Connection ticket generated, length: {} bytes (base64 JSON format)",
             ticket_str.len()
         );
 
