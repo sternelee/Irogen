@@ -9,7 +9,7 @@ use riterm_shared::message_protocol::{
     AgentMessageContent, ResponseMessage, RemoteSpawnMessage,
     RemoteSpawnAction, AgentType, AgentPermissionMessage,
     AgentPermissionMessageInner, AgentPermissionResponse,
-    PermissionMode,
+    PermissionMode, AgentPermissionRequest,
 };
 use riterm_shared::quic_server::{
     QuicMessageClient, SerializableEndpointAddr,
@@ -167,6 +167,9 @@ impl RiTermClient {
                 debug!("Received AgentControl message");
                 // TODO: 处理控制响应
             }
+            MessageType::AgentPermission => {
+                Self::handle_permission_request(message).await;
+            }
             _ => {
                 debug!("Received message type: {:?}", message.message_type);
             }
@@ -197,7 +200,9 @@ impl RiTermClient {
             }
             AgentSessionAction::UpdateStatus { active, thinking } => {
                 debug!("Session status update: active={}, thinking={}", active, thinking);
-                // TODO: 更新会话状态
+                // 更新会话状态 - 需要从消息中获取 session_id
+                // 注意：UpdateStatus 消息应该包含 session_id，但目前协议中没有
+                // 这里暂时只记录日志，等待协议更新
             }
             AgentSessionAction::ListSessions => {
                 debug!("ListSessions action received");
@@ -247,6 +252,25 @@ impl RiTermClient {
                 println!("{}", msg);
             } else {
                 debug!("Empty response received");
+            }
+        }
+    }
+
+    /// 处理权限请求消息
+    async fn handle_permission_request(message: Message) {
+        if let MessagePayload::AgentPermission(perm_msg) = message.payload {
+            if let AgentPermissionMessageInner::Request(request) = perm_msg.inner {
+                println!();
+                println!("🔔 Permission Request:");
+                println!("   Session: {}", request.session_id);
+                println!("   Tool: {}", request.tool_name);
+                if let Some(desc) = request.description {
+                    println!("   Description: {}", desc);
+                }
+                println!("   Request ID: {}", request.request_id);
+                println!();
+                println!("Use /approve <request_id> or /deny <request_id> to respond");
+                println!();
             }
         }
     }
@@ -364,6 +388,8 @@ impl RiTermClient {
 
         debug!("💬 Sending message to session: {}", session_id);
 
+        let request_id = uuid::Uuid::new_v4().to_string();
+
         let message = Message::new(
             MessageType::AgentControl,
             "client".to_string(),
@@ -372,14 +398,13 @@ impl RiTermClient {
                 action: AgentControlAction::SendInput {
                     content: content.to_string(),
                 },
-                request_id: Some(uuid::Uuid::new_v4().to_string()),
+                request_id: Some(request_id.clone()),
             }),
         ).requires_response();
 
         // 通过 P2P 发送消息
         self.send_quic_message(message).await?;
 
-        let request_id = uuid::Uuid::new_v4().to_string();
         info!("💬 Message sent (request_id: {})", request_id);
         Ok(request_id)
     }
@@ -632,6 +657,8 @@ impl InteractiveClient {
         println!("  /resume    - Resume current session");
         println!("  /stop      - Stop current session");
         println!("  /sessions  - Show all sessions");
+        println!("  /approve   - Approve a permission request");
+        println!("  /deny      - Deny a permission request");
         println!("  /quit      - Exit");
         println!();
 
@@ -791,6 +818,30 @@ impl InteractiveClient {
                         println!("  {}. {}{} - {}", i + 1, session.session_id, current, session.agent_type);
                         println!("      📁 {}", session.project_path);
                     }
+                }
+            }
+            "/approve" => {
+                if parts.len() < 2 {
+                    println!("Usage: /approve <request_id>");
+                    return Ok(());
+                }
+                let request_id = parts[1];
+                let session_id = self.current_session_id.as_deref().unwrap_or("");
+                match self.client.respond_to_permission(session_id, request_id, true).await {
+                    Ok(_) => println!("✅ Permission approved"),
+                    Err(e) => eprintln!("❌ Failed to approve permission: {}", e),
+                }
+            }
+            "/deny" => {
+                if parts.len() < 2 {
+                    println!("Usage: /deny <request_id>");
+                    return Ok(());
+                }
+                let request_id = parts[1];
+                let session_id = self.current_session_id.as_deref().unwrap_or("");
+                match self.client.respond_to_permission(session_id, request_id, false).await {
+                    Ok(_) => println!("❌ Permission denied"),
+                    Err(e) => eprintln!("❌ Failed to deny permission: {}", e),
                 }
             }
             "/quit" => {
