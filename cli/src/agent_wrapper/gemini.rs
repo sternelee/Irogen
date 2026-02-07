@@ -226,6 +226,9 @@ pub fn get_default_gemini_args() -> Vec<String> {
     ]
 }
 
+/// 类型别名导出，用于避免命名冲突
+pub type GeminiParseResult = ParseResult;
+
 #[cfg(test)]
 mod tests {
     use super::*;

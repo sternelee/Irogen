@@ -569,21 +569,17 @@ impl AgentOutputHandler {
     }
 
     fn parse_opencode_output(&self, line: &str) -> Option<AgentMessageContent> {
-        // OpenCode 输出解析
-        Some(AgentMessageContent::AgentResponse {
-            content: line.to_string(),
-            thinking: false,
-            message_id: None,
-        })
+        // 使用 OpenCodeOutputParser 解析输出
+        let parser = opencode::OpenCodeOutputParser::new().ok()?;
+        let parse_result = parser.parse_line(line);
+        Some(parse_result.to_message_content())
     }
 
     fn parse_gemini_output(&self, line: &str) -> Option<AgentMessageContent> {
-        // Gemini CLI 输出解析
-        Some(AgentMessageContent::AgentResponse {
-            content: line.to_string(),
-            thinking: false,
-            message_id: None,
-        })
+        // 使用 GeminiOutputParser 解析输出
+        let parser = gemini::GeminiOutputParser::new().ok()?;
+        let parse_result = parser.parse_line(line);
+        Some(parse_result.to_message_content())
     }
 
     fn parse_custom_output(&self, line: &str) -> Option<AgentMessageContent> {
