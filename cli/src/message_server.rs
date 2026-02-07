@@ -15,6 +15,8 @@ use riterm_shared::{
     NotificationData, NotificationMessage, NotificationType, NotificationPriority,
     RemoteSpawnAction, RemoteSpawnMessage,
     AgentSessionAction, AgentSessionMessage, AgentSessionMetadata, AgentType,
+    BuiltinCommand, OutputFormat, SlashCommand, SlashCommandMessage, SlashCommandResponse,
+    SlashCommandResponseContent,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -31,6 +33,7 @@ use uuid::Uuid;
 use crate::shell::ShellDetector;
 use crate::terminal_logger::TerminalLogManager;
 use crate::agent_wrapper::{AgentFactory, AgentManager};
+use crate::command_router::{CommandRouter, CommandInfo, CommandCategory};
 
 /// Connection information for status display
 #[derive(Debug, Clone)]
@@ -469,6 +472,15 @@ impl CliMessageServer {
         ));
         self.communication_manager
             .register_message_handler(notification_handler)
+            .await;
+
+        // 注册斜杠命令处理器
+        let slash_command_handler = Arc::new(SlashCommandMessageHandler::new(
+            self.communication_manager.clone(),
+            self.agent_manager.clone(),
+        ));
+        self.communication_manager
+            .register_message_handler(slash_command_handler)
             .await;
 
         info!("All message handlers registered successfully");
@@ -3077,6 +3089,219 @@ impl MessageHandler for NotificationMessageHandler {
 
     fn supported_message_types(&self) -> Vec<MessageType> {
         vec![MessageType::Notification]
+    }
+}
+
+// ============================================================================
+// Slash Command Message Handler
+// ============================================================================
+
+/// 斜杠命令消息处理器
+pub struct SlashCommandMessageHandler {
+    communication_manager: Arc<CommunicationManager>,
+    agent_manager: Arc<AgentManager>,
+}
+
+impl SlashCommandMessageHandler {
+    pub fn new(
+        communication_manager: Arc<CommunicationManager>,
+        agent_manager: Arc<AgentManager>,
+    ) -> Self {
+        Self {
+            communication_manager,
+            agent_manager,
+        }
+    }
+
+    /// 处理斜杠命令消息
+    async fn handle_slash_command(
+        &self,
+        session_id: String,
+        command: SlashCommand,
+        request_id: Option<String>,
+    ) -> Result<Option<Message>> {
+        match command {
+            SlashCommand::Passthrough { raw } => {
+                // 直接转发给 Agent
+                self.forward_to_agent(session_id, raw, request_id).await
+            }
+            SlashCommand::Builtin { command_type } => {
+                // 处理内置命令
+                self.handle_builtin_command(session_id, command_type, request_id).await
+            }
+        }
+    }
+
+    /// 转发命令给 Agent
+    async fn forward_to_agent(
+        &self,
+        session_id: String,
+        raw_command: String,
+        request_id: Option<String>,
+    ) -> Result<Option<Message>> {
+        debug!("Forwarding command to agent {}: {}", session_id, raw_command);
+
+        // 直接发送命令到 Agent 的 stdin
+        self.agent_manager
+            .send_to_agent(&session_id, raw_command.clone())
+            .await?;
+
+        // 发送确认响应
+        let response = MessageBuilder::response(
+            "cli".to_string(),
+            request_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+            true,
+            Some(serde_json::json!({
+                "status": "forwarded",
+                "command": raw_command,
+            })),
+            None,
+        );
+        Ok(Some(response))
+    }
+
+    /// 处理内置命令
+    async fn handle_builtin_command(
+        &self,
+        session_id: String,
+        command: BuiltinCommand,
+        request_id: Option<String>,
+    ) -> Result<Option<Message>> {
+        let req_id = request_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+
+        match command {
+            BuiltinCommand::ListSessions => {
+                let sessions = self.agent_manager.list_sessions().await;
+                let response_data = serde_json::to_value(sessions)?;
+
+                Ok(Some(MessageBuilder::response(
+                    "cli".to_string(),
+                    req_id,
+                    true,
+                    Some(response_data),
+                    None,
+                )))
+            }
+            BuiltinCommand::SpawnAgent {
+                agent_type,
+                project_path,
+                args,
+            } => {
+                let (new_session_id, metadata) = self
+                    .agent_manager
+                    .start_session(agent_type, project_path, args)
+                    .await?;
+
+                let response_data = serde_json::json!({
+                    "session_id": new_session_id,
+                    "metadata": metadata,
+                });
+
+                Ok(Some(MessageBuilder::response(
+                    "cli".to_string(),
+                    req_id,
+                    true,
+                    Some(response_data),
+                    None,
+                )))
+            }
+            BuiltinCommand::StopSession { session_id: sid } => {
+                let target_id = if sid.is_empty() { &session_id } else { &sid };
+                self.agent_manager.stop_session(target_id).await?;
+
+                Ok(Some(MessageBuilder::response(
+                    "cli".to_string(),
+                    req_id,
+                    true,
+                    Some(serde_json::json!({"status": "stopped"})),
+                    None,
+                )))
+            }
+            BuiltinCommand::ListCommands => {
+                // 获取当前会话的 Agent 类型
+                let metadata = self.agent_manager.get_session_metadata(&session_id).await;
+                let agent_type = metadata
+                    .map(|m| m.agent_type)
+                    .unwrap_or(AgentType::ClaudeCode);
+
+                let router = CommandRouter::new(agent_type);
+                let commands = router.get_supported_commands(agent_type);
+
+                let response_data = serde_json::json!({
+                    "agent_type": agent_type,
+                    "commands": commands
+                        .into_iter()
+                        .map(|cmd| serde_json::json!({
+                            "name": cmd.name,
+                            "description": cmd.description,
+                            "category": format!("{:?}", cmd.category),
+                            "examples": cmd.examples,
+                        }))
+                        .collect::<Vec<_>>()
+                });
+
+                Ok(Some(MessageBuilder::response(
+                    "cli".to_string(),
+                    req_id,
+                    true,
+                    Some(response_data),
+                    None,
+                )))
+            }
+            BuiltinCommand::GetAgentInfo => {
+                let metadata = self.agent_manager.get_session_metadata(&session_id).await;
+
+                if let Some(meta) = metadata {
+                    let response_data = serde_json::to_value(meta)?;
+                    Ok(Some(MessageBuilder::response(
+                        "cli".to_string(),
+                        req_id,
+                        true,
+                        Some(response_data),
+                        None,
+                    )))
+                } else {
+                    Ok(Some(MessageBuilder::error(
+                        "cli".to_string(),
+                        404,
+                        format!("Session not found: {}", session_id),
+                        None,
+                    )))
+                }
+            }
+        }
+    }
+
+    /// 格式化结构化输出
+    fn format_structured_output(
+        &self,
+        format: OutputFormat,
+        content: String,
+    ) -> SlashCommandResponseContent {
+        SlashCommandResponseContent::Structured {
+            format,
+            content,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl MessageHandler for SlashCommandMessageHandler {
+    async fn handle_message(&self, message: &Message) -> Result<Option<Message>> {
+        if let MessagePayload::SlashCommand(slash_cmd_msg) = &message.payload {
+            self.handle_slash_command(
+                slash_cmd_msg.session_id.clone(),
+                slash_cmd_msg.command.clone(),
+                slash_cmd_msg.request_id.clone(),
+            )
+            .await
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn supported_message_types(&self) -> Vec<MessageType> {
+        vec![MessageType::SlashCommand]
     }
 }
 

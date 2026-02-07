@@ -3,6 +3,7 @@ use clap::Parser;
 
 mod agent_wrapper;
 mod client;
+mod command_router;
 mod message_server;
 mod shell;
 mod terminal_logger;

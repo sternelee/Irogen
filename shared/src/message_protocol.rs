@@ -58,6 +58,8 @@ pub enum MessageType {
     RemoteSpawn = 0x17,
     /// 推送通知消息
     Notification = 0x18,
+    /// 斜杠命令消息（转发给 AI Agent 的命令）
+    SlashCommand = 0x19,
 }
 
 impl TryFrom<u8> for MessageType {
@@ -83,6 +85,7 @@ impl TryFrom<u8> for MessageType {
             0x16 => Ok(MessageType::GitStatus),
             0x17 => Ok(MessageType::RemoteSpawn),
             0x18 => Ok(MessageType::Notification),
+            0x19 => Ok(MessageType::SlashCommand),
             _ => Err(anyhow::anyhow!("Invalid message type: {}", value)),
         }
     }
@@ -312,6 +315,8 @@ pub enum MessagePayload {
     RemoteSpawn(RemoteSpawnMessage),
     /// 推送通知载荷
     Notification(NotificationMessage),
+    /// 斜杠命令载荷
+    SlashCommand(SlashCommandMessage),
 }
 
 /// 心跳消息
@@ -973,6 +978,148 @@ pub enum NotificationPriority {
     Normal,
     High,
     Critical,
+}
+
+// ============================================================================
+// 斜杠命令相关类型定义
+// ============================================================================
+
+/// 斜杠命令消息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlashCommandMessage {
+    /// 会话 ID
+    pub session_id: String,
+    /// 命令
+    pub command: SlashCommand,
+    /// 请求 ID
+    pub request_id: Option<String>,
+}
+
+/// 斜杠命令
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SlashCommand {
+    /// 转发给 Agent 的原始命令
+    Passthrough {
+        /// 原始命令字符串（如 "/help", "/sessions", "/plugin install xxx"）
+        raw: String,
+    },
+    /// RiTerm 内置命令
+    Builtin {
+        /// 命令类型
+        command_type: BuiltinCommand,
+    },
+}
+
+/// RiTerm 内置命令
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BuiltinCommand {
+    /// 列出所有会话
+    ListSessions,
+    /// 启动新的 Agent 会话
+    SpawnAgent {
+        agent_type: AgentType,
+        project_path: String,
+        args: Vec<String>,
+    },
+    /// 停止会话
+    StopSession {
+        session_id: String,
+    },
+    /// 获取可用命令列表
+    ListCommands,
+    /// 获取 Agent 信息
+    GetAgentInfo,
+}
+
+/// 斜杠命令响应
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlashCommandResponse {
+    /// 会话 ID
+    pub session_id: String,
+    /// 响应内容
+    pub content: SlashCommandResponseContent,
+    /// 请求 ID
+    pub request_id: Option<String>,
+}
+
+/// 斜杠命令响应内容
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SlashCommandResponseContent {
+    /// 成功响应
+    Success {
+        /// 响应数据
+        data: serde_json::Value,
+    },
+    /// 错误响应
+    Error {
+        /// 错误消息
+        message: String,
+    },
+    /// 结构化输出（用于命令如 /sessions）
+    Structured {
+        /// 输出格式
+        format: OutputFormat,
+        /// 内容
+        content: String,
+    },
+}
+
+/// 输出格式
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum OutputFormat {
+    /// 纯文本
+    Text,
+    /// Markdown
+    Markdown,
+    /// JSON
+    Json,
+    /// 表格
+    Table,
+}
+
+/// Agent 特定的命令定义
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentCommandDefinition {
+    /// 命令名称（不含斜杠）
+    pub name: String,
+    /// 命令描述
+    pub description: String,
+    /// 参数定义
+    pub parameters: Vec<CommandParameter>,
+    /// 是否需要参数
+    pub requires_args: bool,
+    /// 示例用法
+    pub examples: Vec<String>,
+    /// 支持的 Agent 类型
+    pub supported_agents: Vec<AgentType>,
+}
+
+/// 命令参数定义
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandParameter {
+    /// 参数名称
+    pub name: String,
+    /// 参数描述
+    pub description: String,
+    /// 是否必需
+    pub required: bool,
+    /// 参数类型
+    pub param_type: CommandParameterType,
+}
+
+/// 命令参数类型
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CommandParameterType {
+    /// 字符串
+    String,
+    /// 数字
+    Number,
+    /// 布尔值
+    Boolean,
+    /// 文件路径
+    FilePath,
+    /// 任意
+    Any,
 }
 
 /// 消息处理器trait
