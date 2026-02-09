@@ -133,6 +133,18 @@ export default function Page() {
     setCurrentView("chat");
   };
 
+  // Send message to AI agent
+  const handleSendMessage = async (message: string) => {
+    if (!sessionIdRef) {
+      throw new Error("Not connected to session");
+    }
+
+    await invoke("send_agent_message", {
+      sessionId: sessionIdRef,
+      content: message,
+    });
+  };
+
   return (
     <>
       {/* Background */}
@@ -166,6 +178,7 @@ export default function Page() {
               sessionId={sessionIdRef}
               agentType={activeAgentType}
               onSpawnRemoteSession={handleSpawnRemoteSession}
+              onSendMessage={handleSendMessage}
             />
             {/* Back button for mobile */}
             <div class="fixed top-4 left-4 z-50 md:hidden">

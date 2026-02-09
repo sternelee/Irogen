@@ -2003,6 +2003,40 @@ async fn respond_to_agent_permission(
     Ok(())
 }
 
+/// Send a message to an AI agent session
+#[tauri::command]
+async fn send_agent_message(
+    sessionId: String,
+    content: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let session = {
+        let sessions = state.sessions.read().await;
+        sessions
+            .get(&sessionId)
+            .ok_or_else(|| format!("Session not found: {}", sessionId))?
+            .clone()
+    };
+
+    // Send as AgentControl::SendInput
+    let control_message = Message::new(
+        riterm_shared::MessageType::AgentControl,
+        "app".to_string(),
+        riterm_shared::MessagePayload::AgentControl(
+            riterm_shared::AgentControlMessage {
+                session_id: sessionId.clone(),
+                action: AgentControlAction::SendInput {
+                    content,
+                },
+                request_id: None,
+            },
+        ),
+    ).requires_response();
+
+    send_message_via_client(&state, &session.connection_id, control_message, "agent message").await?;
+    Ok(())
+}
+
 /// Initialize tracing with conditional log levels based on build configuration
 fn init_tracing() {
     // Set different log levels based on build profile and features
@@ -2075,6 +2109,7 @@ pub fn run() {
             // AI Agent Commands
             send_slash_command,
             remote_spawn_session,
+            send_agent_message,
             respond_to_agent_permission,
         ])
         .setup(|_app| {
