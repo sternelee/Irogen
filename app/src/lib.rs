@@ -38,10 +38,13 @@ fn is_valid_session_ticket(ticket: &str) -> bool {
 }
 
 // Parse ticket and extract EndpointId
-// Supports both new iroh-tickets format and legacy custom format
+// Supports iroh-tickets format, base64 JSON format, and legacy custom format
 fn parse_ticket_node_addr(ticket: &str) -> Result<iroh::EndpointId, Box<dyn std::error::Error>> {
+    use base64::Engine as _;
+    use base64::engine::general_purpose;
     use data_encoding::BASE32_NOPAD;
     use iroh_tickets::endpoint::EndpointTicket;
+    use serde::Deserialize;
 
     // Handle old format with "ticket:" prefix
     let ticket_str = if let Some(stripped) = ticket.strip_prefix("ticket:") {
@@ -54,6 +57,28 @@ fn parse_ticket_node_addr(ticket: &str) -> Result<iroh::EndpointId, Box<dyn std:
     if let Ok(endpoint_ticket) = EndpointTicket::from_str(ticket_str) {
         let node_addr = endpoint_ticket.endpoint_addr();
         return Ok(node_addr.id);
+    }
+
+    // Try base64-encoded JSON format with node_id field
+    #[derive(Deserialize)]
+    struct JsonTicket {
+        node_id: String,
+        relay_url: Option<String>,
+        direct_addresses: Option<Vec<String>>,
+        alpn: Option<String>,
+    }
+
+    // Try both URL_SAFE and STANDARD base64 encoding
+    for engine in [general_purpose::URL_SAFE, general_purpose::STANDARD] {
+        if let Ok(ticket_json_bytes) = engine.decode(ticket_str) {
+            if let Ok(ticket_json) = String::from_utf8(ticket_json_bytes.clone()) {
+                if let Ok(json_ticket) = serde_json::from_str::<JsonTicket>(&ticket_json) {
+                    if let Ok(node_id) = iroh::EndpointId::from_str(&json_ticket.node_id) {
+                        return Ok(node_id);
+                    }
+                }
+            }
+        }
     }
 
     // Fall back to legacy custom format (base32 + JSON)
