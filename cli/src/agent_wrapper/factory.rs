@@ -93,7 +93,7 @@ impl Agent for ClaudeCodeAgent {
 
     fn default_args(&self) -> Vec<String> {
         vec![
-            "--no-prompt".to_string(),
+            "-p".to_string(),  // --print for non-interactive output
         ]
     }
 }
@@ -244,8 +244,7 @@ impl Agent for CodexAgent {
 
     fn default_args(&self) -> Vec<String> {
         vec![
-            "--interactive".to_string(),
-            "--no-color".to_string(),
+            "exec".to_string(),  // Run non-interactively
         ]
     }
 }

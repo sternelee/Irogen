@@ -240,8 +240,7 @@ impl ParseResult {
 /// 获取默认的 OpenAI Codex 启动参数
 pub fn get_default_codex_args() -> Vec<String> {
     vec![
-        "--interactive".to_string(),
-        "--no-color".to_string(),
+        "exec".to_string(),  // Run non-interactively
     ]
 }
 

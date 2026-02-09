@@ -179,8 +179,9 @@ impl AgentManager {
 
         let mut command = match agent_type {
             AgentType::ClaudeCode => {
+                // Use -p for non-interactive mode (reads from stdin, writes to stdout)
                 let mut cmd = Command::new("claude");
-                cmd.arg("--no-prompt")
+                cmd.arg("-p")  // --print for non-interactive output
                    .current_dir(project_path);
                 cmd
             }
@@ -191,9 +192,9 @@ impl AgentManager {
                 cmd
             }
             AgentType::Codex => {
+                // Use 'exec' subcommand for non-interactive mode
                 let mut cmd = Command::new("codex");
-                cmd.arg("--interactive")
-                   .arg("--no-color")
+                cmd.arg("exec")  // Run non-interactively
                    .current_dir(project_path);
                 cmd
             }
