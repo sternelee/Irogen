@@ -1,13 +1,12 @@
 //! OpenCode 集成模块
+#![allow(dead_code)]
 //!
 //! 此模块专门处理与 OpenCode (OpenAI AI 编码助手) 的集成，
 //! 包括输出解析、权限请求处理等。
 
 use anyhow::Result;
 use regex::Regex;
-use riterm_shared::message_protocol::{
-    AgentMessageContent, NotificationLevel, ToolCallStatus,
-};
+use riterm_shared::message_protocol::{AgentMessageContent, NotificationLevel, ToolCallStatus};
 
 /// OpenCode 输出解析器
 pub struct OpenCodeOutputParser {
@@ -24,7 +23,9 @@ impl OpenCodeOutputParser {
     pub fn new() -> Result<Self> {
         Ok(Self {
             // 匹配类似 "Allow editing file.txt?" 的权限请求
-            permission_regex: Regex::new(r"^(Allow|Confirm|Proceed) (.+?)(?: \[y/n\]|\(y/n\))?\?*$")?,
+            permission_regex: Regex::new(
+                r"^(Allow|Confirm|Proceed) (.+?)(?: \[y/n\]|\(y/n\))?\?*$",
+            )?,
             // 匹配工具调用
             tool_regex: Regex::new(r"^(Running|Executing): (.+)$")?,
             // 匹配错误消息
@@ -95,10 +96,7 @@ pub enum ParseResult {
     /// 空行
     Empty,
     /// 权限请求
-    PermissionRequest {
-        tool: String,
-        description: String,
-    },
+    PermissionRequest { tool: String, description: String },
     /// 工具调用
     ToolCall {
         tool: String,
@@ -107,15 +105,11 @@ pub enum ParseResult {
     /// 工具调用完成
     ToolCallComplete,
     /// 错误消息
-    Error {
-        message: String,
-    },
+    Error { message: String },
     /// 思考状态
     Thinking,
     /// 普通输出
-    Output {
-        content: String,
-    },
+    Output { content: String },
 }
 
 impl ParseResult {
@@ -126,12 +120,13 @@ impl ParseResult {
                 level: NotificationLevel::Info,
                 message: String::new(),
             },
-            ParseResult::PermissionRequest { tool, description } => {
-                AgentMessageContent::SystemNotification {
-                    level: NotificationLevel::Warning,
-                    message: format!("Permission request: {}", description),
-                }
-            }
+            ParseResult::PermissionRequest {
+                tool: _,
+                description,
+            } => AgentMessageContent::SystemNotification {
+                level: NotificationLevel::Warning,
+                message: format!("Permission request: {}", description),
+            },
             ParseResult::ToolCall { tool, status } => AgentMessageContent::ToolCallUpdate {
                 tool_name: tool,
                 status,
@@ -184,9 +179,7 @@ pub fn get_opencode_version() -> Result<String> {
 
 /// 获取默认的 OpenCode 启动参数
 pub fn get_default_opencode_args() -> Vec<String> {
-    vec![
-        "--non-interactive".to_string(),
-    ]
+    vec!["--non-interactive".to_string()]
 }
 
 /// 类型别名导出，用于避免命名冲突

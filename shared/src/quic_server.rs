@@ -137,9 +137,9 @@ fn is_valid_base64(s: &str) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
 }
 
-use std::sync::Arc;
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use tracing::{debug, error, info, warn};
 
@@ -448,7 +448,13 @@ impl QuicMessageServer {
         };
 
         // 处理消息流
-        Self::handle_message_streams(connection, connection_id, communication_manager, tcp_stream_handler).await
+        Self::handle_message_streams(
+            connection,
+            connection_id,
+            communication_manager,
+            tcp_stream_handler,
+        )
+        .await
     }
 
     /// 处理消息流
@@ -459,7 +465,7 @@ impl QuicMessageServer {
         tcp_stream_handler: Arc<RwLock<Option<TcpStreamHandler>>>,
     ) -> Result<()> {
         let remote_endpoint_id = connection.remote_id();
-        
+
         // 接受双向流用于消息通信
         loop {
             match connection.accept_bi().await {
@@ -477,7 +483,7 @@ impl QuicMessageServer {
                                 if peek_buf == TCP_STREAM_HANDSHAKE {
                                     // 这是 TCP 转发流，继续读取 session_id
                                     info!("🔌 Detected TCP forwarding stream from {:?}", remote_id);
-                                    
+
                                     // 读取 session_id 长度 (4字节 u32 BE)
                                     let mut len_buf = [0u8; 4];
                                     if let Err(e) = recv_stream.read_exact(&mut len_buf).await {
@@ -485,20 +491,22 @@ impl QuicMessageServer {
                                         return;
                                     }
                                     let session_id_len = u32::from_be_bytes(len_buf) as usize;
-                                    
+
                                     // 防止过大的 session_id
                                     if session_id_len > 1024 {
                                         error!("Session ID too long: {}", session_id_len);
                                         return;
                                     }
-                                    
+
                                     // 读取 session_id
                                     let mut session_id_buf = vec![0u8; session_id_len];
-                                    if let Err(e) = recv_stream.read_exact(&mut session_id_buf).await {
+                                    if let Err(e) =
+                                        recv_stream.read_exact(&mut session_id_buf).await
+                                    {
                                         error!("Failed to read session_id: {}", e);
                                         return;
                                     }
-                                    
+
                                     let session_id = match String::from_utf8(session_id_buf) {
                                         Ok(s) => s,
                                         Err(e) => {
@@ -506,17 +514,24 @@ impl QuicMessageServer {
                                             return;
                                         }
                                     };
-                                    
+
                                     info!("🔌 TCP stream for session: {}", session_id);
-                                    
+
                                     // 获取 TCP 流处理器
                                     let tcp_handler = {
                                         let guard = handler.read().await;
                                         guard.clone()
                                     };
-                                    
+
                                     if let Some(tcp_handler) = tcp_handler {
-                                        if let Err(e) = tcp_handler(send_stream, recv_stream, remote_id, session_id).await {
+                                        if let Err(e) = tcp_handler(
+                                            send_stream,
+                                            recv_stream,
+                                            remote_id,
+                                            session_id,
+                                        )
+                                        .await
+                                        {
                                             error!("Error handling TCP stream: {}", e);
                                         }
                                     } else {
@@ -530,7 +545,9 @@ impl QuicMessageServer {
                                         cm,
                                         conn_id,
                                         peek_buf,
-                                    ).await {
+                                    )
+                                    .await
+                                    {
                                         error!("Error handling message stream: {}", e);
                                     }
                                 }
@@ -560,10 +577,10 @@ impl QuicMessageServer {
         initial_data: Vec<u8>,
     ) -> Result<()> {
         let mut buffer = vec![0u8; 8192];
-        
+
         // 首先处理初始数据
         let mut pending_data = initial_data;
-        
+
         loop {
             // 如果有待处理的数据，先处理它
             let data = if !pending_data.is_empty() {
@@ -616,9 +633,7 @@ impl QuicMessageServer {
                         Ok(Some(response)) => {
                             // 处理器返回了响应，发送它
                             info!("📤 Sending handler-generated response");
-                            if let Err(e) =
-                                Self::send_message(&mut send_stream, &response).await
-                            {
+                            if let Err(e) = Self::send_message(&mut send_stream, &response).await {
                                 error!("Failed to send response: {}", e);
                             }
                         }
@@ -637,10 +652,8 @@ impl QuicMessageServer {
                         Err(e) => {
                             error!("Failed to process incoming message: {}", e);
                             // 发送错误响应
-                            let error_response = message.create_error_response(format!(
-                                "Failed to process message: {}",
-                                e
-                            ));
+                            let error_response = message
+                                .create_error_response(format!("Failed to process message: {}", e));
                             if let Err(e) =
                                 Self::send_message(&mut send_stream, &error_response).await
                             {
@@ -831,10 +844,7 @@ impl QuicMessageServer {
         &self,
         remote_endpoint_id: &EndpointId,
         session_id: &str,
-    ) -> Result<(
-        iroh::endpoint::SendStream,
-        iroh::endpoint::RecvStream,
-    )> {
+    ) -> Result<(iroh::endpoint::SendStream, iroh::endpoint::RecvStream)> {
         // 查找或建立到远程的连接
         let connection = {
             let connections = self.connections.read().await;
@@ -866,7 +876,7 @@ impl QuicMessageServer {
             .write_all(TCP_STREAM_HANDSHAKE)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to write handshake magic: {}", e))?;
-        
+
         let session_id_bytes = session_id.as_bytes();
         let len_bytes = (session_id_bytes.len() as u32).to_be_bytes();
         send_stream
@@ -1090,8 +1100,11 @@ impl QuicMessageClient {
                         let response_data = &buffer[..n];
                         match MessageSerializer::deserialize_from_network(response_data) {
                             Ok(response) => {
-                                debug!("Received response: type={:?}, broadcasting to {} subscribers", 
-                                    response.message_type, self.message_tx.receiver_count());
+                                debug!(
+                                    "Received response: type={:?}, broadcasting to {} subscribers",
+                                    response.message_type,
+                                    self.message_tx.receiver_count()
+                                );
                                 // 广播接收到的响应
                                 if let Err(e) = self.message_tx.send(response) {
                                     error!("Failed to broadcast response: {} (no receivers?)", e);
@@ -1143,10 +1156,7 @@ impl QuicMessageClient {
         &self,
         remote_endpoint_id: &EndpointId,
         session_id: &str,
-    ) -> Result<(
-        iroh::endpoint::SendStream,
-        iroh::endpoint::RecvStream,
-    )> {
+    ) -> Result<(iroh::endpoint::SendStream, iroh::endpoint::RecvStream)> {
         // 查找已建立的连接
         let connections = self.server_connections.read().await;
         let connection = connections
@@ -1174,7 +1184,7 @@ impl QuicMessageClient {
             .write_all(TCP_STREAM_HANDSHAKE)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to write handshake magic: {}", e))?;
-        
+
         let session_id_bytes = session_id.as_bytes();
         let len_bytes = (session_id_bytes.len() as u32).to_be_bytes();
         send_stream
@@ -1322,10 +1332,7 @@ impl QuicMessageClientHandle {
         &self,
         remote_endpoint_id: &EndpointId,
         session_id: &str,
-    ) -> Result<(
-        iroh::endpoint::SendStream,
-        iroh::endpoint::RecvStream,
-    )> {
+    ) -> Result<(iroh::endpoint::SendStream, iroh::endpoint::RecvStream)> {
         let client = self.client.lock().await;
         client.open_tcp_stream(remote_endpoint_id, session_id).await
     }

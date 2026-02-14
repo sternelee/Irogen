@@ -292,7 +292,7 @@ pub enum MessagePayload {
     /// 系统控制载荷
     SystemControl(SystemControlMessage),
     /// 系统信息载荷
-    SystemInfo(SystemInfoMessage),
+    SystemInfo(Box<SystemInfoMessage>),
     /// 响应载荷
     Response(ResponseMessage),
     /// 错误载荷
@@ -442,7 +442,7 @@ pub enum SystemInfoAction {
     /// 获取系统信息
     GetSystemInfo,
     /// 响应系统信息
-    SystemInfoResponse(SystemInfo),
+    SystemInfoResponse(Box<SystemInfo>),
 }
 
 /// 系统信息结构
@@ -602,24 +602,15 @@ pub struct AgentSessionMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentSessionAction {
     /// 注册新会话
-    Register {
-        metadata: AgentSessionMetadata,
-    },
+    Register { metadata: AgentSessionMetadata },
     /// 更新会话状态
-    UpdateStatus {
-        active: bool,
-        thinking: bool,
-    },
+    UpdateStatus { active: bool, thinking: bool },
     /// 列出活跃会话
     ListSessions,
     /// 停止会话
-    StopSession {
-        session_id: String,
-    },
+    StopSession { session_id: String },
     /// 心跳更新
-    Heartbeat {
-        sequence: u64,
-    },
+    Heartbeat { sequence: u64 },
 }
 
 /// AI Agent 消息内容类型
@@ -631,7 +622,7 @@ pub enum AgentMessageContent {
         /// 附件 ID 列表（文件、图片等）
         attachments: Vec<String>,
     },
-    /// AI 响应消息
+    /// AI 响应消息（完整内容）
     AgentResponse {
         content: String,
         /// 是否正在思考（流式响应中）
@@ -639,6 +630,21 @@ pub enum AgentMessageContent {
         /// 消息 ID（用于流式更新）
         message_id: Option<String>,
     },
+    /// 回合开始（流式响应开始）
+    TurnStarted { turn_id: String },
+    /// 文本增量（流式输出）
+    TextDelta {
+        text: String,
+        /// 是否为思考内容
+        thinking: bool,
+    },
+    /// 回合结束（流式响应结束）
+    TurnCompleted {
+        /// 最终完整内容（可选）
+        content: Option<String>,
+    },
+    /// 回合错误
+    TurnError { error: String },
     /// 工具调用更新
     ToolCallUpdate {
         tool_name: String,
@@ -733,9 +739,7 @@ pub enum AgentControlAction {
     /// 终止 Agent
     Terminate,
     /// 发送用户输入
-    SendInput {
-        content: String,
-    },
+    SendInput { content: String },
     /// 发送中断信号
     SendInterrupt,
     /// 获取 Agent 状态
@@ -757,26 +761,15 @@ pub struct AgentMetadataUpdate {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentMetadataContent {
     /// 更新待办事项列表
-    UpdateTodos {
-        todos: Vec<TodoItem>,
-    },
+    UpdateTodos { todos: Vec<TodoItem> },
     /// 更新会话摘要
-    UpdateSummary {
-        summary: String,
-    },
+    UpdateSummary { summary: String },
     /// 更新可用工具列表
-    UpdateAvailableTools {
-        tools: Vec<String>,
-    },
+    UpdateAvailableTools { tools: Vec<String> },
     /// 更新斜杠命令列表
-    UpdateSlashCommands {
-        commands: Vec<String>,
-    },
+    UpdateSlashCommands { commands: Vec<String> },
     /// 会话生命周期状态
-    LifecycleState {
-        state: String,
-        since: u64,
-    },
+    LifecycleState { state: String, since: u64 },
 }
 
 /// 待办事项
@@ -863,22 +856,13 @@ pub struct FileBrowserMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FileBrowserAction {
     /// 列出目录内容
-    ListDirectory {
-        path: String,
-    },
+    ListDirectory { path: String },
     /// 读取文件内容
-    ReadFile {
-        path: String,
-    },
+    ReadFile { path: String },
     /// 写入文件
-    WriteFile {
-        path: String,
-        content: String,
-    },
+    WriteFile { path: String, content: String },
     /// 获取文件信息
-    GetFileInfo {
-        path: String,
-    },
+    GetFileInfo { path: String },
 }
 
 /// Git 状态消息
@@ -892,23 +876,13 @@ pub struct GitStatusMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GitAction {
     /// 获取 git 状态
-    GetStatus {
-        path: String,
-    },
+    GetStatus { path: String },
     /// 获取文件 diff
-    GetDiff {
-        path: String,
-        file: String,
-    },
+    GetDiff { path: String, file: String },
     /// 获取提交历史
-    GetLog {
-        path: String,
-        limit: Option<usize>,
-    },
+    GetLog { path: String, limit: Option<usize> },
     /// 获取当前分支
-    GetBranch {
-        path: String,
-    },
+    GetBranch { path: String },
 }
 
 /// 远程会话生成消息
@@ -923,6 +897,8 @@ pub struct RemoteSpawnMessage {
 pub enum RemoteSpawnAction {
     /// 生成新的 AI Agent 会话
     SpawnSession {
+        /// App 端的会话 ID，用于事件路由
+        session_id: String,
         agent_type: AgentType,
         project_path: String,
         args: Vec<String>,
@@ -1024,9 +1000,7 @@ pub enum BuiltinCommand {
         args: Vec<String>,
     },
     /// 停止会话
-    StopSession {
-        session_id: String,
-    },
+    StopSession { session_id: String },
     /// 获取可用命令列表
     ListCommands,
     /// 获取 Agent 信息
@@ -1321,10 +1295,10 @@ impl MessageBuilder {
 
     /// 创建系统信息消息
     pub fn system_info(sender_id: String) -> Message {
-        let payload = MessagePayload::SystemInfo(SystemInfoMessage {
+        let payload = MessagePayload::SystemInfo(Box::new(SystemInfoMessage {
             action: SystemInfoAction::GetSystemInfo,
             request_id: None,
-        });
+        }));
         Message::new(MessageType::SystemInfo, sender_id, payload)
             .with_priority(MessagePriority::Normal)
             .requires_response()
@@ -1366,7 +1340,11 @@ impl MessageBuilder {
     }
 
     /// 创建 AI Agent 会话心跳消息
-    pub fn agent_session_heartbeat(sender_id: String, session_id: String, sequence: u64) -> Message {
+    pub fn agent_session_heartbeat(
+        sender_id: String,
+        session_id: String,
+        sequence: u64,
+    ) -> Message {
         let payload = MessagePayload::AgentSession(AgentSessionMessage {
             action: AgentSessionAction::Heartbeat { sequence },
             request_id: None,
@@ -1385,7 +1363,10 @@ impl MessageBuilder {
     ) -> Message {
         let payload = MessagePayload::AgentMessage(AgentMessageMessage {
             session_id: session_id.clone(),
-            content: AgentMessageContent::UserMessage { content, attachments },
+            content: AgentMessageContent::UserMessage {
+                content,
+                attachments,
+            },
             sequence: None,
         });
         Message::new(MessageType::AgentMessage, sender_id, payload)
@@ -1455,10 +1436,7 @@ impl MessageBuilder {
     }
 
     /// 创建 AI Agent 权限请求消息
-    pub fn agent_permission_request(
-        sender_id: String,
-        request: AgentPermissionRequest,
-    ) -> Message {
+    pub fn agent_permission_request(sender_id: String, request: AgentPermissionRequest) -> Message {
         let payload = MessagePayload::AgentPermission(AgentPermissionMessage {
             inner: AgentPermissionMessageInner::Request(request),
         });
@@ -1534,11 +1512,7 @@ impl MessageBuilder {
     }
 
     /// 创建 Git 状态消息
-    pub fn git_status(
-        sender_id: String,
-        action: GitAction,
-        request_id: Option<String>,
-    ) -> Message {
+    pub fn git_status(sender_id: String, action: GitAction, request_id: Option<String>) -> Message {
         let payload = MessagePayload::GitStatus(GitStatusMessage { action, request_id });
         Message::new(MessageType::GitStatus, sender_id, payload)
             .with_priority(MessagePriority::Normal)
@@ -1558,10 +1532,7 @@ impl MessageBuilder {
     }
 
     /// 创建通知消息
-    pub fn notification(
-        sender_id: String,
-        notification: NotificationData,
-    ) -> Message {
+    pub fn notification(sender_id: String, notification: NotificationData) -> Message {
         let payload = MessagePayload::Notification(NotificationMessage { notification });
         Message::new(MessageType::Notification, sender_id, payload)
             .with_priority(MessagePriority::High)
@@ -1571,7 +1542,7 @@ impl MessageBuilder {
     pub fn permission_notification(
         sender_id: String,
         session_id: String,
-        tool_name: String,
+        _tool_name: String,
         description: String,
     ) -> Message {
         let notification = NotificationData {

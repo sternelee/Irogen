@@ -7,5 +7,5 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1239 | 11:17 PM | 🔵 | Agent wrapper implementation supports multiple coding agents | ~174 |
+| #1238 | 11:17 PM | 🔵 | Riterm CLI architecture mapped | ~176 |
 </claude-mem-context>

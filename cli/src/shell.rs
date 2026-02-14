@@ -1,4 +1,5 @@
 // Shell detection and configuration module
+#![allow(dead_code)]
 // Currently unused in agent mode but kept for future compatibility
 
 use std::collections::HashMap;

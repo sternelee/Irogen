@@ -16,7 +16,7 @@ use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::Subscribe
 
 /// Generate a string representation of a QR code for the given ticket.
 fn generate_qr_string(ticket: &str) -> String {
-    use fast_qr::{QRBuilder, ECL};
+    use fast_qr::{ECL, QRBuilder};
 
     match QRBuilder::new(ticket).ecl(ECL::M).build() {
         Ok(qr) => qr.to_str(),
@@ -91,9 +91,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Run { agent, project, args }) => {
-            run_agent_session(agent, project, args).await
-        }
+        Some(Commands::Run {
+            agent,
+            project,
+            args,
+        }) => run_agent_session(agent, project, args).await,
         Some(Commands::Host {
             relay,
             max_connections,
@@ -101,12 +103,8 @@ async fn main() -> Result<()> {
             secret_key_file,
             temp_key,
         }) => run_host(relay, max_connections, bind_addr, secret_key_file, temp_key).await,
-        Some(Commands::Connect { ticket, relay }) => {
-            run_connect(ticket, relay).await
-        }
-        Some(Commands::Runner { bind_addr }) => {
-            run_runner(bind_addr).await
-        }
+        Some(Commands::Connect { ticket, relay }) => run_connect(ticket, relay).await,
+        Some(Commands::Runner { bind_addr }) => run_runner(bind_addr).await,
         None => {
             print_general_help();
             Ok(())
@@ -340,7 +338,10 @@ async fn run_agent_session(agent: String, project: String, args: Vec<String>) ->
         }
     };
 
-    info!("Starting AI Agent: {:?} in project: {}", agent_type, project);
+    info!(
+        "Starting AI Agent: {:?} in project: {}",
+        agent_type, project
+    );
 
     // 创建 Agent 管理器
     let manager = AgentManager::new();

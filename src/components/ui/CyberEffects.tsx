@@ -1,8 +1,7 @@
-import { createSignal, createEffect, onMount, onCleanup, For } from 'solid-js';
-import { settingsStore } from '../../stores/settingsStore';
+import { For } from "solid-js";
 
 // 网络状态指示器组件
-export function NetworkIndicator(props: { 
+export function NetworkIndicator(props: {
   strength: number; // 0-4
   connected: boolean;
   class?: string;
@@ -12,21 +11,21 @@ export function NetworkIndicator(props: {
     for (let i = 1; i <= 4; i++) {
       bars.push({
         height: `${i * 25}%`,
-        active: props.connected && i <= props.strength
+        active: props.connected && i <= props.strength,
       });
     }
     return bars;
   };
 
   return (
-    <div class={`network-indicator ${props.class || ''}`}>
+    <div class={`network-indicator ${props.class || ""}`}>
       <For each={getBars()}>
         {(bar) => (
           <div
             class="network-bar"
             classList={{
-              'text-primary': bar.active,
-              'text-base-300 opacity-40': !bar.active
+              "text-primary": bar.active,
+              "text-base-300 opacity-40": !bar.active,
             }}
             style={{ height: bar.height }}
           />
@@ -40,16 +39,22 @@ export function NetworkIndicator(props: {
 export function ModernButton(props: {
   children: any;
   onClick?: () => void;
-  variant?: 'primary' | 'secondary' | 'accent' | 'ghost' | 'outline' | 'neutral';
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  variant?:
+    | "primary"
+    | "secondary"
+    | "accent"
+    | "ghost"
+    | "outline"
+    | "neutral";
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
   disabled?: boolean;
   class?: string;
 }) {
   const getButtonClasses = () => {
-    const baseClass = 'btn';
-    const variantClass = props.variant ? `btn-${props.variant}` : '';
-    const sizeClass = props.size ? `btn-${props.size}` : '';
-    return `${baseClass} ${variantClass} ${sizeClass} ${props.class || ''}`;
+    const baseClass = "btn";
+    const variantClass = props.variant ? `btn-${props.variant}` : "";
+    const sizeClass = props.size ? `btn-${props.size}` : "";
+    return `${baseClass} ${variantClass} ${sizeClass} ${props.class || ""}`;
   };
 
   return (
@@ -68,15 +73,15 @@ export function ModernInput(props: {
   value?: string;
   onInput?: (value: string) => void;
   placeholder?: string;
-  type?: 'text' | 'password' | 'email' | 'search';
+  type?: "text" | "password" | "email" | "search";
   disabled?: boolean;
   class?: string;
 }) {
   return (
     <input
-      type={props.type || 'text'}
-      class={`input input-bordered ${props.class || ''}`}
-      value={props.value || ''}
+      type={props.type || "text"}
+      class={`input input-bordered ${props.class || ""}`}
+      value={props.value || ""}
       onInput={(e) => props.onInput?.(e.currentTarget.value)}
       placeholder={props.placeholder}
       disabled={props.disabled}
@@ -89,21 +94,23 @@ export function ModernCard(props: {
   children: any;
   title?: string;
   class?: string;
-  variant?: 'bordered' | 'compact';
+  variant?: "bordered" | "compact";
 }) {
   const getCardClasses = () => {
-    const baseClass = 'card bg-base-100 shadow-xl';
-    const variantClass = props.variant === 'bordered' ? 'card-bordered' : 
-                        props.variant === 'compact' ? 'card-compact' : '';
-    return `${baseClass} ${variantClass} ${props.class || ''}`;
+    const baseClass = "card bg-base-100 shadow-xl";
+    const variantClass =
+      props.variant === "bordered"
+        ? "card-bordered"
+        : props.variant === "compact"
+          ? "card-compact"
+          : "";
+    return `${baseClass} ${variantClass} ${props.class || ""}`;
   };
 
   return (
     <div class={getCardClasses()}>
       <div class="card-body">
-        {props.title && (
-          <h2 class="card-title">{props.title}</h2>
-        )}
+        {props.title && <h2 class="card-title">{props.title}</h2>}
         {props.children}
       </div>
     </div>
@@ -123,17 +130,10 @@ export function ModernModal(props: {
         <>
           <div class="modal modal-open">
             <div class="modal-box">
-              {props.title && (
-                <h3 class="font-bold text-lg">{props.title}</h3>
-              )}
-              <div class="py-4">
-                {props.children}
-              </div>
+              {props.title && <h3 class="font-bold text-lg">{props.title}</h3>}
+              <div class="py-4">{props.children}</div>
               <div class="modal-action">
-                <ModernButton 
-                  variant="ghost" 
-                  onClick={props.onClose}
-                >
+                <ModernButton variant="ghost" onClick={props.onClose}>
                   关闭
                 </ModernButton>
               </div>
@@ -155,15 +155,17 @@ export function ModernSelect(props: {
   class?: string;
 }) {
   return (
-    <select 
-      class={`select select-bordered ${props.class || ''}`}
+    <select
+      class={`select select-bordered ${props.class || ""}`}
       value={props.value}
       onChange={(e) => props.onChange?.(e.currentTarget.value)}
     >
       {props.placeholder && (
-        <option disabled selected>{props.placeholder}</option>
+        <option disabled selected>
+          {props.placeholder}
+        </option>
       )}
-      {props.options.map(option => (
+      {props.options.map((option) => (
         <option value={option.value}>{option.label}</option>
       ))}
     </select>
@@ -180,12 +182,10 @@ export function ModernToggle(props: {
   return (
     <div class="form-control">
       <label class="cursor-pointer label">
-        {props.label && (
-          <span class="label-text">{props.label}</span>
-        )}
-        <input 
-          type="checkbox" 
-          class={`toggle toggle-primary ${props.class || ''}`}
+        {props.label && <span class="label-text">{props.label}</span>}
+        <input
+          type="checkbox"
+          class={`toggle toggle-primary ${props.class || ""}`}
           checked={props.checked}
           onChange={(e) => props.onChange?.(e.currentTarget.checked)}
         />
@@ -196,16 +196,7 @@ export function ModernToggle(props: {
 
 // 简单的背景组件
 export function SubtleBackground() {
-  return (
-    <div class="fixed inset-0 pointer-events-none z-0 bg-base-100" />
-  );
-}
-
-// 简化的背景组件
-export function SubtleBackground() {
-  return (
-    <div class="fixed inset-0 pointer-events-none z-0 bg-base-100" />
-  );
+  return <div class="fixed inset-0 pointer-events-none z-0 bg-base-100" />;
 }
 
 // 组合背景组件

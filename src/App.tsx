@@ -4,8 +4,9 @@
  * Main application entry point - AI Agent P2P Remote Management
  */
 
-import { createSignal, onMount } from "solid-js";
+import { createSignal, onMount, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { Toaster } from "solid-sonner";
 import { SettingsModal } from "./components/SettingsModal";
 import { HomeView } from "./components/HomeView";
@@ -14,7 +15,6 @@ import { SessionListView } from "./components/SessionListView";
 import { FileBrowserView } from "./components/FileBrowserView";
 import { GitDiffView } from "./components/GitDiffView";
 import { NotificationDisplay } from "./components/NotificationDisplay";
-import { P2PBackground } from "./components/P2PBackground";
 import type { AgentType } from "./stores/sessionStore";
 
 type ViewType = "home" | "chat" | "sessions" | "files" | "git";
@@ -23,7 +23,9 @@ export default function Page() {
   // Connection state
   const [sessionTicket, setSessionTicket] = createSignal("");
   const [connecting, setConnecting] = createSignal(false);
-  const [connectionError, setConnectionError] = createSignal<string | null>(null);
+  const [connectionError, setConnectionError] = createSignal<string | null>(
+    null,
+  );
   const [isConnected, setIsConnected] = createSignal(false);
   const [activeTicket, setActiveTicket] = createSignal<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = createSignal(false);
@@ -39,6 +41,39 @@ export default function Page() {
   // Initialize network on mount
   onMount(() => {
     initializeNetwork();
+
+    // Listen for agent session creation responses from CLI
+    onMount(async () => {
+      const unlisten = await listen("agent-session-created", (event) => {
+        const payload = event.payload as {
+          session_id: string;
+          agent_type: string;
+          project_path: string;
+        };
+
+        console.log("Agent session created event:", payload);
+        sessionIdRef = payload.session_id;
+
+        // Parse agent_type from string to enum (matching CLI's format)
+        if (payload.agent_type.toLowerCase().includes("claudecode")) {
+          activeAgentType = "claude";
+        } else if (payload.agent_type.toLowerCase().includes("opencode")) {
+          activeAgentType = "opencode";
+        } else if (payload.agent_type.toLowerCase().includes("custom")) {
+          activeAgentType = "custom";
+        } else if (payload.agent_type.toLowerCase().includes("gemini")) {
+          activeAgentType = "gemini";
+        }
+
+        // Switch to chat view when agent session is created
+        setCurrentView("chat");
+      });
+
+      // Cleanup listener on unmount
+      onCleanup(() => {
+        unlisten();
+      });
+    });
 
     // Clean up old connection history
     try {
@@ -69,13 +104,16 @@ export default function Page() {
     setConnectionError(null);
 
     try {
-      const sessionId = await invoke<string>("connect_to_host", { sessionTicket: ticket });
+      const sessionId = await invoke<string>("connect_to_host", {
+        sessionTicket: ticket,
+      });
       sessionIdRef = sessionId;
       setIsConnected(true);
       setActiveTicket(ticket);
       setCurrentView("chat");
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "Failed to connect";
+      const errorMsg =
+        error instanceof Error ? error.message : "Failed to connect";
       setConnectionError(errorMsg);
     } finally {
       setConnecting(false);
@@ -115,7 +153,7 @@ export default function Page() {
   const handleSpawnRemoteSession = async (
     agentType: AgentType,
     projectPath: string,
-    args: string[]
+    args: string[],
   ) => {
     if (!sessionIdRef) {
       throw new Error("Not connected to session");
@@ -147,9 +185,6 @@ export default function Page() {
 
   return (
     <>
-      {/* Background */}
-      <P2PBackground />
-
       {/* Main App */}
       <div class="min-h-screen bg-base-200">
         {/* Home View - Connection Screen */}
@@ -183,11 +218,24 @@ export default function Page() {
             {/* Back button for mobile */}
             <div class="fixed top-4 left-4 z-50 md:hidden">
               <button
+                type="button"
                 class="btn btn-circle btn-ghost"
                 onClick={() => setCurrentView("sessions")}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <title>Back to Sessions</title>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 19l-7-7 7-7"
+                  />
                 </svg>
               </button>
             </div>
@@ -212,11 +260,24 @@ export default function Page() {
             {/* Back button */}
             <div class="fixed top-4 left-4 z-50">
               <button
+                type="button"
                 class="btn btn-circle btn-ghost"
                 onClick={() => setCurrentView("chat")}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <title>Back to Chat</title>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 19l-7-7 7-7"
+                  />
                 </svg>
               </button>
             </div>
@@ -230,11 +291,24 @@ export default function Page() {
             {/* Back button */}
             <div class="fixed top-4 left-4 z-50">
               <button
+                type="button"
                 class="btn btn-circle btn-ghost"
                 onClick={() => setCurrentView("chat")}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <title>Back to Chat</title>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 19l-7-7 7-7"
+                  />
                 </svg>
               </button>
             </div>

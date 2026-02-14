@@ -1,5 +1,5 @@
-import { createSignal, Show, For, createEffect } from "solid-js";
-import { getDeviceCapabilities, HapticFeedback } from "../utils/mobile";
+import { createSignal, Show, For, createEffect, onCleanup } from "solid-js";
+import { getDeviceCapabilities, HapticFeedback } from "../../utils/mobile";
 
 export interface NavigationItem {
   id: string;
@@ -37,10 +37,10 @@ export function MobileNavigation(props: MobileNavigationProps) {
     const handleResize = () => {
       setIsLandscape(window.innerWidth > window.innerHeight);
     };
-    
+
     handleResize();
     window.addEventListener("resize", handleResize);
-    
+
     onCleanup(() => {
       window.removeEventListener("resize", handleResize);
     });
@@ -192,7 +192,9 @@ export function MobileNavigation(props: MobileNavigationProps) {
 
         <div class="navbar-center">
           <div class="flex items-center space-x-2 text-sm">
-            <span class="font-mono text-xs sm:text-sm">{props.currentTime}</span>
+            <span class="font-mono text-xs sm:text-sm">
+              {props.currentTime}
+            </span>
           </div>
         </div>
 
@@ -208,7 +210,7 @@ export function MobileNavigation(props: MobileNavigationProps) {
                 <span class="text-xs">🔗</span>
               </button>
             </Show>
-            
+
             <button
               class={`btn btn-ghost btn-sm py-1 ${getStatusColor()}`}
               onClick={() => setShowStatusPanel(!showStatusPanel())}
@@ -259,10 +261,11 @@ export function MobileNavigation(props: MobileNavigationProps) {
                 <For each={[1, 2, 3, 4]}>
                   {(level) => (
                     <div
-                      class={`w-1 h-3 mx-px rounded-sm ${level <= props.networkStrength
-                        ? "bg-success"
-                        : "bg-base-300"
-                        }`}
+                      class={`w-1 h-3 mx-px rounded-sm ${
+                        level <= props.networkStrength
+                          ? "bg-success"
+                          : "bg-base-300"
+                      }`}
                     />
                   )}
                 </For>
@@ -280,10 +283,10 @@ export function MobileNavigation(props: MobileNavigationProps) {
               {(item) => (
                 <button
                   class={`flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px] transition-all duration-200 ${
-                    item.active 
-                      ? "text-primary bg-primary/10" 
-                      : item.disabled 
-                        ? "text-base-300 cursor-not-allowed" 
+                    item.active
+                      ? "text-primary bg-primary/10"
+                      : item.disabled
+                        ? "text-base-300 cursor-not-allowed"
                         : "text-base-content hover:bg-base-200"
                   }`}
                   onClick={() => handleNavItemClick(item)}
@@ -302,11 +305,10 @@ export function MobileNavigation(props: MobileNavigationProps) {
             </For>
           </div>
         </div>
-        
+
         {/* Add padding to prevent content being hidden behind bottom nav */}
         <div class="h-20 safe-area-bottom"></div>
       </Show>
-
     </>
   );
 }

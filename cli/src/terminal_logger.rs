@@ -1,4 +1,5 @@
 //! 终端日志记录模块
+#![allow(dead_code)]
 //!
 //! 为每个终端会话提供日志记录功能，支持输入输出记录和日志轮转。
 
@@ -61,6 +62,10 @@ impl TerminalLogger {
 
         // 创建日志文件路径：终端ID.log
         let log_path = log_dir.join(format!("{}.log", terminal_id));
+        // 确保文件存在
+        if !log_path.exists() {
+            File::create(&log_path).context("Failed to create log file")?;
+        }
 
         // 如果日志文件已存在，加载最近的日志到缓存
         let log_cache = Arc::new(Mutex::new(VecDeque::with_capacity(max_lines)));
@@ -223,8 +228,7 @@ impl TerminalLogger {
     /// 删除日志文件
     pub fn delete_log_file(&self) -> Result<()> {
         if self.log_path.exists() {
-            std::fs::remove_file(&self.log_path)
-                .context("Failed to delete log file")?;
+            std::fs::remove_file(&self.log_path).context("Failed to delete log file")?;
             info!("Log file deleted: {:?}", self.log_path);
         }
         Ok(())

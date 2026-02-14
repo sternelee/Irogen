@@ -1,7 +1,11 @@
 import { createSignal, Show, For, onMount } from "solid-js";
 import { toast } from "solid-sonner";
 import { getDeviceCapabilities } from "../utils/mobile";
-import { getLastTicket, saveTicket, getTicketHistory } from "../utils/localStorage";
+import {
+  getLastTicket,
+  saveTicket,
+  getTicketHistory,
+} from "../utils/localStorage";
 import { getTicketDisplayId } from "../utils/ticketParser";
 
 /**
@@ -47,23 +51,18 @@ export function HomeView(props: HomeViewProps) {
   const [showLoginModal, setShowLoginModal] = createSignal(false);
   const [username, setUsername] = createSignal("");
   const [password, setPassword] = createSignal("");
-  const [inputFocused, setInputFocused] = createSignal(false);
-  const [loginInputFocused, setLoginInputFocused] = createSignal(false);
   const [ticketHistory, setTicketHistory] = createSignal<string[]>([]);
 
-  // 检测设备类型
+  // Device capabilities
   const deviceCapabilities = getDeviceCapabilities();
   const isMobile = deviceCapabilities.isMobile;
 
   // Load saved tickets on component mount
   onMount(() => {
-    // Load last ticket and set it if no current ticket is provided
     const lastTicket = getLastTicket();
     if (lastTicket && !props.sessionTicket) {
       props.onTicketInput(lastTicket);
     }
-
-    // Load ticket history
     setTicketHistory(getTicketHistory());
   });
 
@@ -73,7 +72,6 @@ export function HomeView(props: HomeViewProps) {
   };
 
   const handleQuickConnect = (ticket: string) => {
-    // Save ticket to localStorage before connecting
     saveTicket(ticket);
     props.onConnect(ticket);
   };
@@ -81,7 +79,6 @@ export function HomeView(props: HomeViewProps) {
   const handleConnect = () => {
     const ticket = props.sessionTicket.trim();
     if (ticket) {
-      // Save ticket to localStorage before connecting
       saveTicket(ticket);
       props.onConnect(ticket);
     }
@@ -89,8 +86,8 @@ export function HomeView(props: HomeViewProps) {
 
   const handleShowQRScanner = async () => {
     try {
-      // 使用Tauri的条码扫描插件
-      const { scan, checkPermissions, requestPermissions } = await import("@tauri-apps/plugin-barcode-scanner");
+      const { scan, checkPermissions, requestPermissions } =
+        await import("@tauri-apps/plugin-barcode-scanner");
       let permissionStatus = await checkPermissions();
       if (permissionStatus !== "granted") {
         permissionStatus = await requestPermissions();
@@ -100,83 +97,54 @@ export function HomeView(props: HomeViewProps) {
         return;
       }
       const result = await scan();
-      console.log(result);
       if (result && result.content) {
-        // Validate ticket format before setting
         if (is_valid_session_ticket(result.content)) {
           props.onTicketInput(result.content);
-          // Auto-connect on successful scan
           handleQuickConnect(result.content);
         } else {
-          console.error("Invalid ticket format");
-          // Could show a toast notification here
+          toast.error("Invalid ticket format");
         }
       }
     } catch (error) {
       console.error("QR Scanner error:", error);
-      // Handle user cancellation vs actual errors
     }
   };
 
-  // 登录模态框
+  // Login Modal
   const renderLoginModal = () => (
     <Show when={showLoginModal()}>
-      <div
-        class="fixed inset-0 bg-black/80 z-50 flex justify-center transition-all duration-300"
-        classList={{
-          "items-end md:items-center": !loginInputFocused() || !isMobile,
-          "items-start pt-12": loginInputFocused() && isMobile
-        }}
-        onClick={() => setShowLoginModal(false)}
-      >
-        <div
-          class="ascii-box w-full max-w-md transform transition-all duration-300"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div
-            class="text-center transition-all duration-300"
-            classList={{
-              "mb-6": !loginInputFocused() || !isMobile,
-              "mb-4": loginInputFocused() && isMobile
-            }}
-          >
-            <div class="w-12 h-1 bg-primary rounded-full mx-auto mb-4 md:hidden opacity-60"></div>
-            <div class="terminal-cmd mb-4">
-              <span class="text-primary">&gt;&gt;&gt; 用户登录</span>
-            </div>
-            <Show when={!loginInputFocused() || !isMobile}>
-              <p class="text-sm text-base-content/70">登录后解锁完整功能</p>
-            </Show>
-          </div>
+      <div class="fixed inset-0 bg-base-300/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="card bg-base-100 shadow-2xl w-full max-w-md">
+          <div class="card-body">
+            <h2 class="card-title justify-center text-2xl mb-4">
+              Account Login
+            </h2>
 
-          <div class="space-y-4">
-            <div>
-              <label class="label">
-                <span class="label-text font-medium text-primary">用户名 / Username</span>
+            <div class="form-control w-full">
+              <label class="label" for="username-input">
+                <span class="label-text">Username</span>
               </label>
               <input
+                id="username-input"
                 type="text"
-                placeholder="输入用户名..."
-                class="input w-full text-base bg-transparent border-primary/50 text-primary"
+                placeholder="Enter username"
+                class="input input-bordered w-full"
                 value={username()}
                 onInput={(e) => setUsername(e.currentTarget.value)}
-                onFocus={() => setLoginInputFocused(true)}
-                onBlur={() => setLoginInputFocused(false)}
               />
             </div>
 
-            <div>
-              <label class="label">
-                <span class="label-text font-medium text-primary">密码 / Password</span>
+            <div class="form-control w-full mt-4">
+              <label class="label" for="password-input">
+                <span class="label-text">Password</span>
               </label>
               <input
+                id="password-input"
                 type="password"
-                placeholder="输入密码..."
-                class="input w-full text-base bg-transparent border-primary/50 text-primary"
+                placeholder="Enter password"
+                class="input input-bordered w-full"
                 value={password()}
                 onInput={(e) => setPassword(e.currentTarget.value)}
-                onFocus={() => setLoginInputFocused(true)}
-                onBlur={() => setLoginInputFocused(false)}
                 onKeyDown={(e) => {
                   if (
                     e.key === "Enter" &&
@@ -189,209 +157,151 @@ export function HomeView(props: HomeViewProps) {
               />
             </div>
 
-            <div class="flex space-x-3 mt-6">
+            <div class="card-actions justify-end mt-8">
               <button
                 type="button"
-                class="btn flex-1"
+                class="btn btn-ghost"
+                onClick={() => setShowLoginModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="btn btn-primary"
                 onClick={handleLogin}
                 disabled={!username().trim() || !password().trim()}
               >
-                <span class="text-primary font-bold">[ 登录 ]</span>
+                Login
               </button>
             </div>
-
-            <Show when={!loginInputFocused() || !isMobile}>
-              <div class="text-center text-xs text-base-content/50 mt-4">
-                <p class="font-mono">// 登录后解锁完整功能</p>
-              </div>
-            </Show>
           </div>
         </div>
       </div>
     </Show>
   );
 
-
-  // 主页渲染 - 终端风格设计
-  const renderMainView = () => (
-    <div class="min-h-screen bg-base-100 flex flex-col font-mono">
-      {/* 主内容区域 - Logo 和 Slogan */}
-      <div
-        class="flex-1 flex flex-col items-center p-6 transition-all duration-300"
-        classList={{
-          "justify-center": !inputFocused() || !isMobile,
-          "justify-start pt-20": inputFocused() && isMobile
-        }}
-      >
-        {/* ASCII 艺术装饰 - 仅桌面端显示 */}
-        <Show when={!isMobile && (!inputFocused() || !isMobile)}>
-          <div class="text-primary text-xs mb-4 opacity-60">
-            <pre>
-              {`
-╔═════════════════════════════════════════════════════════╗
-║  ╔═╗╔═╗╔═╗╦ ╦╔═╗╦  ╦  ╔═╗╔═╗  ╦ ╦╔═╗╦  ╦╔═╗       ║
-║  ║╣ ╠═╣║ ║║ ║╠═╝╚╗╔╝  ║ ║║ ║  ╠═╣╠═╣╚╗╔╝╠═╝       ║
-║  ╚═╝╩ ╩╚═╝╚═╝╩  ╚╝ ╚╝  ╚═╝╚═╝  ╩ ╩╩ ╩ ╚╝ ╩         ║
-╚═════════════════════════════════════════════════════════╝`}
-            </pre>
-          </div>
-        </Show>
-
-        {/* Logo 和标题 */}
-        <div
-          class="text-center transition-all duration-300"
-          classList={{
-            "mb-12": !inputFocused() || !isMobile,
-            "mb-8 scale-90": inputFocused() && isMobile
-          }}
-        >
-          <div
-            class="text-6xl text-primary transition-all duration-300 mb-6 glow-text"
-            classList={{
-              "mb-6": !inputFocused() || !isMobile,
-              "mb-3": inputFocused() && isMobile
-            }}
-          >
+  return (
+    <div class="min-h-screen bg-base-200 flex flex-col items-center justify-center p-4">
+      <div class="max-w-3xl w-full flex flex-col items-center">
+        {/* Logo/Header */}
+        <div class="text-center mb-12">
+          <div class="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-primary/10 text-primary text-5xl mb-6 shadow-lg">
             ⚡
           </div>
-          <div class="relative">
-            <h1
-              class="font-bold transition-all duration-300"
-              classList={{
-                "text-4xl mb-3": !inputFocused() || !isMobile,
-                "text-3xl mb-2": inputFocused() && isMobile
-              }}
-            >
-              <span class="text-primary">&gt;&gt;&gt;</span> RiTerm <span class="typing-cursor"></span>
-            </h1>
-          </div>
-          <Show when={!inputFocused() || !isMobile}>
-            <div class="terminal-cmd inline-block mt-2">
-              <span>P2P 终端远程连接工具 v1.0</span>
-            </div>
-          </Show>
+          <h1 class="text-4xl font-bold mb-2">RiTerm AI</h1>
+          <p class="text-base-content/60">Secure P2P Agent Collaboration</p>
         </div>
 
-        {/* 连接输入框 */}
-        <div class="w-full max-w-2xl mb-6">
-          <div class="ascii-box">
-            <div class="text-primary text-sm mb-3 font-bold">
-              &gt;&gt;&gt; 连接到远程终端
-            </div>
-            <div class="flex items-center space-x-2">
-              <div class="flex-1">
+        {/* Main Card */}
+        <div class="card bg-base-100 shadow-xl w-full max-w-lg overflow-hidden">
+          <div class="card-body p-8">
+            <h2 class="card-title text-xl mb-6">Connect to Session</h2>
+
+            <div class="form-control w-full">
+              <div class="join w-full">
                 <input
                   type="text"
                   value={props.sessionTicket}
                   onInput={(e) => props.onTicketInput(e.currentTarget.value)}
-                  onFocus={() => setInputFocused(true)}
-                  onBlur={() => setInputFocused(false)}
-                  placeholder="输入会话票据 (Session Ticket)..."
-                  class="input w-full text-base bg-transparent border-primary/50 text-primary focus:border-primary focus:ring-1 focus:ring-primary"
+                  placeholder="Paste session ticket here..."
+                  class="input input-bordered input-lg w-full join-item focus:outline-none"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && props.sessionTicket.trim()) {
                       handleConnect();
                     }
                   }}
                   autofocus
+                  aria-label="Session Ticket"
                 />
-                {props.connectionError && (
-                  <div class="text-error text-sm mt-2 flex items-center gap-2">
-                    <span class="text-lg">✕</span>
-                    <span>{props.connectionError}</span>
-                  </div>
-                )}
+                <Show when={isMobile}>
+                  <button
+                    type="button"
+                    class="btn btn-lg btn-square join-item"
+                    onClick={handleShowQRScanner}
+                    title="Scan QR Code"
+                  >
+                    📷
+                  </button>
+                </Show>
               </div>
-              {/* 扫码按钮 - 仅移动端显示 */}
-              <Show when={isMobile}>
-                <button
-                  type="button"
-                  class="btn btn-outline btn-square"
-                  onClick={handleShowQRScanner}
-                >
-                  <span class="text-2xl">📷</span>
-                </button>
+              <Show when={props.connectionError}>
+                <div class="label">
+                  <span class="label-text-alt text-error flex items-center gap-1">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-4 w-4"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <title>Error</title>
+                      <path
+                        fill-rule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                    {props.connectionError}
+                  </span>
+                </div>
               </Show>
             </div>
+
+            <div class="card-actions mt-6">
+              <button
+                type="button"
+                class="btn btn-primary btn-lg w-full shadow-lg hover:shadow-xl transition-shadow"
+                onClick={handleConnect}
+                disabled={!props.sessionTicket.trim() || props.connecting}
+              >
+                <Show
+                  when={props.connecting}
+                  fallback={<span>Connect Now</span>}
+                >
+                  <span class="loading loading-spinner"></span>
+                  Connecting...
+                </Show>
+              </button>
+            </div>
           </div>
+
+          {/* History Section */}
+          <Show when={ticketHistory().length > 0}>
+            <div class="bg-base-200/50 p-6 border-t border-base-200">
+              <h3 class="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-3">
+                Recent Sessions
+              </h3>
+              <div class="space-y-2">
+                <For each={ticketHistory().slice(0, 3)}>
+                  {(ticket) => (
+                    <button
+                      type="button"
+                      class="w-full text-left p-3 rounded-lg bg-base-100 hover:bg-base-200 border border-base-200 transition-colors flex items-center justify-between group"
+                      onClick={() => handleQuickConnect(ticket)}
+                    >
+                      <div class="flex items-center gap-3 overflow-hidden">
+                        <div class="w-2 h-2 rounded-full bg-success"></div>
+                        <span class="font-mono text-sm truncate opacity-70 group-hover:opacity-100 transition-opacity">
+                          {getTicketDisplayId(ticket)}
+                        </span>
+                      </div>
+                      <span class="text-base-content/30 group-hover:text-primary transition-colors">
+                        →
+                      </span>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
         </div>
 
-        {/* 票据历史 */}
-        <Show when={ticketHistory().length > 0}>
-          <div class="w-full max-w-2xl mb-6">
-            <div class="terminal-cmd">
-              <span class="text-primary">&gt;&gt;&gt; 最近连接:</span>
-            </div>
-            <div class="space-y-2 mt-3">
-              <For each={ticketHistory()}>
-                {(ticket) => (
-                  <div
-                    class="terminal-list-item flex items-center justify-between"
-                    onClick={() => {
-                      props.onTicketInput(ticket);
-                      handleConnect();
-                    }}
-                  >
-                    <div class="flex-1">
-                      <div class="font-mono text-sm font-medium text-primary">
-                        {getTicketDisplayId(ticket)}
-                      </div>
-                      <div class="text-xs text-base-content/50 mt-1">
-                        点击连接 / 按回车
-                      </div>
-                    </div>
-                    <div class="text-primary">
-                      <span class="text-lg">→</span>
-                    </div>
-                  </div>
-                )}
-              </For>
-            </div>
-          </div>
-        </Show>
-
-        {/* 登录按钮 */}
-        {/* <EnhancedButton */}
-        {/*   variant="primary" */}
-        {/*   size="lg" */}
-        {/*   fullWidth */}
-        {/*   onClick={() => setShowLoginModal(true)} */}
-        {/*   icon="🚀" */}
-        {/*   haptic */}
-        {/*   class="max-w-md" */}
-        {/* > */}
-        {/*   帐号登录 */}
-        {/* </EnhancedButton> */}
+        {/* Footer */}
+        <div class="mt-12 text-center text-sm text-base-content/40">
+          <p>Powered by Tauri v2 & SolidJS</p>
+        </div>
       </div>
-    </div>
-  );
 
-  return (
-    <div class="font-mono">
-      {/* 主页内容 */}
-      {renderMainView()}
-
-      {/* 登录模态框 */}
       {renderLoginModal()}
-
-      {/* 正在连接的加载遮罩 */}
-      <Show when={props.connecting}>
-        <div class="fixed inset-0 bg-black/90 z-50 flex items-center justify-center">
-          <div class="ascii-box text-center">
-            <div class="loading loading-spinner loading-lg mb-4 text-primary"></div>
-            <div class="font-mono text-primary text-lg mb-2">
-              <span class="typing-cursor inline-block mr-2"></span>
-              正在连接...
-            </div>
-            <div class="text-sm text-base-content/70 font-mono mt-2">
-              Establishing secure P2P connection...
-            </div>
-            <div class="text-xs text-base-content/50 font-mono mt-4">
-              [████████████░░░░░░░░] 50%
-            </div>
-          </div>
-        </div>
-      </Show>
     </div>
   );
 }

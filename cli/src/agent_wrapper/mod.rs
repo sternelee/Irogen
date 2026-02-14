@@ -4,77 +4,72 @@
 //! 并处理与它们的 stdin/stdout 通信。
 
 pub mod claude;
+pub mod claude_streaming;
 pub mod codex;
+pub mod events;
 pub mod factory;
 pub mod gemini;
+pub mod message_adapter;
 pub mod opencode;
+pub mod session;
 
-pub use claude::ClaudeOutputParser;
-pub use codex::CodexOutputParser;
-pub use factory::{Agent, AgentAvailability, AgentFactory, ClaudeCodeAgent, CodexAgent, GeminiAgent, OpenCodeAgent};
-pub use gemini::GeminiOutputParser;
-pub use opencode::OpenCodeOutputParser;
+pub use events::AgentTurnEvent;
+pub use factory::{Agent, AgentFactory};
+pub use session::{AgentConfig, AgentSession};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use riterm_shared::message_protocol::{
     AgentControlAction, AgentMessageContent, AgentSessionMetadata, AgentType,
 };
 use std::collections::HashMap;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+
+use crate::agent_wrapper::claude_streaming::ClaudeStreamingSession;
 
 /// AI Agent 管理器
 ///
 /// 负责启动和管理 AI Agent 进程，处理消息转发
 pub struct AgentManager {
-    /// 活跃的 Agent 会话
-    sessions: Arc<RwLock<HashMap<String, AgentSession>>>,
-    /// 会话 ID 到 Agent ID 的映射
-    session_to_agent: Arc<RwLock<HashMap<String, String>>>,
-}
-
-/// Agent 会话信息
-#[derive(Clone)]
-struct AgentSession {
-    /// 会话 ID
-    session_id: String,
-    /// Agent 类型
-    agent_type: AgentType,
-    /// 子进程
-    child: Arc<Mutex<Option<AgentChild>>>,
+    /// 活跃的 Agent 会话（使用新的 streaming session）
+    streaming_sessions: Arc<RwLock<HashMap<String, Arc<dyn StreamingAgentSession>>>>,
     /// 会话元数据
-    metadata: AgentSessionMetadata,
-    /// 是否被远程控制
-    controlled_by_remote: Arc<RwLock<bool>>,
-    /// 权限请求等待响应
-    pending_permissions: Arc<RwLock<HashMap<String, PendingPermission>>>,
+    session_metadata: Arc<RwLock<HashMap<String, AgentSessionMetadata>>>,
+    /// 事件转发任务
+    event_tasks: Arc<RwLock<HashMap<String, tokio::task::JoinHandle<()>>>>,
 }
 
-/// Agent 子进程包装
-struct AgentChild {
-    /// 子进程句柄
-    child: Child,
-    /// stdin 写入器
-    stdin: ChildStdin,
-}
+/// Trait for streaming agent sessions (internal use)
+#[async_trait::async_trait]
+pub trait StreamingAgentSession: Send + Sync {
+    /// Get the session ID
+    #[allow(dead_code)]
+    fn session_id(&self) -> &str;
 
-/// 待处理的权限请求
-struct PendingPermission {
-    request_id: String,
-    tool_name: String,
-    tool_params: serde_json::Value,
-    created_at: u64,
+    /// Get the agent type
+    #[allow(dead_code)]
+    fn agent_type(&self) -> AgentType;
+
+    /// Subscribe to agent events
+    fn subscribe(&self) -> broadcast::Receiver<AgentTurnEvent>;
+
+    /// Send a message to the agent
+    async fn send_message(&self, text: String, turn_id: &str) -> Result<(), String>;
+
+    /// Interrupt the current operation
+    async fn interrupt(&self) -> Result<(), String>;
 }
 
 impl AgentManager {
     /// 创建新的 AgentManager
     pub fn new() -> Self {
         Self {
-            sessions: Arc::new(RwLock::new(HashMap::new())),
-            session_to_agent: Arc::new(RwLock::new(HashMap::new())),
+            streaming_sessions: Arc::new(RwLock::new(HashMap::new())),
+            session_metadata: Arc::new(RwLock::new(HashMap::new())),
+            event_tasks: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -91,137 +86,99 @@ impl AgentManager {
         &self,
         agent_type: AgentType,
         project_path: String,
-        args: Vec<String>,
+        _args: Vec<String>,
     ) -> Result<(String, AgentSessionMetadata)> {
-        info!("Starting AI Agent session: {:?} in {}", agent_type, project_path);
+        // Generate a new session ID
+        let session_id = Uuid::new_v4().to_string();
+        self.start_session_with_id(session_id, agent_type, project_path)
+            .await
+    }
 
-        // Expand ~ to home directory
-        let expanded_path = if project_path.starts_with("~/") {
-            if let Some(home) = std::env::var("HOME").ok().or_else(|| std::env::var("USERPROFILE").ok()) {
-                project_path.replacen("~", &home, 1)
+    /// 启动 AI Agent 会话（使用指定的会话 ID）
+    ///
+    /// # Arguments
+    /// * `session_id` - 指定的会话 ID（来自 App 端）
+    /// * `agent_type` - AI Agent 类型
+    /// * `project_path` - 项目路径
+    ///
+    /// # Returns
+    /// 返回会话 ID 和元数据
+    pub async fn start_session_with_id(
+        &self,
+        session_id: String,
+        agent_type: AgentType,
+        project_path: String,
+    ) -> Result<(String, AgentSessionMetadata)> {
+        info!(
+            "Starting AI Agent session with ID {}: {:?} in {}",
+            session_id, agent_type, project_path
+        );
+
+        // Expand ~ (both ASCII ~ and full-width ～) to home directory
+        let expanded_path = if project_path.starts_with("~/") || project_path.starts_with("～/") {
+            if let Some(home) = std::env::var("HOME")
+                .ok()
+                .or_else(|| std::env::var("USERPROFILE").ok())
+            {
+                // Replace both tilde variants with home directory
+                let path = project_path
+                    .replacen("~", &home, 1)
+                    .replacen("～", &home, 1);
+                if !path.starts_with("/") && !path.starts_with("\\") {
+                    format!(
+                        "{}/{}",
+                        home.trim_end_matches('/'),
+                        path.trim_start_matches(|c| c == '~' || c == '／')
+                    )
+                } else {
+                    path
+                }
             } else {
-                project_path
+                project_path.clone()
             }
         } else {
             project_path.clone()
         };
 
-        let session_id = Uuid::new_v4().to_string();
-        let (agent_id, command) = self.build_agent_command(&agent_type, &expanded_path, args)?;
-
-        debug!("Spawning agent: {:?}", command);
-
-        // Get the program name for error messages
-        let program_name = command.get_program().to_string_lossy().to_string();
-
-        let mut command_mut = command;
-        let mut child = command_mut
-            .spawn()
-            .with_context(|| format!("Failed to spawn agent process '{}'. Please ensure the command is installed and in PATH.", program_name))?;
-
-        let stdin = child
-            .stdin
-            .take()
-            .context("Failed to get stdin handle")?;
-
-        let agent_child = AgentChild {
-            child,
-            stdin,
-        };
-
         // 获取系统信息构建元数据
-        let metadata = self.build_session_metadata(
-            session_id.clone(),
-            agent_type,
-            expanded_path.clone(),
-        ).await;
+        let metadata = self
+            .build_session_metadata(session_id.clone(), agent_type, expanded_path.clone())
+            .await;
 
-        // 创建会话
-        let session = AgentSession {
-            session_id: session_id.clone(),
-            agent_type,
-            child: Arc::new(Mutex::new(Some(agent_child))),
-            metadata: metadata.clone(),
-            controlled_by_remote: Arc::new(RwLock::new(false)),
-            pending_permissions: Arc::new(RwLock::new(HashMap::new())),
+        // Create the appropriate streaming session based on agent type
+        let session: Arc<dyn StreamingAgentSession> = match agent_type {
+            AgentType::ClaudeCode => {
+                let session = ClaudeStreamingSession::new(
+                    session_id.clone(),
+                    PathBuf::from(&expanded_path),
+                    Some(AgentConfig::default()),
+                );
+                Arc::new(session)
+            }
+            _ => {
+                // For other agent types, fall back to legacy implementation
+                // TODO: Implement streaming sessions for OpenCode, Codex, Gemini
+                return Err(anyhow::anyhow!(
+                    "Streaming mode not yet implemented for {:?}. Use legacy mode.",
+                    agent_type
+                ));
+            }
         };
 
-        // 注册会话
+        // Store the session
         {
-            let mut sessions = self.sessions.write().await;
-            let mut session_map = self.session_to_agent.write().await;
-            sessions.insert(session_id.clone(), session);
-            session_map.insert(session_id.clone(), agent_id);
+            let mut sessions = self.streaming_sessions.write().await;
+            sessions.insert(session_id.clone(), session.clone());
         }
 
-        // 启动 stdout 处理任务
-        self.start_stdout_handler(session_id.clone()).await;
+        // Store metadata
+        {
+            let mut meta = self.session_metadata.write().await;
+            meta.insert(session_id.clone(), metadata.clone());
+        }
 
         info!("AI Agent session started: {}", session_id);
         Ok((session_id, metadata))
-    }
-
-    /// 构建 Agent 命令
-    fn build_agent_command(
-        &self,
-        agent_type: &AgentType,
-        project_path: &str,
-        extra_args: Vec<String>,
-    ) -> Result<(String, Command)> {
-        let agent_id = Uuid::new_v4().to_string();
-
-        let mut command = match agent_type {
-            AgentType::ClaudeCode => {
-                // Run claude in interactive mode (no special flags needed)
-                // Claude Code uses MCP protocol over stdio by default
-                let mut cmd = Command::new("claude");
-                cmd.current_dir(project_path);
-                cmd
-            }
-            AgentType::OpenCode => {
-                let mut cmd = Command::new("opencode");
-                cmd.current_dir(project_path);
-                cmd
-            }
-            AgentType::Codex => {
-                // Use 'exec' subcommand for non-interactive mode
-                let mut cmd = Command::new("codex");
-                cmd.arg("exec")
-                   .current_dir(project_path);
-                cmd
-            }
-            AgentType::Gemini => {
-                let mut cmd = Command::new("gemini");
-                cmd.arg("chat")
-                   .current_dir(project_path);
-                cmd
-            }
-            AgentType::Custom => {
-                // 自定义 agent 由用户提供完整命令
-                if extra_args.is_empty() {
-                    return Err(anyhow::anyhow!("Custom agent requires command"));
-                }
-                let mut cmd = Command::new(&extra_args[0]);
-                if extra_args.len() > 1 {
-                    cmd.args(&extra_args[1..]);
-                }
-                cmd.current_dir(project_path);
-                cmd
-            }
-        };
-
-        // 添加额外参数
-        if !matches!(agent_type, AgentType::Custom) {
-            command.args(extra_args);
-        }
-
-        // 配置 stdio - 使用 inherit 来保持交互模式
-        command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        Ok((agent_id, command))
     }
 
     /// 构建会话元数据
@@ -240,9 +197,7 @@ impl AgentManager {
         let git_branch = self.get_git_branch(&project_path).await;
 
         // 获取系统信息
-        let hostname = gethostname::gethostname()
-            .to_string_lossy()
-            .to_string();
+        let hostname = gethostname::gethostname().to_string_lossy().to_string();
         let os = std::env::consts::OS.to_string();
 
         // 获取 agent 版本
@@ -313,90 +268,88 @@ impl AgentManager {
         })
     }
 
-    /// 启动 stdout 处理任务
-    async fn start_stdout_handler(&self, session_id: String) {
-        let sessions = self.sessions.clone();
-
-        tokio::spawn(async move {
-            let _stdout_rx = {
-                let session_lock = sessions.read().await;
-                let session = session_lock.get(&session_id);
-                if session.is_none() {
-                    error!("Session not found for stdout handler: {}", session_id);
-                    return;
-                }
-                let _session = session.unwrap();
-
-                // 获取 stdout 读取器
-                // 注意：这里需要重新设计，因为 ChildStdout 需要被移动
-                // 我们将在 AgentSession 中使用 mpsc channel 来转发输出
-                return;
-            };
-        });
+    /// Subscribe to session events
+    pub async fn subscribe(&self, session_id: &str) -> Option<broadcast::Receiver<AgentTurnEvent>> {
+        let sessions = self.streaming_sessions.read().await;
+        sessions.get(session_id).map(|s| s.subscribe())
     }
 
     /// 发送消息到 Agent
-    pub async fn send_to_agent(
-        &self,
-        session_id: &str,
-        content: String,
-    ) -> Result<()> {
-        let sessions = self.sessions.read().await;
+    pub async fn send_to_agent(&self, session_id: &str, content: String) -> Result<()> {
+        debug!(
+            "Attempting to send to agent session_id: '{}', content: '{}'",
+            session_id, content
+        );
+
+        let sessions = self.streaming_sessions.read().await;
+
+        if !sessions.contains_key(session_id) {
+            let available_ids: Vec<&str> = sessions.keys().map(|s| s.as_str()).collect();
+            warn!(
+                "Session '{}' not found. Available sessions: {:?}",
+                session_id, available_ids
+            );
+            return Err(anyhow::anyhow!("Session not found: {}", session_id));
+        }
+
         let session = sessions
             .get(session_id)
             .ok_or_else(|| anyhow::anyhow!("Session not found: {}", session_id))?;
 
-        let mut child_guard = session.child.lock().await;
-        let child = child_guard
-            .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("Agent process not available"))?;
+        let turn_id = Uuid::new_v4().to_string();
+        session
+            .send_message(content, &turn_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to send message: {}", e))?;
 
-        // 添加换行符，因为交互式 CLI 程序需要
-        let message = format!("{}\n", content);
-
-        use std::io::Write;
-        child.stdin
-            .write_all(message.as_bytes())
-            .context("Failed to write to agent stdin")?;
-        child.stdin.flush().context("Failed to flush agent stdin")?;
-
-        debug!("Sent message to agent {}: {}", session_id, content);
+        debug!("Sent message to agent {}", session_id);
         Ok(())
     }
 
     /// 发送控制命令到 Agent
-    pub async fn send_control(
-        &self,
-        session_id: &str,
-        action: AgentControlAction,
-    ) -> Result<()> {
+    pub async fn send_control(&self, session_id: &str, action: AgentControlAction) -> Result<()> {
+        info!(
+            "[AgentManager] send_control called: session_id='{}', action={:?}",
+            session_id, action
+        );
+
+        let sessions = self.streaming_sessions.read().await;
+        let session = sessions.get(session_id).ok_or_else(|| {
+            error!("[AgentManager] Session not found: {}", session_id);
+            anyhow::anyhow!("Session not found: {}", session_id)
+        })?;
+
         match action {
             AgentControlAction::SendInput { content } => {
-                self.send_to_agent(session_id, content).await?;
+                let turn_id = Uuid::new_v4().to_string();
+                info!(
+                    "[AgentManager] Sending message to session {}: turn_id={}",
+                    session_id, turn_id
+                );
+                session.send_message(content, &turn_id).await.map_err(|e| {
+                    error!("[AgentManager] Failed to send message: {}", e);
+                    anyhow::anyhow!("Failed to send message: {}", e)
+                })?;
+                info!(
+                    "[AgentManager] Message sent successfully to session {}",
+                    session_id
+                );
             }
             AgentControlAction::SendInterrupt => {
-                // 发送 Ctrl+C (ASCII 3)
-                self.send_to_agent(session_id, "\x03".to_string()).await?;
-            }
-            AgentControlAction::Pause => {
-                // 设置暂停状态
-                let sessions = self.sessions.read().await;
-                if let Some(session) = sessions.get(session_id) {
-                    *session.controlled_by_remote.write().await = true;
-                }
-            }
-            AgentControlAction::Resume => {
-                // 恢复状态
-                let sessions = self.sessions.read().await;
-                if let Some(session) = sessions.get(session_id) {
-                    *session.controlled_by_remote.write().await = false;
-                }
+                session
+                    .interrupt()
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to interrupt: {}", e))?;
             }
             AgentControlAction::Terminate => {
+                drop(sessions); // Release read lock
                 self.stop_session(session_id).await?;
             }
+            AgentControlAction::Pause | AgentControlAction::Resume => {
+                // These are handled at the manager level
+            }
             AgentControlAction::GetStatus => {
-                // 返回状态信息，不执行操作
+                // Return status info
             }
         }
 
@@ -404,35 +357,14 @@ impl AgentManager {
     }
 
     /// 处理权限请求
+    #[allow(dead_code)]
     pub async fn handle_permission_request(
         &self,
         session_id: &str,
         tool_name: String,
-        tool_params: serde_json::Value,
+        _tool_params: serde_json::Value,
     ) -> Result<String> {
         let request_id = Uuid::new_v4().to_string();
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found: {}", session_id))?;
-
-        let permission = PendingPermission {
-            request_id: request_id.clone(),
-            tool_name: tool_name.clone(),
-            tool_params: tool_params.clone(),
-            created_at: now,
-        };
-
-        // 存储待处理的权限请求
-        session.pending_permissions.write().await.insert(
-            request_id.clone(),
-            permission,
-        );
 
         info!(
             "Permission request created: {} for tool {} in session {}",
@@ -443,6 +375,7 @@ impl AgentManager {
     }
 
     /// 处理权限响应
+    #[allow(dead_code)]
     pub async fn handle_permission_response(
         &self,
         session_id: &str,
@@ -450,30 +383,13 @@ impl AgentManager {
         approved: bool,
         reason: Option<String>,
     ) -> Result<()> {
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| anyhow::anyhow!("Session not found: {}", session_id))?;
-
-        // 移除待处理的权限请求
-        session.pending_permissions.write().await.remove(request_id);
-
-        // 将响应发送回 Agent
-        let response = if approved {
-            "y\n".to_string()  // 批准
-        } else {
-            let msg = reason.unwrap_or_else(|| "n".to_string());
-            format!("{}\n", msg)
-        };
-
-        drop(sessions); // 释放读锁
-
-        self.send_to_agent(session_id, response).await?;
-
         info!(
-            "Permission response sent: {} approved={}",
+            "Permission response received: {} approved={}",
             request_id, approved
         );
+
+        // TODO: Forward permission response to the agent session
+        let _ = (session_id, approved, reason);
 
         Ok(())
     }
@@ -482,54 +398,62 @@ impl AgentManager {
     pub async fn stop_session(&self, session_id: &str) -> Result<()> {
         info!("Stopping session: {}", session_id);
 
-        let mut sessions = self.sessions.write().await;
-        let mut session_map = self.session_to_agent.write().await;
-
-        if let Some(session) = sessions.remove(session_id) {
-            session_map.remove(session_id);
-
-            let mut child_guard = session.child.lock().await;
-            if let Some(mut agent_child) = child_guard.take() {
-                // 尝试优雅关闭
-                if let Err(e) = agent_child.child.kill() {
-                    warn!("Failed to kill agent process: {}", e);
-                }
-                let _ = agent_child.child.wait();
+        // Remove and interrupt the session
+        {
+            let sessions = self.streaming_sessions.read().await;
+            if let Some(session) = sessions.get(session_id) {
+                let _ = session.interrupt().await;
             }
-
-            info!("Session stopped: {}", session_id);
-            Ok(())
-        } else {
-            Err(anyhow::anyhow!("Session not found: {}", session_id))
         }
+
+        // Remove from all maps
+        {
+            let mut sessions = self.streaming_sessions.write().await;
+            sessions.remove(session_id);
+        }
+        {
+            let mut meta = self.session_metadata.write().await;
+            meta.remove(session_id);
+        }
+        {
+            let mut tasks = self.event_tasks.write().await;
+            if let Some(handle) = tasks.remove(session_id) {
+                handle.abort();
+            }
+        }
+
+        info!("Session stopped: {}", session_id);
+        Ok(())
     }
 
     /// 获取会话元数据
     pub async fn get_session_metadata(&self, session_id: &str) -> Option<AgentSessionMetadata> {
-        let sessions = self.sessions.read().await;
-        sessions.get(session_id).map(|s| s.metadata.clone())
+        let meta = self.session_metadata.read().await;
+        meta.get(session_id).cloned()
     }
 
     /// 获取所有活跃会话
     pub async fn list_sessions(&self) -> Vec<AgentSessionMetadata> {
-        let sessions = self.sessions.read().await;
-        sessions.values().map(|s| s.metadata.clone()).collect()
+        let meta = self.session_metadata.read().await;
+        meta.values().cloned().collect()
     }
 
     /// 检查会话是否存在
+    #[allow(dead_code)]
     pub async fn session_exists(&self, session_id: &str) -> bool {
-        let sessions = self.sessions.read().await;
+        let sessions = self.streaming_sessions.read().await;
         sessions.contains_key(session_id)
     }
 
     /// 设置远程控制状态
+    #[allow(dead_code)]
     pub async fn set_remote_control(&self, session_id: &str, controlled: bool) -> Result<()> {
-        let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
+        let mut meta = self.session_metadata.write().await;
+        let metadata = meta
+            .get_mut(session_id)
             .ok_or_else(|| anyhow::anyhow!("Session not found: {}", session_id))?;
 
-        *session.controlled_by_remote.write().await = controlled;
+        metadata.controlled_by_remote = controlled;
 
         Ok(())
     }
@@ -544,11 +468,13 @@ impl Default for AgentManager {
 /// Agent 输出处理器
 ///
 /// 从 Agent stdout 读取输出并转换为 RiTerm 消息
+#[allow(dead_code)]
 pub struct AgentOutputHandler {
     session_id: String,
     agent_type: AgentType,
 }
 
+#[allow(dead_code)]
 impl AgentOutputHandler {
     pub fn new(session_id: String, agent_type: AgentType) -> Self {
         Self {

@@ -42,12 +42,13 @@ The project is organized as a Cargo workspace with four main components:
    - Entry points: `src/app.tsx` (root), `src/entry-client.tsx`, `src/entry-server.tsx`
    - Mobile-first responsive design with adaptive layouts
    - Terminal UI using **ghostty-web** (modern WASM-based terminal emulator)
-   - Components: `HomeView.tsx`, `RemoteSessionView.tsx`, `SettingsModal.tsx`, `P2PBackground.tsx`
+   - Components: `HomeView.tsx`, `RemoteSessionView.tsx`, `SettingsModal.tsx`
    - UI Components: `CyberComponents`, `CyberEffects`, `EnhancedComponents`, `GestureSettings`, `KeyboardAwareContainer`, `MobileNavigation`, `QuickAccessToolbar`, `ThemeSwitcher`
 
 ## Development Commands
 
 ### Build and Run
+
 ```bash
 # Build CLI tool
 cd cli && cargo build --release
@@ -75,6 +76,7 @@ pnpm tsc
 ```
 
 ### Mobile Development
+
 ```bash
 # Android development
 pnpm tauri:android:dev
@@ -90,6 +92,7 @@ idevicesyslog | grep RiTerm
 ```
 
 ### Testing
+
 ```bash
 # Rust tests
 cargo test
@@ -112,6 +115,7 @@ cd browser && cargo test
 ```
 
 ### Code Quality and Development Tools
+
 ```bash
 # TypeScript type checking
 pnpm tsc
@@ -151,6 +155,7 @@ cd browser && wasm-pack build --target web --release
 ```
 
 ### Development Workflow
+
 ```bash
 # Install dependencies (use pnpm as specified in package.json)
 pnpm install
@@ -199,11 +204,13 @@ The project implements a unified message system through `shared/src/message_prot
 **Important**: The frontend uses **SolidJS**, not React. SolidJS is a reactive framework with fine-grained reactivity, distinct from React's component model.
 
 Key message flows:
+
 1. Frontend → Tauri/WASM → Message struct → P2P Network → CLI Host
 2. CLI processes terminal operations and sends responses back through the chain
 3. Browser client can connect directly using WebAssembly P2P implementation
 
 **Terminal Actions** include:
+
 - `Create` - Create new terminal session
 - `List` - List all terminals
 - `Stop` - Stop a terminal
@@ -223,37 +230,43 @@ Key message flows:
 ### Core Components
 
 #### P2P Networking (`shared/src/`)
+
 - `quic_server.rs` - QUIC-based server with connection multiplexing and message routing
 - `event_manager.rs` - Event coordination, buffering, and session lifecycle management
 - `communication_manager.rs` - High-level P2P communication and connection handling
 - `message_protocol.rs` - Unified message system with extensible handler architecture
 
 #### CLI Tool (`cli/src/`)
+
 - `message_server.rs` - Host server with MessageHandler implementations for different message types
 - `main.rs` - CLI entry point with `host` subcommand using clap
 - `shell.rs` - Cross-platform shell detection (Zsh, Bash, Fish, Nushell, PowerShell)
 
 #### Tauri App (`app/src/`)
+
 - `lib.rs` - Main Tauri backend with session management and P2P coordination
 - Terminal creation, input handling, and real-time output forwarding
 - Mobile/desktop capability management with conditional compilation
 - TCP forwarding session management and statistics tracking
 
 #### Frontend (`src/`)
+
 - **SolidJS Start** (`@solidjs/start`) with file-based routing in `src/routes/`
 - Vinxi build tool wraps Vite for enhanced SSR capabilities
 - Root component: `src/app.tsx` with `FileRoutes` from `@solidjs/start/router`
 - Mobile-first responsive design with ViewportManager and AdaptiveLayoutManager utilities
 - Terminal UI using **ghostty-web** (modern WASM-based terminal emulator, migrated from xterm.js)
-- Main components: `HomeView.tsx`, `RemoteSessionView.tsx`, `SettingsModal.tsx`, `P2PBackground.tsx`
+- Main components: `HomeView.tsx`, `RemoteSessionView.tsx`, `SettingsModal.tsx`
 - UI components: `CyberComponents`, `CyberEffects`, `EnhancedComponents`, `GestureSettings`, `KeyboardAwareContainer`, `MobileNavigation`, `QuickAccessToolbar`, `ThemeSwitcher`
 
 #### Browser Client (`browser/src/`)
+
 - WebAssembly implementation using wasm-bindgen for browser P2P networking
 - Terminal-only functionality (no TCP forwarding due to security constraints)
 - Direct P2P connection capability without native app installation
 
 ### P2P Architecture and Terminal I/O
+
 - **iroh Networking**: P2P communication with NAT traversal and no central server dependency
 - **End-to-End Encryption**: ChaCha20Poly1305 encryption for all terminal data
 - **QUIC Protocol**: Reliable message delivery with connection multiplexing
@@ -265,6 +278,7 @@ Key message flows:
 - **Session Recovery**: Automatic reconnection and session state restoration
 
 ### Terminal Logging
+
 - **Automatic I/O Recording**: All terminal input and output is automatically logged to files
 - **Log Location**: Logs are stored in `.riterm/logs/` directory with format `{terminal_id}.log`
 - **Log Rotation**: Default maximum of 1000 lines per terminal (configurable)
@@ -274,6 +288,7 @@ Key message flows:
 - **File Persistence**: Logs are persisted to disk for session recovery and auditing
 
 ### Frontend Architecture
+
 - **@solidjs/start Framework**: Modern SSR-ready architecture with file-based routing
 - **Mobile-First Design**: Responsive layouts with dynamic viewport management
 - **ViewportManager Utility**: Advanced viewport height management with keyboard awareness
@@ -282,7 +297,7 @@ Key message flows:
 - **Keyboard Management**: Advanced mobile keyboard handling with automatic viewport adjustment
 - **Real-time Updates**: Reactive UI using SolidJS fine-grained reactivity
 - **Terminal Emulator**: ghostty-web (WASM-based, migrated from xterm.js)
-- **Components**: HomeView (connection screen), RemoteSessionView (terminal interface), SettingsModal, P2PBackground
+- **Components**: HomeView (connection screen), RemoteSessionView (terminal interface), SettingsModal
 
 ## Configuration Files
 
@@ -296,6 +311,7 @@ Key message flows:
 ## Dependencies and Ecosystem
 
 ### Core Rust Dependencies
+
 - **iroh** (0.95) - P2P networking with NAT traversal and QUIC protocol
 - **tokio** (1.47) - Async runtime with full features (net, fs, rt-multi-thread)
 - **portable-pty** (0.9) - Cross-platform pseudo-terminal
@@ -306,6 +322,7 @@ Key message flows:
 - **Rust 2024 Edition**: The `app` crate uses Rust 2024 edition
 
 ### Frontend Dependencies
+
 - **solid-js** (1.9.11) - Reactive UI framework (SolidJS, not React)
 - **@solidjs/start** (1.2.1) - Modern SolidJS framework with SSR support
 - **@solidjs/router** (0.15.4) - File-based routing
@@ -317,6 +334,7 @@ Key message flows:
 - **solid-sonner** - Toast notifications for SolidJS
 
 ### Key Features
+
 - **Package Manager**: pnpm@10.28.2 (specified in package.json)
 - **Build Profiles**:
   - Release with LTO, strip, and single codegen-unit optimization
@@ -335,12 +353,14 @@ Key message flows:
 ## Development Notes
 
 ### Code Organization
+
 - The codebase uses conditional compilation for mobile vs desktop features
 - Performance optimizations include event batching and memory limits
 - Logging levels are adjusted based on build configuration (debug vs release)
 - Mobile apps include gesture controls and adaptive layouts
 
 ### Recent Major Changes
+
 - **Migrated to @solidjs/start** - Modern SSR-ready SolidJS framework with Vinxi build tool
 - **Switched to ghostty-web** - Modern WASM-based terminal emulator (replaced xterm.js)
 - Implemented unified message protocol replacing previous TerminalCommand/Response system
@@ -354,6 +374,7 @@ Key message flows:
 - Improved message serialization with bincode for performance optimization
 
 ### Message Flow Architecture
+
 1. **Frontend** sends actions via Tauri invoke commands or browser WASM calls
 2. **Tauri Backend/WASM** converts to structured Message objects
 3. **Communication Manager** handles P2P message routing using iroh
@@ -362,13 +383,16 @@ Key message flows:
 6. **Browser Client** can directly connect using WebAssembly P2P implementation
 
 ### TCP Service Forwarding (Recent Addition)
+
 The project now includes TCP service forwarding capabilities allowing users to:
+
 - Create TCP forwarding sessions through the P2P network
 - Forward local TCP services to remote clients (and vice versa)
 - Manage forwarding sessions with real-time statistics
 - Support for both "Listen to Remote" and "Connect to Remote" forwarding modes
 
 **Key Components:**
+
 - `shared/src/message_protocol.rs` - Defines `TcpForwardingAction`, `TcpForwardingType`, and `TcpDataType` enums
 - `cli/src/message_server.rs` - Implements `TcpForwardingMessageHandler` and `TcpDataMessageHandler`
 - `app/src/tcp_forwarding.rs` - TCP forwarding session management module
@@ -376,12 +400,14 @@ The project now includes TCP service forwarding capabilities allowing users to:
 - `browser/src/` - WebAssembly implementation for browser-based terminal access only
 
 **Message Types:**
+
 - `TcpForwardingAction::CreateSession` - Create new forwarding sessions
 - `TcpForwardingAction::ListSessions` - List existing sessions
 - `TcpForwardingAction::StopSession` - Stop specific sessions
 - `TcpDataType::Data` - Forward actual TCP data between endpoints
 
 **Browser Client Architecture:**
+
 - Uses WebAssembly for P2P networking in the browser
 - Leverages `wasm-bindgen` for JavaScript interop
 - Implements terminal-only functionality (no TCP forwarding support)
@@ -389,6 +415,7 @@ The project now includes TCP service forwarding capabilities allowing users to:
 - Focuses purely on terminal data interaction capabilities
 
 ### Mobile Considerations
+
 - **ViewportManager Utility** (`src/utils/mobile/ViewportManager.ts`): Centralized viewport height management with keyboard awareness
 - **AdaptiveLayoutManager** (`src/utils/mobile/AdaptiveLayoutManager.ts`): Responsive layout class application
 - **MobileKeyboard Utility** (`src/utils/mobile/index.ts`): Touch device keyboard state tracking
@@ -400,6 +427,7 @@ The project now includes TCP service forwarding capabilities allowing users to:
 - HMR (Hot Module Replacement) for mobile development with configurable WebSocket host
 
 ### Testing and Debugging
+
 - Comprehensive logging system with configurable levels
 - Development-time debug information in mobile builds
 - Session management testing utilities
@@ -416,6 +444,7 @@ The project now includes TCP service forwarding capabilities allowing users to:
 ## Build Targets and Workspace Structure
 
 ### Project Structure
+
 ```
 riterm/
 ├── cli/                 # CLI tool (Rust) → builds to `cli/target/`
@@ -432,6 +461,7 @@ riterm/
 ```
 
 ### Build Targets
+
 - **CLI**: `cli/target/release/cli` or `cli/target/debug/cli`
 - **Desktop App**: `app/target/release/bundle/` (macOS .app, Windows .exe, Linux AppImage)
 - **Mobile Apps**: Generated in `app/gen/android/` (APK) and `app/gen/apple/` (iOS .ipa)
@@ -439,6 +469,7 @@ riterm/
 - **Frontend**: `.output/public/` directory (Vinxi build output, served by Tauri in production)
 
 ### Build Process Notes
+
 - The project uses a Cargo workspace with four crates: `cli`, `app`, `shared`, and `browser`
 - Frontend uses **@solidjs/start** with **Vinxi** build tool (modern SSR-ready architecture)
 - Frontend builds to `.output/public/` which Tauri packages in the final app
@@ -454,6 +485,7 @@ riterm/
 ## Common Development Patterns
 
 ### Adding New Terminal Features
+
 1. Define message types in `shared/src/message_protocol.rs`
 2. Implement CLI handlers in `cli/src/message_server.rs` (MessageHandler implementations)
 3. Add Tauri commands in `app/src/lib.rs`
@@ -462,6 +494,7 @@ riterm/
 6. Update mobile viewport management if needed (ViewportManager/AdaptiveLayoutManager)
 
 ### Adding New TCP Forwarding Features
+
 1. Define new TCP message types in `shared/src/message_protocol.rs`
 2. Implement TCP handlers in `cli/src/message_server.rs` (TcpForwardingMessageHandler or TcpDataMessageHandler)
 3. Add Tauri commands in `app/src/lib.rs` or update `app/src/tcp_forwarding.rs`
@@ -469,6 +502,7 @@ riterm/
 5. Test with both forwarding modes: "ListenToRemote" and "ConnectToRemote"
 
 ### Browser Client Development
+
 1. Implement browser-specific features in `browser/src/lib.rs`
 2. Use WebAssembly for P2P networking via `wasm-bindgen`
 3. Focus on terminal data interaction only (no TCP forwarding)
@@ -477,12 +511,14 @@ riterm/
 6. Deploy browser client to static hosting for web access
 
 **Browser Client Limitations:**
+
 - Only supports terminal creation and basic interaction
 - No TCP forwarding capabilities (security and technical limitations)
 - Simplified message handling compared to native clients
 - Dependent on browser WebAssembly support and security constraints
 
 ### Mobile Development Tips
+
 - Test with both Android and iOS when possible
 - Consider touch targets and gesture handling
 - Use conditional compilation for platform-specific features
@@ -490,11 +526,13 @@ riterm/
 - iOS device logs: `idevicesyslog | grep RiTerm`
 
 ### Session Management
+
 - Always handle session cleanup in component unmount effects
 - Monitor event count to stay within buffer limits
 - Implement proper error handling for network interruptions
 
 ### Internationalization
+
 - The project supports both Chinese and English users
 - README.md contains comprehensive Chinese documentation
 - User interface should consider bilingual support where appropriate

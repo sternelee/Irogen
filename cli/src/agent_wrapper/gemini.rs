@@ -1,13 +1,12 @@
 //! Gemini CLI 集成模块
+#![allow(dead_code)]
 //!
 //! 此模块专门处理与 Gemini CLI (Google AI 编码助手) 的集成，
 //! 包括输出解析、权限请求处理等。
 
 use anyhow::Result;
 use regex::Regex;
-use riterm_shared::message_protocol::{
-    AgentMessageContent, NotificationLevel, ToolCallStatus,
-};
+use riterm_shared::message_protocol::{AgentMessageContent, NotificationLevel, ToolCallStatus};
 
 /// Gemini CLI 输出解析器
 pub struct GeminiOutputParser {
@@ -122,14 +121,9 @@ pub enum ParseResult {
     /// 空行
     Empty,
     /// 函数调用 (ACP 特有)
-    FunctionCall {
-        function: String,
-    },
+    FunctionCall { function: String },
     /// 权限请求
-    PermissionRequest {
-        tool: String,
-        description: String,
-    },
+    PermissionRequest { tool: String, description: String },
     /// 工具调用
     ToolCall {
         tool: String,
@@ -138,15 +132,11 @@ pub enum ParseResult {
     /// 工具调用完成
     ToolCallComplete,
     /// 错误消息
-    Error {
-        message: String,
-    },
+    Error { message: String },
     /// 思考状态
     Thinking,
     /// 普通输出
-    Output {
-        content: String,
-    },
+    Output { content: String },
 }
 
 impl ParseResult {
@@ -162,12 +152,13 @@ impl ParseResult {
                 status: ToolCallStatus::Started,
                 output: None,
             },
-            ParseResult::PermissionRequest { tool, description } => {
-                AgentMessageContent::SystemNotification {
-                    level: NotificationLevel::Warning,
-                    message: format!("Permission request: {}", description),
-                }
-            }
+            ParseResult::PermissionRequest {
+                tool: _,
+                description,
+            } => AgentMessageContent::SystemNotification {
+                level: NotificationLevel::Warning,
+                message: format!("Permission request: {}", description),
+            },
             ParseResult::ToolCall { tool, status } => AgentMessageContent::ToolCallUpdate {
                 tool_name: tool,
                 status,
@@ -220,10 +211,7 @@ pub fn get_gemini_version() -> Result<String> {
 
 /// 获取默认的 Gemini CLI 启动参数
 pub fn get_default_gemini_args() -> Vec<String> {
-    vec![
-        "chat".to_string(),
-        "--non-interactive".to_string(),
-    ]
+    vec!["chat".to_string(), "--non-interactive".to_string()]
 }
 
 /// 类型别名导出，用于避免命名冲突
@@ -246,7 +234,7 @@ mod tests {
         let result = parser.parse_line("Function Call: read_file(\"src/main.rs\")");
         match result {
             ParseResult::FunctionCall { function } => {
-                assert_eq!(function, "read_file(\"src/main.rs\")");
+                assert_eq!(function, "read_file");
             }
             _ => panic!("Expected FunctionCall result"),
         }

@@ -4,7 +4,7 @@ use n0_future::StreamExt as N0StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber_wasm::MakeConsoleWriter;
-use wasm_bindgen::{JsError, JsValue, prelude::wasm_bindgen};
+use wasm_bindgen::{prelude::wasm_bindgen, JsError, JsValue};
 use wasm_bindgen_futures::spawn_local;
 use wasm_streams::ReadableStream;
 
@@ -46,7 +46,10 @@ impl TerminalNode {
         // Generate a node ID for browser client
         let node_id = format!("browser_{}", generate_id());
 
-        tracing::info!("Browser terminal node initialized with node ID: {}", node_id);
+        tracing::info!(
+            "Browser terminal node initialized with node ID: {}",
+            node_id
+        );
 
         Ok(Self { node_id })
     }
@@ -57,8 +60,14 @@ impl TerminalNode {
     }
 
     /// Connects to a terminal session using a session ticket
-    pub async fn connect_to_session(&self, session_ticket: String) -> Result<TerminalSession, JsError> {
-        tracing::info!("Connecting to session with ticket: {}", &session_ticket[..20.min(session_ticket.len())]);
+    pub async fn connect_to_session(
+        &self,
+        session_ticket: String,
+    ) -> Result<TerminalSession, JsError> {
+        tracing::info!(
+            "Connecting to session with ticket: {}",
+            &session_ticket[..20.min(session_ticket.len())]
+        );
 
         // For now, create a mock session since iroh integration requires more work
         let session_id = format!("web_session_{}", generate_id());
@@ -131,7 +140,12 @@ impl TerminalSession {
     }
 
     /// Resize a terminal
-    pub async fn resize_terminal(&self, terminal_id: String, rows: u16, cols: u16) -> Result<(), JsError> {
+    pub async fn resize_terminal(
+        &self,
+        terminal_id: String,
+        rows: u16,
+        cols: u16,
+    ) -> Result<(), JsError> {
         tracing::info!("Resizing terminal {} to {}x{}", terminal_id, rows, cols);
 
         // Mock implementation - just log the resize
@@ -197,7 +211,8 @@ fn start_mock_message_processing(
         let welcome_message = SessionMessage {
             message_type: "terminal_output".to_string(),
             terminal_id: None,
-            data: "Welcome to RiTerm Browser (Mock Mode - Real iroh integration in progress!)".to_string(),
+            data: "Welcome to RiTerm Browser (Mock Mode - Real iroh integration in progress!)"
+                .to_string(),
             timestamp: (Date::now() * 1000.0) as u64,
         };
 
@@ -245,6 +260,7 @@ pub fn init_panic_hook() {
     console_error_panic_hook::set_once();
 }
 
+#[allow(dead_code)]
 fn to_js_err(err: impl Into<anyhow::Error>) -> JsError {
     let err: anyhow::Error = err.into();
     JsError::new(&err.to_string())

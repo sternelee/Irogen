@@ -15,11 +15,10 @@ use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::Subscribe
 mod tcp_forwarding;
 
 use riterm_shared::{
-    CommunicationManager, Event, EventListener, EventType, IODataType, Message, MessageBuilder,
-    MessagePayload, QuicMessageClientHandle, SerializableEndpointAddr, TcpDataType,
-    TcpForwardingAction, TcpForwardingType, TerminalAction,
-    AgentControlAction, AgentSessionAction, AgentType, SlashCommand, SlashCommandMessage,
-    RemoteSpawnAction, AgentPermissionMessage, AgentPermissionMessageInner,
+    AgentControlAction, AgentPermissionResponse, AgentType, CommunicationManager, Event,
+    EventListener, EventType, IODataType, Message, MessageBuilder, MessagePayload,
+    QuicMessageClientHandle, SerializableEndpointAddr, TcpDataType, TcpForwardingAction,
+    TcpForwardingType, TerminalAction,
 };
 
 use crate::tcp_forwarding::TcpForwardingManager;
@@ -64,8 +63,11 @@ fn parse_ticket_node_addr(ticket: &str) -> Result<iroh::EndpointId, Box<dyn std:
     #[derive(Deserialize)]
     struct JsonTicket {
         node_id: String,
+        #[allow(dead_code)]
         relay_url: Option<String>,
+        #[allow(dead_code)]
         direct_addresses: Option<Vec<String>>,
+        #[allow(dead_code)]
         alpn: Option<String>,
     }
 
@@ -379,7 +381,10 @@ async fn initialize_network_with_relay_internal(
         let client_guard = state.quic_client.read().await;
         if let Some(quic_client) = client_guard.as_ref() {
             let node_id = quic_client.get_node_id().await.to_string();
-            tracing::info!("Network already initialized, reusing existing client: {}", node_id);
+            tracing::info!(
+                "Network already initialized, reusing existing client: {}",
+                node_id
+            );
             return Ok(node_id);
         }
     }
@@ -403,7 +408,9 @@ async fn initialize_network_with_relay_internal(
         // Use Tauri's app data directory instead of current_dir() to avoid read-only filesystem errors
         match app_handle {
             Some(handle) => {
-                let app_data_dir = handle.path().app_data_dir()
+                let app_data_dir = handle
+                    .path()
+                    .app_data_dir()
                     .map_err(|e| format!("Failed to get app data directory: {}", e))?;
 
                 // Ensure the directory exists
@@ -750,6 +757,25 @@ async fn connect_to_peer(
                                                     }
                                                 }
                                             }
+                                            // Check if this is a RemoteSpawn response (contains session_id + agent_type + project_path)
+                                            else if data_json.get("session_id").is_some() && data_json.get("agent_type").is_some() {
+                                                // This is an AI agent session creation response
+                                                if let Some(agent_session_id) = data_json["session_id"].as_str() {
+                                                    tracing::info!("Received agent session creation response: session_id={}", agent_session_id);
+
+
+
+                                                    // Emit agent session created event to frontend
+                                                    let _ = app_handle_clone.emit(
+                                                        "agent-session-created",
+                                                        &serde_json::json!({
+                                                            "session_id": agent_session_id,
+                                                            "agent_type": data_json.get("agent_type"),
+                                                            "project_path": data_json.get("project_path"),
+                                                        })
+                                                    );
+                                                }
+                                            }
                                             else if data_json.get("sessions").is_some() {
                                                 // This is a TCP sessions list response (no session_id+status=created)
                                                 if let Some(sessions_array) = data_json["sessions"].as_array() {
@@ -888,6 +914,116 @@ async fn connect_to_peer(
                                             "data_length": tcp_data_msg.data.len(),
                                         })
                                     );
+                                }
+                                MessagePayload::AgentMessage(agent_msg) => {
+                                    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                    tracing::info!(
+                                        "Received AgentMessage for session {}: {:?}",
+                                        agent_msg.session_id,
+                                        agent_msg.content
+                                    );
+
+                                    // Transform AgentMessageContent to frontend-expected format
+                                    let event_payload = match &agent_msg.content {
+                                        riterm_shared::message_protocol::AgentMessageContent::AgentResponse {
+                                            content, thinking, message_id
+                                        } => serde_json::json!({
+                                            "sessionId": agent_msg.session_id,
+                                            "type": "response",
+                                            "content": content,
+                                            "thinking": thinking,
+                                            "messageId": message_id,
+                                        }),
+                                        riterm_shared::message_protocol::AgentMessageContent::ToolCallUpdate {
+                                            tool_name, status, output
+                                        } => serde_json::json!({
+                                            "sessionId": agent_msg.session_id,
+                                            "type": "tool_call",
+                                            "toolName": tool_name,
+                                            "status": format!("{:?}", status),
+                                            "output": output,
+                                        }),
+                                        riterm_shared::message_protocol::AgentMessageContent::SystemNotification {
+                                            level, message
+                                        } => serde_json::json!({
+                                            "sessionId": agent_msg.session_id,
+                                            "type": "notification",
+                                            "level": format!("{:?}", level),
+                                            "message": message,
+                                        }),
+                                        riterm_shared::message_protocol::AgentMessageContent::UserMessage {
+                                            content, attachments
+                                        } => serde_json::json!({
+                                            "sessionId": agent_msg.session_id,
+                                            "type": "user_message",
+                                            "content": content,
+                                            "attachments": attachments,
+                                        }),
+                                        riterm_shared::message_protocol::AgentMessageContent::TurnStarted {
+                                            turn_id
+                                        } => serde_json::json!({
+                                            "sessionId": agent_msg.session_id,
+                                            "type": "turn_started",
+                                            "turnId": turn_id,
+                                        }),
+                                        riterm_shared::message_protocol::AgentMessageContent::TextDelta {
+                                            text, thinking
+                                        } => serde_json::json!({
+                                            "sessionId": agent_msg.session_id,
+                                            "type": "text_delta",
+                                            "text": text,
+                                            "thinking": thinking,
+                                        }),
+                                        riterm_shared::message_protocol::AgentMessageContent::TurnCompleted {
+                                            content
+                                        } => serde_json::json!({
+                                            "sessionId": agent_msg.session_id,
+                                            "type": "turn_completed",
+                                            "content": content,
+                                        }),
+                                        riterm_shared::message_protocol::AgentMessageContent::TurnError {
+                                            error
+                                        } => serde_json::json!({
+                                            "sessionId": agent_msg.session_id,
+                                            "type": "turn_error",
+                                            "error": error,
+                                        }),
+                                    };
+
+                                    // Emit agent message event to frontend
+                                    match app_handle_clone.emit("agent-message", &event_payload) {
+                                        Ok(_) => {
+                                            #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                            tracing::info!("Successfully emitted agent-message event: {:?}", event_payload);
+                                        }
+                                        Err(e) => {
+                                            tracing::error!("Failed to emit agent-message event: {}", e);
+                                        }
+                                    }
+                                }
+                                MessagePayload::AgentPermission(perm_msg) => {
+                                    // Handle permission request from CLI
+                                    if let riterm_shared::message_protocol::AgentPermissionMessageInner::Request(request) = &perm_msg.inner {
+                                        #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                        tracing::info!(
+                                            "Received PermissionRequest for session {}: tool={}",
+                                            request.session_id,
+                                            request.tool_name
+                                        );
+
+                                        // Emit permission request event to frontend
+                                        let _ = app_handle_clone.emit(
+                                            "agent-message",
+                                            &serde_json::json!({
+                                                "sessionId": request.session_id,
+                                                "type": "permission_request",
+                                                "requestId": request.request_id,
+                                                "toolName": request.tool_name,
+                                                "toolParams": request.tool_params,
+                                                "description": request.description,
+                                            })
+                                        );
+                                    }
                                 }
                                 _ => {
                                     #[cfg(debug_assertions)]
@@ -1059,7 +1195,7 @@ async fn connect_to_peer(
     let session_id_for_terminal_sync = session_id.clone();
     let connection_id_for_terminal_sync = connection_id.clone();
     let cancellation_token_for_terminal_sync = cancellation_token.clone();
-    let app_handle_for_terminal_sync = app_handle.clone();
+    let _app_handle_for_terminal_sync = app_handle.clone();
     let quic_client_for_terminal_sync = {
         let client_guard = state.quic_client.read().await;
         client_guard.as_ref().cloned()
@@ -1101,8 +1237,8 @@ async fn connect_to_peer(
     // Sync existing TCP forwarding sessions from CLI
     // This allows the app to restore TCP sessions created by other clients
     let session_id_for_sync = session_id.clone();
-    let connection_id_for_sync = connection_id.clone();
-    let tcp_manager_for_sync = state.tcp_forwarding_manager.clone();
+    let _connection_id_for_sync = connection_id.clone();
+    let _tcp_manager_for_sync = state.tcp_forwarding_manager.clone();
     let cancellation_token_for_sync = cancellation_token.clone();
     let app_handle_for_sync = app_handle.clone();
 
@@ -1121,7 +1257,7 @@ async fn connect_to_peer(
         );
 
         // Send list request to CLI
-        let list_message = MessageBuilder::tcp_forwarding(
+        let _list_message = MessageBuilder::tcp_forwarding(
             "riterm_app".to_string(),
             TcpForwardingAction::ListSessions,
             Some(session_id_for_sync.clone()),
@@ -1197,6 +1333,7 @@ async fn send_message_via_client(
 // Terminal commands are now handled through send_terminal_input_to_terminal
 
 #[tauri::command]
+#[allow(dead_code)]
 async fn send_directed_message(
     _request: DirectedMessageRequest,
     _state: State<'_, AppState>,
@@ -1204,15 +1341,15 @@ async fn send_directed_message(
     Err("Directed messages are deprecated. Use terminal commands instead.".to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn execute_remote_command(
     command: String,
-    sessionId: String,
-    terminalId: String,
+    session_id: String,
+    terminal_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     // Convert to use the new terminal input protocol
-    send_terminal_input_to_terminal(sessionId, terminalId, format!("{}\n", command), state).await
+    send_terminal_input_to_terminal(session_id, terminal_id, format!("{}\n", command), state).await
 }
 
 #[tauri::command]
@@ -1346,9 +1483,9 @@ async fn start_cleanup_task(state: &State<'_, AppState>) {
 
 // === Terminal Management Commands ===
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn create_terminal(
-    sessionId: String,
+    session_id: String,
     name: Option<String>,
     shell_path: Option<String>,
     working_dir: Option<String>,
@@ -1358,7 +1495,7 @@ async fn create_terminal(
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
@@ -1374,9 +1511,9 @@ async fn create_terminal(
     let message = MessageBuilder::terminal_management(
         "riterm_app".to_string(),
         action,
-        Some(sessionId.clone()),
+        Some(session_id.clone()),
     )
-    .with_session(sessionId.clone());
+    .with_session(session_id.clone());
 
     // Send message via QUIC client
     send_message_via_client(&state, &session.connection_id, message, "terminal creation").await?;
@@ -1384,31 +1521,31 @@ async fn create_terminal(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn stop_terminal(
-    sessionId: String,
-    terminalId: String,
+    session_id: String,
+    terminal_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
 
     // Create terminal management message for stopping terminal
     let action = TerminalAction::Stop {
-        terminal_id: terminalId.clone(),
+        terminal_id: terminal_id.clone(),
     };
 
     let message = MessageBuilder::terminal_management(
         "riterm_app".to_string(),
         action,
-        Some(sessionId.clone()),
+        Some(session_id.clone()),
     )
-    .with_session(sessionId.clone());
+    .with_session(session_id.clone());
 
     // Send message via QUIC client
     send_message_via_client(&state, &session.connection_id, message, "terminal stop").await?;
@@ -1416,12 +1553,12 @@ async fn stop_terminal(
     Ok(())
 }
 
-#[tauri::command]
-async fn list_terminals(sessionId: String, state: State<'_, AppState>) -> Result<(), String> {
+#[tauri::command(rename_all = "camelCase")]
+async fn list_terminals(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
@@ -1430,9 +1567,9 @@ async fn list_terminals(sessionId: String, state: State<'_, AppState>) -> Result
     let message = MessageBuilder::terminal_management(
         "riterm_app".to_string(),
         TerminalAction::List,
-        Some(sessionId.clone()),
+        Some(session_id.clone()),
     )
-    .with_session(sessionId.clone());
+    .with_session(session_id.clone());
 
     // Send message via QUIC client
     send_message_via_client(&state, &session.connection_id, message, "terminal list").await?;
@@ -1440,17 +1577,17 @@ async fn list_terminals(sessionId: String, state: State<'_, AppState>) -> Result
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn send_terminal_input_to_terminal(
-    sessionId: String,
-    terminalId: String,
+    session_id: String,
+    terminal_id: String,
     input: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
@@ -1458,11 +1595,11 @@ async fn send_terminal_input_to_terminal(
     // Create terminal I/O message
     let message = MessageBuilder::terminal_io(
         "riterm_app".to_string(),
-        terminalId,
+        terminal_id,
         IODataType::Input,
         input.as_bytes().to_vec(),
     )
-    .with_session(sessionId.clone());
+    .with_session(session_id.clone());
 
     // Send message via QUIC client
     send_message_via_client(&state, &session.connection_id, message, "terminal input").await?;
@@ -1470,10 +1607,10 @@ async fn send_terminal_input_to_terminal(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn resize_terminal(
-    sessionId: String,
-    terminalId: String,
+    session_id: String,
+    terminal_id: String,
     rows: u16,
     cols: u16,
     state: State<'_, AppState>,
@@ -1481,14 +1618,14 @@ async fn resize_terminal(
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
 
     // Create terminal management message for resizing terminal
     let action = TerminalAction::Resize {
-        terminal_id: terminalId.clone(),
+        terminal_id: terminal_id.clone(),
         rows,
         cols,
     };
@@ -1496,9 +1633,9 @@ async fn resize_terminal(
     let message = MessageBuilder::terminal_management(
         "riterm_app".to_string(),
         action,
-        Some(sessionId.clone()),
+        Some(session_id.clone()),
     )
-    .with_session(sessionId.clone());
+    .with_session(session_id.clone());
 
     // Send message via QUIC client
     send_message_via_client(&state, &session.connection_id, message, "terminal resize").await?;
@@ -1506,56 +1643,56 @@ async fn resize_terminal(
     Ok(())
 }
 
-#[tauri::command]
-async fn get_terminal_list(sessionId: String, state: State<'_, AppState>) -> Result<(), String> {
-    list_terminals(sessionId, state).await
+#[tauri::command(rename_all = "camelCase")]
+async fn get_terminal_list(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    list_terminals(session_id, state).await
 }
 
 // DEPRECATED: Terminal connection is now implicit with the new message protocol
 // No separate connection step is needed
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn connect_to_terminal(
-    sessionId: String,
-    terminalId: String,
+    session_id: String,
+    terminal_id: String,
     _state: State<'_, AppState>,
 ) -> Result<(), String> {
     #[cfg(any(debug_assertions, not(feature = "release-logging")))]
     tracing::info!(
         "connect_to_terminal called for session {} terminal {} (now a no-op)",
-        sessionId,
-        terminalId
+        session_id,
+        terminal_id
     );
 
     Ok(())
 }
 
 /// 获取终端日志
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn get_terminal_logs(
-    sessionId: String,
-    terminalId: String,
+    session_id: String,
+    terminal_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
 
     // Create terminal management message for getting logs
     let action = TerminalAction::GetLogs {
-        terminal_id: terminalId.clone(),
+        terminal_id: terminal_id.clone(),
     };
 
     let message = MessageBuilder::terminal_management(
         "riterm_app".to_string(),
         action,
-        Some(sessionId.clone()),
+        Some(session_id.clone()),
     )
-    .with_session(sessionId.clone());
+    .with_session(session_id.clone());
 
     // Send message via QUIC client
     send_message_via_client(
@@ -1571,9 +1708,9 @@ async fn get_terminal_logs(
 
 // === TCP Forwarding Management Commands ===
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn create_tcp_forwarding_session(
-    sessionId: String,
+    session_id: String,
     local_addr: String,
     remote_host: Option<String>,
     remote_port: Option<u16>,
@@ -1614,7 +1751,7 @@ async fn create_tcp_forwarding_session(
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
@@ -1624,12 +1761,12 @@ async fn create_tcp_forwarding_session(
         remote_host: Some(remote_host),
         remote_port: Some(remote_port),
         forwarding_type: TcpForwardingType::ListenToRemote,
-        session_id: Some(session_id_result.clone()),  // 发送我们的 session_id 给 CLI
+        session_id: Some(session_id_result.clone()), // 发送我们的 session_id 给 CLI
     };
 
     let message =
-        MessageBuilder::tcp_forwarding("riterm_app".to_string(), action, Some(sessionId.clone()))
-            .with_session(sessionId.clone());
+        MessageBuilder::tcp_forwarding("riterm_app".to_string(), action, Some(session_id.clone()))
+            .with_session(session_id.clone());
 
     // 获取正确的 connection_id
     let connection_id = session.connection_id;
@@ -1645,15 +1782,15 @@ async fn create_tcp_forwarding_session(
     Ok(session_id_result)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn list_tcp_forwarding_sessions(
-    sessionId: String,
+    session_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
@@ -1662,9 +1799,9 @@ async fn list_tcp_forwarding_sessions(
     let message = MessageBuilder::tcp_forwarding(
         "riterm_app".to_string(),
         TcpForwardingAction::ListSessions,
-        Some(sessionId.clone()),
+        Some(session_id.clone()),
     )
-    .with_session(sessionId.clone());
+    .with_session(session_id.clone());
 
     // 发送消息 via QUIC 客户端
     send_message_via_client(
@@ -1678,16 +1815,16 @@ async fn list_tcp_forwarding_sessions(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn stop_tcp_forwarding_session(
-    sessionId: String,
+    session_id: String,
     tcp_session_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
@@ -1698,9 +1835,9 @@ async fn stop_tcp_forwarding_session(
         TcpForwardingAction::StopSession {
             session_id: tcp_session_id,
         },
-        Some(sessionId.clone()),
+        Some(session_id.clone()),
     )
-    .with_session(sessionId.clone());
+    .with_session(session_id.clone());
 
     // 发送消息 via QUIC 客户端
     send_message_via_client(
@@ -1714,16 +1851,16 @@ async fn stop_tcp_forwarding_session(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn get_tcp_forwarding_session_info(
-    sessionId: String,
+    session_id: String,
     tcp_session_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
@@ -1734,9 +1871,9 @@ async fn get_tcp_forwarding_session_info(
         TcpForwardingAction::GetSessionInfo {
             session_id: tcp_session_id,
         },
-        Some(sessionId.clone()),
+        Some(session_id.clone()),
     )
-    .with_session(sessionId.clone());
+    .with_session(session_id.clone());
 
     // 发送消息 via QUIC 客户端
     send_message_via_client(
@@ -1750,9 +1887,9 @@ async fn get_tcp_forwarding_session_info(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn send_tcp_data(
-    sessionId: String,
+    session_id: String,
     tcp_session_id: String,
     connection_id: String,
     data: Vec<u8>,
@@ -1762,7 +1899,7 @@ async fn send_tcp_data(
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
+            .get(&session_id)
             .cloned()
             .ok_or("Session not found")?
     };
@@ -1788,7 +1925,7 @@ async fn send_tcp_data(
         dt_type,
         data,
     )
-    .with_session(sessionId.clone());
+    .with_session(session_id.clone());
 
     // 发送消息 via QUIC 客户端
     send_message_via_client(&state, &session.connection_id, message, "TCP data").await?;
@@ -1801,17 +1938,17 @@ async fn send_tcp_data(
 // ============================================================================
 
 /// Send a slash command to an AI agent session
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn send_slash_command(
-    sessionId: String,
+    session_id: String,
     command: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
-            .ok_or_else(|| format!("Session not found: {}", sessionId))?
+            .get(&session_id)
+            .ok_or_else(|| format!("Session not found: {}", session_id))?
             .clone()
     };
 
@@ -1852,6 +1989,7 @@ async fn send_slash_command(
                         riterm_shared::MessagePayload::RemoteSpawn(
                             riterm_shared::RemoteSpawnMessage {
                                 action: riterm_shared::RemoteSpawnAction::SpawnSession {
+                                    session_id: session_id.clone(),
                                     agent_type,
                                     project_path: project_path.to_string(),
                                     args,
@@ -1859,9 +1997,16 @@ async fn send_slash_command(
                                 request_id: None,
                             },
                         ),
-                    ).requires_response();
+                    )
+                    .requires_response();
 
-                    send_message_via_client(&state, &session.connection_id, spawn_message, "remote spawn").await?;
+                    send_message_via_client(
+                        &state,
+                        &session.connection_id,
+                        spawn_message,
+                        "remote spawn",
+                    )
+                    .await?;
                     return Ok("spawn_request_sent".to_string());
                 }
                 ("passthrough", command.as_str())
@@ -1869,7 +2014,7 @@ async fn send_slash_command(
             "/stop" => {
                 // Stop session command
                 if parts.len() >= 2 {
-                    let target_session_id = parts.get(1).copied().unwrap_or(&sessionId.as_str());
+                    let target_session_id = parts.get(1).copied().unwrap_or(&session_id.as_str());
                     disconnect_session(target_session_id.to_string(), state).await?;
                     return Ok("session_stopped".to_string());
                 }
@@ -1887,18 +2032,23 @@ async fn send_slash_command(
             let control_message = Message::new(
                 riterm_shared::MessageType::AgentControl,
                 "app".to_string(),
-                riterm_shared::MessagePayload::AgentControl(
-                    riterm_shared::AgentControlMessage {
-                        session_id: sessionId.clone(),
-                        action: AgentControlAction::SendInput {
-                            content: raw_command.to_string(),
-                        },
-                        request_id: None,
+                riterm_shared::MessagePayload::AgentControl(riterm_shared::AgentControlMessage {
+                    session_id: session_id.clone(),
+                    action: AgentControlAction::SendInput {
+                        content: raw_command.to_string(),
                     },
-                ),
-            ).requires_response();
+                    request_id: None,
+                }),
+            )
+            .requires_response();
 
-            send_message_via_client(&state, &session.connection_id, control_message, "agent command").await?;
+            send_message_via_client(
+                &state,
+                &session.connection_id,
+                control_message,
+                "agent command",
+            )
+            .await?;
             Ok("command_sent".to_string())
         }
         _ => Ok("unknown_command".to_string()),
@@ -1906,24 +2056,24 @@ async fn send_slash_command(
 }
 
 /// Spawn a remote AI agent session
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn remote_spawn_session(
-    sessionId: String,
-    agentType: String,
-    projectPath: String,
+    session_id: String,
+    agent_type: String,
+    project_path: String,
     args: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
-            .ok_or_else(|| format!("Session not found: {}", sessionId))?
+            .get(&session_id)
+            .ok_or_else(|| format!("Session not found: {}", session_id))?
             .clone()
     };
 
     // Parse agent type
-    let agent_type = match agentType.to_lowercase().as_str() {
+    let agent_type = match agent_type.to_lowercase().as_str() {
         "claude" | "claudecode" | "claude-code" => AgentType::ClaudeCode,
         "opencode" | "open" | "openai" => AgentType::OpenCode,
         "codex" => AgentType::Codex,
@@ -1935,51 +2085,57 @@ async fn remote_spawn_session(
     let spawn_message = Message::new(
         riterm_shared::MessageType::RemoteSpawn,
         "app".to_string(),
-        riterm_shared::MessagePayload::RemoteSpawn(
-            riterm_shared::RemoteSpawnMessage {
-                action: riterm_shared::RemoteSpawnAction::SpawnSession {
-                    agent_type,
-                    project_path: projectPath,
-                    args,
-                },
-                request_id: None,
+        riterm_shared::MessagePayload::RemoteSpawn(riterm_shared::RemoteSpawnMessage {
+            action: riterm_shared::RemoteSpawnAction::SpawnSession {
+                session_id: session_id.clone(),
+                agent_type,
+                project_path: project_path,
+                args,
             },
-        ),
-    ).requires_response();
+            request_id: None,
+        }),
+    )
+    .requires_response();
 
-    send_message_via_client(&state, &session.connection_id, spawn_message, "remote spawn").await?;
+    send_message_via_client(
+        &state,
+        &session.connection_id,
+        spawn_message,
+        "remote spawn",
+    )
+    .await?;
     Ok("spawn_request_sent".to_string())
 }
 
 /// Respond to an agent permission request
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn respond_to_agent_permission(
-    sessionId: String,
-    permissionId: String,
+    session_id: String,
+    permission_id: String,
     approved: bool,
-    approveForSession: bool,
+    approve_for_session: bool,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let session = {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&sessionId)
-            .ok_or_else(|| format!("Session not found: {}", sessionId))?
+            .get(&session_id)
+            .ok_or_else(|| format!("Session not found: {}", session_id))?
             .clone()
     };
 
-    use riterm_shared::{AgentPermissionMessage, AgentPermissionMessageInner, AgentPermissionResponse, PermissionMode};
+    use riterm_shared::PermissionMode;
 
     let response_mode = if !approved {
         PermissionMode::Deny
-    } else if approveForSession {
+    } else if approve_for_session {
         PermissionMode::ApproveForSession
     } else {
         PermissionMode::AlwaysAsk
     };
 
     let permission_response = AgentPermissionResponse {
-        request_id: permissionId,
+        request_id: permission_id,
         approved,
         permission_mode: response_mode,
         decided_at: std::time::SystemTime::now()
@@ -1992,48 +2148,56 @@ async fn respond_to_agent_permission(
     let permission_message = Message::new(
         riterm_shared::MessageType::AgentPermission,
         "app".to_string(),
-        riterm_shared::MessagePayload::AgentPermission(
-            riterm_shared::AgentPermissionMessage {
-                inner: riterm_shared::AgentPermissionMessageInner::Response(permission_response),
-            },
-        ),
-    ).with_session(sessionId);
+        riterm_shared::MessagePayload::AgentPermission(riterm_shared::AgentPermissionMessage {
+            inner: riterm_shared::AgentPermissionMessageInner::Response(permission_response),
+        }),
+    )
+    .with_session(session_id);
 
-    send_message_via_client(&state, &session.connection_id, permission_message, "permission response").await?;
+    send_message_via_client(
+        &state,
+        &session.connection_id,
+        permission_message,
+        "permission response",
+    )
+    .await?;
     Ok(())
 }
 
 /// Send a message to an AI agent session
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn send_agent_message(
-    sessionId: String,
+    session_id: String,
     content: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let session = {
+    // For AI agent sessions, we don't need to look up the session in state.sessions
+    // Instead, we can use any available connection to the CLI
+    // AI agent sessions are managed by the CLI, not the app's session tracking
+
+    // Get the first available connection ID
+    let connection_id = {
         let sessions = state.sessions.read().await;
-        sessions
-            .get(&sessionId)
-            .ok_or_else(|| format!("Session not found: {}", sessionId))?
-            .clone()
+        if let Some(first_session) = sessions.values().next() {
+            first_session.connection_id.clone()
+        } else {
+            return Err("No active connection available".to_string());
+        }
     };
 
     // Send as AgentControl::SendInput
     let control_message = Message::new(
         riterm_shared::MessageType::AgentControl,
         "app".to_string(),
-        riterm_shared::MessagePayload::AgentControl(
-            riterm_shared::AgentControlMessage {
-                session_id: sessionId.clone(),
-                action: AgentControlAction::SendInput {
-                    content,
-                },
-                request_id: None,
-            },
-        ),
-    ).requires_response();
+        riterm_shared::MessagePayload::AgentControl(riterm_shared::AgentControlMessage {
+            session_id: session_id,
+            action: AgentControlAction::SendInput { content },
+            request_id: None,
+        }),
+    )
+    .requires_response();
 
-    send_message_via_client(&state, &session.connection_id, control_message, "agent message").await?;
+    send_message_via_client(&state, &connection_id, control_message, "agent message").await?;
     Ok(())
 }
 

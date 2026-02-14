@@ -210,4 +210,3 @@ pub struct TerminalConfig {
     pub rows: Option<u16>,
     pub cols: Option<u16>,
 }
-

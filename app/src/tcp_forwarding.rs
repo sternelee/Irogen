@@ -17,6 +17,7 @@ use std::sync::Arc as StdArc;
 /// TCP 转发会话信息
 #[derive(Debug, Clone)]
 pub struct TcpForwardingSession {
+    #[allow(dead_code)]
     pub id: String,
     pub local_addr: String,
     pub remote_host: String,
@@ -27,11 +28,14 @@ pub struct TcpForwardingSession {
 /// TCP 连接信息
 #[derive(Debug, Clone)]
 pub struct TcpConnectionInfo {
+    #[allow(dead_code)]
     pub connection_id: String,
-    pub stream: Option<Arc<RwLock<TcpStream>>>,  // Option for dumbpipe mode where stream is not stored
+    pub stream: Option<Arc<RwLock<TcpStream>>>, // Option for dumbpipe mode where stream is not stored
+    #[allow(dead_code)]
     pub session_id: String,
     pub bytes_sent: u64,
     pub bytes_received: u64,
+    #[allow(dead_code)]
     pub created_at: std::time::SystemTime,
 }
 
@@ -91,6 +95,7 @@ impl TcpForwardingManager {
     }
 
     /// 获取消息发送通道的发送端
+    #[allow(dead_code)]
     pub fn get_message_sender(&self) -> broadcast::Sender<TcpMessageRequest> {
         self.message_tx.clone()
     }
@@ -134,7 +139,10 @@ impl TcpForwardingManager {
                         );
                     } else {
                         // dumbpipe 模式下 stream 为 None，数据转发在 handle_connection 中处理
-                        debug!("Connection {} is using dumbpipe mode, data handled separately", connection_id);
+                        debug!(
+                            "Connection {} is using dumbpipe mode, data handled separately",
+                            connection_id
+                        );
                     }
                     Ok(())
                 } else {
@@ -195,7 +203,7 @@ impl TcpForwardingManager {
             local_addr: local_addr.clone(),
             remote_host: remote_host.clone(),
             remote_port,
-            status: "pending".to_string(),  // 等待 CLI 响应
+            status: "pending".to_string(), // 等待 CLI 响应
         };
 
         // 保存会话
@@ -220,7 +228,8 @@ impl TcpForwardingManager {
         // 获取会话信息
         let (local_addr, remote_host, remote_port) = {
             let sessions = self.sessions.read().await;
-            let session = sessions.get(session_id)
+            let session = sessions
+                .get(session_id)
                 .ok_or_else(|| format!("Session not found: {}", session_id))?;
             (
                 session.local_addr.clone(),
@@ -264,6 +273,7 @@ impl TcpForwardingManager {
     }
 
     /// 创建 TCP 转发会话（旧的同步方式，保留用于兼容）
+    #[allow(dead_code)]
     pub async fn create_session(
         &self,
         local_addr: String,
@@ -319,8 +329,8 @@ impl TcpForwardingManager {
         &self,
         session_id: String,
         local_addr: SocketAddr,
-        remote_host: String,
-        remote_port: u16,
+        _remote_host: String,
+        _remote_port: u16,
     ) -> Result<mpsc::UnboundedSender<()>, Box<dyn std::error::Error + Send + Sync>> {
         use tokio::sync::mpsc;
 
@@ -398,6 +408,7 @@ impl TcpForwardingManager {
     }
 
     /// 停止会话
+    #[allow(dead_code)]
     pub async fn stop_session(
         &self,
         session_id: &str,
@@ -407,7 +418,10 @@ impl TcpForwardingManager {
             let mut shutdown_senders = self.shutdown_senders.write().await;
             if let Some(shutdown_tx) = shutdown_senders.remove(session_id) {
                 let _ = shutdown_tx.send(());
-                info!("Shutdown signal sent to TCP listener for session: {}", session_id);
+                info!(
+                    "Shutdown signal sent to TCP listener for session: {}",
+                    session_id
+                );
             }
         }
 
@@ -423,6 +437,7 @@ impl TcpForwardingManager {
     }
 
     /// 获取所有会话
+    #[allow(dead_code)]
     pub async fn list_sessions(&self) -> Vec<TcpForwardingSession> {
         let sessions = self.sessions.read().await;
         sessions.values().cloned().collect()
@@ -556,7 +571,7 @@ async fn handle_connection(
             connection_id.clone(),
             TcpConnectionInfo {
                 connection_id: connection_id.clone(),
-                stream: None,  // dumbpipe mode doesn't store the stream
+                stream: None, // dumbpipe mode doesn't store the stream
                 session_id: session_id.clone(),
                 bytes_sent: 0,
                 bytes_received: 0,
@@ -576,7 +591,10 @@ async fn handle_connection(
                 }
                 Ok(n) => {
                     if p2p_send.write_all(&buffer[..n]).await.is_err() {
-                        error!("Failed to write to P2P stream for connection {}", connection_id);
+                        error!(
+                            "Failed to write to P2P stream for connection {}",
+                            connection_id
+                        );
                         break;
                     }
                     // 更新统计

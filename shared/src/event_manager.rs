@@ -11,6 +11,9 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 
+/// Type alias for the complex listeners map type to reduce complexity
+type ListenerMap = Arc<RwLock<HashMap<EventType, Vec<Arc<dyn EventListener>>>>>;
+
 /// 事件类型
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EventType {
@@ -80,7 +83,7 @@ pub trait EventListener: Send + Sync {
 
 /// 事件管理器
 pub struct EventManager {
-    listeners: Arc<RwLock<HashMap<EventType, Vec<Arc<dyn EventListener>>>>>,
+    listeners: ListenerMap,
     event_tx: mpsc::UnboundedSender<Event>,
     event_rx: Arc<RwLock<Option<mpsc::UnboundedReceiver<Event>>>>,
 }

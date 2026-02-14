@@ -1,104 +1,104 @@
 //! 斜杠命令路由器
+#![allow(dead_code)]
 //!
 //! 此模块负责解析和路由用户的斜杠命令，
 //! 区分 RiTerm 内置命令和需要转发给 AI Agent 的命令。
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use riterm_shared::message_protocol::{
-    AgentType, BuiltinCommand, SlashCommand, SlashCommandResponse, SlashCommandResponseContent,
+    AgentType, BuiltinCommand, SlashCommand, SlashCommandResponseContent,
 };
-use std::collections::HashMap;
 
 /// RiTerm 内置命令列表
 const RITERM_BUILTIN_COMMANDS: &[&str] = &[
-    "/list",          // 列出会话
-    "/spawn",         // 启动新 Agent
-    "/stop",          // 停止会话
-    "/quit",          // 退出
-    "/approve",       // 批准权限请求
-    "/deny",          // 拒绝权限请求
-    "/help",          // 显示帮助（RiTerm 版本）
+    "/list",    // 列出会话
+    "/spawn",   // 启动新 Agent
+    "/stop",    // 停止会话
+    "/quit",    // 退出
+    "/approve", // 批准权限请求
+    "/deny",    // 拒绝权限请求
+    "/help",    // 显示帮助（RiTerm 版本）
 ];
 
 /// 需要透传给 Agent 的通用命令（即使它们也是 RiTerm 内置命令）
 const PASSTHROUGH_COMMANDS: &[&str] = &[
-    "/clear",         // 清屏/清空会话 - Agent 处理
-    "/compact",       // 压缩上下文 - Agent 处理
-    "/summarize",     // 同 /compact - Agent 处理
+    "/clear",     // 清屏/清空会话 - Agent 处理
+    "/compact",   // 压缩上下文 - Agent 处理
+    "/summarize", // 同 /compact - Agent 处理
 ];
 
 /// Claude Code 专用命令（需要特殊处理）
 const CLAUDE_SPECIFIC_COMMANDS: &[&str] = &[
-    "/plugin",        // 插件管理
-    "/skills",        // 技能列表
-    "/context",       // 上下文信息
-    "/permissions",   // 权限管理
-    "/config",        // 配置
-    "/cost",          // 成本统计
-    "/doctor",        // 诊断
-    "/hooks",         // Hooks 管理
-    "/ide",           // IDE 集成
-    "/compact",       // 压缩上下文
-    "/summarize",     // 同 /compact
-    "/init",          // 初始化项目
+    "/plugin",      // 插件管理
+    "/skills",      // 技能列表
+    "/context",     // 上下文信息
+    "/permissions", // 权限管理
+    "/config",      // 配置
+    "/cost",        // 成本统计
+    "/doctor",      // 诊断
+    "/hooks",       // Hooks 管理
+    "/ide",         // IDE 集成
+    "/compact",     // 压缩上下文
+    "/summarize",   // 同 /compact
+    "/init",        // 初始化项目
 ];
 
 /// OpenCode 专用命令
 const OPENCODE_SPECIFIC_COMMANDS: &[&str] = &[
-    "/sessions",      // 会话列表
-    "/new",           // 新会话
-    "/undo",          // 撤销
-    "/redo",          // 重做
-    "/editor",        // 打开编辑器
-    "/export",        // 导出会话
-    "/themes",        // 主题
-    "/models",        // 模型列表
-    "/connect",       // 连接提供商
-    "/share",         // 分享会话
-    "/unshare",       // 取消分享
-    "/details",       // 显示详细信息
-    "/thinking",      // 显示思考状态
+    "/sessions", // 会话列表
+    "/new",      // 新会话
+    "/undo",     // 撤销
+    "/redo",     // 重做
+    "/editor",   // 打开编辑器
+    "/export",   // 导出会话
+    "/themes",   // 主题
+    "/models",   // 模型列表
+    "/connect",  // 连接提供商
+    "/share",    // 分享会话
+    "/unshare",  // 取消分享
+    "/details",  // 显示详细信息
+    "/thinking", // 显示思考状态
 ];
 
 /// Gemini CLI 专用命令
 const GEMINI_SPECIFIC_COMMANDS: &[&str] = &[
-    "/compress",      // 压缩上下文
-    "/editor",        // 编辑器选择
-    "/theme",         // 主题切换
-    "/auth",          // 认证方式
-    "/about",         // 版本信息
-    "/bug",           // 报告问题
-    "/stats",         // 统计信息
-    "/tools",         // 工具列表
-    "/mcp",           // MCP 服务器
-    "/memory",        // 内存管理
-    "/restore",       // 恢复文件
-    "/chat",          // 聊天历史
+    "/compress", // 压缩上下文
+    "/editor",   // 编辑器选择
+    "/theme",    // 主题切换
+    "/auth",     // 认证方式
+    "/about",    // 版本信息
+    "/bug",      // 报告问题
+    "/stats",    // 统计信息
+    "/tools",    // 工具列表
+    "/mcp",      // MCP 服务器
+    "/memory",   // 内存管理
+    "/restore",  // 恢复文件
+    "/chat",     // 聊天历史
 ];
 
 /// OpenAI Codex 专用命令
 const CODEX_SPECIFIC_COMMANDS: &[&str] = &[
-    "/generate",      // 生成代码
-    "/complete",      // 代码补全
-    "/refactor",      // 重构代码
-    "/explain",       // 解释代码
-    "/fix",           // 修复代码
-    "/optimize",      // 优化代码
-    "/test",          // 生成测试
-    "/docs",          // 生成文档
-    "/model",         // 切换模型
-    "/temperature",   // 设置温度参数
-    "/max-tokens",    // 设置最大 token 数
-    "/format",        // 代码格式化
-    "/lint",          // 代码检查
+    "/generate",    // 生成代码
+    "/complete",    // 代码补全
+    "/refactor",    // 重构代码
+    "/explain",     // 解释代码
+    "/fix",         // 修复代码
+    "/optimize",    // 优化代码
+    "/test",        // 生成测试
+    "/docs",        // 生成文档
+    "/model",       // 切换模型
+    "/temperature", // 设置温度参数
+    "/max-tokens",  // 设置最大 token 数
+    "/format",      // 代码格式化
+    "/lint",        // 代码检查
 ];
 
 /// 通用命令（所有 Agent 都支持）
 const UNIVERSAL_COMMANDS: &[&str] = &[
-    "/help",          // 帮助
-    "/clear",         // 清屏/清空会话
-    "/exit",          // 退出
-    "/quit",          // 退出（同 /exit）
+    "/help",  // 帮助
+    "/clear", // 清屏/清空会话
+    "/exit",  // 退出
+    "/quit",  // 退出（同 /exit）
 ];
 
 /// 命令路由器
@@ -127,10 +127,7 @@ impl CommandRouter {
         }
 
         // 提取命令名称（第一个空格前的部分）
-        let command_name = input
-            .split_whitespace()
-            .next()
-            .unwrap_or(input);
+        let command_name = input.split_whitespace().next().unwrap_or(input);
 
         // 检查是否是 RiTerm 内置命令
         if RITERM_BUILTIN_COMMANDS.contains(&command_name) {
@@ -156,7 +153,7 @@ impl CommandRouter {
                     command_type: BuiltinCommand::StopSession {
                         session_id: "".to_string(), // 特殊处理
                     },
-                })
+                });
             }
             "/spawn" => {
                 if parts.len() < 3 {
@@ -306,7 +303,10 @@ impl CommandRouter {
             },
             "/stats" => vec!["/stats".to_string()],
             "/generate" => match agent_type {
-                AgentType::Codex => vec!["/generate a function to parse JSON".to_string(), "/generate async fetch wrapper".to_string()],
+                AgentType::Codex => vec![
+                    "/generate a function to parse JSON".to_string(),
+                    "/generate async fetch wrapper".to_string(),
+                ],
                 _ => vec![],
             },
             "/complete" => match agent_type {
@@ -338,7 +338,10 @@ impl CommandRouter {
                 _ => vec![],
             },
             "/model" => match agent_type {
-                AgentType::Codex => vec!["/model gpt-4".to_string(), "/model gpt-3.5-turbo".to_string()],
+                AgentType::Codex => vec![
+                    "/model gpt-4".to_string(),
+                    "/model gpt-3.5-turbo".to_string(),
+                ],
                 _ => vec![],
             },
             "/temperature" => match agent_type {
@@ -363,58 +366,39 @@ impl CommandRouter {
 
     /// 检查命令是否是内置命令
     pub fn is_builtin_command(&self, command: &str) -> bool {
-        let command_name = command
-            .split_whitespace()
-            .next()
-            .unwrap_or(command);
+        let command_name = command.split_whitespace().next().unwrap_or(command);
         RITERM_BUILTIN_COMMANDS.contains(&command_name)
     }
 
     /// 检查命令是否被当前 Agent 支持
     pub fn is_agent_supported(&self, command: &str) -> bool {
-        let command_name = command
-            .split_whitespace()
-            .next()
-            .unwrap_or(command);
+        let command_name = command.split_whitespace().next().unwrap_or(command);
 
-        UNIVERSAL_COMMANDS.contains(&command_name) || match self.agent_type {
-            AgentType::ClaudeCode => CLAUDE_SPECIFIC_COMMANDS.contains(&command_name),
-            AgentType::OpenCode => OPENCODE_SPECIFIC_COMMANDS.contains(&command_name),
-            AgentType::Codex => CODEX_SPECIFIC_COMMANDS.contains(&command_name),
-            AgentType::Gemini => GEMINI_SPECIFIC_COMMANDS.contains(&command_name),
-            AgentType::Custom => false,
-        }
+        UNIVERSAL_COMMANDS.contains(&command_name)
+            || match self.agent_type {
+                AgentType::ClaudeCode => CLAUDE_SPECIFIC_COMMANDS.contains(&command_name),
+                AgentType::OpenCode => OPENCODE_SPECIFIC_COMMANDS.contains(&command_name),
+                AgentType::Codex => CODEX_SPECIFIC_COMMANDS.contains(&command_name),
+                AgentType::Gemini => GEMINI_SPECIFIC_COMMANDS.contains(&command_name),
+                AgentType::Custom => false,
+            }
     }
 
     /// 格式化命令响应
-    pub fn format_response(
-        &self,
-        content: SlashCommandResponseContent,
-    ) -> String {
+    pub fn format_response(&self, content: SlashCommandResponseContent) -> String {
         match content {
             SlashCommandResponseContent::Success { data } => {
-                serde_json::to_string_pretty(&data)
-                    .unwrap_or_else(|_| "Success".to_string())
+                serde_json::to_string_pretty(&data).unwrap_or_else(|_| "Success".to_string())
             }
             SlashCommandResponseContent::Error { message } => {
                 format!("Error: {}", message)
             }
-            SlashCommandResponseContent::Structured { format, content } => {
-                match format {
-                    riterm_shared::message_protocol::OutputFormat::Markdown => {
-                        content
-                    }
-                    riterm_shared::message_protocol::OutputFormat::Text => {
-                        content
-                    }
-                    riterm_shared::message_protocol::OutputFormat::Json => {
-                        content
-                    }
-                    riterm_shared::message_protocol::OutputFormat::Table => {
-                        content
-                    }
-                }
-            }
+            SlashCommandResponseContent::Structured { format, content } => match format {
+                riterm_shared::message_protocol::OutputFormat::Markdown => content,
+                riterm_shared::message_protocol::OutputFormat::Text => content,
+                riterm_shared::message_protocol::OutputFormat::Json => content,
+                riterm_shared::message_protocol::OutputFormat::Table => content,
+            },
         }
     }
 }
@@ -449,7 +433,10 @@ pub fn parse_file_reference(input: &str) -> Option<(String, String)> {
     let re = regex::Regex::new(r"@([^\s:]+)(?::(\S+))?").ok()?;
     let caps = re.captures(input)?;
     let file = caps.get(1)?.as_str().to_string();
-    let pattern = caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default();
+    let pattern = caps
+        .get(2)
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_default();
     Some((file, pattern))
 }
 

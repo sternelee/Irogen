@@ -1,4 +1,5 @@
 //! 统一 AI Agent 接口
+#![allow(dead_code)]
 //!
 //! 此模块定义了统一的 AI Agent 接口，用于管理不同类型的 AI 编码工具。
 
@@ -42,8 +43,8 @@ pub trait Agent {
     fn build_command(&self, project_path: &Path, extra_args: Vec<String>) -> Command {
         let mut cmd = Command::new(self.command());
         cmd.args(self.default_args())
-           .args(extra_args)
-           .current_dir(project_path);
+            .args(extra_args)
+            .current_dir(project_path);
         cmd
     }
 }
@@ -61,9 +62,7 @@ impl Agent for ClaudeCodeAgent {
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
-        let output = Command::new(self.command())
-            .arg("--version")
-            .output()?;
+        let output = Command::new(self.command()).arg("--version").output()?;
 
         let available = output.status.success();
         let version = if available {
@@ -80,9 +79,7 @@ impl Agent for ClaudeCodeAgent {
     }
 
     fn get_version(&self) -> Result<String> {
-        let output = Command::new(self.command())
-            .arg("--version")
-            .output()?;
+        let output = Command::new(self.command()).arg("--version").output()?;
 
         if !output.status.success() {
             return Err(anyhow::anyhow!("Failed to get Claude version"));
@@ -111,9 +108,7 @@ impl Agent for OpenCodeAgent {
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
-        let output = Command::new(self.command())
-            .arg("--version")
-            .output()?;
+        let output = Command::new(self.command()).arg("--version").output()?;
 
         let available = output.status.success();
         let version = if available {
@@ -130,9 +125,7 @@ impl Agent for OpenCodeAgent {
     }
 
     fn get_version(&self) -> Result<String> {
-        let output = Command::new(self.command())
-            .arg("--version")
-            .output()?;
+        let output = Command::new(self.command()).arg("--version").output()?;
 
         if !output.status.success() {
             return Err(anyhow::anyhow!("Failed to get OpenCode version"));
@@ -142,9 +135,7 @@ impl Agent for OpenCodeAgent {
     }
 
     fn default_args(&self) -> Vec<String> {
-        vec![
-            "--non-interactive".to_string(),
-        ]
+        vec!["--non-interactive".to_string()]
     }
 }
 
@@ -161,9 +152,7 @@ impl Agent for GeminiAgent {
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
-        let output = Command::new(self.command())
-            .arg("version")
-            .output()?;
+        let output = Command::new(self.command()).arg("version").output()?;
 
         let available = output.status.success();
         let version = if available {
@@ -180,9 +169,7 @@ impl Agent for GeminiAgent {
     }
 
     fn get_version(&self) -> Result<String> {
-        let output = Command::new(self.command())
-            .arg("version")
-            .output()?;
+        let output = Command::new(self.command()).arg("version").output()?;
 
         if !output.status.success() {
             return Err(anyhow::anyhow!("Failed to get Gemini version"));
@@ -192,10 +179,7 @@ impl Agent for GeminiAgent {
     }
 
     fn default_args(&self) -> Vec<String> {
-        vec![
-            "chat".to_string(),
-            "--non-interactive".to_string(),
-        ]
+        vec!["chat".to_string(), "--non-interactive".to_string()]
     }
 }
 
@@ -212,9 +196,7 @@ impl Agent for CodexAgent {
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
-        let output = Command::new(self.command())
-            .arg("--version")
-            .output()?;
+        let output = Command::new(self.command()).arg("--version").output()?;
 
         let available = output.status.success();
         let version = if available {
@@ -231,9 +213,7 @@ impl Agent for CodexAgent {
     }
 
     fn get_version(&self) -> Result<String> {
-        let output = Command::new(self.command())
-            .arg("--version")
-            .output()?;
+        let output = Command::new(self.command()).arg("--version").output()?;
 
         if !output.status.success() {
             return Err(anyhow::anyhow!("Failed to get Codex version"));
@@ -244,7 +224,7 @@ impl Agent for CodexAgent {
 
     fn default_args(&self) -> Vec<String> {
         vec![
-            "exec".to_string(),  // Run non-interactively
+            "exec".to_string(), // Run non-interactively
         ]
     }
 }
@@ -283,7 +263,14 @@ impl AgentFactory {
             match agent.check_available() {
                 Ok(availability) => {
                     if availability.available {
-                        info!("✅ {:?} is available: {}", agent_type, availability.version.as_ref().unwrap_or(&"unknown".to_string()));
+                        info!(
+                            "✅ {:?} is available: {}",
+                            agent_type,
+                            availability
+                                .version
+                                .as_ref()
+                                .unwrap_or(&"unknown".to_string())
+                        );
                         results.insert(agent_type, availability);
                     } else {
                         debug!("❌ {:?} is not available", agent_type);

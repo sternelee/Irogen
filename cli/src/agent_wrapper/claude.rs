@@ -1,13 +1,12 @@
 //! Claude Code 集成模块
+#![allow(dead_code)]
 //!
 //! 此模块专门处理与 Claude Code (Anthropic AI 编码助手) 的集成，
 //! 包括输出解析、权限请求处理等。
 
 use anyhow::Result;
 use regex::Regex;
-use riterm_shared::message_protocol::{
-    AgentMessageContent, NotificationLevel, ToolCallStatus,
-};
+use riterm_shared::message_protocol::{AgentMessageContent, NotificationLevel, ToolCallStatus};
 
 /// Claude Code 输出解析器
 pub struct ClaudeOutputParser {
@@ -116,81 +115,63 @@ pub enum ParseResult {
     /// 空行
     Empty,
     /// 权限请求
-    PermissionRequest {
-        tool: String,
-        description: String,
-    },
+    PermissionRequest { tool: String, description: String },
     /// 工具调用
     ToolCall {
         tool: String,
         status: ToolCallStatus,
     },
     /// 错误消息
-    Error {
-        message: String,
-    },
+    Error { message: String },
     /// 警告消息
-    Warning {
-        message: String,
-    },
+    Warning { message: String },
     /// 思考状态
     Thinking,
     /// 普通输出
-    Output {
-        content: String,
-    },
+    Output { content: String },
 }
 
 impl ParseResult {
     /// 转换为 AgentMessageContent
     pub fn to_message_content(self) -> AgentMessageContent {
         match self {
-            ParseResult::Empty => {
-                AgentMessageContent::SystemNotification {
-                    level: NotificationLevel::Info,
-                    message: String::new(),
-                }
-            }
-            ParseResult::PermissionRequest { tool, description } => {
+            ParseResult::Empty => AgentMessageContent::SystemNotification {
+                level: NotificationLevel::Info,
+                message: String::new(),
+            },
+            ParseResult::PermissionRequest {
+                tool: _,
+                description,
+            } => {
                 // 权限请求需要特殊处理，这里返回通知
                 AgentMessageContent::SystemNotification {
                     level: NotificationLevel::Warning,
                     message: format!("Permission request: {}", description),
                 }
             }
-            ParseResult::ToolCall { tool, status } => {
-                AgentMessageContent::ToolCallUpdate {
-                    tool_name: tool,
-                    status,
-                    output: None,
-                }
-            }
-            ParseResult::Error { message } => {
-                AgentMessageContent::SystemNotification {
-                    level: NotificationLevel::Error,
-                    message,
-                }
-            }
-            ParseResult::Warning { message } => {
-                AgentMessageContent::SystemNotification {
-                    level: NotificationLevel::Warning,
-                    message,
-                }
-            }
-            ParseResult::Thinking => {
-                AgentMessageContent::AgentResponse {
-                    content: String::new(),
-                    thinking: true,
-                    message_id: None,
-                }
-            }
-            ParseResult::Output { content } => {
-                AgentMessageContent::AgentResponse {
-                    content,
-                    thinking: false,
-                    message_id: None,
-                }
-            }
+            ParseResult::ToolCall { tool, status } => AgentMessageContent::ToolCallUpdate {
+                tool_name: tool,
+                status,
+                output: None,
+            },
+            ParseResult::Error { message } => AgentMessageContent::SystemNotification {
+                level: NotificationLevel::Error,
+                message,
+            },
+            ParseResult::Warning { message } => AgentMessageContent::SystemNotification {
+                level: NotificationLevel::Warning,
+                message,
+            },
+            ParseResult::Thinking => AgentMessageContent::AgentResponse {
+                content: String::new(),
+                thinking: true,
+                message_id: None,
+            },
+            ParseResult::Output { content } => AgentMessageContent::AgentResponse {
+                content,
+                thinking: false,
+                message_id: None,
+            },
         }
     }
 
@@ -225,10 +206,7 @@ pub fn get_claude_version() -> Result<String> {
 
 /// 获取默认的 Claude Code 启动参数
 pub fn get_default_claude_args() -> Vec<String> {
-    vec![
-        "--no-prompt".to_string(),
-        "--no-launch-browser".to_string(),
-    ]
+    vec!["--no-prompt".to_string(), "--no-launch-browser".to_string()]
 }
 
 #[cfg(test)]

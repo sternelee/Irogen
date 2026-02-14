@@ -4,98 +4,6 @@
 @import url("https://cdn.jsdelivr.net/npm/@fontsource/fira-code@5.0.0/index.css");
 @import url("https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.0.0/index.css");
 
-/* Font family stack with Nerd Font priority */
-:root {
-  --terminal-font-family:
-    /* Local Nerd Fonts (if installed) */
-    "FiraCode Nerd Font",
-    "FiraCode NF",
-    "CascadiaCode Nerd Font",
-    "CaskaydiaCove Nerd Font",
-    "JetBrainsMono Nerd Font",
-    "JetBrains Mono NL",
-    /* Web fonts fallback */
-    "Fira Code",
-    "JetBrains Mono",
-    /* System fonts fallback */
-    "SF Mono",
-    "Monaco",
-    "Cascadia Code",
-    "Consolas",
-    "Liberation Mono",
-    "Ubuntu Mono",
-    "Courier New",
-    monospace;
-
-  --terminal-font-size: 14px;
-  --terminal-line-height: 1.2;
-  --terminal-letter-spacing: 0px;
-}
-
-/* Base terminal styling */
-.terminal-content,
-.xterm-screen,
-.xterm-viewport {
-  font-family: var(--terminal-font-family) !important;
-  font-size: var(--terminal-font-size);
-  line-height: var(--terminal-line-height);
-  letter-spacing: var(--terminal-letter-spacing);
-
-  /* Enable font features for better rendering */
-  font-feature-settings:
-    "liga" 1,    /* Ligatures */
-    "calt" 1,    /* Contextual alternates */
-    "kern" 1,    /* Kerning */
-    "tnum" 1,    /* Tabular numbers */
-    "zero" 1;    /* Slashed zero */
-
-  font-variant-ligatures: contextual;
-  font-variant-numeric: tabular-nums slashed-zero;
-
-  /* Improve text rendering */
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  /* Ensure consistent character spacing */
-  word-spacing: 0;
-  white-space: pre;
-}
-
-/* XTerm specific selectors */
-.xterm-char-measure-element {
-  font-family: var(--terminal-font-family) !important;
-  font-size: var(--terminal-font-size) !important;
-  line-height: var(--terminal-line-height) !important;
-}
-
-.xterm-helper-textarea {
-  font-family: var(--terminal-font-family) !important;
-}
-
-.xterm-cursor-layer {
-  font-family: var(--terminal-font-family) !important;
-}
-
-.xterm-selection {
-  font-family: var(--terminal-font-family) !important;
-}
-
-/* Unicode character support */
-.xterm-screen span,
-.xterm-screen .unicode-char {
-  font-family: var(--terminal-font-family) !important;
-  font-weight: inherit;
-  font-style: inherit;
-}
-
-/* Box drawing and block elements */
-.xterm-screen .box-drawing,
-.xterm-screen .block-elements {
-  font-family: var(--terminal-font-family) !important;
-  font-variant-ligatures: none;
-}
-
 /* Handle common Nerd Font icon ranges */
 .nerd-font-icon {
   font-family: var(--terminal-font-family) !important;
@@ -106,16 +14,16 @@
 /* Specific Unicode ranges for better character support */
 @supports (unicode-range: U+E000-F8FF) {
   @font-face {
-    font-family: 'Nerd Font Icons';
-    src: local('FiraCode Nerd Font'),
-         local('CascadiaCode Nerd Font'),
-         local('JetBrainsMono Nerd Font');
+    font-family: "Nerd Font Icons";
+    src:
+      local("FiraCode Nerd Font"), local("CascadiaCode Nerd Font"),
+      local("JetBrainsMono Nerd Font");
     unicode-range: U+E000-F8FF, U+F0000-FFFFD, U+100000-10FFFD;
     font-display: swap;
   }
 
   .xterm-screen::before {
-    font-family: 'Nerd Font Icons', var(--terminal-font-family);
+    font-family: "Nerd Font Icons", var(--terminal-font-family);
   }
 }
 
@@ -129,41 +37,5 @@
 @media (max-width: 480px) {
   :root {
     --terminal-font-size: 12px;
-  }
-}
-
-/* High DPI display optimization */
-@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
-  .terminal-content,
-  .xterm-screen {
-    -webkit-font-smoothing: subpixel-antialiased;
-  }
-}
-
-/* Print media (if needed) */
-@media print {
-  .terminal-content,
-  .xterm-screen {
-    font-family: "Courier New", monospace;
-    -webkit-print-color-adjust: exact;
-    color-adjust: exact;
-  }
-}
-
-/* Dark theme adjustments */
-@media (prefers-color-scheme: dark) {
-  .terminal-content,
-  .xterm-screen {
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-}
-
-/* Accessibility - respect user preferences for reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .terminal-content,
-  .xterm-screen {
-    animation: none;
-    transition: none;
   }
 }

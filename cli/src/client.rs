@@ -3,24 +3,20 @@
 //! 此模块实现了连接到远程 RiTerm host 的客户端功能，支持 P2P 通信和交互式对话。
 
 use anyhow::Result;
-use riterm_shared::message_protocol::{
-    Message, MessageType, AgentSessionAction, AgentControlAction,
-    MessagePayload, AgentSessionMessage, AgentControlMessage,
-    AgentMessageContent, ResponseMessage, RemoteSpawnMessage,
-    RemoteSpawnAction, AgentType, AgentPermissionMessage,
-    AgentPermissionMessageInner, AgentPermissionResponse,
-    PermissionMode, AgentPermissionRequest,
-};
-use riterm_shared::quic_server::{
-    QuicMessageClient, SerializableEndpointAddr,
-};
 use riterm_shared::CommunicationManager;
+use riterm_shared::message_protocol::{
+    AgentControlAction, AgentControlMessage, AgentMessageContent, AgentPermissionMessage,
+    AgentPermissionMessageInner, AgentPermissionResponse, AgentSessionAction, AgentSessionMessage,
+    AgentType, Message, MessagePayload, MessageType, PermissionMode, RemoteSpawnAction,
+    RemoteSpawnMessage,
+};
+use riterm_shared::quic_server::{QuicMessageClient, SerializableEndpointAddr};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, RwLock, oneshot};
 use tracing::{debug, info};
-use std::collections::HashMap;
 
 /// P2P 客户端连接配置
 #[derive(Clone)]
@@ -30,6 +26,7 @@ pub struct ClientConfig {
     /// 中继服务器 URL（可选，用于 NAT 穿透）
     pub relay_url: Option<String>,
     /// 心跳间隔
+    #[allow(dead_code)]
     pub heartbeat_interval: Duration,
     /// 消息超时
     pub timeout: Duration,
@@ -67,7 +64,9 @@ pub struct AgentSessionInfo {
     pub session_id: String,
     pub agent_type: String,
     pub project_path: String,
+    #[allow(dead_code)]
     pub started_at: u64,
+    #[allow(dead_code)]
     pub active: bool,
 }
 
@@ -103,7 +102,8 @@ impl RiTermClient {
             self.config.relay_url.clone(),
             communication_manager,
             self.config.client_key_path.as_deref(),
-        ).await?;
+        )
+        .await?;
 
         info!("🌐 QUIC client initialized, connecting to remote host...");
 
@@ -120,7 +120,8 @@ impl RiTermClient {
 
         tokio::spawn(async move {
             while let Ok(message) = message_rx.recv().await {
-                Self::handle_message(message, sessions_ref.clone(), response_channels.clone()).await;
+                Self::handle_message(message, sessions_ref.clone(), response_channels.clone())
+                    .await;
             }
         });
 
@@ -199,7 +200,10 @@ impl RiTermClient {
                 }
             }
             AgentSessionAction::UpdateStatus { active, thinking } => {
-                debug!("Session status update: active={}, thinking={}", active, thinking);
+                debug!(
+                    "Session status update: active={}, thinking={}",
+                    active, thinking
+                );
                 // 更新会话状态 - 需要从消息中获取 session_id
                 // 注意：UpdateStatus 消息应该包含 session_id，但目前协议中没有
                 // 这里暂时只记录日志，等待协议更新
@@ -220,22 +224,20 @@ impl RiTermClient {
                 AgentMessageContent::AgentResponse { content, .. } => {
                     println!("{}", content);
                 }
-                AgentMessageContent::SystemNotification { level, message } => {
-                    match level {
-                        riterm_shared::message_protocol::NotificationLevel::Info => {
-                            println!("ℹ️  {}", message);
-                        }
-                        riterm_shared::message_protocol::NotificationLevel::Warning => {
-                            println!("⚠️  {}", message);
-                        }
-                        riterm_shared::message_protocol::NotificationLevel::Error => {
-                            println!("❌ {}", message);
-                        }
-                        riterm_shared::message_protocol::NotificationLevel::Success => {
-                            println!("✅ {}", message);
-                        }
+                AgentMessageContent::SystemNotification { level, message } => match level {
+                    riterm_shared::message_protocol::NotificationLevel::Info => {
+                        println!("ℹ️  {}", message);
                     }
-                }
+                    riterm_shared::message_protocol::NotificationLevel::Warning => {
+                        println!("⚠️  {}", message);
+                    }
+                    riterm_shared::message_protocol::NotificationLevel::Error => {
+                        println!("❌ {}", message);
+                    }
+                    riterm_shared::message_protocol::NotificationLevel::Success => {
+                        println!("✅ {}", message);
+                    }
+                },
                 _ => {
                     debug!("Other AgentMessage content: {:?}", agent_msg.content);
                 }
@@ -295,11 +297,13 @@ impl RiTermClient {
     }
 
     /// 是否已连接
+    #[allow(dead_code)]
     pub fn is_connected(&self) -> bool {
         self.connected
     }
 
     /// 获取远程节点 ID
+    #[allow(dead_code)]
     pub fn remote_node_id(&self) -> Option<&str> {
         self.remote_node_id.as_deref()
     }
@@ -356,7 +360,8 @@ impl RiTermClient {
                 action: AgentSessionAction::ListSessions,
                 request_id: Some(uuid::Uuid::new_v4().to_string()),
             }),
-        ).requires_response();
+        )
+        .requires_response();
 
         // 通过 P2P 发送并等待响应
         let response_msg = self.send_and_wait(message).await?;
@@ -364,8 +369,12 @@ impl RiTermClient {
         // 解析响应消息
         if let MessagePayload::Response(response) = response_msg.payload {
             if !response.success {
-                return Err(anyhow::anyhow!("ListSessions failed: {}",
-                    response.message.unwrap_or_else(|| "Unknown error".to_string())));
+                return Err(anyhow::anyhow!(
+                    "ListSessions failed: {}",
+                    response
+                        .message
+                        .unwrap_or_else(|| "Unknown error".to_string())
+                ));
             }
 
             // 如果响应中有数据，解析会话列表
@@ -400,7 +409,8 @@ impl RiTermClient {
                 },
                 request_id: Some(request_id.clone()),
             }),
-        ).requires_response();
+        )
+        .requires_response();
 
         // 通过 P2P 发送消息
         self.send_quic_message(message).await?;
@@ -431,18 +441,23 @@ impl RiTermClient {
         };
 
         // 构建远程生成消息
+        // Generate a session ID for this spawn request
+        let session_id = uuid::Uuid::new_v4().to_string();
+
         let message = Message::new(
             MessageType::RemoteSpawn,
             "client".to_string(),
             MessagePayload::RemoteSpawn(RemoteSpawnMessage {
                 action: RemoteSpawnAction::SpawnSession {
+                    session_id: session_id.clone(),
                     agent_type: agent_type_enum,
                     project_path: project_path.to_string(),
                     args: args.to_vec(),
                 },
                 request_id: Some(uuid::Uuid::new_v4().to_string()),
             }),
-        ).requires_response();
+        )
+        .requires_response();
 
         // 通过 P2P 发送并等待响应
         let response_msg = self.send_and_wait(message).await?;
@@ -450,8 +465,12 @@ impl RiTermClient {
         // 解析响应消息
         if let MessagePayload::Response(response) = response_msg.payload {
             if !response.success {
-                return Err(anyhow::anyhow!("SpawnSession failed: {}",
-                    response.message.unwrap_or_else(|| "Unknown error".to_string())));
+                return Err(anyhow::anyhow!(
+                    "SpawnSession failed: {}",
+                    response
+                        .message
+                        .unwrap_or_else(|| "Unknown error".to_string())
+                ));
             }
 
             // 响应数据应包含新会话的信息
@@ -484,13 +503,17 @@ impl RiTermClient {
         // 尝试从缓存中找到新创建的会话
         let sessions = self.sessions.read().await;
         for session in sessions.iter() {
-            if session.project_path == project_path && session.agent_type.to_lowercase() == agent_type.to_lowercase() {
+            if session.project_path == project_path
+                && session.agent_type.to_lowercase() == agent_type.to_lowercase()
+            {
                 info!("✅ Session spawned (from cache): {}", session.session_id);
                 return Ok(session.clone());
             }
         }
 
-        Err(anyhow::anyhow!("Failed to spawn session or receive session registration"))
+        Err(anyhow::anyhow!(
+            "Failed to spawn session or receive session registration"
+        ))
     }
 
     /// 获取会话元数据
@@ -523,7 +546,10 @@ impl RiTermClient {
             return Err(anyhow::anyhow!("Not connected"));
         }
 
-        info!("📝 Responding to permission: {} -> {}", permission_id, approved);
+        info!(
+            "📝 Responding to permission: {} -> {}",
+            permission_id, approved
+        );
 
         // 确定权限模式
         let permission_mode = if approved {
@@ -553,7 +579,8 @@ impl RiTermClient {
             MessagePayload::AgentPermission(AgentPermissionMessage {
                 inner: AgentPermissionMessageInner::Response(response),
             }),
-        ).requires_response();
+        )
+        .requires_response();
 
         // 通过 P2P 发送权限响应
         self.send_quic_message(message).await?;
@@ -618,11 +645,7 @@ impl InteractiveClient {
         let config = ClientConfig {
             ticket,
             relay_url: relay,
-            client_key_path: Some(
-                std::env::current_dir()
-                    .unwrap()
-                    .join(".riterm_client_key")
-            ),
+            client_key_path: Some(std::env::current_dir().unwrap().join(".riterm_client_key")),
             ..Default::default()
         };
 
@@ -638,6 +661,7 @@ impl InteractiveClient {
     }
 
     /// 断开连接
+    #[allow(dead_code)]
     pub async fn disconnect(&mut self) -> Result<()> {
         self.client.disconnect().await
     }
@@ -706,7 +730,9 @@ impl InteractiveClient {
                     }
                 }
             } else {
-                println!("⚠️  No active session. Use /spawn to create one or /list to see available sessions.");
+                println!(
+                    "⚠️  No active session. Use /spawn to create one or /list to see available sessions."
+                );
             }
         }
     }
@@ -728,7 +754,12 @@ impl InteractiveClient {
                 } else {
                     println!("📋 Active Sessions:");
                     for (i, session) in sessions.iter().enumerate() {
-                        println!("   {}. {} ({})", i + 1, session.session_id, session.agent_type);
+                        println!(
+                            "   {}. {} ({})",
+                            i + 1,
+                            session.session_id,
+                            session.agent_type
+                        );
                         println!("      Project: {}", session.project_path);
                         println!();
                     }
@@ -745,7 +776,11 @@ impl InteractiveClient {
                 let project_path = parts[2];
                 let args: Vec<String> = parts[3..].iter().map(|s| s.to_string()).collect();
 
-                match self.client.spawn_session(agent_type, project_path, &args).await {
+                match self
+                    .client
+                    .spawn_session(agent_type, project_path, &args)
+                    .await
+                {
                     Ok(session) => {
                         println!("✅ Session created: {}", session.session_id);
                         self.current_session_id = Some(session.session_id.clone());
@@ -777,7 +812,9 @@ impl InteractiveClient {
             }
             "/pause" => {
                 if let Some(session_id) = &self.current_session_id {
-                    self.client.control_session(session_id, SessionControlAction::Pause).await?;
+                    self.client
+                        .control_session(session_id, SessionControlAction::Pause)
+                        .await?;
                     println!("⏸️  Session paused");
                 } else {
                     println!("⚠️  No active session");
@@ -785,7 +822,9 @@ impl InteractiveClient {
             }
             "/resume" => {
                 if let Some(session_id) = &self.current_session_id {
-                    self.client.control_session(session_id, SessionControlAction::Resume).await?;
+                    self.client
+                        .control_session(session_id, SessionControlAction::Resume)
+                        .await?;
                     println!("▶️  Session resumed");
                 } else {
                     println!("⚠️  No active session");
@@ -793,7 +832,9 @@ impl InteractiveClient {
             }
             "/stop" => {
                 if let Some(session_id) = &self.current_session_id.clone() {
-                    self.client.control_session(session_id, SessionControlAction::Stop).await?;
+                    self.client
+                        .control_session(session_id, SessionControlAction::Stop)
+                        .await?;
                     println!("🛑 Session stopped");
                     self.current_session_id = None;
                 } else {
@@ -810,12 +851,19 @@ impl InteractiveClient {
                     println!("  No active sessions");
                 } else {
                     for (i, session) in sessions.iter().enumerate() {
-                        let current = if self.current_session_id.as_ref() == Some(&session.session_id) {
-                            " (current)"
-                        } else {
-                            ""
-                        };
-                        println!("  {}. {}{} - {}", i + 1, session.session_id, current, session.agent_type);
+                        let current =
+                            if self.current_session_id.as_ref() == Some(&session.session_id) {
+                                " (current)"
+                            } else {
+                                ""
+                            };
+                        println!(
+                            "  {}. {}{} - {}",
+                            i + 1,
+                            session.session_id,
+                            current,
+                            session.agent_type
+                        );
                         println!("      📁 {}", session.project_path);
                     }
                 }
@@ -827,7 +875,11 @@ impl InteractiveClient {
                 }
                 let request_id = parts[1];
                 let session_id = self.current_session_id.as_deref().unwrap_or("");
-                match self.client.respond_to_permission(session_id, request_id, true).await {
+                match self
+                    .client
+                    .respond_to_permission(session_id, request_id, true)
+                    .await
+                {
                     Ok(_) => println!("✅ Permission approved"),
                     Err(e) => eprintln!("❌ Failed to approve permission: {}", e),
                 }
@@ -839,7 +891,11 @@ impl InteractiveClient {
                 }
                 let request_id = parts[1];
                 let session_id = self.current_session_id.as_deref().unwrap_or("");
-                match self.client.respond_to_permission(session_id, request_id, false).await {
+                match self
+                    .client
+                    .respond_to_permission(session_id, request_id, false)
+                    .await
+                {
                     Ok(_) => println!("❌ Permission denied"),
                     Err(e) => eprintln!("❌ Failed to deny permission: {}", e),
                 }

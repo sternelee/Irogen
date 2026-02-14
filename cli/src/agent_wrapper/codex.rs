@@ -1,13 +1,12 @@
 //! OpenAI Codex 集成模块
+#![allow(dead_code)]
 //!
 //! 此模块专门处理与 OpenAI Codex (OpenAI AI 编码助手) 的集成，
 //! 包括输出解析、权限请求处理等。
 
 use anyhow::Result;
 use regex::Regex;
-use riterm_shared::message_protocol::{
-    AgentMessageContent, NotificationLevel, ToolCallStatus,
-};
+use riterm_shared::message_protocol::{AgentMessageContent, NotificationLevel, ToolCallStatus};
 
 /// OpenAI Codex 输出解析器
 pub struct CodexOutputParser {
@@ -30,13 +29,15 @@ impl CodexOutputParser {
             // 匹配类似 "Allow editing file.py?" 或 "Confirm changes to src/main.rs?" 的权限请求
             permission_regex: Regex::new(r"^(Allow|Confirm|Approve) (.+?)(?: \[y/n\])?\?*$")?,
             // 匹配工具调用开始，如 "▶ Running git status" 或 "→ Executing: npm test"
-            tool_start_regex: Regex::new(r"^(▶|→|Running|Executing): (.+)$")?,
+            tool_start_regex: Regex::new(r"^(?:▶|→|Running|Executing|▶ Running): (.+)$")?,
             // 匹配工具调用完成，如 "✓ Done: git status" or "✔ Completed: npm install"
             tool_complete_regex: Regex::new(r"^(✓|✔|Done|Completed|Finished): (.+)$")?,
             // 匹配文件编辑操作，如 "Editing: src/main.rs" or "Modified: package.json"
             file_edit_regex: Regex::new(r"^(Editing|Modified|Updated|Created): (.+)$")?,
             // 匹配代码生成完成，如 "Generated: 100 lines" or "Code generation complete"
-            generation_complete_regex: Regex::new(r"^(Generated:|Code generation complete|Generation complete)")?,
+            generation_complete_regex: Regex::new(
+                r"^(Generated:|Code generation complete|Generation complete)",
+            )?,
         })
     }
 
@@ -75,7 +76,7 @@ impl CodexOutputParser {
 
         // 检查是否是工具调用开始
         if let Some(caps) = self.tool_start_regex.captures(line) {
-            let tool = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+            let tool = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             return ParseResult::ToolCall {
                 tool: tool.to_string(),
                 status: ToolCallStatus::Started,
@@ -138,14 +139,9 @@ pub enum ParseResult {
     /// 空行
     Empty,
     /// 权限请求
-    PermissionRequest {
-        tool: String,
-        description: String,
-    },
+    PermissionRequest { tool: String, description: String },
     /// 文件编辑
-    FileEdit {
-        file: String,
-    },
+    FileEdit { file: String },
     /// 代码生成完成
     GenerationComplete,
     /// 工具调用
@@ -154,85 +150,66 @@ pub enum ParseResult {
         status: ToolCallStatus,
     },
     /// 错误消息
-    Error {
-        message: String,
-    },
+    Error { message: String },
     /// 警告消息
-    Warning {
-        message: String,
-    },
+    Warning { message: String },
     /// 思考状态
     Thinking,
     /// 普通输出
-    Output {
-        content: String,
-    },
+    Output { content: String },
 }
 
 impl ParseResult {
     /// 转换为 AgentMessageContent
     pub fn to_message_content(self) -> AgentMessageContent {
         match self {
-            ParseResult::Empty => {
-                AgentMessageContent::SystemNotification {
-                    level: NotificationLevel::Info,
-                    message: String::new(),
-                }
-            }
-            ParseResult::PermissionRequest { tool, description } => {
+            ParseResult::Empty => AgentMessageContent::SystemNotification {
+                level: NotificationLevel::Info,
+                message: String::new(),
+            },
+            ParseResult::PermissionRequest {
+                tool: _,
+                description,
+            } => {
                 // 权限请求需要特殊处理，这里返回通知
                 AgentMessageContent::SystemNotification {
                     level: NotificationLevel::Warning,
                     message: format!("Permission request: {}", description),
                 }
             }
-            ParseResult::FileEdit { file } => {
-                AgentMessageContent::ToolCallUpdate {
-                    tool_name: "file_edit".to_string(),
-                    status: ToolCallStatus::Completed,
-                    output: Some(format!("Edited file: {}", file)),
-                }
-            }
-            ParseResult::GenerationComplete => {
-                AgentMessageContent::AgentResponse {
-                    content: "Code generation complete".to_string(),
-                    thinking: false,
-                    message_id: None,
-                }
-            }
-            ParseResult::ToolCall { tool, status } => {
-                AgentMessageContent::ToolCallUpdate {
-                    tool_name: tool,
-                    status,
-                    output: None,
-                }
-            }
-            ParseResult::Error { message } => {
-                AgentMessageContent::SystemNotification {
-                    level: NotificationLevel::Error,
-                    message,
-                }
-            }
-            ParseResult::Warning { message } => {
-                AgentMessageContent::SystemNotification {
-                    level: NotificationLevel::Warning,
-                    message,
-                }
-            }
-            ParseResult::Thinking => {
-                AgentMessageContent::AgentResponse {
-                    content: String::new(),
-                    thinking: true,
-                    message_id: None,
-                }
-            }
-            ParseResult::Output { content } => {
-                AgentMessageContent::AgentResponse {
-                    content,
-                    thinking: false,
-                    message_id: None,
-                }
-            }
+            ParseResult::FileEdit { file } => AgentMessageContent::ToolCallUpdate {
+                tool_name: "file_edit".to_string(),
+                status: ToolCallStatus::Completed,
+                output: Some(format!("Edited file: {}", file)),
+            },
+            ParseResult::GenerationComplete => AgentMessageContent::AgentResponse {
+                content: "Code generation complete".to_string(),
+                thinking: false,
+                message_id: None,
+            },
+            ParseResult::ToolCall { tool, status } => AgentMessageContent::ToolCallUpdate {
+                tool_name: tool,
+                status,
+                output: None,
+            },
+            ParseResult::Error { message } => AgentMessageContent::SystemNotification {
+                level: NotificationLevel::Error,
+                message,
+            },
+            ParseResult::Warning { message } => AgentMessageContent::SystemNotification {
+                level: NotificationLevel::Warning,
+                message,
+            },
+            ParseResult::Thinking => AgentMessageContent::AgentResponse {
+                content: String::new(),
+                thinking: true,
+                message_id: None,
+            },
+            ParseResult::Output { content } => AgentMessageContent::AgentResponse {
+                content,
+                thinking: false,
+                message_id: None,
+            },
         }
     }
 }
@@ -240,7 +217,7 @@ impl ParseResult {
 /// 获取默认的 OpenAI Codex 启动参数
 pub fn get_default_codex_args() -> Vec<String> {
     vec![
-        "exec".to_string(),  // Run non-interactively
+        "exec".to_string(), // Run non-interactively
     ]
 }
 
