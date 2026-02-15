@@ -13,8 +13,6 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
+| #1855 | 1:14 AM | ✅ | Stage refactoring files for git commit | ~189 |
 | #1853 | 1:09 AM | 🔄 | Rename riterm-lib crate to lib and update workspace imports | ~364 |
-| #1840 | 12:46 AM | 🔵 | CLI message_server.rs imports from agent_wrapper module | ~75 |
-| #1839 | " | 🔄 | Updated CLI main.rs to use riterm-lib instead of agent_wrapper | ~112 |
-| #1837 | " | 🔵 | CLI main.rs uses agent_wrapper module declaration and import | ~95 |
 </claude-mem-context>
