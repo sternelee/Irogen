@@ -623,22 +623,25 @@ async fn run_stdout_reader(
                 }
             }
 
-            // ----- assistant message (full message, may come at end of turn) -----
+            // ----- assistant message (full message) -----
             "assistant" => {
-                // The assistant message may contain content blocks; we emit
-                // the full text as a delta for simplicity (the streaming
-                // deltas should have already been emitted).
-                if let Some(content) = msg.pointer("/message/content").and_then(|v| v.as_array()) {
+                debug!("[SDK][{}] assistant message received", session_id);
+
+                // The assistant message may contain content blocks.
+                // Try content array from /message/content
+                let content_array = msg.pointer("/message/content").and_then(|v| v.as_array());
+
+                if let Some(content) = content_array {
+                    debug!(
+                        "[SDK][{}] Found {} content blocks",
+                        session_id,
+                        content.len()
+                    );
                     for block in content {
                         let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
                         if block_type == "text" {
                             if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
                                 if !text.is_empty() {
-                                    debug!(
-                                        "[SDK][{}] assistant text block ({} chars)",
-                                        session_id,
-                                        text.len()
-                                    );
                                     debug!(
                                         "[SDK][{}] assistant text block ({} chars)",
                                         session_id,
@@ -655,12 +658,7 @@ async fn run_stdout_reader(
                             }
                         } else if block_type == "thinking" {
                             if let Some(thinking) = block.get("thinking").and_then(|v| v.as_str()) {
-                                if !thinking.is_empty() {
-                                    debug!(
-                                        "[SDK][{}] assistant thinking block ({} chars)",
-                                        session_id,
-                                        thinking.len()
-                                    );
+                                if !!thinking.is_empty() {
                                     debug!(
                                         "[SDK][{}] assistant thinking block ({} chars)",
                                         session_id,
@@ -677,6 +675,11 @@ async fn run_stdout_reader(
                             }
                         }
                     }
+                } else {
+                    warn!(
+                        "[SDK][{}] Could not parse assistant message content",
+                        session_id
+                    );
                 }
             }
 

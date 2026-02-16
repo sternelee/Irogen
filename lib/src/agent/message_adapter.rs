@@ -12,8 +12,27 @@ use riterm_shared::message_protocol::{
 
 use super::events::AgentEvent;
 
-/// Convert an AgentEvent to an AgentMessageContent
+/// Convert an AgentEvent to a JSON value for frontend consumption
+///
+/// This function serializes the AgentEvent directly, preserving the original
+/// event structure with the `type` field for frontend parsing.
 pub fn event_to_message_content(
+    event: &AgentEvent,
+    _message_id: Option<String>,
+) -> serde_json::Value {
+    serde_json::to_value(event).unwrap_or_else(|_| {
+        serde_json::json!({
+            "type": "unknown",
+            "error": "Failed to serialize event"
+        })
+    })
+}
+
+/// Convert an AgentEvent to P2P AgentMessageContent
+///
+/// This function is used for P2P message transmission where we need
+/// the simplified protocol format.
+pub fn event_to_agent_message_content(
     event: &AgentEvent,
     _message_id: Option<String>,
 ) -> AgentMessageContent {
@@ -185,7 +204,7 @@ pub fn build_agent_message(
 ) -> Message {
     use riterm_shared::message_protocol::{AgentMessageMessage, MessagePayload};
 
-    let content = event_to_message_content(event, None);
+    let content = event_to_agent_message_content(event, None);
 
     Message {
         message_type: MessageType::AgentMessage,
