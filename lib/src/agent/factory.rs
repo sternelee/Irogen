@@ -58,8 +58,12 @@ pub trait Agent {
 
 /// Claude Code Agent (ACP compatible)
 ///
-/// Claude Code is an ACP-compatible agent that communicates via JSON-RPC 2.0
-/// over stdio using the --stdio flag.
+/// Claude Code does not natively support ACP over stdio.
+/// Instead, the `@zed-industries/claude-code-acp` npm package provides an ACP
+/// bridge that wraps Claude Code via the official Claude Agent SDK.
+///
+/// Install: `npm install -g @zed-industries/claude-code-acp`
+/// Command: `claude-code-acp` (no arguments needed, communicates via ACP JSON-RPC over stdio)
 pub struct ClaudeCodeAgent;
 
 impl Agent for ClaudeCodeAgent {
@@ -68,39 +72,59 @@ impl Agent for ClaudeCodeAgent {
     }
 
     fn command(&self) -> &str {
-        "claude"
+        "claude-code-acp"
     }
 
     fn default_args(&self) -> Vec<String> {
-        // Claude Code uses --stdio for ACP communication
-        vec!["--stdio".to_string()]
+        // claude-code-acp communicates via ACP JSON-RPC over stdio with no extra args
+        vec![]
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
-        let output = Command::new(self.command()).arg("--version").output()?;
-
-        let available = output.status.success();
-        let version = if available {
-            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
-        } else {
-            None
-        };
-
-        Ok(AgentAvailability {
-            available,
-            version,
-            executable: self.command().to_string(),
-        })
+        // First check if claude-code-acp is available
+        let output = Command::new(self.command()).arg("--version").output();
+        match output {
+            Ok(output) if output.status.success() => {
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                Ok(AgentAvailability {
+                    available: true,
+                    version: Some(version),
+                    executable: self.command().to_string(),
+                })
+            }
+            _ => {
+                // Fall back to checking if claude itself is available
+                let claude_output = Command::new("claude").arg("--version").output()?;
+                let available = claude_output.status.success();
+                let version = if available {
+                    Some(String::from_utf8_lossy(&claude_output.stdout).trim().to_string())
+                } else {
+                    None
+                };
+                Ok(AgentAvailability {
+                    available,
+                    version,
+                    executable: self.command().to_string(),
+                })
+            }
+        }
     }
 
     fn get_version(&self) -> Result<String> {
-        let output = Command::new(self.command()).arg("--version").output()?;
-
-        if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to get Claude version"));
+        let output = Command::new(self.command()).arg("--version").output();
+        match output {
+            Ok(output) if output.status.success() => {
+                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            }
+            _ => {
+                // Fall back to claude version
+                let claude_output = Command::new("claude").arg("--version").output()?;
+                if !claude_output.status.success() {
+                    return Err(anyhow::anyhow!("Failed to get Claude Code version. Install claude-code-acp: npm install -g @zed-industries/claude-code-acp"));
+                }
+                Ok(String::from_utf8_lossy(&claude_output.stdout).trim().to_string())
+            }
         }
-
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 }
 
@@ -448,15 +472,15 @@ mod tests {
     fn test_agent_factory_create() {
         let claude = AgentFactory::create(AgentType::ClaudeCode);
         assert_eq!(claude.agent_type(), AgentType::ClaudeCode);
-        assert_eq!(claude.command(), "claude");
-        assert!(claude.default_args().contains(&"--stdio".to_string()));
+        assert_eq!(claude.command(), "claude-code-acp");
+        assert!(claude.default_args().is_empty());
     }
 
     #[test]
     fn test_acp_command() {
         let (cmd, args) = AgentFactory::get_acp_command(AgentType::ClaudeCode);
-        assert_eq!(cmd, "claude");
-        assert!(args.contains(&"--stdio".to_string()));
+        assert_eq!(cmd, "claude-code-acp");
+        assert!(args.is_empty());
     }
 
     #[test]

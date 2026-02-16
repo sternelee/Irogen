@@ -2262,13 +2262,31 @@ async fn local_start_agent(
         .ok_or("Agent manager not initialized")?
         .clone();
 
+    // Expand ~ in project path to HOME directory
+    let expanded_project_path = if project_path.starts_with("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            format!("{}{}", home, &project_path[1..])
+        } else {
+            project_path.clone()
+        }
+    } else if project_path == "~" {
+        std::env::var("HOME").unwrap_or(project_path.clone())
+    } else {
+        project_path.clone()
+    };
+
+    let working_dir = std::path::PathBuf::from(&expanded_project_path);
+    if !working_dir.exists() {
+        return Err(format!("Project path does not exist: {}", expanded_project_path));
+    }
+
     manager
         .start_session_with_id(
             session_id.clone(),
             agent_type,
             None,           // binary_path
             vec![],         // extra_args
-            std::path::PathBuf::from(&project_path), // working_dir
+            working_dir,    // working_dir
             None,           // home_dir
             "local".to_string(), // source
         )

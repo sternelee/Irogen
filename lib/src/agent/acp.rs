@@ -270,7 +270,8 @@ impl AcpStreamingSession {
                     }
                 };
 
-                runtime.block_on(async move {
+                let local_set = tokio::task::LocalSet::new();
+                runtime.block_on(local_set.run_until(async move {
                     if let Err(err) = run_acp_runtime(AcpRuntimeParams {
                         session_id: runtime_session_id,
                         agent_type,
@@ -290,7 +291,7 @@ impl AcpStreamingSession {
                     {
                         error!("ACP runtime exited with error: {err}");
                     }
-                });
+                }));
             })
             .with_context(|| format!("Failed to spawn ACP thread for session {session_id}"))?;
 
@@ -459,18 +460,113 @@ struct AcpRuntimeParams {
     retry_config: RetryConfig,
 }
 
+/// Get an extended PATH that includes common binary directories.
+/// macOS GUI apps don't inherit the user's shell PATH, so we need to
+/// explicitly include directories where tools like `claude`, `gemini`, etc. are installed.
+fn get_extended_path() -> String {
+    let current_path = std::env::var("PATH").unwrap_or_default();
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+
+    let extra_dirs = [
+        format!("{home}/.local/bin"),
+        format!("{home}/.cargo/bin"),
+        "/opt/homebrew/bin".to_string(),
+        "/opt/homebrew/sbin".to_string(),
+        "/usr/local/bin".to_string(),
+        "/usr/local/sbin".to_string(),
+        "/usr/bin".to_string(),
+        "/usr/sbin".to_string(),
+        "/bin".to_string(),
+        "/sbin".to_string(),
+        // npm global installs
+        format!("{home}/.npm-global/bin"),
+        format!("{home}/.nvm/versions/node/current/bin"),
+        // volta
+        format!("{home}/.volta/bin"),
+    ];
+
+    let mut parts: Vec<&str> = current_path.split(':').collect();
+    for dir in &extra_dirs {
+        if !parts.contains(&dir.as_str()) {
+            parts.push(dir);
+        }
+    }
+    parts.join(":")
+}
+
+/// Resolve a command name to its full path by searching common directories.
+/// Returns the original command if no full path is found (will rely on PATH).
+fn resolve_command_path(command: &str) -> String {
+    // If already an absolute path, return as-is
+    if command.starts_with('/') {
+        return command.to_string();
+    }
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+
+    let search_dirs = [
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        &format!("{home}/.local/bin"),
+        &format!("{home}/.cargo/bin"),
+        &format!("{home}/.npm-global/bin"),
+        &format!("{home}/.volta/bin"),
+        "/usr/bin",
+        "/bin",
+    ];
+
+    for dir in search_dirs {
+        let full_path = format!("{dir}/{command}");
+        if std::path::Path::new(&full_path).exists() {
+            debug!("Resolved command '{}' to '{}'", command, full_path);
+            return full_path;
+        }
+    }
+
+    // Fallback: try `which` command
+    if let Ok(output) = std::process::Command::new("which")
+        .arg(command)
+        .output()
+    {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                debug!("Resolved command '{}' via which to '{}'", command, path);
+                return path;
+            }
+        }
+    }
+
+    debug!(
+        "Could not resolve full path for '{}', using as-is",
+        command
+    );
+    command.to_string()
+}
+
 async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
     info!(
         "Starting ACP runtime for session {} ({:?}) with command: {} {:?}",
         params.session_id, params.agent_type, params.command, params.args
     );
 
-    let mut cmd = Command::new(&params.command);
+    // Resolve command to full path (GUI apps on macOS may not have PATH set)
+    let resolved_command = resolve_command_path(&params.command);
+    info!(
+        "Resolved command '{}' -> '{}'",
+        params.command, resolved_command
+    );
+
+    let mut cmd = Command::new(&resolved_command);
     cmd.args(&params.args)
         .current_dir(&params.working_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    // Ensure PATH includes common binary directories for GUI app context
+    let extended_path = get_extended_path();
+    cmd.env("PATH", &extended_path);
 
     // Set HOME directory if specified
     if let Some(ref home) = params.home_dir {
@@ -482,8 +578,8 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
         .spawn()
         .with_context(|| {
             format!(
-                "Failed to spawn ACP agent command {}: {:#?}",
-                params.command, params.args
+                "Failed to spawn ACP agent command '{}' (resolved: '{}'): {:#?}",
+                params.command, resolved_command, params.args
             )
         })?;
 
