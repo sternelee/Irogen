@@ -44,6 +44,15 @@ pdf-extract = { version = "0.10", optional = true }
 # Screenshot/image processing
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
+# nusb for USB device enumeration (hardware discovery, optional)
+nusb = { version = "0.2", default-features = false, optional = true }
+
+# tokio-serial for serial port for peripheral communication (optional)
+tokio-serial = { version = "5", default-features = false, optional = true }
+
+# probe-rs for STM32/Nucleo memory read (optional, adds ~50 deps; optional)
+probe-rs = { version = "0.30", optional = true }
+
 [features]
 default = []
 tauri = []
@@ -53,6 +62,10 @@ mobile = []
 rag-pdf = ["dep:pdf-extract"]
 # Enable browser automation tools
 browser = ["dep:fantoccini"]
+# Enable hardware tools with nusb, tokio-serial, probe-rs
+hardware = ["dep:nusb", "dep:tokio-serial", "dep:probe-rs"]
+# probe = probe-rs for Nucleo memory read (adds ~50 deps; optional)
+probe = ["dep:probe-rs"]
 
 [dev-dependencies]
 tempfile = "3.13"

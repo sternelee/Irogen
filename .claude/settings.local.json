@@ -66,7 +66,8 @@
       "Bash(pnpm tsc)",
       "Bash(git reset:*)",
       "Bash(bash .claude/scripts/generate-reasoning.sh 52db3ea \"feat\\(zeroclaw\\): integrate zeroclaw as built-in agent with full features\")",
-      "Bash(bash .claude/scripts/generate-reasoning.sh d110bec \"feat\\(ui\\): add zeroclaw provider configuration UI\")"
+      "Bash(bash .claude/scripts/generate-reasoning.sh d110bec \"feat\\(ui\\): add zeroclaw provider configuration UI\")",
+      "Bash(bash ~/.claude/scripts/generate-reasoning.sh 4ed57ed \"feat\\(zeroclaw\\): migrate git, http, and vision tools from clawapp\")"
     ],
     "deny": []
   },
