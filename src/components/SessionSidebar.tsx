@@ -5,6 +5,17 @@
  */
 
 import { createSignal, onMount, Show, For, type Component } from "solid-js";
+import {
+  FiPlus,
+  FiX,
+  FiHome,
+  FiCloud,
+  FiTerminal,
+  FiMessageSquare,
+  FiCode,
+  FiActivity,
+} from "solid-icons/fi";
+import { SiGoogle, SiGithub } from "solid-icons/si";
 import { invoke } from "@tauri-apps/api/core";
 import { sessionStore } from "../stores/sessionStore";
 import { notificationStore } from "../stores/notificationStore";
@@ -16,67 +27,8 @@ import {
   Input,
   Select,
   Textarea,
+  Label,
 } from "./ui/primitives";
-
-// ============================================================================
-// Icons
-// ============================================================================
-
-const PlusIcon: Component = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-5 h-5"
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-  >
-    <path
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      stroke-width="2"
-      d="M12 4v16m8-8H4"
-    />
-  </svg>
-);
-
-const CloseIcon: Component = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-4 h-4"
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-  >
-    <path
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      stroke-width="2"
-      d="M6 18L18 6M6 6l12 12"
-    />
-  </svg>
-);
-
-const LocalIcon: Component = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-5 h-5"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-  >
-    <path d="M12 2C6.48 2 2 12s4.48 2 12 12H4c-1.1 0-2 .9-2 2-2V4c0-1.1-.9-2-2-2H4c-2.21 0-4-4.21 0-4s-2.21 0-4-4.21V8c0 2.21 0 4 4.21 4H4c1.1 0 2 .9 2 2 2h16c1.1 0 2 .9 2 2 2v-4c0-1.1.9-2 2-2H4c-2.21 0-4-4.21 0-4s2.21 0 4 4.21V8c0 2.21 0 4-4.21 4h-4.21c1.1 0 2-.9-2-2-2H4c-1.1 0-2-.9-2-2-2V4c0-1.1-.9-2-2-2H4c-2.21 0-4-4.21 0-4s-.21 0 4-4.21V4h16c1.1 0 2 .9 2 2 2v4c0-1.1.9-2 2-2H4c-2.21 0-4-4.21 0-4s-.21 0 4 4.21V8z" />
-  </svg>
-);
-
-const RemoteIcon: Component = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-5 h-5"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-  >
-    <path d="M20 4H4c-1.1 0-2 .9-2 2-2H3c-1.1 0-2-.9-2-2-2V8c0-1.1-.9-2-2-2H2c-2.21 0-4-4.21 0-4s2.21 0 4 4.21V6h18c1.1 0 2 .9 2 2 2v4c0-1.1.9-2 2-2h-4.21c-1.1 0 2-.9-2-2-2V4c0-1.1-.9-2-2-2H4c-2.21 0-4-4.21 0-4s2.21 0 4 4.21V8z" />
-  </svg>
-);
 
 // ============================================================================
 // Agent Icons
@@ -88,78 +40,49 @@ const getAgentIcon = (agentType: AgentType) => {
     case "claude":
       return (
         <div class={`${iconClass} text-purple-500`}>
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5-10-5zM12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5-10-5z" />
-          </svg>
+          <FiTerminal size={16} />
         </div>
       );
     case "codex":
       return (
         <div class={`${iconClass} text-emerald-500`}>
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z" />
-          </svg>
+          <FiCode size={16} />
+        </div>
+      );
+    case "opencode":
+      return (
+        <div class={`${iconClass} text-primary`}>
+          <FiCode size={16} />
         </div>
       );
     case "gemini":
       return (
         <div class={`${iconClass} text-blue-500`}>
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <circle cx="12" cy="12" r="10" />
-          </svg>
-        </div>
-      );
-    case "opencode":
-      return (
-        <div class={`${iconClass} text-green-500`}>
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M9 19c-5.1 1.5-5.2 7.9 0-5-2 7.9-0-5.2C3.5 11.3.5.5 11.3 0 5.2 7.9-0-5.2 0 10 5c0 11.3 0 15 0 15v-1.3 0 15-7.9-0 15-15.7 0 15-15.7-4.21c0-15.7-4.21c-15.7-4.21 0-8.5 0 15-7.9-4.21c0-8.5-0 11.3 0-8.5 11.3 0-8.5 11.3-0 11.3 0 11.3-7.9 0 11.3-7.9 0 11.3 0 11.3 0 7.9 0 11.3c0 7.9 0 11.3 0 7.9H5.4c0-2.21-2-7.9 2-7.9 0 15.7 0 15-15.7 0 15H9z" />
-          </svg>
+          <SiGoogle size={16} />
         </div>
       );
     case "copilot":
       return (
         <div class={`${iconClass} text-gray-500`}>
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <rect x="3" y="11" width="18" height="10" rx="2" />
-            <circle cx="12" cy="5" r="2" />
-            <path d="M12 7v4" />
-            <line x1="8" y1="16" x2="8" y2="16" />
-            <line x1="16" y1="16" x2="16" y2="16" />
-          </svg>
+          <SiGithub size={16} />
         </div>
       );
     case "qwen":
       return (
-        <div class={`${iconClass} text-orange-500`}>
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <rect x="4" y="3" width="16" height="18" rx="2" />
-            <path d="M12 6v4" />
-            <circle cx="12" cy="11" r="2" />
-          </svg>
+        <div class={`${iconClass} text-indigo-500`}>
+          <FiMessageSquare size={16} />
         </div>
       );
     case "zeroclaw":
       return (
-        <div class={`${iconClass} text-cyan-500`}>
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <circle cx="12" cy="12" r="10" />
-            <path
-              d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            />
-            <circle cx="12" cy="17" r="0.5" />
-          </svg>
+        <div class={`${iconClass} text-orange-500`}>
+          <FiActivity size={16} />
         </div>
       );
     default:
       return (
-        <div class={`${iconClass} text-gray-500`}>
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <circle cx="12" cy="12" r="10" />
-          </svg>
+        <div class={`${iconClass} text-base-content/50`}>
+          <FiTerminal size={16} />
         </div>
       );
   }
@@ -182,6 +105,8 @@ const SessionItem: Component<SessionItemProps> = (props) => {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       class={`group relative flex items-center gap-3 px-4 py-3 cursor-pointer transition-all duration-200
         ${
           props.isActive
@@ -189,11 +114,20 @@ const SessionItem: Component<SessionItemProps> = (props) => {
             : "hover:bg-base-200/50 border-r-2 border-transparent"
         }`}
       onClick={props.onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          props.onClick();
+        }
+      }}
     >
       {/* Mode Indicator */}
       <div class="flex-shrink-0">
-        <Show when={session()?.mode === "local"} fallback={<RemoteIcon />}>
-          <LocalIcon />
+        <Show
+          when={session()?.mode === "local"}
+          fallback={<FiCloud size={18} class="text-base-content/60" />}
+        >
+          <FiHome size={18} class="text-base-content/60" />
         </Show>
       </div>
 
@@ -251,20 +185,23 @@ const SessionItem: Component<SessionItemProps> = (props) => {
             }}
             title="Spawn remote session"
           >
-            <PlusIcon />
+            <FiPlus size={16} />
           </Button>
         </Show>
       </div>
 
       {/* Close Button */}
-      <button
-        class={`p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        class={`p-1 rounded opacity-0 inline-flex items-center justify-center group-hover:opacity-100 transition-opacity
           ${props.isActive ? "hover:bg-primary/20" : "hover:bg-base-300"}`}
         onClick={props.onClose}
         title="Close session"
       >
-        <CloseIcon />
-      </button>
+        <FiX size={16} />
+      </Button>
     </div>
   );
 };
@@ -362,7 +299,6 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
       });
     }
     sessionStore.removeSession(sessionId);
-    notificationStore.success("Session closed", "System");
   };
 
   // Handle remote ticket connection
@@ -498,9 +434,11 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
     <>
       {/* Mobile Overlay */}
       <Show when={props.isOpen}>
-        <div
-          class="fixed inset-0 bg-black/50 z-40 lg:hidden"
+        <button
+          type="button"
+          class="fixed inset-0 bg-black/50 z-40 lg:hidden w-full h-full border-none cursor-default"
           onClick={props.onToggle}
+          aria-label="Close sidebar"
         />
       </Show>
 
@@ -508,7 +446,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
       <aside
         class={`fixed lg:static inset-y-0 left-0 z-50 w-80 bg-base-100 border-r border-base-300
           transform transition-transform duration-300 ease-in-out
-          ${props.isOpen ? "translate-x-0" : "-translate-x-full lg:hidden"}
+          ${props.isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
       >
         {/* Header */}
@@ -517,10 +455,10 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
           <Button
             size="icon"
             variant="ghost"
-            class="h-8 w-8"
+            class="h-8 w-8 lg:hidden"
             onClick={props.onToggle}
           >
-            <CloseIcon />
+            <FiX size={18} />
           </Button>
         </div>
 
@@ -565,7 +503,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
               onClick={() => setShowNewSessionModal(true)}
               title="New Session"
             >
-              <PlusIcon />
+              <FiPlus size={18} />
             </Button>
           </div>
         </div>
@@ -576,11 +514,11 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
         <Dialog
           open={showNewSessionModal()}
           onClose={() => setShowNewSessionModal(false)}
-          contentClass="max-w-md"
+          contentClass="max-w-md max-h-[90%] overflow-auto"
         >
           <div>
             <h3 class="font-bold text-lg mb-4 flex items-center gap-2">
-              <PlusIcon />
+              <FiPlus size={20} />
               New Session
             </h3>
 
@@ -594,7 +532,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                   setConnectionError(null);
                 }}
               >
-                <RemoteIcon /> Remote
+                <FiCloud class="mr-1" /> Remote
               </Button>
               <Button
                 type="button"
@@ -604,15 +542,16 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                   setConnectionError(null);
                 }}
               >
-                <LocalIcon /> Local
+                <FiHome class="mr-1" /> Local
               </Button>
             </div>
 
             {/* Remote Mode: Ticket Input */}
             <Show when={newSessionMode() === "remote"}>
               <div class="mb-4 space-y-2">
-                <label class="text-sm font-semibold">Session Ticket</label>
+                <Label for="session-ticket">Session Ticket</Label>
                 <Textarea
+                  id="session-ticket"
                   class="h-24 font-mono text-sm"
                   placeholder="Paste the session ticket from CLI host..."
                   value={sessionTicket()}
@@ -643,7 +582,9 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                     class="h-4 w-4 shrink-0"
                     viewBox="0 0 20 20"
                     fill="currentColor"
+                    aria-hidden="true"
                   >
+                    <title>Error</title>
                     <path
                       fill-rule="evenodd"
                       d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
@@ -658,8 +599,9 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
             {/* Local Mode: Agent Config */}
             <Show when={newSessionMode() === "local"}>
               <div class="mb-4 space-y-2">
-                <label class="text-sm font-semibold">Agent Type</label>
+                <Label for="agent-type">Agent Type</Label>
                 <Select
+                  id="agent-type"
                   value={newSessionAgent()}
                   onChange={(e) =>
                     setNewSessionAgent(e.currentTarget.value as AgentType)
@@ -679,8 +621,9 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
               {/* ZeroClaw Provider Config */}
               <Show when={newSessionAgent() === "zeroclaw"}>
                 <div class="mb-4 space-y-2">
-                  <label class="text-sm font-semibold">Provider</label>
+                  <Label for="provider">Provider</Label>
                   <Select
+                    id="provider"
                     value={zeroClawProvider()}
                     onChange={(e) => {
                       setZeroClawProvider(e.currentTarget.value);
@@ -715,8 +658,9 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                 </div>
 
                 <div class="mb-4 space-y-2">
-                  <label class="text-sm font-semibold">Model</label>
+                  <Label for="model">Model</Label>
                   <Input
+                    id="model"
                     type="text"
                     value={zeroClawModel()}
                     onInput={(e) => setZeroClawModel(e.currentTarget.value)}
@@ -727,8 +671,9 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
 
                 <Show when={zeroClawProvider() !== "ollama"}>
                   <div class="mb-4 space-y-2">
-                    <label class="text-sm font-semibold">API Key</label>
+                    <Label for="api-key">API Key</Label>
                     <Input
+                      id="api-key"
                       type="password"
                       value={zeroClawApiKey()}
                       onInput={(e) => setZeroClawApiKey(e.currentTarget.value)}
@@ -742,11 +687,14 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                 </Show>
 
                 <div class="mb-4 space-y-2">
-                  <label class="text-sm font-semibold">Temperature</label>
+                  <Label for="temperature">Temperature</Label>
                   <Input
+                    id="temperature"
                     type="number"
                     value={zeroClawTemperature()}
-                    onInput={(e) => setZeroClawTemperature(e.currentTarget.value)}
+                    onInput={(e) =>
+                      setZeroClawTemperature(e.currentTarget.value)
+                    }
                     placeholder="0.7"
                     class="font-mono text-sm w-24"
                     min="0"
@@ -757,8 +705,9 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
               </Show>
 
               <div class="mb-4 space-y-2">
-                <label class="text-sm font-semibold">Project Path</label>
+                <Label for="project-path">Project Path</Label>
                 <Input
+                  id="project-path"
                   type="text"
                   value={newSessionPath()}
                   onInput={(e) => setNewSessionPath(e.currentTarget.value)}

@@ -13,6 +13,25 @@ import {
   onMount,
   onCleanup,
 } from "solid-js";
+import { TransitionGroup } from "solid-transition-group";
+import { createClipboard } from "@solid-primitives/clipboard";
+import { createScrollPosition } from "@solid-primitives/scroll";
+import {
+  FiUser,
+  FiTerminal,
+  FiSend,
+  FiSquare,
+  FiPlus,
+  FiCheck,
+  FiX,
+  FiAlertTriangle,
+  FiTool,
+  FiCopy,
+  FiCode,
+  FiMessageSquare,
+  FiActivity,
+} from "solid-icons/fi";
+import { SiGoogle, SiGithub } from "solid-icons/si";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { chatStore } from "../stores/chatStore";
@@ -28,6 +47,7 @@ import {
   Kbd,
   Select,
   Spinner,
+  Label,
 } from "./ui/primitives";
 import { MarkdownRenderer } from "solid-markdown-wasm";
 
@@ -167,172 +187,18 @@ interface ChatViewProps {
     args: string[],
   ) => void;
   agentType?: AgentType;
+  projectPath?: string;
   sessionMode?: "remote" | "local"; // Added session mode
 }
-
-// ============================================================================
-// Icons
-// ============================================================================
-
-const UserIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-5 h-5"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <title>User</title>
-    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-    <circle cx="12" cy="7" r="4"></circle>
-  </svg>
-);
-
-const BotIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-5 h-5"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <title>Bot</title>
-    <rect x="3" y="11" width="18" height="10" rx="2"></rect>
-    <circle cx="12" cy="5" r="2"></circle>
-    <path d="M12 7v4"></path>
-    <line x1="8" y1="16" x2="8" y2="16"></line>
-    <line x1="16" y1="16" x2="16" y2="16"></line>
-  </svg>
-);
-
-const SendIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-5 h-5"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <title>Send</title>
-    <line x1="22" y1="2" x2="11" y2="13"></line>
-    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-  </svg>
-);
-
-const StopIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-5 h-5"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <title>Stop</title>
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-  </svg>
-);
-
-const PlusIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-4 h-4"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <title>Add</title>
-    <line x1="12" y1="5" x2="12" y2="19"></line>
-    <line x1="5" y1="12" x2="19" y2="12"></line>
-  </svg>
-);
-
-const CheckIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-5 h-5"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <title>Approve</title>
-    <polyline points="20 6 9 17 4 12"></polyline>
-  </svg>
-);
-
-const XIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-5 h-5"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <title>Deny</title>
-    <line x1="18" y1="6" x2="6" y2="18"></line>
-    <line x1="6" y1="6" x2="18" y2="18"></line>
-  </svg>
-);
-
-const WarningIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-6 h-6"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <title>Warning</title>
-    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-    <line x1="12" y1="9" x2="12" y2="13"></line>
-    <line x1="12" y1="17" x2="12.01" y2="17"></line>
-  </svg>
-);
-
-const ToolIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="w-3 h-3 mr-1"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <title>Tool</title>
-    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
-  </svg>
-);
 
 // ============================================================================
 // Helper Components
 // ============================================================================
 
 function MessageBubble(props: { message: ChatMessage }) {
+  const [, , write] = createClipboard();
+  const [copied, setCopied] = createSignal(false);
+
   const isUser = () => props.message.role === "user";
   const isSystem = () => props.message.role === "system";
   const bubbleClass = () => {
@@ -341,32 +207,50 @@ function MessageBubble(props: { message: ChatMessage }) {
     return "bg-secondary text-secondary-foreground border-secondary";
   };
 
+  const handleCopy = () => {
+    write(props.message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div
-      class={`flex flex-col gap-1 ${isUser() ? "items-end" : "items-start"}`}
+      class={`flex flex-col gap-1 ${isUser() ? "items-end" : "items-start"} group/bubble transition-all duration-300`}
     >
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
         <Show when={isUser()}>
           <div class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <UserIcon />
+            <FiUser size={20} />
           </div>
         </Show>
         <Show when={!isUser() && !isSystem()}>
           <div class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
-            <BotIcon />
+            <FiTerminal size={20} />
           </div>
         </Show>
         <Show when={isSystem()}>
           <div class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-foreground text-background">
-            <BotIcon />
+            <FiTerminal size={20} />
           </div>
         </Show>
         <time class="opacity-70">
           {new Date(props.message.timestamp || Date.now()).toLocaleTimeString()}
         </time>
+        <Show when={!isSystem()}>
+          <button
+            type="button"
+            onClick={handleCopy}
+            class="ml-1 p-1 rounded-md hover:bg-base-300 opacity-0 group-hover/bubble:opacity-100 transition-opacity inline-flex items-center justify-center"
+            title="Copy message"
+          >
+            <Show when={copied()} fallback={<FiCopy size={14} />}>
+              <FiCheck size={18} />
+            </Show>
+          </button>
+        </Show>
       </div>
       <div
-        class={`max-w-[min(38rem,92vw)] rounded-xl border px-4 py-3 ${bubbleClass()}`}
+        class={`max-w-[min(38rem,92vw)] rounded-xl border px-4 py-3 shadow-sm ${bubbleClass()}`}
       >
         <div class="prose prose-sm wrap-break-words text-sm max-w-none">
           <MarkdownRenderer markdown={props.message.content} />
@@ -378,7 +262,7 @@ function MessageBubble(props: { message: ChatMessage }) {
             <For each={props.message.toolCalls}>
               {(tool) => (
                 <Badge class="h-5 px-2 text-[10px]" variant="default">
-                  <ToolIcon />
+                  <FiTool class="mr-1" size={12} />
                   {tool.toolName}
                 </Badge>
               )}
@@ -403,7 +287,7 @@ function PermissionRequestCard(props: {
 }) {
   return (
     <Alert variant="warning" class="mx-4 max-w-2xl shadow-lg">
-      <WarningIcon />
+      <FiAlertTriangle size={24} />
       <div class="flex-1">
         <h3 class="font-bold">Permission Request</h3>
         <div class="text-sm opacity-80">{props.permission.description}</div>
@@ -415,7 +299,7 @@ function PermissionRequestCard(props: {
           variant="success"
           size="sm"
         >
-          <CheckIcon />
+          <FiCheck size={20} />
           Approve Once
         </Button>
         <Button
@@ -424,7 +308,7 @@ function PermissionRequestCard(props: {
           variant="primary"
           size="sm"
         >
-          <CheckIcon />
+          <FiCheck size={20} />
           Approve Session
         </Button>
         <Button
@@ -433,7 +317,7 @@ function PermissionRequestCard(props: {
           variant="destructive"
           size="sm"
         >
-          <XIcon />
+          <FiX size={20} />
           Deny
         </Button>
       </div>
@@ -454,8 +338,22 @@ export function ChatView(props: ChatViewProps) {
   const [messagesEnd, setMessagesEnd] = createSignal<HTMLDivElement | null>(
     null,
   );
+  const [scrollEl, setScrollEl] = createSignal<HTMLElement>();
   const [isScrolledToBottom, setIsScrolledToBottom] = createSignal(true);
   const [isStreaming, setIsStreaming] = createSignal(false);
+
+  // Track scroll position using solid-primitives hook
+  const scrollPos = createScrollPosition(scrollEl);
+
+  createEffect(() => {
+    const el = scrollEl();
+    if (el) {
+      const isAtBottom = el.scrollHeight - scrollPos.y - el.clientHeight < 100;
+      if (isAtBottom !== isScrolledToBottom()) {
+        setIsScrolledToBottom(isAtBottom);
+      }
+    }
+  });
 
   // Remote spawn state
   const [showSpawnModal, setShowSpawnModal] = createSignal(false);
@@ -496,7 +394,7 @@ export function ChatView(props: ChatViewProps) {
 
             // Handle different event types from local agent
             switch (eventType) {
-              case "text_delta":
+              case "text_delta": {
                 const deltaContent = content || "";
                 // Update or create message
                 const currentMessages = messages();
@@ -517,12 +415,13 @@ export function ChatView(props: ChatViewProps) {
                 }
                 setIsStreaming(true);
                 break;
+              }
 
               case "turn_started":
                 setIsStreaming(true);
                 break;
 
-              case "turn_completed":
+              case "turn_completed": {
                 setIsStreaming(false);
                 const currentMessages2 = messages();
                 const lastMessage2 =
@@ -536,8 +435,9 @@ export function ChatView(props: ChatViewProps) {
                   });
                 }
                 break;
+              }
 
-              case "turn_error":
+              case "turn_error": {
                 setIsStreaming(false);
                 const error = parsed.error || "Unknown error";
                 chatStore.addMessage(props.sessionId, {
@@ -545,8 +445,9 @@ export function ChatView(props: ChatViewProps) {
                   content: `Error: ${error}`,
                 });
                 break;
+              }
 
-              case "reasoning_delta":
+              case "reasoning_delta": {
                 const reasoningContent = content || "";
                 // Append to current message or create new one
                 const reasonMessages = messages();
@@ -569,8 +470,9 @@ export function ChatView(props: ChatViewProps) {
                 }
                 setIsStreaming(true);
                 break;
+              }
 
-              case "tool_started":
+              case "tool_started": {
                 const toolName = parsed.toolName || "unknown";
                 const toolInput = parsed.input;
                 const inputStr = toolInput ? JSON.stringify(toolInput) : "";
@@ -579,8 +481,9 @@ export function ChatView(props: ChatViewProps) {
                   content: `[Tool: ${toolName} started]${inputStr ? `\nInput: ${inputStr}` : ""}`,
                 });
                 break;
+              }
 
-              case "tool_inputUpdated":
+              case "tool_inputUpdated": {
                 const updateToolName = parsed.toolName || "unknown";
                 const updatedInput = parsed.input;
                 const updateStr = updatedInput
@@ -591,8 +494,9 @@ export function ChatView(props: ChatViewProps) {
                   content: `[Tool: ${updateToolName} input updated]${updateStr ? `\n${updateStr}` : ""}`,
                 });
                 break;
+              }
 
-              case "tool_completed":
+              case "tool_completed": {
                 const compToolName = parsed.toolName || "unknown";
                 const compOutput = parsed.output;
                 const compError = parsed.error;
@@ -613,8 +517,9 @@ export function ChatView(props: ChatViewProps) {
                   });
                 }
                 break;
+              }
 
-              case "approval_request":
+              case "approval_request": {
                 const permToolName = parsed.toolName || "unknown";
                 const permMessage =
                   parsed.message || `Permission request for ${permToolName}`;
@@ -628,8 +533,9 @@ export function ChatView(props: ChatViewProps) {
                 });
                 setIsStreaming(false);
                 break;
+              }
 
-              case "tool_call":
+              case "tool_call": {
                 const legacyToolName = parsed.toolName || "unknown";
                 const legacyStatus = parsed.status || "started";
                 const legacyToolOutput = parsed.output as string | undefined;
@@ -638,14 +544,16 @@ export function ChatView(props: ChatViewProps) {
                   content: `[Tool: ${legacyToolName}] Status: ${legacyStatus}${legacyToolOutput ? `\n${legacyToolOutput}` : ""}`,
                 });
                 break;
+              }
 
-              case "session_started":
+              case "session_started": {
                 const agentName = parsed.agent || "Agent";
                 chatStore.addMessage(props.sessionId, {
                   role: "system",
                   content: `[Session started: ${agentName}]`,
                 });
                 break;
+              }
 
               case "session_ended":
                 chatStore.addMessage(props.sessionId, {
@@ -654,7 +562,7 @@ export function ChatView(props: ChatViewProps) {
                 });
                 break;
 
-              case "usage_update":
+              case "usage_update": {
                 const inputTokens = parsed.inputTokens;
                 const outputTokens = parsed.outputTokens;
                 const modelUsage = parsed.modelUsage;
@@ -671,8 +579,9 @@ export function ChatView(props: ChatViewProps) {
                   });
                 }
                 break;
+              }
 
-              case "progress_update":
+              case "progress_update": {
                 const progress = parsed.progress || 0;
                 const progressMsg = parsed.message || "";
                 const operation = parsed.operation || "Operation";
@@ -682,8 +591,9 @@ export function ChatView(props: ChatViewProps) {
                   content: `[Progress] ${operation}: ${progressPercent}%${progressMsg ? ` - ${progressMsg}` : ""}`,
                 });
                 break;
+              }
 
-              case "notification":
+              case "notification": {
                 const notifLevel = parsed.level || "Info";
                 const notifMessage = parsed.message || "";
                 if (notifMessage) {
@@ -693,8 +603,9 @@ export function ChatView(props: ChatViewProps) {
                   });
                 }
                 break;
+              }
 
-              case "file_operation":
+              case "file_operation": {
                 const fileOp = parsed.operation || "unknown";
                 const filePath = parsed.path || "";
                 const fileStatus = parsed.status || "";
@@ -703,8 +614,9 @@ export function ChatView(props: ChatViewProps) {
                   content: `[File: ${fileOp} ${filePath}]${fileStatus ? ` - ${fileStatus}` : ""}`,
                 });
                 break;
+              }
 
-              case "terminal_output":
+              case "terminal_output": {
                 const termCmd = parsed.command || "";
                 const termOutput = (parsed.output as string) || "";
                 const termExitCode = parsed.exitCode;
@@ -727,6 +639,7 @@ export function ChatView(props: ChatViewProps) {
                   }
                 }
                 break;
+              }
 
               default:
                 console.log(
@@ -1022,113 +935,24 @@ export function ChatView(props: ChatViewProps) {
   const getAgentIcon = () => {
     switch (props.agentType) {
       case "opencode":
-        return (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-6 w-6"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <title>Agent Icon</title>
-            <polyline points="16 18 22 12 16 6"></polyline>
-            <polyline points="8 6 2 12 8 18"></polyline>
-          </svg>
-        );
+        return <FiCode size={24} />;
       case "gemini":
-        return (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-6 w-6"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <title>Agent Icon</title>
-            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"></path>
-            <path d="M12 8v8"></path>
-            <path d="M8 12h8"></path>
-          </svg>
-        );
+        return <SiGoogle size={24} />;
       case "copilot":
-        return (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-6 w-6"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <title>GitHub Copilot</title>
-            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-          </svg>
-        );
+        return <SiGithub size={24} />;
       case "qwen":
-        return (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-6 w-6"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <title>Qwen Code</title>
-            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-          </svg>
-        );
+        return <FiMessageSquare size={24} />;
       case "zeroclaw":
-        return (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-6 w-6"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <title>ZeroClaw</title>
-            <circle cx="12" cy="12" r="10"></circle>
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-            <line x1="12" y1="17" x2="12.01" y2="17"></line>
-          </svg>
-        );
+        return <FiActivity size={24} />;
       default:
-        return (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-6 w-6"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <title>Agent Icon</title>
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-          </svg>
-        );
+        return <FiTerminal size={24} />;
     }
   };
 
   return (
     <div class="flex flex-col h-full bg-base-200 relative">
       {/* Header */}
-      <div class="z-20 flex items-center justify-between border-b border-base-300 bg-base-100 pr-4 pl-16 py-4 shadow-sm">
+      <div class="z-20 flex items-center justify-between border-b border-base-300 bg-base-100 pr-4 pl-16 lg:pl-6 py-4 shadow-sm">
         <div class="flex-1">
           <div class="flex items-center gap-3">
             <div class="text-primary">{getAgentIcon()}</div>
@@ -1143,9 +967,11 @@ export function ChatView(props: ChatViewProps) {
                 {props.agentType === "zeroclaw" && "ZeroClaw"}
                 {props.agentType === "custom" && "Custom Agent"}
               </h2>
-              <div class="text-xs text-base-content/50">
-                Session:{" "}
-                {props.sessionId ? props.sessionId.slice(0, 8) : "unknown"}
+              <div
+                class="text-xs text-base-content/50 truncate max-w-[24rem]"
+                title={props.projectPath}
+              >
+                {props.projectPath || "No project path"}
               </div>
             </div>
           </div>
@@ -1159,7 +985,7 @@ export function ChatView(props: ChatViewProps) {
               class="animate-pulse"
               onClick={handleAbort}
             >
-              <StopIcon />
+              <FiSquare size={20} />
               <span class="hidden sm:inline">Stop</span>
             </Button>
           </Show>
@@ -1170,20 +996,15 @@ export function ChatView(props: ChatViewProps) {
             size="icon"
             class="h-8 w-8"
           >
-            <PlusIcon />
+            <FiPlus size={16} />
           </Button>
         </div>
       </div>
 
       {/* Messages Area */}
       <div
+        ref={setScrollEl}
         class="flex-1 overflow-y-auto px-4 py-6 scroll-smooth"
-        onScroll={(e) => {
-          const target = e.target as HTMLElement;
-          const isAtBottom =
-            target.scrollHeight - target.scrollTop - target.clientHeight < 100;
-          setIsScrolledToBottom(isAtBottom);
-        }}
       >
         <Show
           when={messages().length === 0 && pendingPermissions().length === 0}
@@ -1199,30 +1020,61 @@ export function ChatView(props: ChatViewProps) {
         </Show>
 
         {/* Permission Requests */}
-        <For each={pendingPermissions()}>
-          {(permission) => (
-            <PermissionRequestCard
-              permission={permission}
-              onApprove={() =>
-                handlePermissionResponse(permission.id, "approved")
-              }
-              onDeny={() => handlePermissionResponse(permission.id, "denied")}
-              onApproveForSession={() =>
-                handlePermissionResponse(permission.id, "approved_for_session")
-              }
-            />
-          )}
-        </For>
+        <div class="space-y-4 mb-6">
+          <TransitionGroup name="message">
+            <For each={pendingPermissions()}>
+              {(permission) => (
+                <PermissionRequestCard
+                  permission={permission}
+                  onApprove={() =>
+                    handlePermissionResponse(permission.id, "approved")
+                  }
+                  onDeny={() =>
+                    handlePermissionResponse(permission.id, "denied")
+                  }
+                  onApproveForSession={() =>
+                    handlePermissionResponse(
+                      permission.id,
+                      "approved_for_session",
+                    )
+                  }
+                />
+              )}
+            </For>
+          </TransitionGroup>
+        </div>
 
         {/* Messages */}
         <div class="space-y-6 mb-4">
-          <For each={messages()}>
-            {(message) => <MessageBubble message={message} />}
-          </For>
+          <TransitionGroup name="message">
+            <For each={messages()}>
+              {(message) => <MessageBubble message={message} />}
+            </For>
+          </TransitionGroup>
         </div>
 
         <div ref={setMessagesEnd} />
       </div>
+
+      <style>
+        {`
+        .message-enter {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        .message-enter-active {
+          transition: opacity 300ms ease-out, transform 300ms ease-out;
+        }
+        .message-exit {
+          opacity: 1;
+        }
+        .message-exit-active {
+          opacity: 0;
+          transition: opacity 300ms ease-in;
+          position: absolute;
+        }
+      `}
+      </style>
 
       {/* Scroll to bottom button */}
       <Show when={!isScrolledToBottom() && messages().length > 0}>
@@ -1279,7 +1131,7 @@ export function ChatView(props: ChatViewProps) {
             aria-label="Send message"
           >
             <Show when={!isStreaming()} fallback={<Spinner size="xs" />}>
-              <SendIcon />
+              <FiSend size={20} />
             </Show>
           </Button>
         </div>
@@ -1300,14 +1152,12 @@ export function ChatView(props: ChatViewProps) {
         >
           <div>
             <h3 class="font-bold text-lg mb-4 flex items-center gap-2">
-              <PlusIcon />
+              <FiPlus size={20} />
               Spawn New Remote Session
             </h3>
 
             <div class="mb-4 space-y-2">
-              <label class="text-sm font-semibold" for="agent-type">
-                Agent Type
-              </label>
+              <Label for="agent-type">Agent Type</Label>
               <Select
                 id="agent-type"
                 value={spawnAgentType()}
@@ -1327,9 +1177,7 @@ export function ChatView(props: ChatViewProps) {
             </div>
 
             <div class="mb-4 space-y-2">
-              <label class="text-sm font-semibold" for="project-path">
-                Project Path
-              </label>
+              <Label for="project-path">Project Path</Label>
               <Input
                 id="project-path"
                 type="text"
@@ -1341,9 +1189,7 @@ export function ChatView(props: ChatViewProps) {
             </div>
 
             <div class="mb-6 space-y-2">
-              <label class="text-sm font-semibold" for="spawn-args">
-                Additional Arguments
-              </label>
+              <Label for="spawn-args">Additional Arguments</Label>
               <Input
                 id="spawn-args"
                 type="text"

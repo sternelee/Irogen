@@ -62,7 +62,11 @@
       "Bash(pnpm tauri android build:*)",
       "Bash(npm ls:*)",
       "Bash(npx tsc:*)",
-      "Bash(bun add:*)"
+      "Bash(bun add:*)",
+      "Bash(pnpm tsc)",
+      "Bash(git reset:*)",
+      "Bash(bash .claude/scripts/generate-reasoning.sh 52db3ea \"feat\\(zeroclaw\\): integrate zeroclaw as built-in agent with full features\")",
+      "Bash(bash .claude/scripts/generate-reasoning.sh d110bec \"feat\\(ui\\): add zeroclaw provider configuration UI\")"
     ],
     "deny": []
   },
