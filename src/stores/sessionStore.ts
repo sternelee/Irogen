@@ -20,6 +20,7 @@ export type AgentType =
   | "copilot"
   | "qwen"
   | "codex"
+  | "zeroclaw"
   | "custom";
 
 export type SessionMode = "remote" | "local";

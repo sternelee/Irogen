@@ -97,14 +97,12 @@ function parseEvent(eventObj: Record<string, unknown>): ParsedEvent {
       result.type = typeStr.replace(":", "_");
     }
 
-    // Copy all other properties (camelCase conversion for SDK protocol)
+    // Copy all other properties, converting snake_case to camelCase
     for (const key of Object.keys(eventObj)) {
       if (key !== "type") {
-        // Convert ke camelCase from camelCase (SDK uses camelCase)
-        // sessionId -> sessionId (already camelCase)
-        // turnId -> turnId (already camelCase)
-        // toolId -> toolId (already camelCase)
-        (result as unknown as Record<string, unknown>)[key] = eventObj[key];
+        const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+        (result as unknown as Record<string, unknown>)[camelKey] =
+          eventObj[key];
       }
     }
 
@@ -605,7 +603,9 @@ export function ChatView(props: ChatViewProps) {
                   });
                 } else {
                   const outputStr = compOutput
-                    ? JSON.stringify(compOutput)
+                    ? typeof compOutput === "string"
+                      ? compOutput
+                      : JSON.stringify(compOutput, null, 2)
                     : "";
                   chatStore.addMessage(props.sessionId, {
                     role: "system",
@@ -1088,6 +1088,24 @@ export function ChatView(props: ChatViewProps) {
             <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
           </svg>
         );
+      case "zeroclaw":
+        return (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-6 w-6"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <title>ZeroClaw</title>
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        );
       default:
         return (
           <svg
@@ -1122,6 +1140,7 @@ export function ChatView(props: ChatViewProps) {
                 {props.agentType === "gemini" && "Gemini CLI"}
                 {props.agentType === "copilot" && "GitHub Copilot"}
                 {props.agentType === "qwen" && "Qwen Code"}
+                {props.agentType === "zeroclaw" && "ZeroClaw"}
                 {props.agentType === "custom" && "Custom Agent"}
               </h2>
               <div class="text-xs text-base-content/50">
@@ -1302,6 +1321,7 @@ export function ChatView(props: ChatViewProps) {
                 <option value="gemini">Gemini CLI</option>
                 <option value="copilot">GitHub Copilot</option>
                 <option value="qwen">Qwen Code</option>
+                <option value="zeroclaw">ZeroClaw</option>
                 <option value="custom">Custom</option>
               </Select>
             </div>

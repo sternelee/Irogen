@@ -44,6 +44,13 @@ function AgentIcon(props: { agentType: AgentType; class?: string }) {
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
           </svg>
         )
+      case 'zeroclaw':
+        return (
+          <svg class={props.class} fill="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" fill="none" stroke="white" stroke-width="2" />
+          </svg>
+        )
       default:
         return (
           <svg class={props.class} fill="none" viewBox="0 0 24 24" stroke="currentColor">

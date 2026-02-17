@@ -139,6 +139,21 @@ const getAgentIcon = (agentType: AgentType) => {
           </svg>
         </div>
       );
+    case "zeroclaw":
+      return (
+        <div class={`${iconClass} text-cyan-500`}>
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="12" r="10" />
+            <path
+              d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            />
+            <circle cx="12" cy="17" r="0.5" />
+          </svg>
+        </div>
+      );
     default:
       return (
         <div class={`${iconClass} text-gray-500`}>
@@ -199,6 +214,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
             {session()?.agentType === "copilot" && "Copilot"}
             {session()?.agentType === "qwen" && "Qwen"}
             {session()?.agentType === "codex" && "Codex"}
+            {session()?.agentType === "zeroclaw" && "ZeroClaw"}
             {session()?.agentType === "custom" && "Custom"}
           </span>
           <span
@@ -270,6 +286,12 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
   const [newSessionMode, setNewSessionMode] = createSignal<"remote" | "local">(
     "remote",
   );
+
+  // ZeroClaw provider config
+  const [zeroClawProvider, setZeroClawProvider] = createSignal("ollama");
+  const [zeroClawModel, setZeroClawModel] = createSignal("qwen3:8b");
+  const [zeroClawApiKey, setZeroClawApiKey] = createSignal("");
+  const [zeroClawTemperature, setZeroClawTemperature] = createSignal("0.7");
 
   // Remote connection state
   const [sessionTicket, setSessionTicket] = createSignal("");
@@ -400,10 +422,24 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
     }
 
     // Create local agent session
+    // Build extra args for ZeroClaw provider config
+    const extraArgs: string[] = [];
+    if (newSessionAgent() === "zeroclaw") {
+      extraArgs.push(zeroClawProvider());
+      extraArgs.push(zeroClawModel());
+      if (zeroClawApiKey().trim()) {
+        extraArgs.push(zeroClawApiKey().trim());
+      } else {
+        extraArgs.push(""); // placeholder for api_key
+      }
+      extraArgs.push(zeroClawTemperature());
+    }
+
     invoke<string>("local_start_agent", {
       agentTypeStr: newSessionAgent(),
       projectPath: newSessionPath(),
       sessionId: undefined,
+      extraArgs: extraArgs.length > 0 ? extraArgs : undefined,
     })
       .then((sessionId) => {
         const newSession = {
@@ -631,6 +667,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                 >
                   <option value="claude">Claude Code</option>
                   <option value="codex">Codex</option>
+                  <option value="zeroclaw">ZeroClaw</option>
                   <option value="gemini">Gemini CLI</option>
                   <option value="opencode">OpenCode</option>
                   <option value="copilot">GitHub Copilot</option>
@@ -638,6 +675,86 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                   <option value="custom">Custom</option>
                 </Select>
               </div>
+
+              {/* ZeroClaw Provider Config */}
+              <Show when={newSessionAgent() === "zeroclaw"}>
+                <div class="mb-4 space-y-2">
+                  <label class="text-sm font-semibold">Provider</label>
+                  <Select
+                    value={zeroClawProvider()}
+                    onChange={(e) => {
+                      setZeroClawProvider(e.currentTarget.value);
+                      // Set sensible default model per provider
+                      const defaults: Record<string, string> = {
+                        ollama: "qwen3:8b",
+                        anthropic: "claude-sonnet-4-20250514",
+                        openai: "gpt-4o",
+                        gemini: "gemini-2.0-flash",
+                        deepseek: "deepseek-chat",
+                        openrouter: "anthropic/claude-sonnet-4",
+                        groq: "llama-3.3-70b-versatile",
+                        mistral: "mistral-large-latest",
+                        glm: "glm-4-plus",
+                      };
+                      const model = defaults[e.currentTarget.value];
+                      if (model) setZeroClawModel(model);
+                    }}
+                  >
+                    <option value="ollama">Ollama (Local)</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="groq">Groq</option>
+                    <option value="mistral">Mistral</option>
+                    <option value="glm">GLM / Zhipu</option>
+                    <option value="opencode">OpenCode</option>
+                    <option value="zai">Z.AI</option>
+                  </Select>
+                </div>
+
+                <div class="mb-4 space-y-2">
+                  <label class="text-sm font-semibold">Model</label>
+                  <Input
+                    type="text"
+                    value={zeroClawModel()}
+                    onInput={(e) => setZeroClawModel(e.currentTarget.value)}
+                    placeholder="e.g. qwen3:8b"
+                    class="font-mono text-sm"
+                  />
+                </div>
+
+                <Show when={zeroClawProvider() !== "ollama"}>
+                  <div class="mb-4 space-y-2">
+                    <label class="text-sm font-semibold">API Key</label>
+                    <Input
+                      type="password"
+                      value={zeroClawApiKey()}
+                      onInput={(e) => setZeroClawApiKey(e.currentTarget.value)}
+                      placeholder="sk-... (or leave empty to use env var)"
+                      class="font-mono text-sm"
+                    />
+                    <p class="text-xs text-base-content/50">
+                      Leave empty to use environment variable
+                    </p>
+                  </div>
+                </Show>
+
+                <div class="mb-4 space-y-2">
+                  <label class="text-sm font-semibold">Temperature</label>
+                  <Input
+                    type="number"
+                    value={zeroClawTemperature()}
+                    onInput={(e) => setZeroClawTemperature(e.currentTarget.value)}
+                    placeholder="0.7"
+                    class="font-mono text-sm w-24"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                  />
+                </div>
+              </Show>
 
               <div class="mb-4 space-y-2">
                 <label class="text-sm font-semibold">Project Path</label>

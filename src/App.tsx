@@ -92,6 +92,8 @@ export default function App() {
     if (lower.includes("gemini")) return "gemini";
     if (lower.includes("copilot")) return "copilot";
     if (lower.includes("qwen")) return "qwen";
+    if (lower.includes("zeroclaw")) return "zeroclaw";
+    if (lower.includes("codex")) return "codex";
     return "custom";
   };
 
