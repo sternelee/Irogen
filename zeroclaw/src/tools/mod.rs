@@ -1,16 +1,24 @@
 pub mod file_read;
 pub mod file_write;
+pub mod git_operations;
+pub mod http_request;
+pub mod image_info;
 pub mod memory_forget;
 pub mod memory_recall;
 pub mod memory_store;
+pub mod screenshot;
 pub mod shell;
 pub mod traits;
 
 pub use file_read::FileReadTool;
 pub use file_write::FileWriteTool;
+pub use git_operations::GitOperationsTool;
+pub use http_request::HttpRequestTool;
+pub use image_info::ImageInfoTool;
 pub use memory_forget::MemoryForgetTool;
 pub use memory_recall::MemoryRecallTool;
 pub use memory_store::MemoryStoreTool;
+pub use screenshot::ScreenshotTool;
 pub use shell::ShellTool;
 pub use traits::Tool;
 #[allow(unused_imports)]
@@ -32,7 +40,7 @@ pub fn default_tools_with_runtime(
     vec![
         Box::new(ShellTool::new(security.clone(), runtime.clone())),
         Box::new(FileReadTool::new(security.clone(), runtime.clone())),
-        Box::new(FileWriteTool::new(security.clone(), runtime.clone())),
+        Box::new(FileWriteTool::new(security, runtime)),
     ]
 }
 
