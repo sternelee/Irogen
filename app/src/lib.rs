@@ -1977,6 +1977,7 @@ async fn send_slash_command(
                         "opencode" | "open" => AgentType::OpenCode,
                         "codex" => AgentType::Codex,
                         "gemini" => AgentType::Gemini,
+                        "zeroclaw" => AgentType::ZeroClaw,
                         _ => AgentType::Custom,
                     };
 
@@ -2082,6 +2083,7 @@ async fn remote_spawn_session(
         "opencode" | "open" | "openai" => AgentType::OpenCode,
         "codex" => AgentType::Codex,
         "gemini" | "gemini-cli" => AgentType::Gemini,
+        "zeroclaw" => AgentType::ZeroClaw,
         _ => AgentType::Custom,
     };
 
@@ -2215,6 +2217,7 @@ async fn local_start_agent(
     agent_type_str: String,
     project_path: String,
     session_id: Option<String>,
+    extra_args: Option<Vec<String>>,
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
@@ -2226,6 +2229,7 @@ async fn local_start_agent(
         "copilot" => AgentType::Copilot,
         "qwen" => AgentType::Qwen,
         "codex" => AgentType::Codex,
+        "zeroclaw" => AgentType::ZeroClaw,
         "custom" => AgentType::Custom,
         _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
     };
@@ -2288,11 +2292,11 @@ async fn local_start_agent(
         .start_session_with_id(
             session_id.clone(),
             agent_type,
-            None,                // binary_path
-            vec![],              // extra_args
-            working_dir,         // working_dir
-            None,                // home_dir
-            "local".to_string(), // source
+            None,                           // binary_path
+            extra_args.unwrap_or_default(), // extra_args
+            working_dir,                    // working_dir
+            None,                           // home_dir
+            "local".to_string(),            // source
         )
         .await
         .map_err(|e| format!("Failed to start local agent: {}", e))?;

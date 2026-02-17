@@ -352,6 +352,39 @@ impl Agent for QwenAgent {
     }
 }
 
+/// ZeroClaw Agent (built-in, no external binary)
+///
+/// ZeroClaw is an in-process agent that calls LLM APIs directly.
+/// It supports 22+ providers and needs no external CLI.
+pub struct ZeroClawAgent;
+
+impl Agent for ZeroClawAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::ZeroClaw
+    }
+
+    fn command(&self) -> &str {
+        "zeroclaw" // Not actually used — in-process
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        vec![] // Configuration passed via extra_args at spawn time
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        // Always available — it's built-in
+        Ok(AgentAvailability {
+            available: true,
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            executable: "built-in".to_string(),
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        Ok(env!("CARGO_PKG_VERSION").to_string())
+    }
+}
+
 /// Agent 工厂
 pub struct AgentFactory;
 
@@ -368,6 +401,7 @@ impl AgentFactory {
             AgentType::Gemini => Box::new(GeminiAgent),
             AgentType::Copilot => Box::new(CopilotAgent),
             AgentType::Qwen => Box::new(QwenAgent),
+            AgentType::ZeroClaw => Box::new(ZeroClawAgent),
             AgentType::AcpAgent => Box::new(ClaudeCodeAgent), // AcpAgent uses Claude as default
             AgentType::Custom => Box::new(ClaudeCodeAgent),   // Custom defaults to Claude
         }
@@ -384,6 +418,7 @@ impl AgentFactory {
             Box::new(GeminiAgent),
             Box::new(CopilotAgent),
             Box::new(QwenAgent),
+            Box::new(ZeroClawAgent),
         ];
 
         for agent in agents {

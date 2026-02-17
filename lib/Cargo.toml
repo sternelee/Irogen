@@ -32,6 +32,9 @@ libc = "0.2"
 # Shared crate
 riterm-shared = { path = "../shared" }
 
+# ZeroClaw built-in agent
+zeroclaw = { path = "../zeroclaw" }
+
 # Codex ACP dependencies (git)
 [dependencies.codex-core]
 git = "https://github.com/zed-industries/codex"

@@ -9,6 +9,7 @@ pub mod codex_acp;
 pub mod events;
 pub mod factory;
 pub mod message_adapter;
+pub mod zeroclaw_session;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -27,6 +28,7 @@ pub use events::{
 };
 pub use factory::{Agent, AgentAvailability, AgentFactory};
 pub use message_adapter::event_to_message_content;
+pub use zeroclaw_session::ZeroClawSession;
 
 /// Session kind enum for unified agent management.
 ///
@@ -40,6 +42,8 @@ pub enum SessionKind {
     Sdk(Arc<ClaudeSdkSession>),
     /// Codex session via codex-core directly
     CodexAcp(Arc<CodexAcpSession>),
+    /// ZeroClaw built-in agent (multi-provider LLM)
+    ZeroClaw(Arc<ZeroClawSession>),
 }
 
 impl SessionKind {
@@ -49,6 +53,7 @@ impl SessionKind {
             SessionKind::Acp(s) => s.session_id(),
             SessionKind::Sdk(s) => s.session_id(),
             SessionKind::CodexAcp(s) => s.session_id(),
+            SessionKind::ZeroClaw(s) => s.session_id(),
         }
     }
 
@@ -58,6 +63,7 @@ impl SessionKind {
             SessionKind::Acp(s) => s.agent_type(),
             SessionKind::Sdk(s) => s.agent_type(),
             SessionKind::CodexAcp(s) => s.agent_type(),
+            SessionKind::ZeroClaw(s) => s.agent_type(),
         }
     }
 
@@ -67,6 +73,7 @@ impl SessionKind {
             SessionKind::Acp(s) => s.subscribe(),
             SessionKind::Sdk(s) => s.subscribe(),
             SessionKind::CodexAcp(s) => s.subscribe(),
+            SessionKind::ZeroClaw(s) => s.subscribe(),
         }
     }
 
@@ -80,6 +87,7 @@ impl SessionKind {
             SessionKind::Acp(s) => s.send_message(text, turn_id).await,
             SessionKind::Sdk(s) => s.send_message(text, turn_id).await,
             SessionKind::CodexAcp(s) => s.send_message(text, turn_id).await,
+            SessionKind::ZeroClaw(s) => s.send_message(text, turn_id).await,
         }
     }
 
@@ -89,6 +97,7 @@ impl SessionKind {
             SessionKind::Acp(s) => s.interrupt().await,
             SessionKind::Sdk(s) => s.interrupt().await,
             SessionKind::CodexAcp(s) => s.interrupt().await,
+            SessionKind::ZeroClaw(s) => s.interrupt().await,
         }
     }
 
@@ -100,6 +109,7 @@ impl SessionKind {
             SessionKind::Acp(s) => s.get_pending_permissions().await,
             SessionKind::Sdk(s) => s.get_pending_permissions().await,
             SessionKind::CodexAcp(s) => s.get_pending_permissions().await,
+            SessionKind::ZeroClaw(s) => s.get_pending_permissions().await,
         }
     }
 
@@ -114,6 +124,7 @@ impl SessionKind {
             SessionKind::Acp(s) => s.respond_to_permission(request_id, approved, reason).await,
             SessionKind::Sdk(s) => s.respond_to_permission(request_id, approved, reason).await,
             SessionKind::CodexAcp(s) => s.respond_to_permission(request_id, approved, reason).await,
+            SessionKind::ZeroClaw(s) => s.respond_to_permission(request_id, approved, reason).await,
         }
     }
 
@@ -123,6 +134,7 @@ impl SessionKind {
             SessionKind::Acp(s) => s.shutdown().await,
             SessionKind::Sdk(s) => s.shutdown().await,
             SessionKind::CodexAcp(s) => s.shutdown().await,
+            SessionKind::ZeroClaw(s) => s.shutdown().await,
         }
     }
 }
@@ -218,16 +230,20 @@ impl AgentManager {
             Arc::new(SessionKind::Sdk(Arc::new(sdk_session)))
         } else if agent_type == AgentType::Codex {
             // Codex uses codex-core directly (in-process)
-            let codex_session = CodexAcpSession::spawn(
-                session_id.clone(),
-                agent_type,
-                working_dir,
-                home_dir,
-            )
-            .await
-            .with_context(|| format!("Failed to start Codex session"))?;
+            let codex_session =
+                CodexAcpSession::spawn(session_id.clone(), agent_type, working_dir, home_dir)
+                    .await
+                    .with_context(|| format!("Failed to start Codex session"))?;
 
             Arc::new(SessionKind::CodexAcp(Arc::new(codex_session)))
+        } else if agent_type == AgentType::ZeroClaw {
+            // ZeroClaw built-in agent (in-process, multi-provider LLM)
+            let zeroclaw_session =
+                ZeroClawSession::spawn(session_id.clone(), agent_type, working_dir, extra_args)
+                    .await
+                    .with_context(|| "Failed to start ZeroClaw session".to_string())?;
+
+            Arc::new(SessionKind::ZeroClaw(Arc::new(zeroclaw_session)))
         } else {
             // Other agents use ACP
             let (command, default_args) = AgentFactory::get_acp_command(agent_type);
@@ -257,6 +273,8 @@ impl AgentManager {
             "SDK Control Protocol"
         } else if agent_type == AgentType::Codex {
             "Codex (codex-core)"
+        } else if agent_type == AgentType::ZeroClaw {
+            "ZeroClaw (built-in)"
         } else {
             "ACP"
         };

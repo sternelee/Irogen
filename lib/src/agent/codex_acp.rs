@@ -357,12 +357,10 @@ async fn run_codex_runtime(params: CodexRuntimeParams) -> Result<()> {
     }
 
     // Load and configure codex-core Config
-    let mut config = Config::load_with_cli_overrides_and_harness_overrides(
-        vec![],
-        ConfigOverrides::default(),
-    )
-    .await
-    .map_err(|e| anyhow!("Failed to load codex config: {e}"))?;
+    let mut config =
+        Config::load_with_cli_overrides_and_harness_overrides(vec![], ConfigOverrides::default())
+            .await
+            .map_err(|e| anyhow!("Failed to load codex config: {e}"))?;
     config.cwd = params.working_dir.clone();
     config.include_apply_patch_tool = true;
 
@@ -913,10 +911,7 @@ fn handle_codex_event(
             *seen_message_deltas = false;
         }
         EventMsg::StreamError(event) => {
-            warn!(
-                "[Codex][{}] Stream error: {}",
-                session_id, event.message
-            );
+            warn!("[Codex][{}] Stream error: {}", session_id, event.message);
             // Stream errors are non-fatal, don't resolve the prompt
         }
 

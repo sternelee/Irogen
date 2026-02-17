@@ -1,0 +1,22 @@
+[package]
+name = "zeroclaw"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+base64 = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+async-trait = "0.1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+sha2 = "0.10"
+directories = "5.0"
+
+[dev-dependencies]
+tempfile = "3.13"

@@ -1,5 +1,5 @@
 [workspace]
-members = ["cli", "shared", "app", "browser", "lib"]
+members = ["cli", "shared", "app", "browser", "lib", "zeroclaw"]
 resolver = "2"
 
 [workspace.dependencies]

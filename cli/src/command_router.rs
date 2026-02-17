@@ -249,7 +249,7 @@ impl CommandRouter {
             AgentType::Gemini => GEMINI_SPECIFIC_COMMANDS,
             AgentType::Copilot => COPILOT_SPECIFIC_COMMANDS,
             AgentType::Qwen => QWEN_SPECIFIC_COMMANDS,
-            AgentType::AcpAgent | AgentType::Custom => &[],
+            AgentType::AcpAgent | AgentType::Custom | AgentType::ZeroClaw => &[],
         };
 
         for cmd in agent_commands {
@@ -400,7 +400,7 @@ impl CommandRouter {
                 AgentType::Gemini => GEMINI_SPECIFIC_COMMANDS.contains(&command_name),
                 AgentType::Copilot => COPILOT_SPECIFIC_COMMANDS.contains(&command_name),
                 AgentType::Qwen => QWEN_SPECIFIC_COMMANDS.contains(&command_name),
-                AgentType::AcpAgent | AgentType::Custom => false,
+                AgentType::AcpAgent | AgentType::Custom | AgentType::ZeroClaw => false,
             }
     }
 
