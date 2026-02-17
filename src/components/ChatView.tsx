@@ -382,6 +382,7 @@ export function ChatView(props: ChatViewProps) {
     }
     return [
       "claude",
+      "claude_acp",
       "codex",
       "opencode",
       "gemini",
@@ -395,6 +396,7 @@ export function ChatView(props: ChatViewProps) {
   const agentTypeLabel = (type: AgentType): string => {
     const labels: Record<AgentType, string> = {
       claude: "Claude Code",
+      claude_acp: "Claude (ACP)",
       codex: "Codex",
       opencode: "OpenCode",
       gemini: "Gemini CLI",
@@ -995,6 +997,9 @@ export function ChatView(props: ChatViewProps) {
         return <FiMessageSquare size={24} />;
       case "zeroclaw":
         return <FiActivity size={24} />;
+      case "claude":
+      case "claude_acp":
+        return <FiTerminal size={24} />;
       default:
         return <FiTerminal size={24} />;
     }
@@ -1010,6 +1015,7 @@ export function ChatView(props: ChatViewProps) {
             <div>
               <h2 class="text-lg font-semibold">
                 {props.agentType === "claude" && "Claude Code"}
+                {props.agentType === "claude_acp" && "Claude (ACP)"}
                 {props.agentType === "codex" && "Codex"}
                 {props.agentType === "opencode" && "OpenCode"}
                 {props.agentType === "gemini" && "Gemini CLI"}

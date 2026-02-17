@@ -146,10 +146,13 @@ impl ZeroClawSession {
             feature = "desktop-runtime",
             feature = "mobile-runtime"
         )))]
-        let runtime: Arc<dyn RuntimeAdapter> = Arc::new(zeroclaw::runtime::NativeRuntime::new());
+        let _runtime: Arc<dyn RuntimeAdapter> = Arc::new(zeroclaw::runtime::NativeRuntime::new());
 
+        #[cfg(feature = "desktop-runtime")]
         let tools_registry =
             zeroclaw::tools::all_tools_with_runtime(&security, runtime, memory.clone());
+        #[cfg(not(feature = "desktop-runtime"))]
+        let tools_registry = zeroclaw::tools::all_tools(&security, memory.clone());
 
         info!(
             "ZeroClaw session created: id={}, provider={}, model={}",

@@ -658,7 +658,7 @@ async fn run_stdout_reader(
                             }
                         } else if block_type == "thinking" {
                             if let Some(thinking) = block.get("thinking").and_then(|v| v.as_str()) {
-                                if !!thinking.is_empty() {
+                                if !thinking.is_empty() {
                                     debug!(
                                         "[SDK][{}] assistant thinking block ({} chars)",
                                         session_id,

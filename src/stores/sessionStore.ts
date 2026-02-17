@@ -17,6 +17,7 @@ import { notificationStore } from "./notificationStore";
 
 export type AgentType =
   | "claude"
+  | "claude_acp"
   | "opencode"
   | "gemini"
   | "copilot"

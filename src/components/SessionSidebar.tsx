@@ -30,6 +30,7 @@ const getAgentIcon = (agentType: AgentType) => {
   const iconClass = "w-4 h-4";
   switch (agentType) {
     case "claude":
+    case "claude_acp":
       return (
         <div class={`${iconClass} text-purple-500`}>
           <FiTerminal size={16} />
@@ -135,6 +136,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
             class={`font-medium text-sm truncate ${props.isActive ? "text-primary" : ""}`}
           >
             {session()?.agentType === "claude" && "Claude"}
+            {session()?.agentType === "claude_acp" && "Claude (ACP)"}
             {session()?.agentType === "gemini" && "Gemini"}
             {session()?.agentType === "opencode" && "OpenCode"}
             {session()?.agentType === "copilot" && "Copilot"}

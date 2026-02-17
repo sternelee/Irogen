@@ -557,8 +557,10 @@ pub struct UserInfo {
 /// AI Agent 类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AgentType {
-    /// Claude Code (Anthropic)
+    /// Claude Code (Anthropic) — SDK Control Protocol
     ClaudeCode,
+    /// Claude via ACP (Zed-style: @zed-industries/claude-agent-acp)
+    ClaudeAcp,
     /// OpenCode (OpenAI)
     OpenCode,
     /// OpenAI Codex (OpenAI)

@@ -7,6 +7,7 @@ mod local_client;
 mod message_server;
 mod shell;
 mod terminal_logger;
+use clawdchat_shared::agent::run_claude_acp_agent;
 use clawdchat_shared::QuicMessageServerConfig;
 use local_client::{LocalClientConfig, LocalClientSession};
 use message_server::CliMessageServer;
@@ -80,6 +81,8 @@ enum Commands {
         #[arg(long, default_value = "127.0.0.1:8765")]
         bind_addr: String,
     },
+    /// Run Claude ACP agent over stdio (used by host when spawning ClaudeAcp sessions)
+    ClaudeAcpAgent,
 }
 
 #[tokio::main]
@@ -105,6 +108,7 @@ async fn main() -> Result<()> {
         }) => run_host(relay, max_connections, bind_addr, secret_key_file, temp_key).await,
         Some(Commands::Connect { ticket, relay }) => run_connect(ticket, relay).await,
         Some(Commands::Runner { bind_addr }) => run_runner(bind_addr).await,
+        Some(Commands::ClaudeAcpAgent) => run_claude_acp_agent_cmd().await,
         None => {
             print_general_help();
             Ok(())
@@ -318,7 +322,8 @@ fn print_general_help() {
     println!("   3. Connect your mobile app using the ticket");
     println!();
     println!("🔧 Agent Types:");
-    println!("   claude                   Claude Code (Anthropic)");
+    println!("   claude                   Claude Code (Anthropic, SDK)");
+    println!("   claude_acp               Claude via ACP (Zed-style)");
     println!("   opencode                 OpenCode (OpenAI)");
     println!("   gemini                   Gemini CLI (Google)");
     println!();
@@ -330,6 +335,7 @@ async fn run_agent_session(agent: String, project: String, args: Vec<String>) ->
 
     let agent_type = match agent.to_lowercase().as_str() {
         "claude" | "claude-code" => AgentType::ClaudeCode,
+        "claude_acp" | "claudeacp" => AgentType::ClaudeAcp,
         "open" | "opencode" => AgentType::OpenCode,
         "gemini" => AgentType::Gemini,
         "codex" => AgentType::Codex,
@@ -337,7 +343,7 @@ async fn run_agent_session(agent: String, project: String, args: Vec<String>) ->
         "qwen" => AgentType::Qwen,
         _ => {
             eprintln!("❌ Unknown agent type: {}", agent);
-            eprintln!("   Supported: claude, opencode, gemini, codex, copilot, qwen");
+            eprintln!("   Supported: claude, claude_acp, opencode, gemini, codex, copilot, qwen");
             return Err(anyhow::anyhow!("Unknown agent type"));
         }
     };
@@ -523,6 +529,21 @@ async fn run_runner(bind_addr: String) -> Result<()> {
     println!("🛑 Runner stopped");
 
     Ok(())
+}
+
+/// Run the Claude ACP agent on stdio (current_thread + LocalSet for !Send ACP futures).
+async fn run_claude_acp_agent_cmd() -> Result<()> {
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
+    let local_set = tokio::task::LocalSet::new();
+    local_set
+        .run_until(async move {
+            run_claude_acp_agent(stdin, stdout, |fut| {
+                tokio::task::spawn_local(fut);
+            })
+            .await
+        })
+        .await
 }
 
 /// 连接到远程 ClawdChat host（P2P 客户端模式）

@@ -4,6 +4,7 @@
 //! ClaudeCode uses SDK Control Protocol directly, other agents use ACP.
 
 pub mod acp;
+pub mod claude_acp_agent;
 pub mod claude_sdk;
 pub mod codex_acp;
 pub mod events;
@@ -21,6 +22,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 pub use acp::AcpStreamingSession;
+pub use claude_acp_agent::{run_claude_acp_agent, ClaudeAcpAgent, ToConnMessage};
 pub use claude_sdk::ClaudeSdkSession;
 pub use codex_acp::CodexAcpSession;
 pub use events::{
@@ -224,6 +226,9 @@ impl AgentManager {
                         match agent_type {
                             AgentType::ClaudeCode => {
                                 error_msg += " You can install it with: npm install -g @anthropic-ai/claude-code";
+                            }
+                            AgentType::ClaudeAcp => {
+                                error_msg += " Install with: npm install -g @zed-industries/claude-agent-acp. Set ANTHROPIC_API_KEY or run `claude /login` for auth.";
                             }
                             AgentType::Copilot => {
                                 error_msg += " You can install the Copilot extension with: gh extension install github/gh-copilot";

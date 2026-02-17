@@ -1925,6 +1925,7 @@ async fn send_slash_command(
                     let project_path = parts.get(2).copied().unwrap_or(".");
                     let agent_type = match agent_type_str {
                         "claude" | "claudecode" => AgentType::ClaudeCode,
+                        "claude_acp" | "claudeacp" => AgentType::ClaudeAcp,
                         "opencode" | "open" => AgentType::OpenCode,
                         "codex" => AgentType::Codex,
                         "gemini" => AgentType::Gemini,
@@ -2033,6 +2034,7 @@ async fn remote_spawn_session(
     // Parse agent type
     let agent_type = match agent_type.to_lowercase().as_str() {
         "claude" | "claudecode" | "claude-code" => AgentType::ClaudeCode,
+        "claude_acp" | "claudeacp" => AgentType::ClaudeAcp,
         "opencode" | "open" | "openai" => AgentType::OpenCode,
         "codex" => AgentType::Codex,
         "gemini" | "gemini-cli" => AgentType::Gemini,
@@ -2199,6 +2201,7 @@ async fn local_start_agent(
     // Parse agent type
     let agent_type = match agent_type_str.as_str() {
         "claude" => AgentType::ClaudeCode,
+        "claude_acp" | "claudeacp" => AgentType::ClaudeAcp,
         "opencode" => AgentType::OpenCode,
         "gemini" => AgentType::Gemini,
         "copilot" => AgentType::Copilot,

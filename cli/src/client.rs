@@ -435,6 +435,7 @@ impl ClawdChatClient {
         // 解析 agent 类型
         let agent_type_enum = match agent_type.to_lowercase().as_str() {
             "claude" | "claudecode" => AgentType::ClaudeCode,
+            "claude_acp" | "claudeacp" => AgentType::ClaudeAcp,
             "opencode" => AgentType::OpenCode,
             "gemini" => AgentType::Gemini,
             _ => AgentType::Custom,
@@ -772,7 +773,7 @@ impl InteractiveClient {
             "/spawn" => {
                 if parts.len() < 3 {
                     println!("Usage: /spawn <agent_type> <project_path> [args...]");
-                    println!("  agent_type: claude, opencode, gemini");
+                    println!("  agent_type: claude, claude_acp, opencode, gemini");
                     return Ok(());
                 }
 

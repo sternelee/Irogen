@@ -130,6 +130,7 @@ export const NewSessionModal: Component = () => {
                 }
               >
                 <option value="claude">Claude Code</option>
+                <option value="claude_acp">Claude (ACP)</option>
                 <option value="codex">Codex</option>
                 <option value="zeroclaw">ClawdAI</option>
                 <option value="gemini">Gemini CLI</option>

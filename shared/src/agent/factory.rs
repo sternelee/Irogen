@@ -122,6 +122,58 @@ impl Agent for ClaudeCodeAgent {
     }
 }
 
+/// Claude via ACP (Rust implementation)
+///
+/// Runs the in-repo ACP agent that backs onto the Claude SDK (same process as
+/// `clawdchat claude-acp-agent`). Requires `claude` CLI and `ANTHROPIC_API_KEY` or `claude /login`.
+pub struct ClaudeAcpAgent;
+
+impl Agent for ClaudeAcpAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::ClaudeAcp
+    }
+
+    fn command(&self) -> &str {
+        "clawdchat"
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        vec!["claude-acp-agent".to_string()]
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        // Require `claude` CLI (same as ClaudeCode)
+        let output = Command::new("claude")
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+        let available = output.status.success();
+        let version = if available {
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            None
+        };
+        Ok(AgentAvailability {
+            available,
+            version,
+            executable: self.command().to_string(),
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        let output = Command::new("claude")
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+        if !output.status.success() {
+            return Err(anyhow::anyhow!(
+                "Claude Acp requires the Claude CLI. Run: npm install -g @anthropic-ai/claude-code"
+            ));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
 /// OpenCode Agent (ACP compatible)
 ///
 /// OpenCode is an ACP-compatible agent that communicates via JSON-RPC 2.0.
@@ -495,6 +547,7 @@ impl AgentFactory {
     pub fn create(agent_type: AgentType) -> Box<dyn Agent> {
         match agent_type {
             AgentType::ClaudeCode => Box::new(ClaudeCodeAgent),
+            AgentType::ClaudeAcp => Box::new(ClaudeAcpAgent),
             AgentType::OpenCode => Box::new(OpenCodeAgent),
             AgentType::Codex => Box::new(CodexAgent),
             AgentType::Gemini => Box::new(GeminiAgent),
@@ -512,6 +565,7 @@ impl AgentFactory {
 
         let agents: Vec<Box<dyn Agent>> = vec![
             Box::new(ClaudeCodeAgent),
+            Box::new(ClaudeAcpAgent),
             Box::new(OpenCodeAgent),
             Box::new(CodexAgent),
             Box::new(GeminiAgent),
@@ -551,9 +605,12 @@ impl AgentFactory {
     pub fn get_default() -> Option<AgentType> {
         let available = Self::check_all_available().ok()?;
 
-        // 优先级: Claude > Codex > OpenCode > Copilot > Qwen > Gemini
+        // 优先级: ClaudeCode > ClaudeAcp > Codex > OpenCode > Copilot > Qwen > Gemini
         if available.contains_key(&AgentType::ClaudeCode) {
             return Some(AgentType::ClaudeCode);
+        }
+        if available.contains_key(&AgentType::ClaudeAcp) {
+            return Some(AgentType::ClaudeAcp);
         }
         if available.contains_key(&AgentType::Codex) {
             return Some(AgentType::Codex);
@@ -592,7 +649,7 @@ impl AgentFactory {
                 let agent = ClaudeCodeAgent;
                 Some((agent.command().to_string(), agent.default_args()))
             }
-            _ => None, // Other agents use ACP
+            _ => None, // ClaudeAcp and others use ACP
         }
     }
 }
