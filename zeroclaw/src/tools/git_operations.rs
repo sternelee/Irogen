@@ -12,6 +12,15 @@ pub struct GitOperationsTool {
 }
 
 impl GitOperationsTool {
+    /// Create with security policy, using current directory as workspace
+    pub fn with_security(security: Arc<SecurityPolicy>) -> Self {
+        Self {
+            security,
+            workspace_dir: std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        }
+    }
+
+
     pub fn new(security: Arc<SecurityPolicy>, workspace_dir: std::path::PathBuf) -> Self {
         Self {
             security,

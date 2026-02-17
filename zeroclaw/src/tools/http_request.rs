@@ -15,6 +15,16 @@ pub struct HttpRequestTool {
 }
 
 impl HttpRequestTool {
+    /// Create with security policy only, using default configuration
+    pub fn with_security(security: Arc<SecurityPolicy>) -> Self {
+        Self {
+            security,
+            allowed_domains: Vec::new(),
+            max_response_size: 1_000_000, // 1MB default
+            timeout_secs: 30,
+        }
+    }
+
     pub fn new(
         security: Arc<SecurityPolicy>,
         allowed_domains: Vec<String>,
