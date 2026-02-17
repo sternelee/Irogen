@@ -50,8 +50,8 @@ impl QwenParseResult {
 }
 
 pub fn check_qwen_available() -> Result<bool> {
-    // Assuming 'qwen-agent' or similar command
-    let output = std::process::Command::new("qwen-agent")
+    // Assuming 'qwen' or similar command
+    let output = std::process::Command::new("qwen")
         .arg("--version")
         .output()?;
     Ok(output.status.success())

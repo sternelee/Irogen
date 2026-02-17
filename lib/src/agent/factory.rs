@@ -13,7 +13,10 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
+use std::sync::OnceLock;
 use tracing::{debug, info};
+
+use super::acp::get_extended_path;
 
 /// Agent 可用性检查结果
 #[derive(Debug, Clone, Serialize)]
@@ -88,7 +91,10 @@ impl Agent for ClaudeCodeAgent {
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
-        let output = Command::new("claude").arg("--version").output()?;
+        let output = Command::new("claude")
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
         let available = output.status.success();
         let version = if available {
             Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -103,7 +109,10 @@ impl Agent for ClaudeCodeAgent {
     }
 
     fn get_version(&self) -> Result<String> {
-        let output = Command::new("claude").arg("--version").output()?;
+        let output = Command::new("claude")
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
         if !output.status.success() {
             return Err(anyhow::anyhow!(
                 "Failed to get Claude Code version. Ensure 'claude' CLI is installed."
@@ -133,7 +142,10 @@ impl Agent for OpenCodeAgent {
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
-        let output = Command::new(self.command()).arg("--version").output()?;
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
 
         let available = output.status.success();
         let version = if available {
@@ -150,7 +162,10 @@ impl Agent for OpenCodeAgent {
     }
 
     fn get_version(&self) -> Result<String> {
-        let output = Command::new(self.command()).arg("--version").output()?;
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
 
         if !output.status.success() {
             return Err(anyhow::anyhow!("Failed to get OpenCode version"));
@@ -180,7 +195,10 @@ impl Agent for GeminiAgent {
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
-        let output = Command::new(self.command()).arg("--version").output()?;
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
 
         let available = output.status.success();
         let version = if available {
@@ -197,7 +215,10 @@ impl Agent for GeminiAgent {
     }
 
     fn get_version(&self) -> Result<String> {
-        let output = Command::new(self.command()).arg("--version").output()?;
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
 
         if !output.status.success() {
             return Err(anyhow::anyhow!("Failed to get Gemini version"));
@@ -227,55 +248,9 @@ impl Agent for CodexAgent {
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
-        let output = Command::new(self.command()).arg("--version").output()?;
-
-        let available = output.status.success();
-        let version = if available {
-            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
-        } else {
-            None
-        };
-
-        Ok(AgentAvailability {
-            available,
-            version,
-            executable: self.command().to_string(),
-        })
-    }
-
-    fn get_version(&self) -> Result<String> {
-        let output = Command::new(self.command()).arg("--version").output()?;
-
-        if !output.status.success() {
-            return Err(anyhow::anyhow!("Failed to get Codex version"));
-        }
-
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    }
-}
-
-/// GitHub Copilot Agent (ACP compatible)
-///
-/// GitHub Copilot is an ACP-compatible agent that communicates via JSON-RPC 2.0.
-pub struct CopilotAgent;
-
-impl Agent for CopilotAgent {
-    fn agent_type(&self) -> AgentType {
-        AgentType::Copilot
-    }
-
-    fn command(&self) -> &str {
-        "gh"
-    }
-
-    fn default_args(&self) -> Vec<String> {
-        // GitHub Copilot uses copilot --stdio for ACP communication
-        vec!["copilot".to_string(), "--stdio".to_string()]
-    }
-
-    fn check_available(&self) -> Result<AgentAvailability> {
         let output = Command::new(self.command())
-            .args(["copilot", "--version"])
+            .arg("--version")
+            .env("PATH", get_extended_path())
             .output()?;
 
         let available = output.status.success();
@@ -294,7 +269,125 @@ impl Agent for CopilotAgent {
 
     fn get_version(&self) -> Result<String> {
         let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!("Failed to get Codex version"));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
+/// GitHub Copilot Agent (ACP compatible)
+///
+/// GitHub Copilot is an ACP-compatible agent that communicates via JSON-RPC 2.0.
+pub struct CopilotAgent;
+
+static COPILOT_CONFIG: OnceLock<(String, Vec<String>)> = OnceLock::new();
+
+impl CopilotAgent {
+    fn detect_config() -> (String, Vec<String>) {
+        if let Some(config) = COPILOT_CONFIG.get() {
+            return config.clone();
+        }
+
+        let path = get_extended_path();
+
+        // 1. Try standalone copilot command (older or alternate installation)
+        if Command::new("copilot")
+            .arg("--version")
+            .env("PATH", &path)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            let config = ("copilot".to_string(), vec!["--acp".to_string()]);
+            let _ = COPILOT_CONFIG.set(config.clone());
+            return config;
+        }
+
+        // 2. Try gh copilot extension (modern version)
+        if Command::new("gh")
             .args(["copilot", "--version"])
+            .env("PATH", &path)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            let config = (
+                "gh".to_string(),
+                vec!["copilot".to_string(), "--stdio".to_string()],
+            );
+            let _ = COPILOT_CONFIG.set(config.clone());
+            return config;
+        }
+
+        // Fallback to default (gh)
+        (
+            "gh".to_string(),
+            vec!["copilot".to_string(), "--stdio".to_string()],
+        )
+    }
+}
+
+impl Agent for CopilotAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::Copilot
+    }
+
+    fn command(&self) -> &str {
+        let (cmd, _) = Self::detect_config();
+        if cmd == "gh" { "gh" } else { "copilot" }
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        let (_, args) = Self::detect_config();
+        args
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        let (cmd, _args) = Self::detect_config();
+
+        // Use --version for check if standalone to avoid starting it
+        let version_args = if cmd == "gh" {
+            vec!["copilot", "--version"]
+        } else {
+            vec!["--version"]
+        };
+
+        let output = Command::new(&cmd)
+            .args(&version_args)
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        let available = output.status.success();
+        let version = if available {
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            None
+        };
+
+        Ok(AgentAvailability {
+            available,
+            version,
+            executable: cmd,
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        let (cmd, _args) = Self::detect_config();
+        let version_args = if cmd == "gh" {
+            vec!["copilot", "--version"]
+        } else {
+            vec!["--version"]
+        };
+
+        let output = Command::new(&cmd)
+            .args(&version_args)
+            .env("PATH", get_extended_path())
             .output()?;
 
         if !output.status.success() {
@@ -316,7 +409,7 @@ impl Agent for QwenAgent {
     }
 
     fn command(&self) -> &str {
-        "qwen-agent"
+        "qwen"
     }
 
     fn default_args(&self) -> Vec<String> {
@@ -325,7 +418,10 @@ impl Agent for QwenAgent {
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
-        let output = Command::new(self.command()).arg("--version").output()?;
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
 
         let available = output.status.success();
         let version = if available {
@@ -342,7 +438,10 @@ impl Agent for QwenAgent {
     }
 
     fn get_version(&self) -> Result<String> {
-        let output = Command::new(self.command()).arg("--version").output()?;
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
 
         if !output.status.success() {
             return Err(anyhow::anyhow!("Failed to get Qwen version"));

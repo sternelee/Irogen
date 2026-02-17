@@ -208,6 +208,44 @@ impl AgentManager {
     ) -> Result<()> {
         info!("Starting {:?} session with ID: {}", agent_type, session_id);
 
+        // Perform availability check before starting to provide better error messages
+        if binary_path.is_none() {
+            let agent = AgentFactory::create(agent_type);
+            match agent.check_available() {
+                Ok(availability) => {
+                    if !availability.available {
+                        let mut error_msg = format!(
+                            "Agent {:?} is not available. Please ensure '{}' is installed and in your PATH.",
+                            agent_type,
+                            agent.command()
+                        );
+
+                        // Provide specific instructions for common agents
+                        match agent_type {
+                            AgentType::ClaudeCode => {
+                                error_msg += " You can install it with: npm install -g @anthropic-ai/claude-code";
+                            }
+                            AgentType::Copilot => {
+                                error_msg += " You can install the Copilot extension with: gh extension install github/gh-copilot";
+                            }
+                            AgentType::Gemini => {
+                                error_msg += " You can install the Gemini CLI with: npm install -g @google/gemini-code-cli";
+                            }
+                            _ => {}
+                        }
+
+                        return Err(anyhow!(error_msg));
+                    }
+                }
+                Err(err) => {
+                    warn!(
+                        "Pre-start availability check failed for {:?}: {}",
+                        agent_type, err
+                    );
+                }
+            }
+        }
+
         let session: Arc<SessionKind> = if agent_type == AgentType::ClaudeCode {
             // Claude Code uses SDK Control Protocol
             let (command, default_args) = AgentFactory::get_sdk_command(agent_type)

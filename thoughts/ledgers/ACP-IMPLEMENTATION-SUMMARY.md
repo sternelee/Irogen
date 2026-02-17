@@ -14,16 +14,16 @@ This document summarizes the completion of local ACP agent support in the RiTerm
 
 ### ✅ Completed Phases
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 1 | Analyze current ACP client implementation status | ✅ Complete |
-| Phase 2 | Verify lib/src/agent/acp.rs ACP implementation | ✅ Complete |
-| Phase 3 | Complete CLI client ACP shutdown command support | ✅ Complete |
-| Phase 4 | Add AgentManager permission management methods | ✅ Complete |
+| Phase   | Description                                       | Status      |
+| ------- | ------------------------------------------------- | ----------- |
+| Phase 1 | Analyze current ACP client implementation status  | ✅ Complete |
+| Phase 2 | Verify lib/src/agent/acp.rs ACP implementation    | ✅ Complete |
+| Phase 3 | Complete CLI client ACP shutdown command support  | ✅ Complete |
+| Phase 4 | Add AgentManager permission management methods    | ✅ Complete |
 | Phase 5 | Create local_client.rs module with slash commands | ✅ Complete |
-| Phase 6 | Verify host mode P2P integration | ✅ Complete |
-| Phase 7 | Document usage examples | ✅ Complete |
-| Phase 8 | Create integration test script | ✅ Complete |
+| Phase 6 | Verify host mode P2P integration                  | ✅ Complete |
+| Phase 7 | Document usage examples                           | ✅ Complete |
+| Phase 8 | Create integration test script                    | ✅ Complete |
 
 ### 📋 Pending Phases
 
@@ -38,6 +38,7 @@ This document summarizes the completion of local ACP agent support in the RiTerm
 A new module providing a clean API for CLI applications to interact with local ACP agents.
 
 **Key Structures:**
+
 ```rust
 pub struct LocalClientConfig {
     pub agent_type: AgentType,        // ClaudeCode, OpenCode, Gemini, etc.
@@ -61,6 +62,7 @@ pub struct SessionInfo {
 ```
 
 **Key Methods:**
+
 - `new(config)` - Start a new ACP session with the specified agent
 - `send_message(message)` - Send a message to the agent
 - `get_pending_permissions()` - List pending permission requests
@@ -74,6 +76,7 @@ pub struct SessionInfo {
 Updated the `run_agent_session()` function to use the new `LocalClientSession`:
 
 **Changes:**
+
 1. Added `mod local_client;` declaration
 2. Updated imports to use `LocalClientConfig` and `LocalClientSession`
 3. Rewrote `run_agent_session()` to use the new local client API
@@ -81,6 +84,7 @@ Updated the `run_agent_session()` function to use the new `LocalClientSession`:
 5. Added `#[allow(unused_variables)]` to `print_host_info()` function
 
 **New Slash Commands:**
+
 - `/listperms` - List pending permission requests
 - `/approve <request_id>` - Approve a permission request
 - `/deny <request_id> [reason]` - Deny a permission request (with optional reason)
@@ -106,6 +110,7 @@ pub async fn respond_to_permission(
 ### 4. `scripts/test_acp_integration.rs` (NEW FILE)
 
 A comprehensive integration test script that:
+
 - Tests workspace compilation
 - Runs library tests
 - Builds CLI
@@ -117,6 +122,7 @@ A comprehensive integration test script that:
 ### 5. `thoughts/ledgers/CONTINUITY_ACP-CLIENT-HOST.md` (UPDATED)
 
 A comprehensive continuity ledger documenting:
+
 - Implementation goals and constraints
 - Key decisions and rationale
 - State tracking with checkboxes
@@ -148,14 +154,14 @@ Mobile App → P2P Network (iroh QUIC) → CliMessageServer → AgentManager →
 
 ## Supported AI Agents
 
-| Agent | Type Enum | Command |
-|-------|-----------|---------|
-| Claude Code | `ClaudeCode` | `claude` |
-| OpenCode | `OpenCode` | `opencode` |
-| Gemini CLI | `Gemini` | `gemini` |
-| GitHub Copilot | `Copilot` | `gh copilot` |
-| Qwen Code | `Qwen` | `qwen-agent` |
-| OpenAI Codex | `Codex` | `codex` |
+| Agent          | Type Enum    | Command      |
+| -------------- | ------------ | ------------ |
+| Claude Code    | `ClaudeCode` | `claude`     |
+| OpenCode       | `OpenCode`   | `opencode`   |
+| Gemini CLI     | `Gemini`     | `gemini`     |
+| GitHub Copilot | `Copilot`    | `gh copilot` |
+| Qwen Code      | `Qwen`       | `qwen`       |
+| OpenAI Codex   | `Codex`      | `codex`      |
 
 ## Usage Examples
 
@@ -219,16 +225,16 @@ Commands:
 
 ## Test Results
 
-| Test | Status | Notes |
-|------|--------|-------|
-| CLI builds successfully | ✅ Pass | No compilation errors |
-| Library tests pass | ✅ Pass | 14/14 tests passed |
-| Local client compiles | ✅ Pass | Module compiles without warnings |
-| Permission methods exist | ✅ Pass | `get_pending_permissions`, `respond_to_permission` |
-| Slash commands implemented | ✅ Pass | All 6 commands implemented |
-| Host mode exists | ✅ Pass | P2P via `CliMessageServer` confirmed |
-| Manual testing required | ⏳ Pending | Requires ACP agent installation |
-| End-to-end testing | ⏳ Pending | Requires ACP agent with permission support |
+| Test                       | Status     | Notes                                              |
+| -------------------------- | ---------- | -------------------------------------------------- |
+| CLI builds successfully    | ✅ Pass    | No compilation errors                              |
+| Library tests pass         | ✅ Pass    | 14/14 tests passed                                 |
+| Local client compiles      | ✅ Pass    | Module compiles without warnings                   |
+| Permission methods exist   | ✅ Pass    | `get_pending_permissions`, `respond_to_permission` |
+| Slash commands implemented | ✅ Pass    | All 6 commands implemented                         |
+| Host mode exists           | ✅ Pass    | P2P via `CliMessageServer` confirmed               |
+| Manual testing required    | ⏳ Pending | Requires ACP agent installation                    |
+| End-to-end testing         | ⏳ Pending | Requires ACP agent with permission support         |
 
 ## Compilation Status
 
@@ -253,17 +259,20 @@ test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 0.0
 ## Files Modified/Created
 
 ### New Files: 3
+
 1. `cli/src/local_client.rs` - Local ACP client module (199 lines)
 2. `scripts/test_acp_integration.rs` - Integration test script
 3. `thoughts/ledgers/CONTINUITY_ACP-CLIENT-HOST.md` - Continuity ledger
 
 ### Modified Files: 4
+
 1. `cli/src/main.rs` - Updated run_agent_session() and handle_slash_command()
 2. `lib/src/agent/mod.rs` - Added permission management methods
 3. `lib/src/agent/acp.rs` - Minor cleanup (dead code warnings)
 4. `lib/src/agent/message_adapter.rs` - Minor cleanup (dead code warnings)
 
 ### Total Changes
+
 - **Lines added**: ~400
 - **Lines modified**: ~150
 - **Files new**: 3
@@ -285,16 +294,19 @@ test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 0.0
 ## Troubleshooting
 
 ### CLI Won't Start
+
 - Ensure the agent (Claude Code, OpenCode, etc.) is installed and in PATH
 - Check working directory exists and is accessible
 - Verify permissions on the CLI binary
 
 ### Permission Requests Not Showing
+
 - Some agents don't use the ACP permission system
 - Check agent logs for permission-related output
 - Verify the agent supports the ACP protocol
 
 ### Session Interruption Not Working
+
 - Interruption only works when an operation is active
 - This is expected behavior when waiting for user input
 
@@ -303,6 +315,7 @@ test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 0.0
 The implementation of ACP Client/Host support in the RiTerm CLI is **complete** on the code level. The architecture leverages the existing ACP implementation in `lib/src/agent/acp.rs` which provides bidirectional JSON-RPC communication, permission management, and retry logic.
 
 The remaining work involves:
+
 1. Manual testing with actual ACP agents (Claude Code, OpenCode, etc.)
 2. End-to-end permission workflow testing
 3. P2P host/client testing across network

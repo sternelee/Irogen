@@ -10,14 +10,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Cargo workspace with five crates plus a SolidJS frontend:
 
-| Crate | Purpose |
-|-------|---------|
-| **cli/** | CLI binary — `riterm run`, `riterm host`, `riterm connect`, `riterm runner` subcommands |
-| **lib/** | Shared Rust library — agent session management (`AgentManager`, `SessionKind`), used by both CLI and App |
-| **shared/** | P2P networking, message protocol, QUIC server, event manager |
-| **app/** | Tauri 2 desktop+mobile backend — Tauri commands, P2P client, TCP forwarding |
-| **browser/** | WebAssembly browser client |
-| **src/** | SolidJS frontend (Vite + vite-plugin-solid + TailwindCSS v4 + DaisyUI) |
+| Crate        | Purpose                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------- |
+| **cli/**     | CLI binary — `riterm run`, `riterm host`, `riterm connect`, `riterm runner` subcommands                  |
+| **lib/**     | Shared Rust library — agent session management (`AgentManager`, `SessionKind`), used by both CLI and App |
+| **shared/**  | P2P networking, message protocol, QUIC server, event manager                                             |
+| **app/**     | Tauri 2 desktop+mobile backend — Tauri commands, P2P client, TCP forwarding                              |
+| **browser/** | WebAssembly browser client                                                                               |
+| **src/**     | SolidJS frontend (Vite + vite-plugin-solid + TailwindCSS v4 + DaisyUI)                                   |
 
 ### Agent Session Protocols
 
@@ -100,14 +100,14 @@ pnpm tauri:ios:dev
 
 ## Supported AI Agents
 
-| Agent | AgentType enum | Protocol | Command |
-|-------|---------------|----------|---------|
-| Claude Code | `ClaudeCode` | SDK | `claude` |
-| OpenCode | `OpenCode` | ACP | `opencode` |
-| Gemini CLI | `Gemini` | ACP | `gemini` |
-| GitHub Copilot | `Copilot` | ACP | `gh copilot` |
-| Qwen Code | `Qwen` | ACP | `qwen-agent` |
-| OpenAI Codex | `Codex` | CodexACP | `codex` (in-process via codex-core) |
+| Agent          | AgentType enum | Protocol | Command                             |
+| -------------- | -------------- | -------- | ----------------------------------- |
+| Claude Code    | `ClaudeCode`   | SDK      | `claude`                            |
+| OpenCode       | `OpenCode`     | ACP      | `opencode`                          |
+| Gemini CLI     | `Gemini`       | ACP      | `gemini`                            |
+| GitHub Copilot | `Copilot`      | ACP      | `gh copilot`                        |
+| Qwen Code      | `Qwen`         | ACP      | `qwen`                              |
+| OpenAI Codex   | `Codex`        | CodexACP | `codex` (in-process via codex-core) |
 
 ## Adding a New Agent
 

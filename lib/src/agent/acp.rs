@@ -63,14 +63,17 @@
 //! failures. All errors are logged with session context for debugging.
 
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 
 use agent_client_protocol as acp;
 use agent_client_protocol::Agent;
 use anyhow::{Context, Result, anyhow};
+use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use riterm_shared::message_protocol::AgentType;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::BufReader;
@@ -601,6 +604,7 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
 
     let active_turn = Arc::new(RwLock::new(None::<String>));
     let tool_name_map = Arc::new(Mutex::new(HashMap::<String, String>::new()));
+    let terminals = Arc::new(Mutex::new(HashMap::<acp::TerminalId, TerminalState>::new()));
 
     let client = AcpClientHandler {
         session_id: params.session_id.clone(),
@@ -609,6 +613,7 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
         active_turn: active_turn.clone(),
         tool_name_map: tool_name_map.clone(),
         command_tx: params.command_tx.clone(),
+        terminals: terminals.clone(),
     };
 
     let session_id_for_stderr = params.session_id.clone();
@@ -663,7 +668,7 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
                                 .fs(acp::FileSystemCapability::new()
                                     .read_text_file(true)
                                     .write_text_file(true))
-                                .terminal(false),
+                                .terminal(true),
                         )
                         .client_info(
                             acp::Implementation::new("riterm-cli", env!("CARGO_PKG_VERSION"))
@@ -676,7 +681,16 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
     .await;
 
     if let Err(err) = init_result {
-        let error_msg = format!("ACP initialize failed: {err}");
+        let mut error_msg = format!("ACP initialize failed: {err}");
+
+        // Check if the agent process exited prematurely
+        if let Ok(Some(status)) = child.try_wait() {
+            error_msg = format!(
+                "ACP initialize failed: Agent process exited with status {}. Please check if the command '{} {:?}' is installed and correct. Details: {}",
+                status, params.command, params.args, err
+            );
+        }
+
         let _ = params.ready_tx.send(Err(error_msg.clone()));
         return Err(anyhow::anyhow!(error_msg));
     }
@@ -729,6 +743,18 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
         params.retry_config.clone(),
     )
     .await;
+
+    // Cleanup all terminal processes when the session is shut down
+    {
+        let mut terms = terminals.lock().await;
+        for (_, term) in terms.drain() {
+            if let Some(pid) = term.pid {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGKILL);
+                }
+            }
+        }
+    }
 
     info!(
         "ACP runtime shutting down for session {}, killing agent process",
@@ -930,7 +956,9 @@ async fn run_command_loop(
                     input: input.clone(),
                     options,
                     response_tx,
-                    created_at: std::time::Duration::from_secs(0), // TODO: use actual timestamp
+                    created_at: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default(),
                 });
             }
         }
@@ -948,7 +976,7 @@ async fn run_command_loop(
                                     tool_name: entry.tool_name.clone(),
                                     tool_params: serde_json::Value::Null, // Note: Could parse input if needed
                                     message: None,
-                                    created_at: 0,
+                                    created_at: entry.created_at.as_secs(),
                                     response_tx: None,
                                 }
                             })
@@ -1015,6 +1043,14 @@ fn stop_reason_to_string(reason: acp::StopReason) -> &'static str {
     }
 }
 
+struct TerminalState {
+    master: Box<dyn portable_pty::MasterPty + Send>,
+    output_buffer: Arc<Mutex<Vec<u8>>>,
+    exit_status: Arc<Mutex<Option<acp::TerminalExitStatus>>>,
+    exit_signal: Arc<tokio::sync::Notify>,
+    pid: Option<u32>,
+}
+
 struct AcpClientHandler {
     session_id: String,
     agent_type: AgentType,
@@ -1022,6 +1058,7 @@ struct AcpClientHandler {
     active_turn: Arc<RwLock<Option<String>>>,
     tool_name_map: Arc<Mutex<HashMap<String, String>>>,
     command_tx: mpsc::UnboundedSender<AcpCommand>,
+    terminals: Arc<Mutex<HashMap<acp::TerminalId, TerminalState>>>,
 }
 
 impl AcpClientHandler {
@@ -1154,6 +1191,8 @@ impl AcpClientHandler {
         }
     }
 }
+
+const MAX_TERMINAL_OUTPUT_BUFFER_SIZE: usize = 1024 * 1024; // 1MB
 
 #[async_trait::async_trait(?Send)]
 impl acp::Client for AcpClientHandler {
@@ -1344,5 +1383,173 @@ impl acp::Client for AcpClientHandler {
         };
 
         Ok(acp::ReadTextFileResponse::new(content))
+    }
+
+    async fn create_terminal(
+        &self,
+        args: acp::CreateTerminalRequest,
+    ) -> acp::Result<acp::CreateTerminalResponse> {
+        let pty_system = NativePtySystem::default();
+        let pty_pair = pty_system
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| acp::Error::internal_error().data(format!("Failed to open PTY: {e}")))?;
+
+        let mut cmd = CommandBuilder::new(args.command);
+        for arg in args.args {
+            cmd.arg(arg);
+        }
+        for env_var in args.env {
+            cmd.env(env_var.name, env_var.value);
+        }
+        // Disable pager to prevent agents from getting stuck in interactive prompts
+        cmd.env("PAGER", "");
+        if let Some(cwd) = args.cwd {
+            cmd.cwd(cwd);
+        }
+
+        let child = pty_pair.slave.spawn_command(cmd).map_err(|e| {
+            acp::Error::internal_error().data(format!("Failed to spawn command: {e}"))
+        })?;
+
+        let terminal_id = acp::TerminalId::from(Uuid::new_v4().to_string());
+        let output_buffer = Arc::new(Mutex::new(Vec::new()));
+        let exit_status = Arc::new(Mutex::new(None));
+        let exit_signal = Arc::new(tokio::sync::Notify::new());
+        let pid = child.process_id();
+
+        let mut reader = pty_pair.master.try_clone_reader().map_err(|e| {
+            acp::Error::internal_error().data(format!("Failed to clone PTY reader: {e}"))
+        })?;
+
+        let output_buffer_clone = output_buffer.clone();
+        thread::spawn(move || {
+            let mut buf = [0u8; 1024];
+            while let Ok(n) = reader.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                let mut output = output_buffer_clone.blocking_lock();
+                output.extend_from_slice(&buf[..n]);
+
+                // Trim buffer if it exceeds maximum size to prevent memory leaks
+                if output.len() > MAX_TERMINAL_OUTPUT_BUFFER_SIZE {
+                    let trim_size = output.len() - MAX_TERMINAL_OUTPUT_BUFFER_SIZE;
+                    output.drain(0..trim_size);
+                }
+            }
+        });
+
+        let exit_status_clone = exit_status.clone();
+        let exit_signal_clone = exit_signal.clone();
+        let mut child_wait = child;
+        thread::spawn(move || match child_wait.wait() {
+            Ok(status) => {
+                let mut exit = exit_status_clone.blocking_lock();
+                let mut exit_status_struct = acp::TerminalExitStatus::new();
+                exit_status_struct.exit_code = Some(status.exit_code());
+                *exit = Some(exit_status_struct);
+                exit_signal_clone.notify_waiters();
+            }
+            Err(_) => {
+                exit_signal_clone.notify_waiters();
+            }
+        });
+
+        let mut terminals = self.terminals.lock().await;
+        terminals.insert(
+            terminal_id.clone(),
+            TerminalState {
+                master: pty_pair.master,
+                output_buffer,
+                exit_status,
+                exit_signal,
+                pid,
+            },
+        );
+
+        Ok(acp::CreateTerminalResponse::new(terminal_id))
+    }
+
+    async fn terminal_output(
+        &self,
+        args: acp::TerminalOutputRequest,
+    ) -> acp::Result<acp::TerminalOutputResponse> {
+        let terminals = self.terminals.lock().await;
+        let term = terminals
+            .get(&args.terminal_id)
+            .ok_or_else(|| acp::Error::invalid_params().data("Terminal not found"))?;
+
+        let output = term.output_buffer.lock().await;
+        let data = String::from_utf8_lossy(&output).to_string();
+
+        let exit_status = term.exit_status.lock().await.clone();
+
+        Ok(acp::TerminalOutputResponse::new(data, false).exit_status(exit_status))
+    }
+
+    async fn wait_for_terminal_exit(
+        &self,
+        args: acp::WaitForTerminalExitRequest,
+    ) -> acp::Result<acp::WaitForTerminalExitResponse> {
+        let (exit_signal, exit_status) = {
+            let terminals = self.terminals.lock().await;
+            let term = terminals
+                .get(&args.terminal_id)
+                .ok_or_else(|| acp::Error::invalid_params().data("Terminal not found"))?;
+            (term.exit_signal.clone(), term.exit_status.clone())
+        };
+
+        exit_signal.notified().await;
+
+        let status = exit_status.lock().await.clone().ok_or_else(|| {
+            acp::Error::internal_error().data("Terminal exited but status not found")
+        })?;
+
+        Ok(acp::WaitForTerminalExitResponse::new(status))
+    }
+
+    async fn release_terminal(
+        &self,
+        args: acp::ReleaseTerminalRequest,
+    ) -> acp::Result<acp::ReleaseTerminalResponse> {
+        let mut terminals = self.terminals.lock().await;
+        if let Some(term) = terminals.remove(&args.terminal_id) {
+            if let Some(pid) = term.pid {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGKILL);
+                }
+            }
+        }
+        Ok(acp::ReleaseTerminalResponse::new())
+    }
+
+    async fn kill_terminal_command(
+        &self,
+        args: acp::KillTerminalCommandRequest,
+    ) -> acp::Result<acp::KillTerminalCommandResponse> {
+        let terminals = self.terminals.lock().await;
+        let term = terminals
+            .get(&args.terminal_id)
+            .ok_or_else(|| acp::Error::invalid_params().data("Terminal not found"))?;
+
+        if let Some(pid) = term.pid {
+            unsafe {
+                libc::kill(pid as i32, libc::SIGKILL);
+            }
+        }
+        Ok(acp::KillTerminalCommandResponse::new())
+    }
+
+    async fn ext_method(&self, _args: acp::ExtRequest) -> acp::Result<acp::ExtResponse> {
+        Ok(acp::ExtResponse::new(serde_json::from_str("null").unwrap()))
+    }
+
+    async fn ext_notification(&self, _args: acp::ExtNotification) -> acp::Result<()> {
+        Ok(())
     }
 }

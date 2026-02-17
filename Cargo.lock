@@ -5592,6 +5592,7 @@ dependencies = [
  "gethostname 0.5.0",
  "hex",
  "libc",
+ "portable-pty",
  "rand 0.9.2",
  "regex",
  "riterm-shared",
