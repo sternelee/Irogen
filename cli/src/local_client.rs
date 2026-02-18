@@ -7,7 +7,10 @@
 use anyhow::{Context, Result};
 use clawdchat_shared::agent::{AgentManager, PendingPermission};
 use clawdchat_shared::message_protocol::AgentType;
+use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tracing::{debug, info};
 
 /// Local ACP client configuration
@@ -23,6 +26,8 @@ pub struct LocalClientConfig {
     pub working_dir: PathBuf,
     /// Home directory override (optional)
     pub home_dir: Option<String>,
+    /// Exit after sending message and waiting for response (non-interactive mode)
+    pub exit_on_complete: bool,
 }
 
 /// Local ACP client session
@@ -35,6 +40,8 @@ pub struct LocalClientSession {
     config: LocalClientConfig,
     /// Event receiver task handle (for cleanup)
     event_task: Option<tokio::task::JoinHandle<()>>,
+    /// Flag to signal turn completion (for non-interactive mode)
+    turn_complete: Arc<AtomicBool>,
 }
 
 impl LocalClientSession {
@@ -75,14 +82,46 @@ impl LocalClientSession {
                 debug!("Starting event listener for session {}", session_id_clone);
                 let mut recv = receiver;
                 while let Ok(event) = recv.recv().await {
-                    // Handle events - update pending permissions
-                    if matches!(
-                        &event.event,
-                        clawdchat_shared::agent::AgentEvent::ApprovalRequest { .. }
-                    ) {
-                        debug!("Received approval request event: {:?}", event);
-                        // The session will handle permission storage internally
-                        // We can query permissions when listing
+                    // Print agent events to stdout
+                    match &event.event {
+                        clawdchat_shared::agent::AgentEvent::TextDelta { text, .. } => {
+                            print!("{}", text);
+                            std::io::stdout().flush().ok();
+                        }
+                        clawdchat_shared::agent::AgentEvent::ReasoningDelta { text, .. } => {
+                            // Print thinking/thoughts
+                            println!("[Thinking] {}", text);
+                        }
+                        clawdchat_shared::agent::AgentEvent::ToolStarted { tool_name, .. } => {
+                            println!("\n🔧 Tool: {}", tool_name);
+                        }
+                        clawdchat_shared::agent::AgentEvent::ToolCompleted { tool_name, output, .. } => {
+                            let name = tool_name.as_deref().unwrap_or("unknown");
+                            if let Some(output) = output {
+                                println!("\n✅ Tool {} completed: {}", name, output);
+                            } else {
+                                println!("\n✅ Tool {} completed", name);
+                            }
+                        }
+                        clawdchat_shared::agent::AgentEvent::ApprovalRequest { tool_name, message, .. } => {
+                            println!("\n⚠️ Permission request: {} - {}", tool_name, message.as_deref().unwrap_or(""));
+                        }
+                        clawdchat_shared::agent::AgentEvent::TurnCompleted { .. } => {
+                            println!("\n--- Turn completed ---");
+                        }
+                        clawdchat_shared::agent::AgentEvent::SessionStarted { .. } => {
+                            println!("✅ Session started");
+                        }
+                        clawdchat_shared::agent::AgentEvent::SessionEnded { .. } => {
+                            println!("\n👋 Session ended");
+                        }
+                        clawdchat_shared::agent::AgentEvent::TurnError { error, .. } => {
+                            eprintln!("\n❌ Error: {}", error);
+                        }
+                        _ => {
+                            // Other events - debug log
+                            debug!("Event: {:?}", event.event);
+                        }
                     }
                 }
             }
@@ -93,6 +132,7 @@ impl LocalClientSession {
             session_id,
             config,
             event_task,
+            turn_complete: Arc::new(AtomicBool::new(false)),
         })
     }
 

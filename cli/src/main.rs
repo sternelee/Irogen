@@ -44,6 +44,9 @@ enum Commands {
         /// Project path
         #[arg(long, default_value = ".")]
         project: String,
+        /// Initial message to send to the agent (for non-interactive mode)
+        #[arg(short, long)]
+        message: Option<String>,
         /// Additional arguments to pass to the agent
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
@@ -97,8 +100,9 @@ async fn main() -> Result<()> {
         Some(Commands::Run {
             agent,
             project,
+            message,
             args,
-        }) => run_agent_session(agent, project, args).await,
+        }) => run_agent_session(agent, project, message, args).await,
         Some(Commands::Host {
             relay,
             max_connections,
@@ -330,7 +334,7 @@ fn print_general_help() {
 }
 
 /// 运行 AI Agent 会话（使用 ACP）
-async fn run_agent_session(agent: String, project: String, args: Vec<String>) -> Result<()> {
+async fn run_agent_session(agent: String, project: String, message: Option<String>, args: Vec<String>) -> Result<()> {
     use clawdchat_shared::message_protocol::AgentType;
 
     let agent_type = match agent.to_lowercase().as_str() {
@@ -367,6 +371,7 @@ async fn run_agent_session(agent: String, project: String, args: Vec<String>) ->
         extra_args: args,
         working_dir: project_path.clone(),
         home_dir: None,
+        exit_on_complete: false,
     };
 
     // 启动会话
@@ -394,6 +399,14 @@ async fn run_agent_session(agent: String, project: String, args: Vec<String>) ->
     println!("   Type a slash command to interact with permissions.");
     println!("   Press Ctrl+C to exit.");
     println!();
+
+    // Send initial message if provided (non-interactive mode)
+    if let Some(msg) = message {
+        println!("📤 Sending initial message: {}", msg);
+        if let Err(e) = session.send_message(msg).await {
+            eprintln!("❌ Failed to send initial message: {}", e);
+        }
+    }
 
     let stdin = tokio::io::stdin();
     let reader = tokio::io::BufReader::new(stdin);

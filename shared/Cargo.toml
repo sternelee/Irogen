@@ -21,6 +21,7 @@ std = [
     "codex-login",
     "codex-arg0",
     "codex-mcp-server",
+    "tokio-tungstenite",
 ]
 # Mobile runtime: excludes agent-specific dependencies (Claude SDK, Codex, ACP agents)
 # and disables git operations to reduce binary size
@@ -73,6 +74,9 @@ libc = { version = "0.2", optional = true }
 portable-pty = { workspace = true, optional = true }
 bytes = { workspace = true }
 zeroclaw = { path = "../zeroclaw", optional = true }
+
+# WebSocket support for OpenClaw Gateway
+tokio-tungstenite = { workspace = true, optional = true }
 
 # Codex ACP dependencies (git)
 [dependencies.codex-core]

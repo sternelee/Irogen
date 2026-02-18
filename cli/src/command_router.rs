@@ -223,6 +223,9 @@ impl CommandRouter {
             "gemini" | "gemini-cli" => Ok(AgentType::Gemini),
             "copilot" | "gh-copilot" | "github-copilot" => Ok(AgentType::Copilot),
             "qwen" | "qwen-code" | "ali-qwen" => Ok(AgentType::Qwen),
+            "codebuddy" | "tencent-codebuddy" => Ok(AgentType::CodeBuddy),
+            "goose" | "block-goose" => Ok(AgentType::Goose),
+            "openclaw" | "open-claw" => Ok(AgentType::OpenClaw),
             "custom" => Ok(AgentType::Custom),
             _ => Err(anyhow::anyhow!("Unknown agent type: {}", s)),
         }
@@ -250,6 +253,7 @@ impl CommandRouter {
             AgentType::Gemini => GEMINI_SPECIFIC_COMMANDS,
             AgentType::Copilot => COPILOT_SPECIFIC_COMMANDS,
             AgentType::Qwen => QWEN_SPECIFIC_COMMANDS,
+            AgentType::CodeBuddy | AgentType::Goose | AgentType::OpenClaw => &[],
             AgentType::ClaudeAcp | AgentType::AcpAgent | AgentType::Custom | AgentType::ZeroClaw => &[],
         };
 
@@ -401,6 +405,7 @@ impl CommandRouter {
                 AgentType::Gemini => GEMINI_SPECIFIC_COMMANDS.contains(&command_name),
                 AgentType::Copilot => COPILOT_SPECIFIC_COMMANDS.contains(&command_name),
                 AgentType::Qwen => QWEN_SPECIFIC_COMMANDS.contains(&command_name),
+                AgentType::CodeBuddy | AgentType::Goose | AgentType::OpenClaw => false,
                 AgentType::ClaudeAcp | AgentType::AcpAgent | AgentType::Custom | AgentType::ZeroClaw => false,
             }
     }

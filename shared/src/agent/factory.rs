@@ -177,6 +177,7 @@ impl Agent for ClaudeAcpAgent {
 /// OpenCode Agent (ACP compatible)
 ///
 /// OpenCode is an ACP-compatible agent that communicates via JSON-RPC 2.0.
+/// Uses "acp" subcommand to enable ACP mode.
 pub struct OpenCodeAgent;
 
 impl Agent for OpenCodeAgent {
@@ -189,8 +190,8 @@ impl Agent for OpenCodeAgent {
     }
 
     fn default_args(&self) -> Vec<String> {
-        // OpenCode uses --stdio for ACP communication
-        vec!["--stdio".to_string()]
+        // OpenCode uses "acp" subcommand for ACP communication
+        vec!["acp".to_string()]
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
@@ -356,7 +357,7 @@ impl CopilotAgent {
             .map(|o| o.status.success())
             .unwrap_or(false)
         {
-            let config = ("copilot".to_string(), vec!["--acp".to_string()]);
+            let config = ("copilot".to_string(), vec!["--acp".to_string(), "--stdio".to_string()]);
             let _ = COPILOT_CONFIG.set(config.clone());
             return config;
         }
@@ -371,7 +372,7 @@ impl CopilotAgent {
         {
             let config = (
                 "gh".to_string(),
-                vec!["copilot".to_string(), "--stdio".to_string()],
+                vec!["copilot".to_string(), "--acp".to_string(), "--stdio".to_string()],
             );
             let _ = COPILOT_CONFIG.set(config.clone());
             return config;
@@ -380,7 +381,7 @@ impl CopilotAgent {
         // Fallback to default (gh)
         (
             "gh".to_string(),
-            vec!["copilot".to_string(), "--stdio".to_string()],
+            vec!["copilot".to_string(), "--acp".to_string(), "--stdio".to_string()],
         )
     }
 }
@@ -453,6 +454,7 @@ impl Agent for CopilotAgent {
 /// Qwen Code Agent (ACP compatible)
 ///
 /// Qwen Code is an ACP-compatible agent that communicates via JSON-RPC 2.0.
+/// Uses --acp flag with stream-json input/output format for stdio communication.
 pub struct QwenAgent;
 
 impl Agent for QwenAgent {
@@ -465,8 +467,14 @@ impl Agent for QwenAgent {
     }
 
     fn default_args(&self) -> Vec<String> {
-        // Qwen Code uses --stdio for ACP communication
-        vec!["--stdio".to_string()]
+        // Qwen Code uses --acp flag with stream-json format for stdio communication
+        vec![
+            "--acp".to_string(),
+            "--input-format".to_string(),
+            "stream-json".to_string(),
+            "--output-format".to_string(),
+            "stream-json".to_string(),
+        ]
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
@@ -497,6 +505,166 @@ impl Agent for QwenAgent {
 
         if !output.status.success() {
             return Err(anyhow::anyhow!("Failed to get Qwen version"));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
+/// CodeBuddy Agent (Tencent) — ACP compatible via npx
+///
+/// CodeBuddy is an ACP-compatible agent that communicates via JSON-RPC 2.0.
+/// Uses npx @tencent-ai/codebuddy-code --acp to enable ACP mode.
+pub struct CodeBuddyAgent;
+
+impl Agent for CodeBuddyAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::CodeBuddy
+    }
+
+    fn command(&self) -> &str {
+        // Use npx to run CodeBuddy
+        "npx"
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        // CodeBuddy uses --acp flag via npx
+        vec![
+            "--yes".to_string(),
+            "--prefer-offline".to_string(),
+            "@tencent-ai/codebuddy-code".to_string(),
+            "--acp".to_string(),
+        ]
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        // Check if npx is available and can run codebuddy
+        let output = Command::new("npx")
+            .args(["--yes", "--dry-run", "@tencent-ai/codebuddy-code"])
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        let available = output.status.success();
+        let version = if available {
+            Some("npx @tencent-ai/codebuddy-code".to_string())
+        } else {
+            None
+        };
+
+        Ok(AgentAvailability {
+            available,
+            version,
+            executable: "npx @tencent-ai/codebuddy-code".to_string(),
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        Ok("npx @tencent-ai/codebuddy-code".to_string())
+    }
+}
+
+/// Goose Agent (Block) — ACP compatible
+///
+/// Goose is an ACP-compatible agent that communicates via JSON-RPC 2.0.
+/// Uses "acp" subcommand to enable ACP mode.
+pub struct GooseAgent;
+
+impl Agent for GooseAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::Goose
+    }
+
+    fn command(&self) -> &str {
+        "goose"
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        // Goose uses "acp" subcommand for ACP communication
+        vec!["acp".to_string()]
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        let available = output.status.success();
+        let version = if available {
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            None
+        };
+
+        Ok(AgentAvailability {
+            available,
+            version,
+            executable: self.command().to_string(),
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!("Failed to get Goose version"));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
+/// OpenClaw Agent — WebSocket Gateway mode
+///
+/// OpenClaw uses WebSocket Gateway mode to communicate.
+/// Requires running `openclaw gateway` to start the gateway.
+pub struct OpenClawAgent;
+
+impl Agent for OpenClawAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::OpenClaw
+    }
+
+    fn command(&self) -> &str {
+        "openclaw"
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        // OpenClaw uses "gateway" subcommand for WebSocket Gateway mode
+        vec!["gateway".to_string()]
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        let available = output.status.success();
+        let version = if available {
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            None
+        };
+
+        Ok(AgentAvailability {
+            available,
+            version,
+            executable: self.command().to_string(),
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!("Failed to get OpenClaw version"));
         }
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -553,6 +721,9 @@ impl AgentFactory {
             AgentType::Gemini => Box::new(GeminiAgent),
             AgentType::Copilot => Box::new(CopilotAgent),
             AgentType::Qwen => Box::new(QwenAgent),
+            AgentType::CodeBuddy => Box::new(CodeBuddyAgent),
+            AgentType::Goose => Box::new(GooseAgent),
+            AgentType::OpenClaw => Box::new(OpenClawAgent),
             AgentType::ZeroClaw => Box::new(ZeroClawAgent),
             AgentType::AcpAgent => Box::new(ClaudeCodeAgent), // AcpAgent uses Claude as default
             AgentType::Custom => Box::new(ClaudeCodeAgent),   // Custom defaults to Claude
@@ -571,6 +742,9 @@ impl AgentFactory {
             Box::new(GeminiAgent),
             Box::new(CopilotAgent),
             Box::new(QwenAgent),
+            Box::new(CodeBuddyAgent),
+            Box::new(GooseAgent),
+            Box::new(OpenClawAgent),
             Box::new(ZeroClawAgent),
         ];
 
@@ -605,7 +779,7 @@ impl AgentFactory {
     pub fn get_default() -> Option<AgentType> {
         let available = Self::check_all_available().ok()?;
 
-        // 优先级: ClaudeCode > ClaudeAcp > Codex > OpenCode > Copilot > Qwen > Gemini
+        // 优先级: ClaudeCode > ClaudeAcp > Codex > OpenCode > Copilot > Qwen > CodeBuddy > Goose > OpenClaw > Gemini
         if available.contains_key(&AgentType::ClaudeCode) {
             return Some(AgentType::ClaudeCode);
         }
@@ -623,6 +797,15 @@ impl AgentFactory {
         }
         if available.contains_key(&AgentType::Qwen) {
             return Some(AgentType::Qwen);
+        }
+        if available.contains_key(&AgentType::CodeBuddy) {
+            return Some(AgentType::CodeBuddy);
+        }
+        if available.contains_key(&AgentType::Goose) {
+            return Some(AgentType::Goose);
+        }
+        if available.contains_key(&AgentType::OpenClaw) {
+            return Some(AgentType::OpenClaw);
         }
         if available.contains_key(&AgentType::Gemini) {
             return Some(AgentType::Gemini);
