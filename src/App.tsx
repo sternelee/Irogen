@@ -34,41 +34,97 @@ export default function App() {
 
   const setupEventListeners = async () => {
     // Listen for agent session creation responses from CLI
-    const unlisten = await listen("agent-session-created", (event) => {
-      const payload = event.payload as {
-        session_id: string;
-        agent_type: string;
-        project_path: string;
-      };
+    const unlistenAgentCreated = await listen(
+      "agent-session-created",
+      (event) => {
+        const payload = event.payload as {
+          session_id: string;
+          agent_type: string;
+          project_path: string;
+          control_session_id?: string;
+        };
 
-      console.log("Agent session created event:", payload);
+        console.log("Agent session created event:", payload);
 
-      // Parse agent type
-      const agentType = parseAgentType(payload.agent_type);
+        // Parse agent type
+        const agentType = parseAgentType(payload.agent_type);
 
-      // Add session to store
-      sessionStore.addSession({
-        sessionId: payload.session_id,
-        agentType,
-        projectPath: payload.project_path,
-        startedAt: Date.now(),
-        active: true,
-        controlledByRemote: false,
-        hostname: "localhost",
-        os: navigator.userAgent,
-        currentDir: payload.project_path,
-        machineId: "local",
-      });
+        // Find connection metadata if available
+        let hostname = "remote";
+        let os = "remote";
+        let machineId = "remote";
 
-      // Set as active session
-      sessionStore.setActiveSession(payload.session_id);
+        if (payload.control_session_id) {
+          const controlSession = sessionStore.getSession(
+            payload.control_session_id,
+          );
+          if (controlSession) {
+            hostname = controlSession.hostname;
+            os = controlSession.os;
+            machineId = controlSession.machineId;
+          }
+        }
 
-      notificationStore.success(`${agentType} session created`, "Session");
-    });
+        // Add session to store
+        sessionStore.addSession({
+          sessionId: payload.session_id,
+          agentType,
+          projectPath: payload.project_path,
+          startedAt: Date.now(),
+          active: true,
+          controlledByRemote: true,
+          hostname,
+          os,
+          currentDir: payload.project_path,
+          machineId,
+          mode: "remote",
+          controlSessionId: payload.control_session_id,
+        });
+
+        // Set as active session
+        sessionStore.setActiveSession(payload.session_id);
+
+        notificationStore.success(`${agentType} session created`, "Session");
+      },
+    );
+
+    // Listen for peer disconnection events
+    const unlistenPeerDisconnected = await listen(
+      "peer-disconnected",
+      (event) => {
+        const payload = event.payload as { sessionId: string };
+        console.log("Peer disconnected event:", payload);
+
+        const disconnectedControlId = payload.sessionId;
+
+        // Find all agent sessions that depend on this control session
+        const sessions = sessionStore.getSessions();
+        sessions.forEach((session) => {
+          if (session.controlSessionId === disconnectedControlId) {
+            // Update session state to inactive
+            sessionStore.updateSession(session.sessionId, {
+              active: false,
+            });
+            notificationStore.error(
+              `Connection lost for session ${session.sessionId}`,
+              "Connection Lost",
+            );
+          }
+
+          // Also if the control session itself is in the store, mark it inactive
+          if (session.sessionId === disconnectedControlId) {
+            sessionStore.updateSession(session.sessionId, {
+              active: false,
+            });
+          }
+        });
+      },
+    );
 
     // Cleanup on unmount
     onCleanup(() => {
-      unlisten();
+      unlistenAgentCreated();
+      unlistenPeerDisconnected();
     });
   };
 

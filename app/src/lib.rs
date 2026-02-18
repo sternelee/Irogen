@@ -27,8 +27,8 @@ mod tcp_forwarding;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use clawdchat_shared::AgentManager;
 use clawdchat_shared::{
-    AgentControlAction, AgentPermissionResponse, AgentType, CommunicationManager, Event,
-    EventListener, EventType, IODataType, Message as ClawdChatMessage, MessageBuilder,
+    AgentControlAction, AgentPermissionResponse, AgentType, CommunicationManager, DirEntry,
+    Event, EventListener, EventType, FileBrowserAction, IODataType, Message as ClawdChatMessage, MessageBuilder,
     MessagePayload, QuicMessageClientHandle, SerializableEndpointAddr, TcpDataType,
     TcpForwardingAction, TcpForwardingType, TerminalAction,
 };
@@ -777,6 +777,17 @@ async fn connect_to_peer(
                                                     &data_json,
                                                 );
                                             }
+                                            else if data_json.get("entries").is_some() && data_json.get("terminal_id").is_none() {
+                                                // This is a directory listing response
+                                                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                                tracing::info!("Received directory listing response");
+
+                                                // Emit directory listing to frontend
+                                                let _ = app_handle_clone.emit(
+                                                    &format!("remote-directory-listing-{}", session_id_clone),
+                                                    &data_json,
+                                                );
+                                            }
                                             // Check if this is a TCP forwarding session creation response
                                             // NOTE: This must be checked BEFORE the sessions-only check because
                                             // session creation responses include both session_id+status AND sessions
@@ -1457,6 +1468,11 @@ async fn parse_session_ticket(ticket: String) -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+async fn list_directory(path: String) -> Result<Vec<DirEntry>, String> {
+    clawdchat_shared::list_directory(&path)
+}
+
 /// Helper function to check and initialize QUIC client if needed
 async fn ensure_quic_client_initialized(
     state: &State<'_, AppState>,
@@ -1732,6 +1748,48 @@ async fn get_terminal_logs(
     .await?;
 
     Ok(())
+}
+
+#[tauri::command]
+async fn list_remote_directory(
+    session_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let session = {
+        let sessions = state.sessions.read().await;
+        sessions
+            .get(&session_id)
+            .cloned()
+            .ok_or("Session not found")?
+    };
+
+    // Generate a request_id for tracking the response
+    let request_id = uuid::Uuid::new_v4().to_string();
+
+    // Create file browser message for listing directory
+    let action = FileBrowserAction::ListDirectory {
+        path: path.clone(),
+    };
+
+    let message = MessageBuilder::file_browser(
+        "clawdchat_app".to_string(),
+        action,
+        Some(request_id.clone()),
+    )
+    .with_session(session_id.clone());
+
+    // Send message via QUIC client
+    send_message_via_client(
+        &state,
+        &session.connection_id,
+        message,
+        "list directory request",
+    )
+    .await?;
+
+    // Return the request_id so frontend can match the response
+    Ok(request_id)
 }
 
 #[tauri::command]
@@ -2694,6 +2752,7 @@ pub fn run() {
             get_active_sessions,
             get_node_info,
             parse_session_ticket,
+            list_directory,
             // Terminal Management
             create_terminal,
             stop_terminal,
@@ -2703,6 +2762,7 @@ pub fn run() {
             resize_terminal,
             connect_to_terminal, // Kept as no-op for compatibility
             get_terminal_logs,   // Get terminal logs from CLI
+            list_remote_directory, // List remote directory via P2P
             // TCP Forwarding Management
             create_tcp_forwarding_session,
             list_tcp_forwarding_sessions,

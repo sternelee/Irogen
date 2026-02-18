@@ -44,6 +44,7 @@ export interface AgentSessionMetadata {
   summary?: string;
   thinking?: boolean;
   mode?: SessionMode;
+  controlSessionId?: string; // ID of the connection session
 }
 
 export type ConnectionState =
@@ -68,6 +69,7 @@ interface SessionState {
   newSessionAgent: AgentType;
   newSessionPath: string;
   sessionTicket: string;
+  targetControlSessionId: string | null;
 
   // ZeroClaw provider config
   zeroClawProvider: string;
@@ -94,6 +96,7 @@ const initialState: SessionState = {
   newSessionAgent: "claude",
   newSessionPath: "",
   sessionTicket: "",
+  targetControlSessionId: null,
 
   zeroClawProvider: "ollama",
   zeroClawModel: "qwen3:8b",
@@ -170,13 +173,21 @@ export const createSessionStore = () => {
   // Modal Operations
   // ========================================================================
 
-  const openNewSessionModal = (mode: SessionMode = "remote") => {
+  const openNewSessionModal = (
+    mode: SessionMode = "remote",
+    controlSessionId: string | null = null,
+  ) => {
     setState(
       produce((s: SessionState) => {
         s.isNewSessionModalOpen = true;
         s.newSessionMode = mode;
+        s.targetControlSessionId = controlSessionId;
       }),
     );
+  };
+
+  const setTargetControlSessionId = (id: string | null) => {
+    setState("targetControlSessionId", id);
   };
 
   const closeNewSessionModal = () => {
@@ -297,8 +308,54 @@ export const createSessionStore = () => {
     }
   };
 
+  const handleRemoteSpawn = async () => {
+    const controlSessionId = state.targetControlSessionId;
+    if (!controlSessionId) {
+      notificationStore.error("No remote connection selected", "Error");
+      return;
+    }
+
+    if (!state.newSessionPath.trim()) {
+      notificationStore.error("Please enter a project path", "Error");
+      return;
+    }
+
+    setStartingAgent(true);
+
+    try {
+      console.log(
+        "[handleRemoteSpawn] Spawning remote session via connection:",
+        controlSessionId,
+      );
+      await invoke("remote_spawn_session", {
+        sessionId: controlSessionId,
+        agentType: state.newSessionAgent,
+        projectPath: state.newSessionPath,
+        args: [], // Add args if needed
+      });
+
+      notificationStore.success(
+        `Spawn request sent for ${state.newSessionAgent} on remote host`,
+        "Spawn Session",
+      );
+      closeNewSessionModal();
+      setNewSessionPath("");
+    } catch (error) {
+      console.error(
+        "[handleRemoteSpawn] Failed to spawn remote session:",
+        error,
+      );
+      notificationStore.error("Failed to spawn remote session", "Error");
+    } finally {
+      setStartingAgent(false);
+    }
+  };
+
   const handleCreateSession = async () => {
     if (state.newSessionMode === "remote") {
+      if (state.targetControlSessionId) {
+        return handleRemoteSpawn();
+      }
       return handleRemoteConnect();
     }
 
@@ -405,6 +462,7 @@ export const createSessionStore = () => {
     // Modal
     openNewSessionModal,
     closeNewSessionModal,
+    setTargetControlSessionId,
     setNewSessionMode,
     setNewSessionAgent,
     setNewSessionPath,
@@ -423,6 +481,7 @@ export const createSessionStore = () => {
     setStartingAgent,
     handleCreateSession,
     handleRemoteConnect,
+    handleRemoteSpawn,
 
     // Derived
     getActiveSessions,

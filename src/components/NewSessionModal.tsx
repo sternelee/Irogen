@@ -5,8 +5,10 @@
  * Managed by sessionStore for global accessibility.
  */
 
-import { Show, type Component } from "solid-js";
-import { FiPlus, FiHome, FiCloud } from "solid-icons/fi";
+import { Show, createMemo, For, type Component, createSignal, onCleanup, onMount } from "solid-js";
+import { FiPlus, FiHome, FiCloud, FiFolder, FiChevronRight } from "solid-icons/fi";
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { sessionStore, AgentType } from "../stores/sessionStore";
 import {
   Alert,
@@ -18,7 +20,122 @@ import {
   Label,
 } from "./ui/primitives";
 
+interface DirEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+}
+
+interface RemoteDirEntry {
+  name: string;
+  is_dir: boolean;
+  size?: number;
+}
+
 export const NewSessionModal: Component = () => {
+  const [dirEntries, setDirEntries] = createSignal<DirEntry[]>([]);
+  const [isLoadingDirs, setIsLoadingDirs] = createSignal(false);
+  const [showDirPicker, setShowDirPicker] = createSignal(false);
+  const [currentRequestId, setCurrentRequestId] = createSignal<string | null>(null);
+
+  let unlistenDirListing: UnlistenFn | null = null;
+
+  onMount(async () => {
+    // Listen for remote directory listing responses
+    unlistenDirListing = await listen<{ entries: RemoteDirEntry[] }>(
+      "remote-directory-listing",
+      (event) => {
+        const requestId = currentRequestId();
+        if (!requestId) return;
+
+        const entries = event.payload.entries || [];
+        const dirs = entries
+          .filter((e) => e.is_dir)
+          .map((e) => ({
+            name: e.name,
+            path: "", // Remote doesn't provide full path
+            is_dir: true,
+          }));
+        setDirEntries(dirs);
+        setIsLoadingDirs(false);
+      },
+    );
+  });
+
+  onCleanup(() => {
+    if (unlistenDirListing) {
+      unlistenDirListing();
+    }
+  });
+
+  const loadDirectory = async (path: string) => {
+    if (!path.endsWith("/")) {
+      setShowDirPicker(false);
+      setDirEntries([]);
+      return;
+    }
+
+    // Check if we have an active remote session
+    const remoteSession = remoteConnections()[0];
+    const isRemote = sessionStore.state.newSessionMode === "remote" && remoteSession;
+
+    if (isRemote) {
+      // Use P2P to list remote directory
+      setIsLoadingDirs(true);
+      setShowDirPicker(true);
+      try {
+        const requestId = await invoke<string>("list_remote_directory", {
+          sessionId: remoteSession.sessionId,
+          path,
+        });
+        setCurrentRequestId(requestId);
+        // Response will come via event listener
+      } catch (err) {
+        console.error("Failed to list remote directory:", err);
+        setDirEntries([]);
+        setIsLoadingDirs(false);
+      }
+    } else {
+      // Use local file system
+      setIsLoadingDirs(true);
+      setShowDirPicker(true);
+      try {
+        const entries = await invoke<DirEntry[]>("list_directory", { path });
+        setDirEntries(entries.filter((e) => e.is_dir));
+      } catch (err) {
+        console.error("Failed to list directory:", err);
+        setDirEntries([]);
+      } finally {
+        setIsLoadingDirs(false);
+      }
+    }
+  };
+
+  const handlePathInput = (value: string) => {
+    sessionStore.setNewSessionPath(value);
+    loadDirectory(value);
+  };
+
+  const selectDirectory = (entry: DirEntry) => {
+    const currentPath = sessionStore.state.newSessionPath;
+    const basePath = currentPath.endsWith("/") ? currentPath : currentPath + "/";
+    const newPath = basePath + entry.name + "/";
+    sessionStore.setNewSessionPath(newPath);
+    loadDirectory(newPath);
+  };
+  const remoteConnections = createMemo(() =>
+    sessionStore.getSessions().filter((s) => s.mode === "remote" && s.active),
+  );
+
+  const isConnectingToNew = () =>
+    sessionStore.state.newSessionMode === "remote" &&
+    !sessionStore.state.targetControlSessionId;
+
+  const showAgentConfig = () =>
+    sessionStore.state.newSessionMode === "local" ||
+    (sessionStore.state.newSessionMode === "remote" &&
+      sessionStore.state.targetControlSessionId);
+
   return (
     <Show when={sessionStore.state.isNewSessionModalOpen}>
       <Dialog
@@ -33,9 +150,10 @@ export const NewSessionModal: Component = () => {
           </h3>
 
           {/* Mode Toggle */}
-          <div class="flex gap-2 mb-4">
+          <div class="flex gap-2 mb-6">
             <Button
               type="button"
+              class="flex-1"
               variant={
                 sessionStore.state.newSessionMode === "remote"
                   ? "primary"
@@ -44,12 +162,20 @@ export const NewSessionModal: Component = () => {
               onClick={() => {
                 sessionStore.setNewSessionMode("remote");
                 sessionStore.setConnectionError(null);
+                // Auto-select first remote connection if available
+                const connections = remoteConnections();
+                if (connections.length > 0) {
+                  sessionStore.setTargetControlSessionId(
+                    connections[0].sessionId,
+                  );
+                }
               }}
             >
-              <FiCloud class="mr-1" /> Remote
+              <FiCloud class="mr-2" /> Remote
             </Button>
             <Button
               type="button"
+              class="flex-1"
               variant={
                 sessionStore.state.newSessionMode === "local"
                   ? "primary"
@@ -60,12 +186,44 @@ export const NewSessionModal: Component = () => {
                 sessionStore.setConnectionError(null);
               }}
             >
-              <FiHome class="mr-1" /> Local
+              <FiHome class="mr-2" /> Local
             </Button>
           </div>
 
+          {/* Remote Connection Selector */}
+          <Show
+            when={
+              sessionStore.state.newSessionMode === "remote" &&
+              remoteConnections().length > 0
+            }
+          >
+            <div class="mb-4 space-y-2">
+              <Label for="remote-connection">Remote Host</Label>
+              <Select
+                id="remote-connection"
+                value={sessionStore.state.targetControlSessionId || "new"}
+                onChange={(e) => {
+                  const val = e.currentTarget.value;
+                  sessionStore.setTargetControlSessionId(
+                    val === "new" ? null : val,
+                  );
+                }}
+              >
+                <For each={remoteConnections()}>
+                  {(conn) => (
+                    <option value={conn.sessionId}>
+                      {conn.hostname || "Remote Host"} (
+                      {conn.sessionId.slice(0, 8)})
+                    </option>
+                  )}
+                </For>
+                <option value="new">+ Connect to New Host</option>
+              </Select>
+            </div>
+          </Show>
+
           {/* Remote Mode: Ticket Input */}
-          <Show when={sessionStore.state.newSessionMode === "remote"}>
+          <Show when={isConnectingToNew()}>
             <div class="mb-4 space-y-2">
               <Label for="session-ticket">Session Ticket</Label>
               <Textarea
@@ -116,8 +274,8 @@ export const NewSessionModal: Component = () => {
             </Show>
           </Show>
 
-          {/* Local Mode: Agent Config */}
-          <Show when={sessionStore.state.newSessionMode === "local"}>
+          {/* Agent Config (Local or Remote with active connection) */}
+          <Show when={showAgentConfig()}>
             <div class="mb-4 space-y-2">
               <Label for="agent-type">Agent Type</Label>
               <Select
@@ -132,11 +290,11 @@ export const NewSessionModal: Component = () => {
                 <option value="claude">Claude Code</option>
                 <option value="claude_acp">Claude (ACP)</option>
                 <option value="codex">Codex</option>
-                <option value="zeroclaw">ClawdAI</option>
-                <option value="gemini">Gemini CLI</option>
                 <option value="opencode">OpenCode</option>
+                <option value="gemini">Gemini CLI</option>
                 <option value="copilot">GitHub Copilot</option>
                 <option value="qwen">Qwen Code</option>
+                <option value="zeroclaw">ClawdAI</option>
                 <option value="custom">Custom</option>
               </Select>
             </div>
@@ -233,20 +391,63 @@ export const NewSessionModal: Component = () => {
 
             <div class="mb-4 space-y-2">
               <Label for="project-path">Project Path</Label>
-              <Input
-                id="project-path"
-                type="text"
-                value={sessionStore.state.newSessionPath}
-                onInput={(e) =>
-                  sessionStore.setNewSessionPath(e.currentTarget.value)
-                }
-                placeholder="/path/to/project"
-                class="font-mono text-sm"
-              />
+              <div class="relative">
+                <Input
+                  id="project-path"
+                  type="text"
+                  value={sessionStore.state.newSessionPath}
+                  onInput={(e) => handlePathInput(e.currentTarget.value)}
+                  placeholder="/path/to/project"
+                  class="font-mono text-sm pr-10"
+                />
+                <Show when={sessionStore.state.newSessionPath.endsWith("/")}>
+                  <button
+                    type="button"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost btn-xs btn-square"
+                    onClick={() => loadDirectory(sessionStore.state.newSessionPath)}
+                  >
+                    <FiChevronRight
+                      class={`transition-transform ${showDirPicker() && dirEntries().length > 0 ? "rotate-90" : ""}`}
+                    />
+                  </button>
+                </Show>
+
+                {/* Directory Picker Dropdown */}
+                <Show when={showDirPicker()}>
+                  <div class="absolute z-50 mt-1 w-full bg-base-100 border border-base-300 rounded-md shadow-lg max-h-48 overflow-auto">
+                    <Show
+                      when={!isLoadingDirs()}
+                      fallback={
+                        <div class="p-2 text-sm text-base-content/50">Loading...</div>
+                      }
+                    >
+                      <Show
+                        when={dirEntries().length > 0}
+                        fallback={
+                          <div class="p-2 text-sm text-base-content/50">Empty directory</div>
+                        }
+                      >
+                        <For each={dirEntries()}>
+                          {(entry) => (
+                            <button
+                              type="button"
+                              class="w-full px-3 py-2 text-left text-sm font-mono hover:bg-base-200 flex items-center gap-2"
+                              onClick={() => selectDirectory(entry)}
+                            >
+                              <FiFolder class="shrink-0" />
+                              <span class="truncate">{entry.name}</span>
+                            </button>
+                          )}
+                        </For>
+                      </Show>
+                    </Show>
+                  </div>
+                </Show>
+              </div>
             </div>
           </Show>
 
-          <div class="mt-6 flex justify-end gap-2">
+          <div class="mt-8 flex justify-end gap-2">
             <Button
               type="button"
               variant="ghost"
@@ -259,7 +460,7 @@ export const NewSessionModal: Component = () => {
               Cancel
             </Button>
             <Show
-              when={sessionStore.state.newSessionMode === "remote"}
+              when={isConnectingToNew()}
               fallback={
                 <Button
                   type="button"
