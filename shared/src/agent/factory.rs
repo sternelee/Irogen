@@ -459,58 +459,6 @@ impl Agent for QwenAgent {
     }
 }
 
-/// CodeBuddy Agent (Tencent) — ACP compatible via npx
-///
-/// CodeBuddy is an ACP-compatible agent that communicates via JSON-RPC 2.0.
-/// Uses npx @tencent-ai/codebuddy-code --acp to enable ACP mode.
-pub struct CodeBuddyAgent;
-
-impl Agent for CodeBuddyAgent {
-    fn agent_type(&self) -> AgentType {
-        AgentType::CodeBuddy
-    }
-
-    fn command(&self) -> &str {
-        // Use npx to run CodeBuddy
-        "npx"
-    }
-
-    fn default_args(&self) -> Vec<String> {
-        // CodeBuddy uses --acp flag via npx
-        vec![
-            "--yes".to_string(),
-            "--prefer-offline".to_string(),
-            "@tencent-ai/codebuddy-code".to_string(),
-            "--acp".to_string(),
-        ]
-    }
-
-    fn check_available(&self) -> Result<AgentAvailability> {
-        // Check if npx is available and can run codebuddy
-        let output = Command::new("npx")
-            .args(["--yes", "--dry-run", "@tencent-ai/codebuddy-code"])
-            .env("PATH", get_extended_path())
-            .output()?;
-
-        let available = output.status.success();
-        let version = if available {
-            Some("npx @tencent-ai/codebuddy-code".to_string())
-        } else {
-            None
-        };
-
-        Ok(AgentAvailability {
-            available,
-            version,
-            executable: "npx @tencent-ai/codebuddy-code".to_string(),
-        })
-    }
-
-    fn get_version(&self) -> Result<String> {
-        Ok("npx @tencent-ai/codebuddy-code".to_string())
-    }
-}
-
 /// Goose Agent (Block) — ACP compatible
 ///
 /// Goose is an ACP-compatible agent that communicates via JSON-RPC 2.0.
@@ -668,7 +616,6 @@ impl AgentFactory {
             AgentType::Gemini => Box::new(GeminiAgent),
             AgentType::Copilot => Box::new(CopilotAgent),
             AgentType::Qwen => Box::new(QwenAgent),
-            AgentType::CodeBuddy => Box::new(CodeBuddyAgent),
             AgentType::Goose => Box::new(GooseAgent),
             AgentType::OpenClaw => Box::new(OpenClawAgent),
             AgentType::ZeroClaw => Box::new(ZeroClawAgent),
@@ -688,7 +635,6 @@ impl AgentFactory {
             Box::new(GeminiAgent),
             Box::new(CopilotAgent),
             Box::new(QwenAgent),
-            Box::new(CodeBuddyAgent),
             Box::new(GooseAgent),
             Box::new(OpenClawAgent),
             Box::new(ZeroClawAgent),
@@ -725,7 +671,7 @@ impl AgentFactory {
     pub fn get_default() -> Option<AgentType> {
         let available = Self::check_all_available().ok()?;
 
-        // 优先级: ClaudeCode > Codex > OpenCode > Copilot > Qwen > CodeBuddy > Goose > OpenClaw > Gemini
+        // 优先级: ClaudeCode > Codex > OpenCode > Copilot > Qwen > Goose > OpenClaw > Gemini
         if available.contains_key(&AgentType::ClaudeCode) {
             return Some(AgentType::ClaudeCode);
         }
@@ -740,9 +686,6 @@ impl AgentFactory {
         }
         if available.contains_key(&AgentType::Qwen) {
             return Some(AgentType::Qwen);
-        }
-        if available.contains_key(&AgentType::CodeBuddy) {
-            return Some(AgentType::CodeBuddy);
         }
         if available.contains_key(&AgentType::Goose) {
             return Some(AgentType::Goose);

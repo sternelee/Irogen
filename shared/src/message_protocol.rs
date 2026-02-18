@@ -569,8 +569,6 @@ pub enum AgentType {
     Copilot,
     /// Qwen Code (Alibaba Cloud)
     Qwen,
-    /// CodeBuddy (Tencent) — uses npx @tencent-ai/codebuddy-code --acp
-    CodeBuddy,
     /// Goose (Block) — uses "goose acp" subcommand
     Goose,
     /// OpenClaw (OpenClaw) — uses WebSocket Gateway
