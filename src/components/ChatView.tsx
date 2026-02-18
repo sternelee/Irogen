@@ -39,7 +39,10 @@ import { sessionStore } from "../stores/sessionStore";
 import type { AgentType } from "../stores/sessionStore";
 import { notificationStore } from "../stores/notificationStore";
 import type { ChatMessage, PermissionRequest } from "../stores/chatStore";
-import { Alert, Badge, Button, Spinner, Kbd } from "./ui/primitives";
+import { Alert } from "./ui/alert";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Spinner, Kbd } from "./ui/primitives";
 import { MarkdownRenderer } from "solid-markdown-wasm";
 
 // ============================================================================

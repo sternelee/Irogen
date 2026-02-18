@@ -1,13 +1,10 @@
 import { For, Show, createMemo } from "solid-js";
 import { sessionStore } from "../stores/sessionStore";
-import {
-  Button,
-  Dialog,
-  Label,
-  Select,
-  Input,
-  Textarea,
-} from "./ui/primitives";
+import { Button } from "./ui/button";
+import { Dialog } from "./ui/dialog";
+import { Label } from "./ui/label";
+import { Select } from "./ui/select";
+import { Input, Textarea } from "./ui/primitives";
 
 interface ZeroclawConfigModalProps {
   isOpen: boolean;
@@ -84,8 +81,8 @@ export function ZeroclawConfigModal(props: ZeroclawConfigModalProps) {
                 <Label>Provider</Label>
                 <Select
                   value={state().zeroClawProvider}
-                  onChange={(e) =>
-                    sessionStore.setZeroClawProvider(e.currentTarget.value)
+                  onChange={(val) =>
+                    sessionStore.setZeroClawProvider(val)
                   }
                 >
                   <For each={providers}>
@@ -98,8 +95,8 @@ export function ZeroclawConfigModal(props: ZeroclawConfigModalProps) {
                 <Label>Model</Label>
                 <Select
                   value={state().zeroClawModel}
-                  onChange={(e) =>
-                    sessionStore.setZeroClawModel(e.currentTarget.value)
+                  onChange={(val) =>
+                    sessionStore.setZeroClawModel(val)
                   }
                 >
                   <For each={models()}>
@@ -233,7 +230,7 @@ export function ZeroclawConfigModal(props: ZeroclawConfigModalProps) {
           >
             重置
           </Button>
-          <Button variant="primary" onClick={props.onClose}>
+          <Button variant="default" onClick={props.onClose}>
             保存
           </Button>
         </div>

@@ -126,7 +126,7 @@ export function SimpleSelect(props: SimpleSelectProps) {
   return (
     <Select
       value={props.value || ""}
-      onChange={(e) => props.onChange?.(e.currentTarget.value)}
+      onChange={(val) => props.onChange?.(val)}
       disabled={props.disabled}
       class={props.class}
     >
@@ -157,7 +157,7 @@ export function SimpleToggle(props: SimpleToggleProps) {
     <Switch
       class={props.class}
       checked={props.checked || false}
-      onChange={(e) => props.onChange?.(e.currentTarget.checked)}
+      onChange={props.onChange}
       disabled={props.disabled}
       label={props.label}
     />

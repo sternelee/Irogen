@@ -13,7 +13,8 @@ import {
   FiX,
 } from "solid-icons/fi";
 import { notificationStore, Notification } from "../stores/notificationStore";
-import { Alert, Button } from "./ui/primitives";
+import { Alert } from "./ui/alert";
+import { Button } from "./ui/button";
 
 // ============================================================================
 // Types

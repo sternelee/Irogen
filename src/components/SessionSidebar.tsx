@@ -20,7 +20,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { sessionStore } from "../stores/sessionStore";
 import { notificationStore } from "../stores/notificationStore";
 import type { AgentType } from "../stores/sessionStore";
-import { Button } from "./ui/primitives";
+import { Button } from "./ui/button";
 
 // ============================================================================
 // Agent Icons

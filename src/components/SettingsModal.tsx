@@ -6,13 +6,11 @@ import {
   LanguageType,
   FontSizeType,
 } from "../stores/settingsStore";
-import {
-  Button,
-  Dialog,
-  Label,
-  Select,
-  Switch,
-} from "./ui/primitives";
+import { Button } from "./ui/button";
+import { Dialog } from "./ui/dialog";
+import { Label } from "./ui/label";
+import { Select } from "./ui/select";
+import { Switch } from "./ui/switch";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -46,8 +44,8 @@ export function SettingsModal(props: SettingsModalProps) {
             <Label>{t("settings.theme")}</Label>
             <Select
               value={settingsStore.get().theme}
-              onChange={(e) =>
-                settingsStore.setTheme(e.currentTarget.value as ThemeType)
+              onChange={(val) =>
+                settingsStore.setTheme(val as ThemeType)
               }
             >
               {themeOptions.map((theme) => (
@@ -60,8 +58,8 @@ export function SettingsModal(props: SettingsModalProps) {
             <Label>{t("settings.language")}</Label>
             <Select
               value={settingsStore.get().language}
-              onChange={(e) =>
-                settingsStore.setLanguage(e.currentTarget.value as LanguageType)
+              onChange={(val) =>
+                settingsStore.setLanguage(val as LanguageType)
               }
             >
               <option value="en">English</option>
@@ -73,9 +71,9 @@ export function SettingsModal(props: SettingsModalProps) {
             <Label>{t("settings.fontSize")}</Label>
             <Select
               value={settingsStore.get().fontSize}
-              onChange={(e) =>
+              onChange={(val) =>
                 settingsStore.setFontSize(
-                  e.currentTarget.value as FontSizeType,
+                  val as FontSizeType,
                 )
               }
             >

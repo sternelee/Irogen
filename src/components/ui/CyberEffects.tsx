@@ -158,7 +158,7 @@ export function ModernSelect(props: {
     <Select
       class={props.class}
       value={props.value}
-      onChange={(e) => props.onChange?.(e.currentTarget.value)}
+      onChange={(val) => props.onChange?.(val)}
     >
       <Show when={props.placeholder}>
         <option disabled value="">
@@ -183,7 +183,7 @@ export function ModernToggle(props: {
       class={props.class}
       label={props.label}
       checked={props.checked}
-      onChange={(e) => props.onChange?.(e.currentTarget.checked)}
+      onChange={props.onChange}
     />
   );
 }

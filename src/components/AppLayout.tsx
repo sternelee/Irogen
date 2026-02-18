@@ -16,7 +16,7 @@ import { SessionSidebar } from "./SessionSidebar";
 import { ChatView } from "./ChatView";
 import { sessionStore } from "../stores/sessionStore";
 import { notificationStore } from "../stores/notificationStore";
-import { Button } from "./ui/primitives";
+import { Button } from "./ui/button";
 
 // ============================================================================
 // Icons

@@ -15,17 +15,11 @@ import {
   getTicketHistory,
 } from "../utils/localStorage";
 import { getTicketDisplayId } from "../utils/ticketParser";
-import {
-  Badge,
-  Button,
-  Card,
-  CardActions,
-  CardBody,
-  CardTitle,
-  Dialog,
-  Input,
-  Spinner,
-} from "./ui/primitives";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Card, CardTitle } from "./ui/card";
+import { Dialog } from "./ui/dialog";
+import { CardActions, CardBody, Input, Spinner } from "./ui/primitives";
 
 /**
  * Validate a session ticket format.

@@ -18,21 +18,18 @@ import {
   FiPlus,
   FiHome,
   FiCloud,
-  FiFolder,
   FiChevronRight,
 } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { sessionStore, AgentType } from "../stores/sessionStore";
-import {
-  Alert,
-  Button,
-  Dialog,
-  Input,
-  Select,
-  Textarea,
-  Label,
-} from "./ui/primitives";
+import { Alert } from "./ui/alert";
+import { Button } from "./ui/button";
+import { Combobox } from "./ui/combobox";
+import { Dialog } from "./ui/dialog";
+import { Label } from "./ui/label";
+import { Select } from "./ui/select";
+import { Input, Textarea } from "./ui/primitives";
 
 interface DirEntry {
   name: string;
@@ -48,8 +45,6 @@ interface RemoteDirEntry {
 
 export const NewSessionModal: Component = () => {
   const [dirEntries, setDirEntries] = createSignal<DirEntry[]>([]);
-  const [isLoadingDirs, setIsLoadingDirs] = createSignal(false);
-  const [showDirPicker, setShowDirPicker] = createSignal(false);
   const [currentRequestId, setCurrentRequestId] = createSignal<string | null>(
     null,
   );
@@ -73,7 +68,6 @@ export const NewSessionModal: Component = () => {
             is_dir: true,
           }));
         setDirEntries(dirs);
-        setIsLoadingDirs(false);
       },
     );
   });
@@ -85,10 +79,24 @@ export const NewSessionModal: Component = () => {
   });
 
   const loadDirectory = async (path: string) => {
-    if (!path.endsWith("/")) {
-      setShowDirPicker(false);
-      setDirEntries([]);
-      return;
+    // If path doesn't end with /, get the parent directory to list completions
+    let dirToList: string;
+    let partialName = "";
+
+    if (path.endsWith("/")) {
+      // Full path with trailing slash - list directly
+      dirToList = path;
+    } else {
+      // Partial path - extract parent directory and partial name
+      const lastSlashIndex = path.lastIndexOf("/");
+      if (lastSlashIndex === -1) {
+        // No slash found - list current directory with partial filter
+        dirToList = ".";
+        partialName = path;
+      } else {
+        dirToList = path.slice(0, lastSlashIndex + 1) || "/";
+        partialName = path.slice(lastSlashIndex + 1);
+      }
     }
 
     // Check if we have an active remote session
@@ -98,50 +106,31 @@ export const NewSessionModal: Component = () => {
 
     if (isRemote) {
       // Use P2P to list remote directory
-      setIsLoadingDirs(true);
-      setShowDirPicker(true);
       try {
         const requestId = await invoke<string>("list_remote_directory", {
           sessionId: remoteSession.sessionId,
-          path,
+          path: dirToList,
         });
         setCurrentRequestId(requestId);
         // Response will come via event listener
       } catch (err) {
         console.error("Failed to list remote directory:", err);
         setDirEntries([]);
-        setIsLoadingDirs(false);
       }
     } else {
       // Use local file system
-      setIsLoadingDirs(true);
-      setShowDirPicker(true);
       try {
-        const entries = await invoke<DirEntry[]>("list_directory", { path });
-        setDirEntries(entries.filter((e) => e.is_dir));
+        const entries = await invoke<DirEntry[]>("list_directory", { path: dirToList });
+        // Filter directories by partial name if provided
+        const filtered = entries.filter((e) => e.is_dir && (!partialName || e.name.toLowerCase().includes(partialName.toLowerCase())));
+        setDirEntries(filtered);
       } catch (err) {
         console.error("Failed to list directory:", err);
         setDirEntries([]);
-      } finally {
-        setIsLoadingDirs(false);
       }
     }
   };
 
-  const handlePathInput = (value: string) => {
-    sessionStore.setNewSessionPath(value);
-    loadDirectory(value);
-  };
-
-  const selectDirectory = (entry: DirEntry) => {
-    const currentPath = sessionStore.state.newSessionPath;
-    const basePath = currentPath.endsWith("/")
-      ? currentPath
-      : currentPath + "/";
-    const newPath = basePath + entry.name + "/";
-    sessionStore.setNewSessionPath(newPath);
-    loadDirectory(newPath);
-  };
   const remoteConnections = createMemo(() =>
     sessionStore.getSessions().filter((s) => s.mode === "remote" && s.active),
   );
@@ -221,8 +210,7 @@ export const NewSessionModal: Component = () => {
               <Select
                 id="remote-connection"
                 value={sessionStore.state.targetControlSessionId || "new"}
-                onChange={(e) => {
-                  const val = e.currentTarget.value;
+                onChange={(val) => {
                   sessionStore.setTargetControlSessionId(
                     val === "new" ? null : val,
                   );
@@ -271,7 +259,7 @@ export const NewSessionModal: Component = () => {
             </div>
 
             <Show when={sessionStore.state.connectionError}>
-              <Alert variant="error" class="mb-4 py-2">
+              <Alert variant="destructive" class="mb-4 py-2">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   class="h-4 w-4 shrink-0"
@@ -300,9 +288,9 @@ export const NewSessionModal: Component = () => {
               <Select
                 id="agent-type"
                 value={sessionStore.state.newSessionAgent}
-                onChange={(e) =>
+                onChange={(val) =>
                   sessionStore.setNewSessionAgent(
-                    e.currentTarget.value as AgentType,
+                    val as AgentType,
                   )
                 }
               >
@@ -325,8 +313,8 @@ export const NewSessionModal: Component = () => {
                 <Select
                   id="provider"
                   value={sessionStore.state.zeroClawProvider}
-                  onChange={(e) => {
-                    sessionStore.setZeroClawProvider(e.currentTarget.value);
+                  onChange={(val) => {
+                    sessionStore.setZeroClawProvider(val);
                     // Set sensible default model per provider
                     const defaults: Record<string, string> = {
                       ollama: "qwen3:8b",
@@ -339,7 +327,7 @@ export const NewSessionModal: Component = () => {
                       mistral: "mistral-large-latest",
                       glm: "glm-4-plus",
                     };
-                    const model = defaults[e.currentTarget.value];
+                    const model = defaults[val];
                     if (model) sessionStore.setZeroClawModel(model);
                   }}
                 >
@@ -422,65 +410,29 @@ export const NewSessionModal: Component = () => {
 
             <div class="mb-4 space-y-2">
               <Label for="project-path">Project Path</Label>
-              <div class="relative">
-                <Input
-                  id="project-path"
-                  type="text"
-                  value={sessionStore.state.newSessionPath}
-                  onInput={(e) => handlePathInput(e.currentTarget.value)}
-                  placeholder="/path/to/project"
-                  class="font-mono text-sm pr-10"
-                />
-                <Show when={sessionStore.state.newSessionPath.endsWith("/")}>
-                  <button
-                    type="button"
-                    class="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost btn-xs btn-square"
-                    onClick={() =>
-                      loadDirectory(sessionStore.state.newSessionPath)
-                    }
-                  >
-                    <FiChevronRight
-                      class={`transition-transform ${showDirPicker() && dirEntries().length > 0 ? "rotate-90" : ""}`}
-                    />
-                  </button>
-                </Show>
-
-                {/* Directory Picker Dropdown */}
-                <Show when={showDirPicker()}>
-                  <div class="absolute z-50 mt-1 w-full bg-base-100 border border-base-300 rounded-md shadow-lg max-h-48 overflow-auto">
-                    <Show
-                      when={!isLoadingDirs()}
-                      fallback={
-                        <div class="p-2 text-sm text-base-content/50">
-                          Loading...
-                        </div>
-                      }
-                    >
-                      <Show
-                        when={dirEntries().length > 0}
-                        fallback={
-                          <div class="p-2 text-sm text-base-content/50">
-                            Empty directory
-                          </div>
-                        }
-                      >
-                        <For each={dirEntries()}>
-                          {(entry) => (
-                            <button
-                              type="button"
-                              class="w-full px-3 py-2 text-left text-sm font-mono hover:bg-base-200 flex items-center gap-2"
-                              onClick={() => selectDirectory(entry)}
-                            >
-                              <FiFolder class="shrink-0" />
-                              <span class="truncate">{entry.name}</span>
-                            </button>
-                          )}
-                        </For>
-                      </Show>
-                    </Show>
-                  </div>
-                </Show>
-              </div>
+              <Combobox
+                value={sessionStore.state.newSessionPath}
+                onChange={(value) => {
+                  sessionStore.setNewSessionPath(value);
+                }}
+                onInputChange={(value) => {
+                  sessionStore.setNewSessionPath(value);
+                  loadDirectory(value);
+                }}
+                items={dirEntries().map((e) => ({
+                  value: sessionStore.state.newSessionPath.endsWith("/")
+                    ? sessionStore.state.newSessionPath + e.name + "/"
+                    : (sessionStore.state.newSessionPath.includes("/")
+                      ? sessionStore.state.newSessionPath.slice(0, sessionStore.state.newSessionPath.lastIndexOf("/") + 1) + e.name + "/"
+                      : e.name + "/"),
+                  label: e.name,
+                }))}
+                placeholder="/path/to/project"
+                class="font-mono"
+              />
+              <p class="text-xs text-base-content/50">
+                Type a path to autocomplete directory names
+              </p>
             </div>
           </Show>
 
@@ -501,7 +453,7 @@ export const NewSessionModal: Component = () => {
               fallback={
                 <Button
                   type="button"
-                  variant="primary"
+                  variant="default"
                   onClick={() => sessionStore.handleCreateSession()}
                   disabled={
                     !sessionStore.state.newSessionPath.trim() ||
@@ -520,7 +472,7 @@ export const NewSessionModal: Component = () => {
             >
               <Button
                 type="button"
-                variant="primary"
+                variant="default"
                 onClick={() => sessionStore.handleRemoteConnect()}
                 disabled={
                   !sessionStore.state.sessionTicket.trim() ||

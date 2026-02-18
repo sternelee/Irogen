@@ -7,7 +7,10 @@
 import { Component, For, Show, onMount } from 'solid-js'
 import { gitStore } from '../stores/gitStore'
 import { notificationStore } from '../stores/notificationStore'
-import { Alert, Badge, Button, Spinner } from './ui/primitives'
+import { Alert } from './ui/alert';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Spinner } from './ui/primitives';
 
 // ============================================================================
 // Types

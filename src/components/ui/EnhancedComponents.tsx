@@ -221,7 +221,7 @@ export function FloatingActionButton(props: FloatingActionButtonProps) {
         <span class="text-xl">{props.icon}</span>
       </Button>
       <Show when={props.badge}>
-        <Badge variant="destructive" class="absolute -right-2 -top-2 h-5 px-1.5">
+        <Badge variant="error" class="absolute -right-2 -top-2 h-5 px-1.5">
           {props.badge}
         </Badge>
       </Show>
