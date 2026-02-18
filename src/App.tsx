@@ -14,6 +14,7 @@ import { AppLayout } from "./components/AppLayout";
 import { SettingsModal } from "./components/SettingsModal";
 import { NewSessionModal } from "./components/NewSessionModal";
 import { NotificationDisplay } from "./components/NotificationDisplay";
+import { ZeroclawConfigModal } from "./components/ZeroclawConfigModal";
 
 // Stores
 import { sessionStore } from "./stores/sessionStore";
@@ -25,6 +26,7 @@ import type { AgentType } from "./stores/sessionStore";
 export default function App() {
   // Settings modal state
   const [isSettingsOpen, setIsSettingsOpen] = createSignal(false);
+  const [isZeroclawConfigOpen, setIsZeroclawConfigOpen] = createSignal(false);
 
   // Initialize app on mount
   onMount(() => {
@@ -150,6 +152,12 @@ export default function App() {
       <SettingsModal
         isOpen={isSettingsOpen()}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* ClawdAI Config Modal */}
+      <ZeroclawConfigModal
+        isOpen={isZeroclawConfigOpen()}
+        onClose={() => setIsZeroclawConfigOpen(false)}
       />
 
       {/* New Session Modal */}

@@ -3,6 +3,7 @@
 //! This session type runs the zeroclaw agent in-process (no external CLI).
 //! It supports 22+ LLM providers, shell/file tools, SQLite memory, and security policies.
 
+use base64::Engine;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -26,6 +27,7 @@ pub struct ZeroClawSession {
     memory: Arc<dyn zeroclaw::memory::Memory>,
     model: String,
     temperature: f64,
+    max_iterations: usize,
     #[allow(dead_code)]
     working_dir: PathBuf,
     interrupted: Arc<std::sync::atomic::AtomicBool>,
@@ -111,7 +113,7 @@ impl ZeroClawSession {
     ) -> Result<Self> {
         let (event_tx, _) = broadcast::channel(256);
 
-        // Parse extra_args: [provider, model, api_key?]
+        // Parse extra_args: [provider, model, api_key?, temperature, max_iterations?, system_prompt_b64?, enabled_tools?]
         let provider_name = extra_args.first().map(|s| s.as_str()).unwrap_or("ollama");
         let model_name = extra_args.get(1).map(|s| s.as_str()).unwrap_or("qwen3:8b");
         let api_key = extra_args.get(2).map(|s| s.as_str());
@@ -119,6 +121,24 @@ impl ZeroClawSession {
             .get(3)
             .and_then(|s| s.parse().ok())
             .unwrap_or(0.7);
+        let max_iterations: usize = extra_args
+            .get(4)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(20);
+
+        // Parse system prompt (base64 encoded)
+        let custom_system_prompt = extra_args.get(5).and_then(|s| {
+            let decoded = base64::engine::general_purpose::STANDARD.decode(s);
+            decoded.ok().and_then(|bytes| String::from_utf8(bytes).ok())
+        });
+
+        // Parse enabled tools (comma-separated)
+        let enabled_tools: Option<Vec<String>> = extra_args.get(6).map(|s| {
+            s.split(',')
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect()
+        });
 
         // Create provider
         let provider = zeroclaw::providers::create_provider(provider_name, api_key)
@@ -149,26 +169,51 @@ impl ZeroClawSession {
         let _runtime: Arc<dyn RuntimeAdapter> = Arc::new(zeroclaw::runtime::NativeRuntime::new());
 
         #[cfg(feature = "desktop-runtime")]
-        let tools_registry =
+        let all_tools =
             zeroclaw::tools::all_tools_with_runtime(&security, runtime, memory.clone());
         #[cfg(not(feature = "desktop-runtime"))]
-        let tools_registry = zeroclaw::tools::all_tools(&security, memory.clone());
+        let all_tools = zeroclaw::tools::all_tools(&security, memory.clone());
+
+        // Filter tools based on enabled_tools if provided
+        let tools_registry: Vec<Box<dyn zeroclaw::tools::Tool>> = if let Some(ref enabled) = enabled_tools {
+            all_tools
+                .into_iter()
+                .filter(|t| enabled.contains(&t.name().to_string()))
+                .collect()
+        } else {
+            all_tools
+        };
 
         info!(
-            "ZeroClaw session created: id={}, provider={}, model={}",
-            session_id, provider_name, model_name
+            "ZeroClaw session created: id={}, provider={}, model={}, tools={}, max_iterations={}",
+            session_id,
+            provider_name,
+            model_name,
+            tools_registry.len(),
+            max_iterations
         );
 
         // Build initial system prompt
         let tool_instructions = zeroclaw::agent::build_tool_instructions(&tools_registry);
-        let system_prompt = format!(
-            "You are ZeroClaw, a helpful AI coding assistant.\n\
-             You have access to tools for shell execution, file operations, and memory.\n\
-             Always use tools when needed to accomplish tasks.\n\
-             Working directory: {}\n\
-             {tool_instructions}",
-            working_dir.display()
-        );
+
+        // Use custom system prompt if provided, otherwise use default
+        let system_prompt = if let Some(custom) = custom_system_prompt {
+            format!(
+                "{}\n\nWorking directory: {}\n\n{}",
+                custom,
+                working_dir.display(),
+                tool_instructions
+            )
+        } else {
+            format!(
+                "You are ZeroClaw, a helpful AI coding assistant.\n\
+                 You have access to tools for shell execution, file operations, and memory.\n\
+                 Always use tools when needed to accomplish tasks.\n\
+                 Working directory: {}\n\
+                 {tool_instructions}",
+                working_dir.display()
+            )
+        };
 
         let history = vec![zeroclaw::providers::ChatMessage::system(&system_prompt)];
 
@@ -182,6 +227,7 @@ impl ZeroClawSession {
             memory,
             model: model_name.to_string(),
             temperature,
+            max_iterations,
             working_dir,
             interrupted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
@@ -232,6 +278,7 @@ impl ZeroClawSession {
         };
         let model = self.model.clone();
         let temperature = self.temperature;
+        let max_iterations = self.max_iterations;
 
         tokio::spawn(async move {
             // Take provider out temporarily
@@ -249,6 +296,7 @@ impl ZeroClawSession {
                     &callback,
                     &model,
                     temperature,
+                    max_iterations,
                 )
                 .await;
 

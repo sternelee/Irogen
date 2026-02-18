@@ -299,7 +299,7 @@ export const NewSessionModal: Component = () => {
               </Select>
             </div>
 
-            {/* ZeroClaw Provider Config */}
+            {/* ClawdAI Provider Config */}
             <Show when={sessionStore.state.newSessionAgent === "zeroclaw"}>
               <div class="mb-4 space-y-2">
                 <Label for="provider">Provider</Label>
@@ -386,6 +386,18 @@ export const NewSessionModal: Component = () => {
                   max="2"
                   step="0.1"
                 />
+              </div>
+
+              {/* Advanced Settings Button */}
+              <div class="mt-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => sessionStore.setZeroClawConfigOpen(true)}
+                >
+                  <FiChevronRight class="mr-1" />
+                  更多设置 (Tools, System Prompt...)
+                </Button>
               </div>
             </Show>
 

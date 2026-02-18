@@ -14,7 +14,7 @@ use std::time::Instant;
 use uuid::Uuid;
 
 /// Maximum agentic tool-use iterations per user message to prevent runaway loops.
-pub const MAX_TOOL_ITERATIONS: usize = 10;
+pub const MAX_TOOL_ITERATIONS: usize = 20;
 
 /// Trigger auto-compaction when non-system message count exceeds this threshold.
 pub const MAX_HISTORY_MESSAGES: usize = 50;
@@ -375,8 +375,9 @@ pub async fn agent_turn(
     callback: &dyn TurnCallback,
     model: &str,
     temperature: f64,
+    max_iterations: usize,
 ) -> Result<String> {
-    for _iteration in 0..MAX_TOOL_ITERATIONS {
+    for _iteration in 0..max_iterations {
         let response = provider
             .chat_with_history(history, model, temperature)
             .await?;

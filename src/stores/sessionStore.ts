@@ -76,6 +76,10 @@ interface SessionState {
   zeroClawModel: string;
   zeroClawApiKey: string;
   zeroClawTemperature: string;
+  zeroClawMaxIterations: number;
+  zeroClawSystemPrompt: string;
+  zeroClawEnabledTools: string[];
+  isZeroClawConfigOpen: boolean;
 
   // Network and Loading States
   isNetworkInitialized: boolean;
@@ -102,6 +106,10 @@ const initialState: SessionState = {
   zeroClawModel: "qwen3:8b",
   zeroClawApiKey: "",
   zeroClawTemperature: "0.7",
+  zeroClawMaxIterations: 20,
+  zeroClawSystemPrompt: "",
+  zeroClawEnabledTools: [],
+  isZeroClawConfigOpen: false,
 
   isNetworkInitialized: false,
   isStartingAgent: false,
@@ -233,6 +241,35 @@ export const createSessionStore = () => {
 
   const setZeroClawTemperature = (temp: string) => {
     setState("zeroClawTemperature", temp);
+  };
+
+  const setZeroClawMaxIterations = (iterations: number) => {
+    setState("zeroClawMaxIterations", iterations);
+  };
+
+  const setZeroClawSystemPrompt = (prompt: string) => {
+    setState("zeroClawSystemPrompt", prompt);
+  };
+
+  const setZeroClawEnabledTools = (tools: string[]) => {
+    setState("zeroClawEnabledTools", tools);
+  };
+
+  const toggleZeroClawTool = (tool: string) => {
+    setState(
+      produce((s: SessionState) => {
+        const idx = s.zeroClawEnabledTools.indexOf(tool);
+        if (idx >= 0) {
+          s.zeroClawEnabledTools.splice(idx, 1);
+        } else {
+          s.zeroClawEnabledTools.push(tool);
+        }
+      }),
+    );
+  };
+
+  const setZeroClawConfigOpen = (open: boolean) => {
+    setState("isZeroClawConfigOpen", open);
   };
 
   // ========================================================================
@@ -378,6 +415,14 @@ export const createSessionStore = () => {
           extraArgs.push(""); // placeholder for api_key
         }
         extraArgs.push(state.zeroClawTemperature);
+        // Add new parameters
+        extraArgs.push(state.zeroClawMaxIterations.toString());
+        // Add system prompt (base64 encoded to handle special chars)
+        const promptEncoded = btoa(unescape(encodeURIComponent(state.zeroClawSystemPrompt || "")));
+        extraArgs.push(promptEncoded);
+        // Add enabled tools (comma-separated)
+        const toolsStr = state.zeroClawEnabledTools.join(",");
+        extraArgs.push(toolsStr);
       }
 
       const sessionId = await invoke<string>("local_start_agent", {
@@ -473,6 +518,11 @@ export const createSessionStore = () => {
     setZeroClawModel,
     setZeroClawApiKey,
     setZeroClawTemperature,
+    setZeroClawMaxIterations,
+    setZeroClawSystemPrompt,
+    setZeroClawEnabledTools,
+    toggleZeroClawTool,
+    setZeroClawConfigOpen,
 
     // Connection and Network
     setConnectionState,
