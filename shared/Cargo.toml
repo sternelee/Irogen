@@ -22,6 +22,15 @@ std = [
     "codex-arg0",
     "codex-mcp-server",
 ]
+# Mobile runtime: excludes agent-specific dependencies (Claude SDK, Codex, ACP agents)
+# and disables git operations to reduce binary size
+mobile = [
+    "tokio/full",
+    "tracing-subscriber/env-filter",
+    "dirs",
+    "zeroclaw/tauri",
+    "zeroclaw/mobile",
+]
 tokio-full = ["tokio"]
 wasm = []
 tauri-runtime = ["zeroclaw/tauri", "zeroclaw"]

@@ -1,4 +1,4 @@
-#[cfg(feature = "std")]
+#[cfg(any(feature = "std", feature = "mobile"))]
 pub mod agent;
 pub mod event_manager;
 pub mod message_protocol;

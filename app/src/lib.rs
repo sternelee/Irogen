@@ -24,6 +24,7 @@ pub mod macos_panel {
 
 mod tcp_forwarding;
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use clawdchat_shared::AgentManager;
 use clawdchat_shared::{
     AgentControlAction, AgentPermissionResponse, AgentType, CommunicationManager, Event,
@@ -187,7 +188,8 @@ pub struct AppState {
     quic_client: RwLock<Option<QuicMessageClientHandle>>,
     cleanup_token: RwLock<Option<CancellationToken>>,
     tcp_forwarding_manager: Arc<tokio::sync::Mutex<TcpForwardingManager>>,
-    // Local agent manager for in-app agent sessions
+    // Local agent manager for in-app agent sessions (desktop only)
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     agent_manager: Arc<RwLock<Option<Arc<AgentManager>>>>,
 }
 
@@ -199,6 +201,7 @@ impl Default for AppState {
             quic_client: RwLock::new(None),
             cleanup_token: RwLock::new(None),
             tcp_forwarding_manager: Arc::new(tokio::sync::Mutex::new(TcpForwardingManager::new())),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             agent_manager: Arc::new(RwLock::new(None)),
         }
     }
@@ -2162,7 +2165,7 @@ async fn remote_spawn_session(
             AgentType::ZeroClaw | AgentType::Custom => {}
             _ => {
                 return Err(format!(
-                    "{} is not available on mobile platform. Only ZeroClaw is supported.",
+                    "{:?} is not available on mobile platform. Only ZeroClaw is supported.",
                     agent_type
                 ));
             }
@@ -2264,6 +2267,7 @@ async fn respond_to_agent_permission(
 }
 
 /// Respond to a local agent permission request
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_respond_to_agent_permission(
     session_id: String,
@@ -2370,6 +2374,7 @@ async fn abort_agent_action(
 // ============================================================================
 
 /// Start a local AI agent session (in-app, no P2P)
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_start_agent(
     agent_type_str: String,
@@ -2502,6 +2507,7 @@ async fn local_start_agent(
 }
 
 /// Stop a local agent session
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_stop_agent(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
     let agent_manager_guard = state.agent_manager.read().await;
@@ -2517,6 +2523,7 @@ async fn local_stop_agent(session_id: String, state: State<'_, AppState>) -> Res
 }
 
 /// Send a message to a local agent
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_send_agent_message(
     session_id: String,
@@ -2536,6 +2543,7 @@ async fn local_send_agent_message(
 }
 
 /// Abort a local agent action
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_abort_agent_action(
     session_id: String,
@@ -2554,6 +2562,7 @@ async fn local_abort_agent_action(
 }
 
 /// List all active local agent sessions
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_list_agents(
     state: State<'_, AppState>,
@@ -2590,6 +2599,7 @@ async fn local_list_agents(
 }
 
 /// Get agent session metadata (for session info display)
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_get_agent_sessions(
     state: State<'_, AppState>,
@@ -2705,13 +2715,20 @@ pub fn run() {
             send_agent_message,
             abort_agent_action,
             respond_to_agent_permission,
-            // Local Agent Commands
+            // Local Agent Commands (desktop only)
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             local_start_agent,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             local_stop_agent,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             local_send_agent_message,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             local_abort_agent_action,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             local_respond_to_agent_permission,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             local_list_agents,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             local_get_agent_sessions,
             // macOS Panel Commands
             #[cfg(target_os = "macos")]

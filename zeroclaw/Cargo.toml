@@ -29,8 +29,8 @@ rand = "0.8"
 # HTTP request tool
 http-body-util = "0.1"
 
-# Git operations
-git2 = { version = "0.18", default-features = false }
+# Git operations (optional - requires libgit2)
+git2 = { version = "0.18", default-features = false, optional = true }
 
 # Browser automation (optional)
 fantoccini = { version = "0.22.0", optional = true, default-features = false, features = ["rustls-tls"] }
@@ -58,6 +58,8 @@ default = []
 tauri = []
 desktop = []
 mobile = []
+# Enable git operations tool
+git = ["dep:git2"]
 # Enable PDF support for RAG
 rag-pdf = ["dep:pdf-extract"]
 # Enable browser automation tools
