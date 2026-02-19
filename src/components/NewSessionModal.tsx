@@ -253,7 +253,7 @@ export const NewSessionModal: Component = () => {
                   }
                 }}
               />
-              <p class="text-xs text-base-content/50">
+              <p class="text-xs text-muted-foreground">
                 Run `cli host` to get a session ticket
               </p>
             </div>
@@ -372,7 +372,7 @@ export const NewSessionModal: Component = () => {
                     placeholder="sk-... (or leave empty to use env var)"
                     class="font-mono text-sm"
                   />
-                  <p class="text-xs text-base-content/50">
+                  <p class="text-xs text-muted-foreground">
                     Leave empty to use environment variable
                   </p>
                 </div>
@@ -413,24 +413,30 @@ export const NewSessionModal: Component = () => {
               <Combobox
                 value={sessionStore.state.newSessionPath}
                 onChange={(value) => {
-                  sessionStore.setNewSessionPath(value);
+                  // Remove trailing slash if present
+                  const cleanPath = value.endsWith("/") ? value.slice(0, -1) : value;
+                  sessionStore.setNewSessionPath(cleanPath);
                 }}
                 onInputChange={(value) => {
                   sessionStore.setNewSessionPath(value);
                   loadDirectory(value);
                 }}
-                items={dirEntries().map((e) => ({
-                  value: sessionStore.state.newSessionPath.endsWith("/")
-                    ? sessionStore.state.newSessionPath + e.name + "/"
-                    : (sessionStore.state.newSessionPath.includes("/")
-                      ? sessionStore.state.newSessionPath.slice(0, sessionStore.state.newSessionPath.lastIndexOf("/") + 1) + e.name + "/"
-                      : e.name + "/"),
-                  label: e.name,
-                }))}
+                items={dirEntries().map((e) => {
+                  // Build the path: if current input ends with /, add to it; otherwise handle partial paths
+                  const basePath = sessionStore.state.newSessionPath.endsWith("/")
+                    ? sessionStore.state.newSessionPath
+                    : sessionStore.state.newSessionPath.includes("/")
+                      ? sessionStore.state.newSessionPath.slice(0, sessionStore.state.newSessionPath.lastIndexOf("/") + 1)
+                      : "";
+                  return {
+                    value: basePath + e.name,
+                    label: e.name,
+                  };
+                })}
                 placeholder="/path/to/project"
                 class="font-mono"
               />
-              <p class="text-xs text-base-content/50">
+              <p class="text-xs text-muted-foreground">
                 Type a path to autocomplete directory names
               </p>
             </div>
