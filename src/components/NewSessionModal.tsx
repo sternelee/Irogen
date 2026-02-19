@@ -138,6 +138,7 @@ export const NewSessionModal: Component = () => {
   );
 
   const isConnectingToNew = () =>
+    !sessionStore.state.activeSessionId &&
     sessionStore.state.newSessionMode === "remote" &&
     !sessionStore.state.targetControlSessionId;
 
@@ -256,7 +257,7 @@ export const NewSessionModal: Component = () => {
                 }}
               />
               <p class="text-xs text-muted-foreground">
-                Run `cli host` to get a session ticket
+                Run `cli` to get a session ticket
               </p>
             </div>
 

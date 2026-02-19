@@ -345,9 +345,6 @@ export const createSessionStore = () => {
       });
 
       setActiveSession(sessionId);
-      closeNewSessionModal();
-      setSessionTicket("");
-      notificationStore.success("Connected to remote host", "System");
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
