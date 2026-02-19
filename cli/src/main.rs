@@ -1,13 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
 
-mod client;
 mod command_router;
-mod local_client;
 mod message_server;
 mod shell;
 mod terminal_logger;
-use local_client::{LocalClientConfig, LocalClientSession};
 use message_server::CliMessageServer;
 use shared::QuicMessageServerConfig;
 use tracing::info;
@@ -35,21 +32,6 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 enum Commands {
-    /// Start an AI Agent session (Claude Code, OpenCode, Gemini)
-    Run {
-        /// AI Agent type
-        #[arg(long, default_value = "claude")]
-        agent: String,
-        /// Project path
-        #[arg(long, default_value = ".")]
-        project: String,
-        /// Initial message to send to the agent (for non-interactive mode)
-        #[arg(short, long)]
-        message: Option<String>,
-        /// Additional arguments to pass to the agent
-        #[arg(trailing_var_arg = true)]
-        args: Vec<String>,
-    },
     /// Start a terminal host server for app connections
     Host {
         /// Optional custom relay server URL
@@ -68,21 +50,6 @@ enum Commands {
         #[arg(long)]
         temp_key: bool,
     },
-    /// Connect to a remote ClawdChat host server (P2P client mode)
-    Connect {
-        /// Connection ticket from remote host
-        #[arg(long)]
-        ticket: String,
-        /// Relay server URL (optional, for NAT traversal)
-        #[arg(long)]
-        relay: Option<String>,
-    },
-    /// Start background runner for remote session spawning
-    Runner {
-        /// Bind address for the runner server
-        #[arg(long, default_value = "127.0.0.1:8765")]
-        bind_addr: String,
-    },
 }
 
 #[tokio::main]
@@ -94,12 +61,6 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Run {
-            agent,
-            project,
-            message,
-            args,
-        }) => run_agent_session(agent, project, message, args).await,
         Some(Commands::Host {
             relay,
             max_connections,
@@ -107,11 +68,9 @@ async fn main() -> Result<()> {
             secret_key_file,
             temp_key,
         }) => run_host(relay, max_connections, bind_addr, secret_key_file, temp_key).await,
-        Some(Commands::Connect { ticket, relay }) => run_connect(ticket, relay).await,
-        Some(Commands::Runner { bind_addr }) => run_runner(bind_addr).await,
         None => {
-            print_general_help();
-            Ok(())
+            // 默认启动 host
+            run_host(None, 50, "0.0.0.0:61103".to_string(), None, false).await
         }
     }
 }
@@ -305,270 +264,4 @@ async fn run_server_status_loop(server: &CliMessageServer) {
             last_connection_count = connections;
         }
     }
-}
-
-fn print_general_help() {
-    println!("🤖 ClawdChat - P2P AI Agent Remote Management Tool");
-    println!();
-    println!("📋 Commands:");
-    println!("   clawdchat run [options]     Start an AI Agent session (default: claude)");
-    println!("   clawdchat host [options]    Start P2P host server");
-    println!("   clawdchat runner [options]  Start background runner service");
-    println!("   clawdchat --help            Show this help message");
-    println!();
-    println!("💡 Quick Start:");
-    println!("   1. Run: clawdchat run");
-    println!("   2. In another terminal: clawdchat host");
-    println!("   3. Connect your mobile app using the ticket");
-    println!();
-    println!("🔧 Agent Types:");
-    println!("   claude                   Claude Code (Anthropic, SDK)");
-    println!("   opencode                 OpenCode (OpenAI)");
-    println!("   gemini                   Gemini CLI (Google)");
-    println!();
-}
-
-/// 运行 AI Agent 会话（使用 ACP）
-async fn run_agent_session(
-    agent: String,
-    project: String,
-    message: Option<String>,
-    args: Vec<String>,
-) -> Result<()> {
-    use shared::message_protocol::AgentType;
-
-    let agent_type = match agent.to_lowercase().as_str() {
-        "claude" | "claude-code" => AgentType::ClaudeCode,
-        "open" | "opencode" => AgentType::OpenCode,
-        "gemini" => AgentType::Gemini,
-        "codex" => AgentType::Codex,
-        "copilot" => AgentType::Copilot,
-        "qwen" => AgentType::Qwen,
-        _ => {
-            eprintln!("❌ Unknown agent type: {}", agent);
-            eprintln!("   Supported: claude, opencode, gemini, codex, copilot, qwen");
-            return Err(anyhow::anyhow!("Unknown agent type"));
-        }
-    };
-
-    info!(
-        "Starting AI Agent: {:?} in project: {}",
-        agent_type, project
-    );
-
-    // 检查项目路径是否存在
-    let project_path = std::path::PathBuf::from(&project);
-    if !project_path.exists() {
-        eprintln!("❌ Project path does not exist: {}", project);
-        return Err(anyhow::anyhow!("Project path not found"));
-    }
-
-    // 创建本地 ACP 客户端配置
-    let config = LocalClientConfig {
-        agent_type,
-        binary_path: None,
-        extra_args: args,
-        working_dir: project_path.clone(),
-        home_dir: None,
-        exit_on_complete: false,
-    };
-
-    // 启动会话
-    let session = LocalClientSession::new(config)
-        .await
-        .context("Failed to start ACP session")?;
-
-    let session_info = session.get_info();
-
-    println!();
-    println!("🌐 ACP Agent Session Started (Native Mode)");
-    println!();
-    println!("   Type:     {:?}", session_info.agent_type);
-    println!("   Session:  {}", session_info.session_id);
-    println!("   Project:  {}", project);
-    println!();
-    println!("Commands:");
-    println!("  /listperms  - List pending permission requests");
-    println!("  /approve    - Approve a permission request");
-    println!("  /deny       - Deny a permission request");
-    println!("  /interrupt  - Interrupt current operation");
-    println!("  /quit       - Exit session");
-    println!();
-    println!("💬 Type your message and press Enter to send.");
-    println!("   Type a slash command to interact with permissions.");
-    println!("   Press Ctrl+C to exit.");
-    println!();
-
-    // Send initial message if provided (non-interactive mode)
-    if let Some(msg) = message {
-        println!("📤 Sending initial message: {}", msg);
-        if let Err(e) = session.send_message(msg).await {
-            eprintln!("❌ Failed to send initial message: {}", e);
-        }
-    }
-
-    let stdin = tokio::io::stdin();
-    let reader = tokio::io::BufReader::new(stdin);
-    use tokio::io::AsyncBufReadExt;
-
-    let mut lines = reader.lines();
-
-    while let Ok(Some(line)) = lines.next_line().await {
-        if line.is_empty() {
-            continue;
-        }
-
-        // 处理 slash commands
-        if line.starts_with('/') {
-            if let Err(e) = handle_slash_command(&session, &line).await {
-                eprintln!("❌ Command error: {}", e);
-            }
-            continue;
-        }
-
-        // 发送消息到 agent
-        if let Err(e) = session.send_message(line).await {
-            eprintln!("❌ Failed to send message: {}", e);
-        }
-    }
-
-    // 清理
-    if let Err(e) = session.shutdown().await {
-        eprintln!("⚠️ Failed to shutdown session: {}", e);
-    }
-
-    println!();
-    println!("👋 Session ended");
-
-    Ok(())
-}
-
-/// Handle slash commands in interactive mode
-async fn handle_slash_command(session: &LocalClientSession, command: &str) -> Result<()> {
-    let parts: Vec<&str> = command.split_whitespace().collect();
-    if parts.is_empty() {
-        return Ok(());
-    }
-
-    match parts[0] {
-        "/listperms" => {
-            let perms = session.get_pending_permissions().await?;
-            if perms.is_empty() {
-                println!("✅ No pending permission requests");
-            } else {
-                println!("📋 Pending Permission Requests:");
-                for (i, perm) in perms.iter().enumerate() {
-                    println!("  {}. Request ID: {}", i + 1, perm.request_id);
-                    println!("     Tool: {}", perm.tool_name);
-                    if let Some(msg) = &perm.message {
-                        println!("     Message: {}", msg);
-                    }
-                }
-            }
-        }
-        "/approve" => {
-            if parts.len() < 2 {
-                println!("Usage: /approve <request_id>");
-                return Ok(());
-            }
-            let request_id = parts[1].to_string();
-            match session.respond_to_permission(request_id, true, None).await {
-                Ok(_) => println!("✅ Permission approved"),
-                Err(e) => eprintln!("❌ Failed to approve permission: {}", e),
-            }
-        }
-        "/deny" => {
-            if parts.len() < 2 {
-                println!("Usage: /deny <request_id>");
-                return Ok(());
-            }
-            let request_id = parts[1].to_string();
-            let reason = if parts.len() > 2 {
-                Some(parts[2..].join(" "))
-            } else {
-                None
-            };
-            match session
-                .respond_to_permission(request_id, false, reason)
-                .await
-            {
-                Ok(_) => println!("❌ Permission denied"),
-                Err(e) => eprintln!("❌ Failed to deny permission: {}", e),
-            }
-        }
-        "/interrupt" => match session.interrupt().await {
-            Ok(_) => println!("⛔ Operation interrupted"),
-            Err(e) => eprintln!("❌ Failed to interrupt: {}", e),
-        },
-        "/quit" | "/exit" => {
-            println!("👋 Exiting session...");
-            return Err(anyhow::anyhow!("quit_command"));
-        }
-        "/help" => {
-            println!("Available commands:");
-            println!("  /listperms  - List pending permission requests");
-            println!("  /approve <id> - Approve a permission request");
-            println!("  /deny <id> [reason] - Deny a permission request");
-            println!("  /interrupt  - Interrupt current operation");
-            println!("  /quit       - Exit session");
-        }
-        _ => {
-            println!("❓ Unknown command: {}", parts[0]);
-            println!("   Type /help for available commands");
-        }
-    }
-
-    Ok(())
-}
-
-/// 运行后台 Runner 服务
-async fn run_runner(bind_addr: String) -> Result<()> {
-    info!("Starting ClawdChat Runner on {}", bind_addr);
-
-    println!();
-    println!("🔄 ClawdChat Runner");
-    println!("   Listening on: {}", bind_addr);
-    println!();
-    println!("   The runner allows remote session spawning.");
-    println!("   Press Ctrl+C to stop.");
-    println!();
-
-    // TODO: 实现 HTTP API 服务器用于远程会话生成
-    // 这将允许 Tauri/Mobile 应用请求在本地启动新的 AI Agent 会话
-
-    tokio::signal::ctrl_c().await?;
-    println!();
-    println!("🛑 Runner stopped");
-
-    Ok(())
-}
-
-/// 连接到远程 ClawdChat host（P2P 客户端模式）
-async fn run_connect(ticket: String, relay: Option<String>) -> Result<()> {
-    use client::InteractiveClient;
-
-    println!();
-    println!("🔗 ClawdChat P2P Client Mode");
-    println!();
-    println!("🎫 Connecting to remote host...");
-    println!();
-
-    // 创建交互式客户端
-    let mut client = InteractiveClient::new(ticket, relay);
-
-    // 连接到远程 host
-    client.connect().await?;
-
-    println!();
-    println!("✅ Connected! You can now:");
-    println!("   • Type messages to send to AI agents");
-    println!("   • Use /spawn to create new AI agent sessions");
-    println!("   • Use /list to see available sessions");
-    println!("   • Use /quit to disconnect");
-    println!();
-
-    // 运行交互式循环
-    client.run_interactive().await?;
-
-    Ok(())
 }
