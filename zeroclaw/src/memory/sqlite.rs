@@ -374,7 +374,12 @@ impl Memory for SqliteMemory {
         Ok(())
     }
 
-    async fn recall(&self, query: &str, limit: usize) -> anyhow::Result<Vec<MemoryEntry>> {
+    async fn recall(
+        &self,
+        query: &str,
+        limit: usize,
+        min_relevance_score: Option<f64>,
+    ) -> anyhow::Result<Vec<MemoryEntry>> {
         if query.trim().is_empty() {
             return Ok(Vec::new());
         }
@@ -422,6 +427,14 @@ impl Memory for SqliteMemory {
         // Fetch full entries for merged results
         let mut results = Vec::new();
         for scored in &merged {
+            // Filter by min_relevance_score if specified
+            if let Some(min_score) = min_relevance_score {
+                let score_as_f64 = f64::from(scored.final_score);
+                if score_as_f64 < min_score {
+                    continue;
+                }
+            }
+
             let mut stmt = conn.prepare(
                 "SELECT id, key, content, category, created_at FROM memories WHERE id = ?1",
             )?;

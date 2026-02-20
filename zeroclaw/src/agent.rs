@@ -316,10 +316,14 @@ pub fn trim_history(history: &mut Vec<ChatMessage>) {
 }
 
 /// Build context preamble by searching memory for relevant entries
-pub async fn build_context(mem: &dyn Memory, user_msg: &str) -> String {
+pub async fn build_context(
+    mem: &dyn Memory,
+    user_msg: &str,
+    min_relevance_score: Option<f64>,
+) -> String {
     let mut context = String::new();
 
-    if let Ok(entries) = mem.recall(user_msg, 5).await {
+    if let Ok(entries) = mem.recall(user_msg, 5, min_relevance_score).await {
         if !entries.is_empty() {
             context.push_str("[Memory context]\n");
             for entry in &entries {

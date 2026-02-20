@@ -45,10 +45,7 @@ impl AgentNode {
     pub async fn spawn() -> Result<Self, JsError> {
         let node_id = format!("browser_{}", generate_id());
 
-        tracing::info!(
-            "Browser agent node initialized with node ID: {}",
-            node_id
-        );
+        tracing::info!("Browser agent node initialized with node ID: {}", node_id);
 
         Ok(Self { node_id })
     }
@@ -114,7 +111,11 @@ impl AgentSession {
 
     /// Send a message to the agent session
     pub async fn send_message(&self, content: String) -> Result<(), JsError> {
-        tracing::info!("Sending message to session {}: {}", self.session_id, content);
+        tracing::info!(
+            "Sending message to session {}: {}",
+            self.session_id,
+            content
+        );
         Ok(())
     }
 }

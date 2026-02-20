@@ -251,7 +251,7 @@ impl ZeroClawSession {
             .store(false, std::sync::atomic::Ordering::Relaxed);
 
         // Build context from memory
-        let context = zeroclaw::agent::build_context(self.memory.as_ref(), &text).await;
+        let context = zeroclaw::agent::build_context(self.memory.as_ref(), &text, None).await;
 
         // Add user message to history
         {

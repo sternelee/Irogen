@@ -7,13 +7,12 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use shared::{
     AgentControlAction, AgentSessionAction, AgentSessionMetadata, AgentType, AvailableTools,
-    BuiltinCommand, CommunicationManager, FileBrowserAction, GitAction, Message,
-    MessageBuilder, MessageHandler, MessagePayload, MessageType, NotificationData,
-    NotificationType, OSInfo, OutputFormat, PackageManager, QuicMessageServer,
-    QuicMessageServerConfig, RemoteSpawnAction, ResponseMessage, ShellInfo, SlashCommand,
-    SlashCommandResponseContent, SystemAction, SystemInfo, SystemInfoAction, TcpDataType,
-    TcpForwardingAction, TcpForwardingType, TcpStreamHandler,
-    Tool, UserInfo,
+    BuiltinCommand, CommunicationManager, FileBrowserAction, GitAction, Message, MessageBuilder,
+    MessageHandler, MessagePayload, MessageType, NotificationData, NotificationType, OSInfo,
+    OutputFormat, PackageManager, QuicMessageServer, QuicMessageServerConfig, RemoteSpawnAction,
+    ResponseMessage, ShellInfo, SlashCommand, SlashCommandResponseContent, SystemAction,
+    SystemInfo, SystemInfoAction, TcpDataType, TcpForwardingAction, TcpForwardingType,
+    TcpStreamHandler, Tool, UserInfo,
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -2880,8 +2879,8 @@ mod tests {
         // an event forwarding task is created
 
         // For now, we test the EventForwarder struct directly
-        use shared::agent::events::AgentEvent;
         use shared::AgentTurnEvent;
+        use shared::agent::events::AgentEvent;
         use shared::message_adapter::event_to_message_content;
         use tokio::sync::broadcast;
 

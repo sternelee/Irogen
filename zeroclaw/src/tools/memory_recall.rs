@@ -37,6 +37,10 @@ impl Tool for MemoryRecallTool {
                 "limit": {
                     "type": "integer",
                     "description": "Max results to return (default: 5)"
+                },
+                "min_relevance_score": {
+                    "type": "number",
+                    "description": "Minimum relevance score threshold (0.0-1.0). Results below this are filtered out."
                 }
             },
             "required": ["query"]
@@ -55,7 +59,11 @@ impl Tool for MemoryRecallTool {
             .and_then(serde_json::Value::as_u64)
             .map_or(5, |v| v as usize);
 
-        match self.memory.recall(query, limit).await {
+        let min_relevance_score = args
+            .get("min_relevance_score")
+            .and_then(serde_json::Value::as_f64);
+
+        match self.memory.recall(query, limit, min_relevance_score).await {
             Ok(entries) if entries.is_empty() => Ok(ToolResult {
                 success: true,
                 output: "No memories found matching that query.".into(),

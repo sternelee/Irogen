@@ -27,9 +27,8 @@ mod tcp_forwarding;
 use shared::AgentManager;
 use shared::{
     AgentControlAction, AgentPermissionResponse, AgentType, CommunicationManager, DirEntry, Event,
-    EventListener, EventType, FileBrowserAction, Message as ClawdChatMessage,
-    MessageBuilder, MessagePayload, QuicMessageClientHandle, TcpDataType,
-    TcpForwardingAction, TcpForwardingType,
+    EventListener, EventType, FileBrowserAction, Message as ClawdChatMessage, MessageBuilder,
+    MessagePayload, QuicMessageClientHandle, TcpDataType, TcpForwardingAction, TcpForwardingType,
 };
 
 use crate::tcp_forwarding::TcpForwardingManager;

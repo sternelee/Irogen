@@ -49,7 +49,13 @@ pub trait Memory: Send + Sync {
     -> anyhow::Result<()>;
 
     /// Recall memories matching a query (keyword search)
-    async fn recall(&self, query: &str, limit: usize) -> anyhow::Result<Vec<MemoryEntry>>;
+    /// If `min_relevance_score` is Some, filter out results below that threshold (0.0-1.0)
+    async fn recall(
+        &self,
+        query: &str,
+        limit: usize,
+        min_relevance_score: Option<f64>,
+    ) -> anyhow::Result<Vec<MemoryEntry>>;
 
     /// Get a specific memory by key
     async fn get(&self, key: &str) -> anyhow::Result<Option<MemoryEntry>>;

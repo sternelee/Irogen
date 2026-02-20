@@ -152,7 +152,12 @@ impl Memory for MarkdownMemory {
         self.append_to_file(&path, &entry).await
     }
 
-    async fn recall(&self, query: &str, limit: usize) -> anyhow::Result<Vec<MemoryEntry>> {
+    async fn recall(
+        &self,
+        query: &str,
+        limit: usize,
+        min_relevance_score: Option<f64>,
+    ) -> anyhow::Result<Vec<MemoryEntry>> {
         let all = self.read_all_entries().await?;
         let query_lower = query.to_lowercase();
         let keywords: Vec<&str> = query_lower.split_whitespace().collect();
@@ -181,6 +186,12 @@ impl Memory for MarkdownMemory {
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
+
+        // Filter by min_relevance_score if specified
+        if let Some(min_score) = min_relevance_score {
+            scored.retain(|e| e.score.map_or(false, |s| s >= min_score));
+        }
+
         scored.truncate(limit);
         Ok(scored)
     }

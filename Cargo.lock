@@ -14553,6 +14553,7 @@ dependencies = [
  "cron",
  "directories",
  "fantoccini",
+ "futures",
  "git2",
  "http-body-util",
  "image",
