@@ -1,7 +1,7 @@
-//! 事件管理器
+//! Event Manager
 //!
-//! 此模块提供统一的事件管理和消息处理机制，
-//! 支持App-CLI、终端管理、TCP转发等各种事件的处理。
+//! This module provides a unified event management and message processing mechanism,
+//! supporting system, connection, and error events.
 
 use crate::message_protocol::*;
 use anyhow::Result;
@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Type alias for the complex listeners map type to reduce complexity
 type ListenerMap = Arc<RwLock<HashMap<EventType, Vec<Arc<dyn EventListener>>>>>;
@@ -17,12 +17,6 @@ type ListenerMap = Arc<RwLock<HashMap<EventType, Vec<Arc<dyn EventListener>>>>>;
 /// 事件类型
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EventType {
-    /// 终端事件
-    TerminalCreated,
-    TerminalStopped,
-    TerminalInput,
-    TerminalOutput,
-    TerminalError,
     /// TCP转发事件
     TcpSessionCreated,
     TcpSessionStopped,
@@ -205,70 +199,6 @@ impl MessageToEventConverter {
     /// 将消息转换为事件并发布
     pub async fn convert_and_publish(&self, message: &Message) -> Result<()> {
         match &message.payload {
-            MessagePayload::TerminalManagement(msg) => match &msg.action {
-                TerminalAction::Create { .. } => {
-                    let event = Event::new(
-                        EventType::TerminalCreated,
-                        self.sender_id.clone(),
-                        serde_json::json!({
-                            "message_id": message.id,
-                            "request_id": msg.request_id,
-                        }),
-                    );
-                    self.event_manager.publish_event(event).await?;
-                }
-                TerminalAction::Stop { terminal_id } => {
-                    let event = Event::new(
-                        EventType::TerminalStopped,
-                        self.sender_id.clone(),
-                        serde_json::json!({
-                            "terminal_id": terminal_id,
-                            "message_id": message.id,
-                        }),
-                    );
-                    self.event_manager.publish_event(event).await?;
-                }
-                _ => {}
-            },
-            MessagePayload::TerminalIO(msg) => match msg.data_type {
-                IODataType::Input => {
-                    let event = Event::new(
-                        EventType::TerminalInput,
-                        self.sender_id.clone(),
-                        serde_json::json!({
-                            "terminal_id": msg.terminal_id,
-                            "data_length": msg.data.len(),
-                            "message_id": message.id,
-                        }),
-                    );
-                    self.event_manager.publish_event(event).await?;
-                }
-                IODataType::Output => {
-                    let event = Event::new(
-                        EventType::TerminalOutput,
-                        self.sender_id.clone(),
-                        serde_json::json!({
-                            "terminal_id": msg.terminal_id,
-                            "data_length": msg.data.len(),
-                            "message_id": message.id,
-                        }),
-                    );
-                    self.event_manager.publish_event(event).await?;
-                }
-                IODataType::Error => {
-                    let event = Event::new(
-                        EventType::TerminalError,
-                        self.sender_id.clone(),
-                        serde_json::json!({
-                            "terminal_id": msg.terminal_id,
-                            "data": String::from_utf8_lossy(&msg.data),
-                            "message_id": message.id,
-                        }),
-                    );
-                    self.event_manager.publish_event(event).await?;
-                }
-                _ => {}
-            },
             MessagePayload::TcpForwarding(msg) => match &msg.action {
                 TcpForwardingAction::CreateSession { .. } => {
                     let event = Event::new(
@@ -532,56 +462,6 @@ impl CommunicationManager {
     }
 }
 
-/// 终端事件监听器示例
-pub struct TerminalEventListener {
-    name: String,
-}
-
-impl TerminalEventListener {
-    pub fn new(name: String) -> Self {
-        Self { name }
-    }
-}
-
-#[async_trait]
-impl EventListener for TerminalEventListener {
-    async fn handle_event(&self, event: &Event) -> Result<()> {
-        match event.event_type {
-            EventType::TerminalCreated => {
-                info!("[{}] Terminal created: {}", self.name, event.data);
-            }
-            EventType::TerminalStopped => {
-                info!("[{}] Terminal stopped: {}", self.name, event.data);
-            }
-            EventType::TerminalInput => {
-                debug!("[{}] Terminal input: {}", self.name, event.data);
-            }
-            EventType::TerminalOutput => {
-                debug!("[{}] Terminal output: {}", self.name, event.data);
-            }
-            EventType::TerminalError => {
-                warn!("[{}] Terminal error: {}", self.name, event.data);
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn supported_events(&self) -> Vec<EventType> {
-        vec![
-            EventType::TerminalCreated,
-            EventType::TerminalStopped,
-            EventType::TerminalInput,
-            EventType::TerminalOutput,
-            EventType::TerminalError,
-        ]
-    }
-}
-
 /// TCP转发事件监听器示例
 pub struct TcpForwardingEventListener {
     name: String,
@@ -641,23 +521,20 @@ mod tests {
         let event_manager = Arc::new(EventManager::new());
         event_manager.start_event_loop().await.unwrap();
 
-        let listener = Arc::new(TerminalEventListener::new("test".to_string()));
-        event_manager.register_listener(listener.clone()).await;
-
         let event = Event::new(
-            EventType::TerminalCreated,
+            EventType::SystemStarted,
             "test_source".to_string(),
-            serde_json::json!({"terminal_id": "test_term"}),
+            serde_json::json!({"status": "ok"}),
         );
 
         event_manager.publish_event(event).await.unwrap();
 
-        // 给事件处理一些时间
+        // Give event processing some time
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 
     #[test]
     fn test_message_to_event_converter() {
-        // 这个测试需要异步运行时，在实际使用时会测试
+        // This test requires an async runtime; tested in actual usage
     }
 }

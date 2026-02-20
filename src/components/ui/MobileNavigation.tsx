@@ -131,10 +131,10 @@ export function MobileNavigation(props: MobileNavigationProps) {
       disabled: false,
     },
     {
-      id: "terminal",
-      title: "Terminal",
+      id: "agent",
+      title: "Agent",
       icon: "💻",
-      active: props.currentView === "terminal",
+      active: props.currentView === "agent",
       disabled: !props.isConnected,
     },
     {
@@ -164,9 +164,9 @@ export function MobileNavigation(props: MobileNavigationProps) {
       case "connect":
         props.onQuickConnect?.();
         break;
-      case "terminal":
+      case "agent":
         if (props.isConnected) {
-          props.onViewChange("terminal");
+          props.onViewChange("agent");
         }
         break;
       case "settings":

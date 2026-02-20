@@ -1,7 +1,7 @@
 //! 统一的消息事件协议
 //!
 //! 此模块定义了ClawdChat中所有组件间的统一消息协议，
-//! 支持App-CLI、终端管理、TCP转发等各种消息类型。
+//! 支持App-CLI、AI Agent会话管理、TCP转发、文件浏览、Git操作等各种消息类型。
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -24,10 +24,6 @@ pub const MESSAGE_PROTOCOL_VERSION: u8 = 1;
 pub enum MessageType {
     /// 心跳消息
     Heartbeat = 0x01,
-    /// 终端管理消息
-    TerminalManagement = 0x02,
-    /// 终端I/O消息
-    TerminalIO = 0x03,
     /// TCP转发管理消息
     TcpForwarding = 0x04,
     /// TCP数据转发消息
@@ -68,8 +64,6 @@ impl TryFrom<u8> for MessageType {
     fn try_from(value: u8) -> Result<Self> {
         match value {
             0x01 => Ok(MessageType::Heartbeat),
-            0x02 => Ok(MessageType::TerminalManagement),
-            0x03 => Ok(MessageType::TerminalIO),
             0x04 => Ok(MessageType::TcpForwarding),
             0x05 => Ok(MessageType::TcpData),
             0x06 => Ok(MessageType::SystemControl),
@@ -89,34 +83,6 @@ impl TryFrom<u8> for MessageType {
             _ => Err(anyhow::anyhow!("Invalid message type: {}", value)),
         }
     }
-}
-
-/// 终端管理动作
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum TerminalAction {
-    /// 创建终端
-    Create {
-        name: Option<String>,
-        shell_path: Option<String>,
-        working_dir: Option<String>,
-        size: (u16, u16),
-    },
-    /// 列出终端
-    List,
-    /// 停止终端
-    Stop { terminal_id: String },
-    /// 调整终端大小
-    Resize {
-        terminal_id: String,
-        rows: u16,
-        cols: u16,
-    },
-    /// 获取终端信息
-    Info { terminal_id: String },
-    /// 发送输入到终端
-    Input { terminal_id: String, data: Vec<u8> },
-    /// 获取终端日志
-    GetLogs { terminal_id: String },
 }
 
 /// TCP转发管理动作
@@ -281,10 +247,6 @@ impl Message {
 pub enum MessagePayload {
     /// 心跳载荷
     Heartbeat(HeartbeatMessage),
-    /// 终端管理载荷
-    TerminalManagement(TerminalManagementMessage),
-    /// 终端I/O载荷
-    TerminalIO(TerminalIOMessage),
     /// TCP转发载荷
     TcpForwarding(TcpForwardingMessage),
     /// TCP数据载荷
@@ -324,31 +286,6 @@ pub enum MessagePayload {
 pub struct HeartbeatMessage {
     pub sequence: u64,
     pub status: String,
-}
-
-/// 终端管理消息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TerminalManagementMessage {
-    pub action: TerminalAction,
-    pub request_id: Option<String>,
-}
-
-/// 终端I/O消息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TerminalIOMessage {
-    pub terminal_id: String,
-    pub data_type: IODataType,
-    pub data: Vec<u8>,
-}
-
-/// I/O数据类型
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum IODataType {
-    Input,
-    Output,
-    Error,
-    Resize { rows: u16, cols: u16 },
-    Signal { signal: u32 },
 }
 
 /// TCP转发消息
@@ -399,34 +336,6 @@ pub struct ErrorMessage {
     pub code: i32,
     pub message: String,
     pub details: Option<String>,
-}
-
-/// 终端日志条目
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TerminalLogEntry {
-    /// 时间戳
-    pub timestamp: u64,
-    /// 日志级别
-    pub level: String,
-    /// 终端ID
-    pub terminal_id: String,
-    /// 数据类型
-    pub data_type: String,
-    /// 数据内容
-    pub data: Vec<u8>,
-}
-
-/// 终端日志响应
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TerminalLogResponse {
-    /// 终端ID
-    pub terminal_id: String,
-    /// 日志条目列表
-    pub entries: Vec<TerminalLogEntry>,
-    /// 总行数
-    pub total_lines: usize,
-    /// 日志文件路径
-    pub log_path: String,
 }
 
 /// 系统信息消息
@@ -1217,35 +1126,6 @@ impl MessageBuilder {
         Message::new(MessageType::Heartbeat, sender_id, payload).with_priority(MessagePriority::Low)
     }
 
-    /// 创建终端管理消息
-    pub fn terminal_management(
-        sender_id: String,
-        action: TerminalAction,
-        request_id: Option<String>,
-    ) -> Message {
-        let payload =
-            MessagePayload::TerminalManagement(TerminalManagementMessage { action, request_id });
-        Message::new(MessageType::TerminalManagement, sender_id, payload)
-            .with_priority(MessagePriority::Normal)
-            .requires_response()
-    }
-
-    /// 创建终端I/O消息
-    pub fn terminal_io(
-        sender_id: String,
-        terminal_id: String,
-        data_type: IODataType,
-        data: Vec<u8>,
-    ) -> Message {
-        let payload = MessagePayload::TerminalIO(TerminalIOMessage {
-            terminal_id,
-            data_type,
-            data,
-        });
-        Message::new(MessageType::TerminalIO, sender_id, payload)
-            .with_priority(MessagePriority::High)
-    }
-
     /// 创建TCP转发管理消息
     pub fn tcp_forwarding(
         sender_id: String,
@@ -1591,29 +1471,12 @@ mod tests {
     }
 
     #[test]
-    fn test_message_builder() {
-        let message = MessageBuilder::terminal_management(
-            "app".to_string(),
-            TerminalAction::Create {
-                name: Some("test".to_string()),
-                shell_path: Some("/bin/bash".to_string()),
-                working_dir: Some("/home".to_string()),
-                size: (24, 80),
-            },
-            Some("req1".to_string()),
-        );
-
-        assert_eq!(message.message_type, MessageType::TerminalManagement);
-        assert_eq!(message.sender_id, "app");
-        assert!(message.requires_response);
-    }
-
-    #[test]
     fn test_network_serialization() {
-        let message = MessageBuilder::terminal_io(
+        let message = MessageBuilder::tcp_data(
             "cli".to_string(),
-            "term1".to_string(),
-            IODataType::Input,
+            "session1".to_string(),
+            "conn1".to_string(),
+            TcpDataType::Data,
             b"hello".to_vec(),
         );
 
@@ -1621,7 +1484,7 @@ mod tests {
         let parsed = MessageSerializer::deserialize_from_network(&network_data).unwrap();
 
         assert_eq!(parsed.id, message.id);
-        assert_eq!(parsed.message_type, MessageType::TerminalIO);
+        assert_eq!(parsed.message_type, MessageType::TcpData);
     }
 
     #[test]

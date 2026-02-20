@@ -1541,20 +1541,13 @@ impl MessageHandler for QuicMessageHandler {
                     return Ok(Some(response));
                 }
             }
-            MessagePayload::TerminalManagement(msg) => {
-                info!(
-                    "[{}] Terminal management action: {:?}",
-                    self.name, msg.action
-                );
-                // 这里应该调用实际的终端管理逻辑
+            MessagePayload::SystemControl(msg) => {
+                info!("[{}] System control action: {:?}", self.name, msg.action);
+                // 这里应该调用实际的系统控制逻辑
             }
             MessagePayload::TcpForwarding(msg) => {
                 info!("[{}] TCP forwarding action: {:?}", self.name, msg.action);
                 // 这里应该调用实际的TCP转发逻辑
-            }
-            MessagePayload::SystemControl(msg) => {
-                info!("[{}] System control action: {:?}", self.name, msg.action);
-                // 这里应该调用实际的系统控制逻辑
             }
             _ => {}
         }
@@ -1565,7 +1558,6 @@ impl MessageHandler for QuicMessageHandler {
     fn supported_message_types(&self) -> Vec<MessageType> {
         vec![
             MessageType::Heartbeat,
-            MessageType::TerminalManagement,
             MessageType::TcpForwarding,
             MessageType::SystemControl,
         ]

@@ -26,7 +26,6 @@ export interface UserSettings {
   rememberLastSession: boolean;
   saveConnectionHistory: boolean;
   maxHistoryEntries: number;
-  terminalOpacity: number;
   customCSSFilters: string;
   networkTimeout: number;
   retryAttempts: number;
@@ -44,7 +43,6 @@ const defaultSettings: UserSettings = {
   rememberLastSession: true,
   saveConnectionHistory: true,
   maxHistoryEntries: 3,
-  terminalOpacity: 0.95,
   customCSSFilters: "",
   networkTimeout: 30000,
   retryAttempts: 3,
@@ -176,8 +174,8 @@ export const settingsStore = {
 export const translations = {
   en: {
     // UI Labels
-    "app.title": "ClawdChat - P2P Terminal",
-    "connection.title": "Terminal Connection",
+    "app.title": "ClawdChat - P2P Agent",
+    "connection.title": "Agent Connection",
     "settings.title": "Settings",
     "hosts.title": "Hosts",
 
@@ -204,7 +202,6 @@ export const translations = {
     "settings.rememberSession": "Remember Last Session",
     "settings.saveHistory": "Save Connection History",
     "settings.maxHistory": "Max History Entries",
-    "settings.terminalOpacity": "Terminal Opacity",
     "settings.networkTimeout": "Network Timeout (ms)",
     "settings.retryAttempts": "Retry Attempts",
 
@@ -267,7 +264,6 @@ export const translations = {
     "settings.rememberSession": "记住上次会话",
     "settings.saveHistory": "保存连接历史",
     "settings.maxHistory": "最大历史条目",
-    "settings.terminalOpacity": "终端透明度",
     "settings.networkTimeout": "网络超时 (毫秒)",
     "settings.retryAttempts": "重试次数",
 

@@ -4,7 +4,6 @@ use clap::Parser;
 mod command_router;
 mod message_server;
 mod shell;
-mod terminal_logger;
 use message_server::CliMessageServer;
 use shared::QuicMessageServerConfig;
 use tracing::info;
@@ -149,11 +148,10 @@ async fn run_host(
 
     // 生成连接票据
     let node_id = server.get_node_id();
-    let shell_path = server.get_default_shell_path();
     let ticket = server.generate_connection_ticket()?;
 
     // 显示票据信息
-    print_host_info(&node_id, &ticket, shell_path);
+    print_host_info(&node_id, &ticket);
 
     // 设置 Ctrl+C 处理
     let server_ref = &server;
@@ -178,15 +176,14 @@ async fn run_host(
 }
 
 #[allow(unused_variables)]
-fn print_host_info(node_id: &str, ticket: &str, shell_path: &str) {
+fn print_host_info(node_id: &str, ticket: &str) {
     // Generate QR code
     let qr_code = generate_qr_string(ticket);
 
-    // 在release模式下，只显示标题、shell和ticket
+    // 在release模式下，只显示标题和ticket
     #[cfg(not(debug_assertions))]
     {
         println!("🚀 ClawdChat Host Server");
-        println!("🐚 Shell: {}", shell_path);
         println!();
         println!("🎫 Scan QR code or use ticket below:");
         println!();
@@ -203,7 +200,6 @@ fn print_host_info(node_id: &str, ticket: &str, shell_path: &str) {
     {
         println!("🚀 ClawdChat Host Server Started");
         println!("🔑 Node ID: {}", node_id);
-        println!("🐚 Shell: {}", shell_path);
         println!();
 
         println!("🎫 Connection Ticket:");

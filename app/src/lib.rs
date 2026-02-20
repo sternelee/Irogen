@@ -1,4 +1,3 @@
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -28,9 +27,9 @@ mod tcp_forwarding;
 use shared::AgentManager;
 use shared::{
     AgentControlAction, AgentPermissionResponse, AgentType, CommunicationManager, DirEntry, Event,
-    EventListener, EventType, FileBrowserAction, IODataType, Message as ClawdChatMessage,
-    MessageBuilder, MessagePayload, QuicMessageClientHandle, SerializableEndpointAddr, TcpDataType,
-    TcpForwardingAction, TcpForwardingType, TerminalAction,
+    EventListener, EventType, FileBrowserAction, Message as ClawdChatMessage,
+    MessageBuilder, MessagePayload, QuicMessageClientHandle, TcpDataType,
+    TcpForwardingAction, TcpForwardingType,
 };
 
 use crate::tcp_forwarding::TcpForwardingManager;
@@ -80,6 +79,7 @@ fn parse_ticket_to_node_addr(
         node_id: String,
         relay_url: Option<String>,
         direct_addresses: Option<Vec<String>>,
+        #[allow(dead_code)]
         alpn: Option<String>,
     }
 
@@ -126,66 +126,8 @@ fn parse_ticket_to_node_addr(
     Ok(serializable_addr.try_to_node_addr()?)
 }
 
-// Parse ticket and extract EndpointId (legacy compatibility)
-fn parse_ticket_node_addr(ticket: &str) -> Result<iroh::EndpointId, Box<dyn std::error::Error>> {
-    use base64::Engine as _;
-    use base64::engine::general_purpose;
-    use data_encoding::BASE32_NOPAD;
-    use iroh_tickets::endpoint::EndpointTicket;
-    use serde::Deserialize;
-
-    // Handle old format with "ticket:" prefix
-    let ticket_str = if let Some(stripped) = ticket.strip_prefix("ticket:") {
-        stripped
-    } else {
-        ticket
-    };
-
-    // Try new iroh-tickets format first (base64, shorter)
-    if let Ok(endpoint_ticket) = EndpointTicket::from_str(ticket_str) {
-        let node_addr = endpoint_ticket.endpoint_addr();
-        return Ok(node_addr.id);
-    }
-
-    // Try base64-encoded JSON format with node_id field
-    #[derive(Deserialize)]
-    struct JsonTicket {
-        node_id: String,
-        #[allow(dead_code)]
-        relay_url: Option<String>,
-        #[allow(dead_code)]
-        direct_addresses: Option<Vec<String>>,
-        #[allow(dead_code)]
-        alpn: Option<String>,
-    }
-
-    // Try both URL_SAFE and STANDARD base64 encoding
-    for engine in [general_purpose::URL_SAFE, general_purpose::STANDARD] {
-        if let Ok(ticket_json_bytes) = engine.decode(ticket_str) {
-            if let Ok(ticket_json) = String::from_utf8(ticket_json_bytes.clone()) {
-                if let Ok(json_ticket) = serde_json::from_str::<JsonTicket>(&ticket_json) {
-                    if let Ok(node_id) = iroh::EndpointId::from_str(&json_ticket.node_id) {
-                        return Ok(node_id);
-                    }
-                }
-            }
-        }
-    }
-
-    // Fall back to legacy custom format (base32 + JSON)
-    // Decode base32 (convert to uppercase for decoding)
-    let ticket_json_bytes = BASE32_NOPAD.decode(ticket_str.to_ascii_uppercase().as_bytes())?;
-    let ticket_json = String::from_utf8(ticket_json_bytes)?;
-
-    // Parse JSON directly as SerializableEndpointAddr
-    let serializable_addr: SerializableEndpointAddr = serde_json::from_str(&ticket_json)?;
-
-    // Try to reconstruct EndpointId from SerializableEndpointAddr
-    Ok(serializable_addr.try_to_endpoint_id()?)
-}
-
 pub struct AppState {
-    sessions: RwLock<HashMap<String, TerminalSession>>,
+    sessions: RwLock<HashMap<String, ConnectionSession>>,
     communication_manager: RwLock<Option<Arc<CommunicationManager>>>,
     quic_client: RwLock<Option<QuicMessageClientHandle>>,
     cleanup_token: RwLock<Option<CancellationToken>>,
@@ -210,7 +152,7 @@ impl Default for AppState {
 }
 
 #[derive(Clone)]
-pub struct TerminalSession {
+pub struct ConnectionSession {
     pub id: String,
     pub connection_id: String,
     pub node_id: String,
@@ -272,33 +214,6 @@ impl EventListener for AppEventListener {
 
         // Convert events to Tauri emissions
         match event.event_type {
-            EventType::TerminalCreated => {
-                let _ = self.app_handle.emit(
-                    &format!("terminal-created-{}", self.session_id),
-                    &event.data,
-                );
-            }
-            EventType::TerminalStopped => {
-                let _ = self.app_handle.emit(
-                    &format!("terminal-stopped-{}", self.session_id),
-                    &event.data,
-                );
-            }
-            EventType::TerminalInput => {
-                let _ = self
-                    .app_handle
-                    .emit(&format!("terminal-input-{}", self.session_id), &event.data);
-            }
-            EventType::TerminalOutput => {
-                let _ = self
-                    .app_handle
-                    .emit(&format!("terminal-output-{}", self.session_id), &event.data);
-            }
-            EventType::TerminalError => {
-                let _ = self
-                    .app_handle
-                    .emit(&format!("terminal-error-{}", self.session_id), &event.data);
-            }
             EventType::TcpSessionCreated => {
                 let _ = self.app_handle.emit(
                     &format!("tcp-session-created-{}", self.session_id),
@@ -341,11 +256,6 @@ impl EventListener for AppEventListener {
 
     fn supported_events(&self) -> Vec<EventType> {
         vec![
-            EventType::TerminalCreated,
-            EventType::TerminalStopped,
-            EventType::TerminalInput,
-            EventType::TerminalOutput,
-            EventType::TerminalError,
             EventType::TcpSessionCreated,
             EventType::TcpSessionStopped,
             EventType::PeerConnected,
@@ -646,7 +556,7 @@ async fn connect_to_peer(
 
     // Create terminal session with enhanced tracking
     let cancellation_token = CancellationToken::new();
-    let terminal_session = TerminalSession {
+    let terminal_session = ConnectionSession {
         id: session_id.clone(),
         connection_id: connection_id.clone(),
         node_id: node_id_str.clone(),
@@ -685,12 +595,12 @@ async fn connect_to_peer(
     // Start message receiver task
     let app_handle_clone = app_handle.clone();
     let session_id_clone = session_id.clone();
-    let connection_id_clone = connection_id.clone();
+    let _connection_id_clone = connection_id.clone();
     let cancellation_token_receiver = cancellation_token.clone();
     let last_activity_receiver = terminal_session.last_activity.clone();
     let event_count_receiver = terminal_session.event_count.clone();
     let tcp_forwarding_manager = state.tcp_forwarding_manager.clone();
-    let quic_client_for_receiver = {
+    let _quic_client_for_receiver = {
         let client_guard = state.quic_client.read().await;
         client_guard.as_ref().cloned()
     };
@@ -737,56 +647,10 @@ async fn connect_to_peer(
                                     tracing::debug!("Received response for session {}: success={}",
                                         session_id_clone, response.success);
 
-                                    // Check if this is a terminals list response
+                                    // Check response data type
                                     if let Some(ref data_str) = response.data {
                                         if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(data_str) {
-                                            if data_json.get("terminals").is_some() {
-                                                // This is a terminals list response - fetch logs for each
-                                                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                                                tracing::info!("Received terminals list, fetching logs...");
-
-                                                // Emit terminals list to frontend
-                                                let _ = app_handle_clone.emit(
-                                                    &format!("terminals-list-{}", session_id_clone),
-                                                    &data_json,
-                                                );
-
-                                                // Fetch logs for each terminal
-                                                if let Some(terminals_array) = data_json["terminals"].as_array() {
-                                                    for terminal_obj in terminals_array {
-                                                        if let Some(terminal_id) = terminal_obj["id"].as_str() {
-                                                            // Send get_terminal_logs request
-                                                            if let Some(ref quic_client) = quic_client_for_receiver {
-                                                                let logs_message = MessageBuilder::terminal_management(
-                                                                    "clawdchat_app".to_string(),
-                                                                    TerminalAction::GetLogs {
-                                                                        terminal_id: terminal_id.to_string(),
-                                                                    },
-                                                                    Some(session_id_clone.clone()),
-                                                                )
-                                                                .with_session(session_id_clone.clone());
-
-                                                                let _ = quic_client.send_message_to_server(
-                                                                    &connection_id_clone,
-                                                                    logs_message,
-                                                                ).await;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            else if data_json.get("entries").is_some() && data_json.get("terminal_id").is_some() {
-                                                // This is a terminal logs response
-                                                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                                                tracing::info!("Received terminal logs for: {}", data_json["terminal_id"]);
-
-                                                // Emit terminal logs to frontend
-                                                let _ = app_handle_clone.emit(
-                                                    &format!("terminal-logs-{}", session_id_clone),
-                                                    &data_json,
-                                                );
-                                            }
-                                            else if data_json.get("entries").is_some() && data_json.get("terminal_id").is_none() {
+                                            if data_json.get("entries").is_some() && data_json.get("terminal_id").is_none() {
                                                 // This is a directory listing response
                                                 #[cfg(any(debug_assertions, not(feature = "release-logging")))]
                                                 tracing::info!("Received directory listing response");
@@ -890,85 +754,6 @@ async fn connect_to_peer(
                                             "code": error.code,
                                             "message": error.message,
                                             "details": error.details,
-                                        })
-                                    );
-                                }
-                                MessagePayload::TerminalIO(io_message) => {
-                                    match &io_message.data_type {
-                                        IODataType::Output => {
-                                            let _ = app_handle_clone.emit(
-                                                &format!("terminal-output-{}", session_id_clone),
-                                                &serde_json::json!({
-                                                    "terminal_id": io_message.terminal_id,
-                                                    "data": String::from_utf8_lossy(&io_message.data),
-                                                })
-                                            );
-                                        }
-                                        IODataType::Error => {
-                                            let _ = app_handle_clone.emit(
-                                                &format!("terminal-error-{}", session_id_clone),
-                                                &serde_json::json!({
-                                                    "terminal_id": io_message.terminal_id,
-                                                    "error": String::from_utf8_lossy(&io_message.data),
-                                                })
-                                            );
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                MessagePayload::TerminalManagement(mgmt_message) => {
-                                    // Handle terminal management messages (created, stopped, etc.)
-                                    #[cfg(debug_assertions)]
-                                    tracing::debug!("Received terminal management message: {:?}", mgmt_message.action);
-
-                                    // Emit management event to frontend
-                                    let _ = app_handle_clone.emit(
-                                        &format!("terminal-management-{}", session_id_clone),
-                                        &serde_json::json!({
-                                            "action": format!("{:?}", mgmt_message.action),
-                                            "request_id": mgmt_message.request_id,
-                                        })
-                                    );
-                                }
-                                MessagePayload::TcpForwarding(tcp_msg) => {
-                                    // Handle TCP forwarding messages
-                                    #[cfg(debug_assertions)]
-                                    tracing::debug!("Received TCP forwarding message: {:?}", tcp_msg.action);
-
-                                    // Emit TCP forwarding event to frontend
-                                    let _ = app_handle_clone.emit(
-                                        &format!("tcp-forwarding-{}", session_id_clone),
-                                        &serde_json::json!({
-                                            "action": format!("{:?}", tcp_msg.action),
-                                            "request_id": tcp_msg.request_id,
-                                        })
-                                    );
-                                }
-                                MessagePayload::TcpData(tcp_data_msg) => {
-                                    // Handle TCP data messages from CLI
-                                    #[cfg(debug_assertions)]
-                                    tracing::debug!("Received TCP data message: session_id={}, connection_id={}, data_type={:?}",
-                                        tcp_data_msg.session_id, tcp_data_msg.connection_id, tcp_data_msg.data_type);
-
-                                    // Forward data to TcpForwardingManager
-                                    if let Err(e) = tcp_forwarding_manager.lock().await.handle_tcp_data_from_cli(
-                                        &tcp_data_msg.session_id,
-                                        &tcp_data_msg.connection_id,
-                                        &tcp_data_msg.data,
-                                        &tcp_data_msg.data_type,
-                                    ).await {
-                                        #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                                        tracing::error!("Failed to handle TCP data from CLI: {}", e);
-                                    }
-
-                                    // Emit TCP data event to frontend for UI updates
-                                    let _ = app_handle_clone.emit(
-                                        &format!("tcp-data-{}", session_id_clone),
-                                        &serde_json::json!({
-                                            "session_id": tcp_data_msg.session_id,
-                                            "connection_id": tcp_data_msg.connection_id,
-                                            "data_type": format!("{:?}", tcp_data_msg.data_type),
-                                            "data_length": tcp_data_msg.data.len(),
                                         })
                                     );
                                 }
@@ -1081,6 +866,48 @@ async fn connect_to_peer(
                                             })
                                         );
                                     }
+                                }
+                                MessagePayload::TcpForwarding(tcp_msg) => {
+                                    // Handle TCP forwarding messages
+                                    #[cfg(debug_assertions)]
+                                    tracing::debug!("Received TCP forwarding message: {:?}", tcp_msg.action);
+
+                                    // Emit TCP forwarding event to frontend
+                                    let _ = app_handle_clone.emit(
+                                        &format!("tcp-forwarding-{}", session_id_clone),
+                                        &serde_json::json!({
+                                            "action": format!("{:?}", tcp_msg.action),
+                                            "request_id": tcp_msg.request_id,
+                                        })
+                                    );
+                                }
+                                MessagePayload::TcpData(tcp_data_msg) => {
+                                    // Handle TCP data messages from CLI
+                                    #[cfg(debug_assertions)]
+                                    tracing::debug!("Received TCP data message: session_id={}, connection_id={}, data_type={:?}",
+                                        tcp_data_msg.session_id, tcp_data_msg.connection_id, tcp_data_msg.data_type);
+
+                                    // Forward data to TcpForwardingManager
+                                    if let Err(e) = tcp_forwarding_manager.lock().await.handle_tcp_data_from_cli(
+                                        &tcp_data_msg.session_id,
+                                        &tcp_data_msg.connection_id,
+                                        &tcp_data_msg.data,
+                                        &tcp_data_msg.data_type,
+                                    ).await {
+                                        #[cfg(any(debug_assertions, not(feature = "release-logging")))]
+                                        tracing::error!("Failed to handle TCP data from CLI: {}", e);
+                                    }
+
+                                    // Emit TCP data event to frontend for UI updates
+                                    let _ = app_handle_clone.emit(
+                                        &format!("tcp-data-{}", session_id_clone),
+                                        &serde_json::json!({
+                                            "session_id": tcp_data_msg.session_id,
+                                            "connection_id": tcp_data_msg.connection_id,
+                                            "data_type": format!("{:?}", tcp_data_msg.data_type),
+                                            "data_length": tcp_data_msg.data.len(),
+                                        })
+                                    );
                                 }
                                 _ => {
                                     #[cfg(debug_assertions)]
@@ -1247,55 +1074,9 @@ async fn connect_to_peer(
         );
     });
 
-    // Sync existing terminals and their logs from CLI
-    // This allows the app to restore terminal sessions with their history
-    let session_id_for_terminal_sync = session_id.clone();
-    let connection_id_for_terminal_sync = connection_id.clone();
-    let cancellation_token_for_terminal_sync = cancellation_token.clone();
-    let _app_handle_for_terminal_sync = app_handle.clone();
-    let quic_client_for_terminal_sync = {
-        let client_guard = state.quic_client.read().await;
-        client_guard.as_ref().cloned()
-    };
-
-    tokio::spawn(async move {
-        // Wait a short delay to ensure the connection is stable
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
-        if cancellation_token_for_terminal_sync.is_cancelled() {
-            return;
-        }
-
-        #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-        tracing::info!(
-            "Syncing existing terminals for session: {}",
-            session_id_for_terminal_sync
-        );
-
-        // Send list_terminals request to CLI
-        if let Some(quic_client) = quic_client_for_terminal_sync {
-            let list_message = MessageBuilder::terminal_management(
-                "clawdchat_app".to_string(),
-                TerminalAction::List,
-                Some(session_id_for_terminal_sync.clone()),
-            )
-            .with_session(session_id_for_terminal_sync.clone());
-
-            if let Err(e) = quic_client
-                .send_message_to_server(&connection_id_for_terminal_sync, list_message)
-                .await
-            {
-                #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-                tracing::error!("Failed to send list_terminals request: {}", e);
-            }
-        }
-    });
-
     // Sync existing TCP forwarding sessions from CLI
     // This allows the app to restore TCP sessions created by other clients
     let session_id_for_sync = session_id.clone();
-    let _connection_id_for_sync = connection_id.clone();
-    let _tcp_manager_for_sync = state.tcp_forwarding_manager.clone();
     let cancellation_token_for_sync = cancellation_token.clone();
     let app_handle_for_sync = app_handle.clone();
 
@@ -1321,10 +1102,6 @@ async fn connect_to_peer(
         )
         .with_session(session_id_for_sync.clone());
 
-        // Send the message and wait for response
-        // We'll handle the response in the message receiver task
-        // But we need to store a pending sync request
-
         // For now, we'll emit an event to frontend to trigger the list
         let _ = app_handle_for_sync.emit(
             &format!("sync-tcp-sessions-{}", session_id_for_sync),
@@ -1335,8 +1112,7 @@ async fn connect_to_peer(
         );
     });
 
-    // Session is now ready to handle terminal operations
-    // Terminal input/output will be handled through the new message protocol
+    // Session is now ready to handle agent operations
 
     Ok(session_id)
 }
@@ -1394,13 +1170,12 @@ async fn send_directed_message(
 
 #[tauri::command(rename_all = "camelCase")]
 async fn execute_remote_command(
-    command: String,
-    session_id: String,
-    terminal_id: String,
-    state: State<'_, AppState>,
+    _command: String,
+    _session_id: String,
+    _terminal_id: String,
+    _state: State<'_, AppState>,
 ) -> Result<(), String> {
-    // Convert to use the new terminal input protocol
-    send_terminal_input_to_terminal(session_id, terminal_id, format!("{}\n", command), state).await
+    Err("Remote terminal commands are deprecated. Use agent sessions instead.".to_string())
 }
 
 #[tauri::command]
@@ -1537,228 +1312,6 @@ async fn start_cleanup_task(state: &State<'_, AppState>) {
     );
 }
 
-// === Terminal Management Commands ===
-
-#[tauri::command(rename_all = "camelCase")]
-async fn create_terminal(
-    session_id: String,
-    name: Option<String>,
-    shell_path: Option<String>,
-    working_dir: Option<String>,
-    size: Option<(u16, u16)>,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let session = {
-        let sessions = state.sessions.read().await;
-        sessions
-            .get(&session_id)
-            .cloned()
-            .ok_or("Session not found")?
-    };
-
-    // Create terminal management message
-    let action = TerminalAction::Create {
-        name,
-        shell_path,
-        working_dir,
-        size: size.unwrap_or((24, 80)),
-    };
-
-    let message = MessageBuilder::terminal_management(
-        "clawdchat_app".to_string(),
-        action,
-        Some(session_id.clone()),
-    )
-    .with_session(session_id.clone());
-
-    // Send message via QUIC client
-    send_message_via_client(&state, &session.connection_id, message, "terminal creation").await?;
-
-    Ok(())
-}
-
-#[tauri::command(rename_all = "camelCase")]
-async fn stop_terminal(
-    session_id: String,
-    terminal_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let session = {
-        let sessions = state.sessions.read().await;
-        sessions
-            .get(&session_id)
-            .cloned()
-            .ok_or("Session not found")?
-    };
-
-    // Create terminal management message for stopping terminal
-    let action = TerminalAction::Stop {
-        terminal_id: terminal_id.clone(),
-    };
-
-    let message = MessageBuilder::terminal_management(
-        "clawdchat_app".to_string(),
-        action,
-        Some(session_id.clone()),
-    )
-    .with_session(session_id.clone());
-
-    // Send message via QUIC client
-    send_message_via_client(&state, &session.connection_id, message, "terminal stop").await?;
-
-    Ok(())
-}
-
-#[tauri::command(rename_all = "camelCase")]
-async fn list_terminals(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    let session = {
-        let sessions = state.sessions.read().await;
-        sessions
-            .get(&session_id)
-            .cloned()
-            .ok_or("Session not found")?
-    };
-
-    // Create terminal management message for listing terminals
-    let message = MessageBuilder::terminal_management(
-        "clawdchat_app".to_string(),
-        TerminalAction::List,
-        Some(session_id.clone()),
-    )
-    .with_session(session_id.clone());
-
-    // Send message via QUIC client
-    send_message_via_client(&state, &session.connection_id, message, "terminal list").await?;
-
-    Ok(())
-}
-
-#[tauri::command(rename_all = "camelCase")]
-async fn send_terminal_input_to_terminal(
-    session_id: String,
-    terminal_id: String,
-    input: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let session = {
-        let sessions = state.sessions.read().await;
-        sessions
-            .get(&session_id)
-            .cloned()
-            .ok_or("Session not found")?
-    };
-
-    // Create terminal I/O message
-    let message = MessageBuilder::terminal_io(
-        "clawdchat_app".to_string(),
-        terminal_id,
-        IODataType::Input,
-        input.as_bytes().to_vec(),
-    )
-    .with_session(session_id.clone());
-
-    // Send message via QUIC client
-    send_message_via_client(&state, &session.connection_id, message, "terminal input").await?;
-
-    Ok(())
-}
-
-#[tauri::command(rename_all = "camelCase")]
-async fn resize_terminal(
-    session_id: String,
-    terminal_id: String,
-    rows: u16,
-    cols: u16,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let session = {
-        let sessions = state.sessions.read().await;
-        sessions
-            .get(&session_id)
-            .cloned()
-            .ok_or("Session not found")?
-    };
-
-    // Create terminal management message for resizing terminal
-    let action = TerminalAction::Resize {
-        terminal_id: terminal_id.clone(),
-        rows,
-        cols,
-    };
-
-    let message = MessageBuilder::terminal_management(
-        "clawdchat_app".to_string(),
-        action,
-        Some(session_id.clone()),
-    )
-    .with_session(session_id.clone());
-
-    // Send message via QUIC client
-    send_message_via_client(&state, &session.connection_id, message, "terminal resize").await?;
-
-    Ok(())
-}
-
-#[tauri::command(rename_all = "camelCase")]
-async fn get_terminal_list(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    list_terminals(session_id, state).await
-}
-
-#[tauri::command(rename_all = "camelCase")]
-async fn connect_to_terminal(
-    session_id: String,
-    terminal_id: String,
-    _state: State<'_, AppState>,
-) -> Result<(), String> {
-    #[cfg(any(debug_assertions, not(feature = "release-logging")))]
-    tracing::info!(
-        "connect_to_terminal called for session {} terminal {} (now a no-op)",
-        session_id,
-        terminal_id
-    );
-
-    Ok(())
-}
-
-/// 获取终端日志
-#[tauri::command(rename_all = "camelCase")]
-async fn get_terminal_logs(
-    session_id: String,
-    terminal_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let session = {
-        let sessions = state.sessions.read().await;
-        sessions
-            .get(&session_id)
-            .cloned()
-            .ok_or("Session not found")?
-    };
-
-    // Create terminal management message for getting logs
-    let action = TerminalAction::GetLogs {
-        terminal_id: terminal_id.clone(),
-    };
-
-    let message = MessageBuilder::terminal_management(
-        "clawdchat_app".to_string(),
-        action,
-        Some(session_id.clone()),
-    )
-    .with_session(session_id.clone());
-
-    // Send message via QUIC client
-    send_message_via_client(
-        &state,
-        &session.connection_id,
-        message,
-        "terminal logs request",
-    )
-    .await?;
-
-    Ok(())
-}
-
 #[tauri::command]
 async fn list_remote_directory(
     session_id: String,
@@ -1845,7 +1398,6 @@ async fn create_tcp_forwarding_session(
     forwarding_type: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    // 验证转发类型 - 只支持 ListenToRemote
     let _fwd_type = match forwarding_type.as_str() {
         "ListenToRemote" | "listen-to-remote" => TcpForwardingType::ListenToRemote,
         _ => {
@@ -1853,11 +1405,9 @@ async fn create_tcp_forwarding_session(
         }
     };
 
-    // 获取远程主机和端口
     let remote_host = remote_host.ok_or("Remote host is required")?;
     let remote_port = remote_port.ok_or("Remote port is required")?;
 
-    // 获取 QUIC 客户端用于发送数据
     let quic_client = {
         let client_guard = state.quic_client.read().await;
         match client_guard.as_ref() {
@@ -1866,7 +1416,6 @@ async fn create_tcp_forwarding_session(
         }
     };
 
-    // 在本地创建 TCP 转发会话（pending 状态，不启动监听器）
     let session_id_result = {
         let manager = state.tcp_forwarding_manager.lock().await;
         manager
@@ -1875,7 +1424,6 @@ async fn create_tcp_forwarding_session(
             .map_err(|e| format!("Failed to create TCP forwarding session: {}", e))?
     };
 
-    // 发送会话创建通知给 CLI 端（携带我们的 session_id）
     let session = {
         let sessions = state.sessions.read().await;
         sessions
@@ -1889,7 +1437,7 @@ async fn create_tcp_forwarding_session(
         remote_host: Some(remote_host),
         remote_port: Some(remote_port),
         forwarding_type: TcpForwardingType::ListenToRemote,
-        session_id: Some(session_id_result.clone()), // 发送我们的 session_id 给 CLI
+        session_id: Some(session_id_result.clone()),
     };
 
     let message = MessageBuilder::tcp_forwarding(
@@ -1899,10 +1447,8 @@ async fn create_tcp_forwarding_session(
     )
     .with_session(session_id.clone());
 
-    // 获取正确的 connection_id
     let connection_id = session.connection_id;
 
-    // 使用直接发送
     if let Err(e) = quic_client
         .send_message_to_server(&connection_id, message)
         .await
@@ -1926,7 +1472,6 @@ async fn list_tcp_forwarding_sessions(
             .ok_or("Session not found")?
     };
 
-    // 创建列出 TCP 转发会话的消息
     let message = MessageBuilder::tcp_forwarding(
         "clawdchat_app".to_string(),
         TcpForwardingAction::ListSessions,
@@ -1934,7 +1479,6 @@ async fn list_tcp_forwarding_sessions(
     )
     .with_session(session_id.clone());
 
-    // 发送消息 via QUIC 客户端
     send_message_via_client(
         &state,
         &session.connection_id,
@@ -1960,7 +1504,6 @@ async fn stop_tcp_forwarding_session(
             .ok_or("Session not found")?
     };
 
-    // 创建停止 TCP 转发会话的消息
     let message = MessageBuilder::tcp_forwarding(
         "clawdchat_app".to_string(),
         TcpForwardingAction::StopSession {
@@ -1970,7 +1513,6 @@ async fn stop_tcp_forwarding_session(
     )
     .with_session(session_id.clone());
 
-    // 发送消息 via QUIC 客户端
     send_message_via_client(
         &state,
         &session.connection_id,
@@ -1996,7 +1538,6 @@ async fn get_tcp_forwarding_session_info(
             .ok_or("Session not found")?
     };
 
-    // 创建获取 TCP 转发会话信息的消息
     let message = MessageBuilder::tcp_forwarding(
         "clawdchat_app".to_string(),
         TcpForwardingAction::GetSessionInfo {
@@ -2006,7 +1547,6 @@ async fn get_tcp_forwarding_session_info(
     )
     .with_session(session_id.clone());
 
-    // 发送消息 via QUIC 客户端
     send_message_via_client(
         &state,
         &session.connection_id,
@@ -2035,7 +1575,6 @@ async fn send_tcp_data(
             .ok_or("Session not found")?
     };
 
-    // 解析数据类型
     let dt_type =
         match data_type.as_str() {
             "Data" | "data" => TcpDataType::Data,
@@ -2048,7 +1587,6 @@ async fn send_tcp_data(
             ),
         };
 
-    // 创建 TCP 数据消息
     let message = MessageBuilder::tcp_data(
         "clawdchat_app".to_string(),
         tcp_session_id,
@@ -2058,7 +1596,6 @@ async fn send_tcp_data(
     )
     .with_session(session_id.clone());
 
-    // 发送消息 via QUIC 客户端
     send_message_via_client(&state, &session.connection_id, message, "TCP data").await?;
 
     Ok(())
@@ -2772,15 +2309,6 @@ pub fn run() {
             get_node_info,
             parse_session_ticket,
             list_directory,
-            // Terminal Management
-            create_terminal,
-            stop_terminal,
-            list_terminals,
-            get_terminal_list,
-            send_terminal_input_to_terminal,
-            resize_terminal,
-            connect_to_terminal,   // Kept as no-op for compatibility
-            get_terminal_logs,     // Get terminal logs from CLI
             list_remote_directory, // List remote directory via P2P
             // TCP Forwarding Management
             create_tcp_forwarding_session,

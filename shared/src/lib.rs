@@ -6,9 +6,6 @@ pub mod message_protocol;
 pub mod quic_server;
 pub mod util;
 
-#[cfg(feature = "wasm")]
-pub mod browser;
-
 pub use event_manager::*;
 pub use message_protocol::*;
 pub use quic_server::*;
@@ -22,6 +19,3 @@ pub use agent::AgentTurnEvent;
 pub use agent::message_adapter;
 #[cfg(feature = "std")]
 pub use agent::{Agent, AgentFactory};
-
-#[cfg(feature = "wasm")]
-pub use browser::*;

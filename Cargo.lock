@@ -1457,15 +1457,11 @@ dependencies = [
  "base64 0.22.1",
  "bincode 1.3.3",
  "bytes",
- "cfg-if",
  "chacha20poly1305",
  "chrono",
  "clap",
- "close_fds",
- "conpty",
  "data-encoding",
  "dirs 5.0.1",
- "encoding_rs",
  "fast_qr",
  "futures",
  "futures-util",
@@ -1474,13 +1470,8 @@ dependencies = [
  "iroh",
  "iroh-tickets",
  "lazy_static",
- "libc",
- "nix 0.30.1",
- "pin-project",
- "portable-pty",
  "rand 0.9.2",
  "regex",
- "rustix 0.38.44",
  "serde",
  "serde_json",
  "shared",
@@ -1492,7 +1483,6 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "windows 0.58.0",
 ]
 
 [[package]]
@@ -1502,16 +1492,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bde03770d3df201d4fb868f2c9c59e66a3e4e2bd06692a0fe701e7103c7e84d4"
 dependencies = [
  "error-code",
-]
-
-[[package]]
-name = "close_fds"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bc416f33de9d59e79e57560f450d21ff8393adcf1cdfc3e6d8fb93d5f88a2ed"
-dependencies = [
- "cfg-if",
- "libc",
 ]
 
 [[package]]
@@ -2210,15 +2190,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
 dependencies = [
  "crossbeam-utils",
-]
-
-[[package]]
-name = "conpty"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b64e80ea07c05b0216af7d81e1bba05060bf8eda00bfbcbae41ceb5d26b4c783"
-dependencies = [
- "windows 0.54.0",
 ]
 
 [[package]]
@@ -13438,16 +13409,6 @@ dependencies = [
 
 [[package]]
 name = "windows"
-version = "0.54.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9252e5725dbed82865af151df558e754e4a3c2c30818359eb17465f1346a1b49"
-dependencies = [
- "windows-core 0.54.0",
- "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows"
 version = "0.58.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd04d41d93c4992d421894c18c8b43496aa748dd4c081bac0dc93eb0489272b6"
@@ -13497,16 +13458,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b2d95af1a8a14a3c7367e1ed4fc9c20e0a26e79551b1454d72583c97cc6610"
 dependencies = [
  "windows-core 0.62.2",
-]
-
-[[package]]
-name = "windows-core"
-version = "0.54.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12661b9c89351d684a50a8a643ce5f608e20243b9fb84687800163429f161d65"
-dependencies = [
- "windows-result 0.1.2",
- "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -13655,15 +13606,6 @@ dependencies = [
  "windows-link 0.2.1",
  "windows-result 0.4.1",
  "windows-strings 0.5.1",
-]
-
-[[package]]
-name = "windows-result"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e383302e8ec8515204254685643de10811af0ed97ea37210dc26fb0032647f8"
-dependencies = [
- "windows-targets 0.52.6",
 ]
 
 [[package]]

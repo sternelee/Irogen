@@ -477,8 +477,7 @@ export class MobileKeyboard {
   private static isInputElement(element: HTMLElement): boolean {
     return element.tagName === "INPUT" ||
       element.tagName === "TEXTAREA" ||
-      element.contentEditable === "true" ||
-      element.closest(".xterm-helper-textarea") !== null; // xterm terminal input
+      element.contentEditable === "true";
   }
 
   private static handleVisualViewportChange(): void {
