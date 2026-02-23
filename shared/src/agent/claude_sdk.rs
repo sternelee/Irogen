@@ -71,6 +71,7 @@ enum SdkCommand {
     Prompt {
         text: String,
         turn_id: String,
+        attachments: Vec<String>,
         response_tx: oneshot::Sender<std::result::Result<(), String>>,
     },
     /// Cancel / interrupt the current operation (sends SIGINT).
@@ -221,10 +222,11 @@ impl ClaudeSdkSession {
         &self,
         text: String,
         turn_id: &str,
+        attachments: Vec<String>,
     ) -> std::result::Result<(), String> {
         debug!(
-            "SDK send_message session={} agent={:?}",
-            self.session_id, self.agent_type
+            "SDK send_message session={} agent={:?} attachments={:?}",
+            self.session_id, self.agent_type, attachments
         );
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -232,6 +234,7 @@ impl ClaudeSdkSession {
             .send(SdkCommand::Prompt {
                 text,
                 turn_id: turn_id.to_string(),
+                attachments,
                 response_tx,
             })
             .map_err(|_| "Command channel closed".to_string())?;
@@ -1010,7 +1013,7 @@ async fn run_command_loop(
             // --- Incoming commands from the public API ---
             Some(command) = command_rx.recv() => {
                 match command {
-                    SdkCommand::Prompt { text, turn_id, response_tx } => {
+                    SdkCommand::Prompt { text, turn_id, attachments, response_tx } => {
                         info!("[SDK][{}] Received Prompt command, turn_id={}", session_id, turn_id);
 
                         // Emit TurnStarted
@@ -1022,13 +1025,31 @@ async fn run_command_loop(
                             },
                         });
 
+                        // Build user message with attachments
+                        let mut message_content = serde_json::json!({
+                            "role": "user",
+                            "content": text,
+                        });
+
+                        // Add attachments if any
+                        if !attachments.is_empty() {
+                            let attachments_json: Vec<serde_json::Value> = attachments.iter().map(|path| {
+                                serde_json::json!({
+                                    "type": "image",
+                                    "source": {
+                                        "type": "file",
+                                        "file": path,
+                                    }
+                                })
+                            }).collect();
+
+                            message_content["attachments"] = serde_json::json!(attachments_json);
+                        }
+
                         // Write the user message as ndJSON to stdin.
                         let user_msg = serde_json::json!({
                             "type": "user",
-                            "message": {
-                                "role": "user",
-                                "content": text,
-                            },
+                            "message": message_content,
                             "session_id": turn_id,
                         });
 

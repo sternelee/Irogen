@@ -96,6 +96,9 @@ struct ResponseMessage {
     content: Option<String>,
     #[serde(default)]
     tool_calls: Option<Vec<ToolCall>>,
+    /// Raw reasoning content from thinking models (e.g. DeepSeek-R1, Kimi K2.5, GLM-4.7).
+    #[serde(default, rename = "reasoning_content")]
+    reasoning_content: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

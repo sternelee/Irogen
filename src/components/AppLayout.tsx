@@ -242,18 +242,45 @@ export const AppLayout: Component = () => {
               </div>
 
               <div class="text-center max-w-md">
-                <div class="text-6xl mb-4">💬</div>
-                <h2 class="text-2xl font-bold mb-2">Welcome to ClawdChat</h2>
-                <p class="text-muted-foreground/70 mb-6">
-                  Manage multiple AI agent sessions in one place. Create a new
-                  session to get started.
+                {/* Logo */}
+                <div class="w-24 h-24 mx-auto mb-6 rounded-3xl bg-gradient-to-br from-primary via-primary/90 to-primary/60 flex items-center justify-center shadow-2xl shadow-primary/30">
+                  <span class="text-5xl text-white font-bold">R</span>
+                </div>
+                <h2 class="text-3xl font-bold mb-3 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+                  Welcome to riterm
+                </h2>
+                <p class="text-muted-foreground/70 mb-8 max-w-xs mx-auto leading-relaxed">
+                  Manage multiple AI agent sessions in one place. Create a new session to get started.
                 </p>
-                <Button
-                  variant="default"
-                  onClick={() => sessionStore.openNewSessionModal("local")}
-                >
-                  Create Session
-                </Button>
+                <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <Button
+                    variant="default"
+                    size="lg"
+                    class="px-6 h-12 text-sm font-medium bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-xl shadow-primary/20"
+                    onClick={() => sessionStore.openNewSessionModal("local")}
+                  >
+                    <FiPlus size={18} class="mr-2" />
+                    Create Session
+                  </Button>
+                </div>
+                {/* Features */}
+                <div class="grid grid-cols-3 gap-4 mt-12 text-left">
+                  <div class="p-3 rounded-xl bg-muted/50 border border-border/50">
+                    <div class="text-lg mb-1">🤖</div>
+                    <div class="text-xs font-medium">AI Agents</div>
+                    <div class="text-[10px] text-muted-foreground/60">Claude, Codex & more</div>
+                  </div>
+                  <div class="p-3 rounded-xl bg-muted/50 border border-border/50">
+                    <div class="text-lg mb-1">🔒</div>
+                    <div class="text-xs font-medium">P2P Secure</div>
+                    <div class="text-[10px] text-muted-foreground/60">End-to-end encrypted</div>
+                  </div>
+                  <div class="p-3 rounded-xl bg-muted/50 border border-border/50">
+                    <div class="text-lg mb-1">💬</div>
+                    <div class="text-xs font-medium">Terminal</div>
+                    <div class="text-[10px] text-muted-foreground/60">Real-time sharing</div>
+                  </div>
+                </div>
               </div>
             </div>
           }

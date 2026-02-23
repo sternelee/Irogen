@@ -64,6 +64,7 @@ enum CodexCommand {
     Prompt {
         text: String,
         turn_id: String,
+        attachments: Vec<String>,
         response_tx: oneshot::Sender<std::result::Result<(), String>>,
     },
     /// Cancel / interrupt the current operation.
@@ -205,16 +206,18 @@ impl CodexAcpSession {
         &self,
         text: String,
         turn_id: &str,
+        attachments: Vec<String>,
     ) -> std::result::Result<(), String> {
         debug!(
-            "Codex send_message session={} agent={:?}",
-            self.session_id, self.agent_type
+            "Codex send_message session={} agent={:?} attachments={:?}",
+            self.session_id, self.agent_type, attachments
         );
         let (response_tx, response_rx) = oneshot::channel();
 
         self.command_tx
             .send(CodexCommand::Prompt {
                 text,
+                attachments,
                 turn_id: turn_id.to_string(),
                 response_tx,
             })
@@ -481,7 +484,7 @@ async fn run_codex_event_loop(
             // --- Branch 2: Commands from the public API ---
             Some(command) = command_rx.recv() => {
                 match command {
-                    CodexCommand::Prompt { text, turn_id, response_tx } => {
+                    CodexCommand::Prompt { text, attachments, turn_id, response_tx } => {
                         info!("[Codex][{}] Received Prompt command, turn_id={}", session_id, turn_id);
 
                         current_turn_id = turn_id.clone();

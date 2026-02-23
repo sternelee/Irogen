@@ -180,6 +180,7 @@ enum AcpCommand {
     Prompt {
         text: String,
         turn_id: String,
+        attachments: Vec<String>,
         response_tx: oneshot::Sender<std::result::Result<(), String>>,
     },
     /// Cancel the current operation
@@ -350,10 +351,11 @@ impl AcpStreamingSession {
         &self,
         text: String,
         turn_id: &str,
+        attachments: Vec<String>,
     ) -> std::result::Result<(), String> {
         debug!(
-            "ACP send_message session={} agent={:?}",
-            self.session_id, self.agent_type
+            "ACP send_message session={} agent={:?} attachments={:?}",
+            self.session_id, self.agent_type, attachments
         );
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -361,6 +363,7 @@ impl AcpStreamingSession {
             .send(AcpCommand::Prompt {
                 text,
                 turn_id: turn_id.to_string(),
+                attachments,
                 response_tx,
             })
             .map_err(|_| String::from(AcpError::CommandChannelClosed))?;
@@ -853,11 +856,17 @@ async fn run_command_loop(
             AcpCommand::Prompt {
                 text,
                 turn_id,
+                attachments,
                 response_tx,
             } => {
                 {
                     let mut active = active_turn.write().await;
                     *active = Some(turn_id.clone());
+                }
+
+                // Log attachments for now (ACP protocol may handle differently)
+                if !attachments.is_empty() {
+                    debug!("[ACP][{}] Attachments received: {:?}", session_id, attachments);
                 }
 
                 let _ = event_sender.send(AgentTurnEvent {

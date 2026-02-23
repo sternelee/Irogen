@@ -22,6 +22,9 @@ std = [
   "codex-arg0",
   "codex-mcp-server",
   "tokio-tungstenite",
+  "ed25519-dalek",
+  "sha2",
+  "chrono",
 ]
 # Mobile runtime: only zeroclaw, no codex/agent-client-protocol
 mobile = [
@@ -79,6 +82,11 @@ zeroclaw = { path = "../zeroclaw", optional = true }
 
 # WebSocket support - only in std
 tokio-tungstenite = { workspace = true, optional = true }
+
+# OpenClaw Gateway support - only in std
+ed25519-dalek = { version = "2.0", features = ["rand_core"], optional = true }
+sha2 = { version = "0.10", optional = true }
+chrono = { version = "0.4", optional = true }
 
 # Codex ACP dependencies - only in std
 [dependencies.codex-core]

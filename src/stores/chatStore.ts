@@ -40,6 +40,7 @@ export interface Attachment {
   filename: string
   mimeType: string
   size: number
+  path?: string
   previewUrl?: string
 }
 
@@ -64,6 +65,7 @@ interface ChatState {
   inputValues: Record<string, string>
   activeSession: string | null
   toolStatus: Record<string, Record<string, ToolCall>>
+  attachments: Record<string, Attachment[]>
 }
 
 const initialState: ChatState = {
@@ -72,6 +74,7 @@ const initialState: ChatState = {
   inputValues: {},
   activeSession: null,
   toolStatus: {},
+  attachments: {},
 }
 
 export const createChatStore = () => {
@@ -181,6 +184,46 @@ export const createChatStore = () => {
   }
 
   // ========================================================================
+  // Attachment Operations
+  // ========================================================================
+
+  const getAttachments = (sessionId: string): Attachment[] => {
+    return state.attachments[sessionId] || []
+  }
+
+  const addAttachment = (sessionId: string, attachment: Omit<Attachment, 'id'>) => {
+    setState(
+      produce((s: ChatState) => {
+        if (!s.attachments[sessionId]) {
+          s.attachments[sessionId] = []
+        }
+        s.attachments[sessionId]!.push({
+          ...attachment,
+          id: crypto.randomUUID(),
+        })
+      }),
+    )
+  }
+
+  const removeAttachment = (sessionId: string, attachmentId: string) => {
+    setState(
+      produce((s: ChatState) => {
+        const attachments = s.attachments[sessionId]
+        if (!attachments) return
+        s.attachments[sessionId] = attachments.filter((a) => a.id !== attachmentId)
+      }),
+    )
+  }
+
+  const clearAttachments = (sessionId: string) => {
+    setState(
+      produce((s: ChatState) => {
+        s.attachments[sessionId] = []
+      }),
+    )
+  }
+
+  // ========================================================================
   // Input Operations
   // ========================================================================
 
@@ -246,6 +289,12 @@ export const createChatStore = () => {
     // Tool Status
     updateToolStatus,
     getToolStatus,
+
+    // Attachments
+    getAttachments,
+    addAttachment,
+    removeAttachment,
+    clearAttachments,
 
     // Active Session
     setActiveSession,

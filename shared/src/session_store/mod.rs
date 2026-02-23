@@ -71,6 +71,9 @@ pub struct ChatMessage {
     pub timestamp: u64,
     /// Sequence number for ordering
     pub sequence: u64,
+    /// Attachments (file paths)
+    #[serde(default)]
+    pub attachments: Option<Vec<String>>,
 }
 
 /// Session record - persisted representation of an agent session

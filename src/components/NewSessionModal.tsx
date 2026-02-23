@@ -138,7 +138,6 @@ export const NewSessionModal: Component = () => {
   );
 
   const isConnectingToNew = () =>
-    !sessionStore.state.activeSessionId &&
     sessionStore.state.newSessionMode === "remote" &&
     !sessionStore.state.targetControlSessionId;
 

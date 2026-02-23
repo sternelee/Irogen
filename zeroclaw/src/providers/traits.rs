@@ -60,6 +60,13 @@ pub struct ChatResponse {
     pub text: Option<String>,
     /// Tool calls requested by the LLM.
     pub tool_calls: Vec<ToolCall>,
+    /// Token usage reported by the provider, if available.
+    pub usage: Option<StreamUsage>,
+    /// Raw reasoning/thinking content from thinking models (e.g. DeepSeek-R1,
+    /// Kimi K2.5, GLM-4.7). Preserved as an opaque pass-through so it can be
+    /// sent back in subsequent API requests — some providers reject tool-call
+    /// history that omits this field.
+    pub reasoning_content: Option<String>,
 }
 
 impl ChatResponse {
@@ -91,6 +98,10 @@ pub enum ConversationMessage {
     AssistantToolCalls {
         text: Option<String>,
         tool_calls: Vec<ToolCall>,
+        /// Raw reasoning content from thinking models, preserved for round-trip
+        /// fidelity with provider APIs that require it.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reasoning_content: Option<String>,
     },
     /// Result of a tool execution, fed back to the LLM.
     ToolResult(ToolResultMessage),
@@ -557,6 +568,8 @@ pub trait Provider: Send + Sync {
         Ok(ChatResponse {
             text: Some(text),
             tool_calls: vec![],
+            usage: None,
+            reasoning_content: None,
         })
     }
 

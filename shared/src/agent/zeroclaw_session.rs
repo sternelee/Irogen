@@ -247,6 +247,7 @@ impl ZeroClawSession {
         &self,
         text: String,
         _turn_id: &str,
+        _attachments: Vec<String>,
     ) -> std::result::Result<(), String> {
         self.interrupted
             .store(false, std::sync::atomic::Ordering::Relaxed);

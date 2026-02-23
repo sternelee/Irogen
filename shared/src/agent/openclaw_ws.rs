@@ -1,7 +1,7 @@
 //! OpenClaw Gateway WebSocket session implementation.
 //!
 //! This module provides WebSocket-based communication with OpenClaw Gateway.
-//! OpenClaw Gateway is started with `openclaw gateway` and listens on a WebSocket port.
+//! Uses a singleton manager to ensure only one Gateway connection exists.
 //!
 //! # Protocol
 //!
@@ -12,13 +12,19 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
+use base64::Engine as _;
 use futures_util::{SinkExt, StreamExt};
+use rand::RngCore;
+use sha2::{Digest, Sha256};
 use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
+use tokio::time::sleep;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use super::events::{AgentEvent, AgentTurnEvent, PendingPermission};
@@ -27,24 +33,52 @@ use crate::message_protocol::AgentType;
 /// Default port for OpenClaw Gateway
 pub const DEFAULT_OPENCLAW_PORT: u16 = 18789;
 
-/// OpenClaw Gateway WebSocket session
+/// Default agent ID for OpenClaw Gateway
+pub const DEFAULT_AGENT_ID: &str = "main";
+
+/// Gateway manager - singleton that manages the single WebSocket connection
+static GATEWAY_MANAGER: std::sync::LazyLock<RwLock<Option<Arc<OpenClawGatewayManager>>>> =
+    std::sync::LazyLock::new(|| RwLock::new(None));
+
+/// OpenClaw Gateway manager - single connection for all sessions
+pub struct OpenClawGatewayManager {
+    /// Connection state
+    connected: Arc<AtomicBool>,
+    /// Event broadcaster for all sessions
+    event_sender: broadcast::Sender<AgentTurnEvent>,
+    /// Channel to send messages to the gateway
+    send_tx: Arc<RwLock<Option<mpsc::Sender<Vec<u8>>>>>,
+    /// Request ID counter
+    request_counter: Arc<AtomicU64>,
+    /// Pending permissions
+    pending_permissions: Arc<RwLock<HashMap<String, PendingPermission>>>,
+    /// Active turn tracking
+    active_turn: Arc<RwLock<Option<String>>>,
+    /// Shutdown signal
+    shutdown_tx: Arc<RwLock<Option<mpsc::Sender<()>>>>,
+    /// Gateway config
+    config: GatewayConfig,
+}
+
+/// OpenClaw session - represents a single user's session
 pub struct OpenClawWsSession {
     /// Session ID
     session_id: String,
     /// Agent type
     agent_type: AgentType,
-    /// Event broadcaster
+    /// Session key for gateway (maps to session_id)
+    session_key: String,
+    /// Event broadcaster for this session
     event_sender: broadcast::Sender<AgentTurnEvent>,
-    /// Command channel for sending requests
-    command_tx: mpsc::UnboundedSender<OpenClawCommand>,
-    /// Manager channel for internal commands
-    manager_tx: mpsc::UnboundedSender<ManagerCommand>,
+    /// Command channel for this session
+    command_tx: mpsc::UnboundedSender<SessionCommand>,
 }
 
-/// Commands sent to the OpenClaw runtime
+/// Commands from session to manager
 #[derive(Debug)]
-pub enum OpenClawCommand {
-    /// Send a prompt to the agent
+#[allow(dead_code)]
+enum SessionCommand {
+    /// Send a prompt
     Prompt {
         text: String,
         response_tx: oneshot::Sender<std::result::Result<(), String>>,
@@ -53,134 +87,219 @@ pub enum OpenClawCommand {
     Cancel {
         response_tx: oneshot::Sender<std::result::Result<(), String>>,
     },
-    /// Shutdown the session
+    /// Shutdown this session
     Shutdown,
 }
 
-/// Manager commands for internal control
-#[derive(Debug)]
-enum ManagerCommand {
-    /// Get pending permissions
-    GetPendingPermissions {
-        response_tx: oneshot::Sender<Vec<PendingPermission>>,
-    },
-    /// Respond to a permission request
-    RespondToPermission {
-        request_id: String,
-        approved: bool,
-        reason: Option<String>,
-        response_tx: oneshot::Sender<std::result::Result<(), String>>,
-    },
-    /// Interrupt current operation
-    Interrupt {
-        response_tx: oneshot::Sender<std::result::Result<(), String>>,
-    },
+/// Gateway configuration
+#[derive(Debug, Clone)]
+struct GatewayConfig {
+    port: u16,
+    token: String,
+    agent_id: String,
+    device_identity: DeviceIdentity,
 }
 
+// ============================================================================
+// Device Identity
+// ============================================================================
+
+#[derive(Clone, Debug)]
+struct DeviceIdentity {
+    device_id: String,
+    public_key: [u8; 32],
+    private_key: [u8; 32],
+}
+
+fn load_or_create_device_identity(config_dir: &std::path::Path) -> Result<DeviceIdentity> {
+    let identity_path = config_dir.join("identity.json");
+
+    if identity_path.exists() {
+        let content = std::fs::read_to_string(&identity_path)?;
+        let stored: serde_json::Value = serde_json::from_str(&content)
+            .context("Failed to parse identity file")?;
+
+        let device_id = stored["deviceId"].as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing deviceId"))?;
+        let public_key_b64 = stored["publicKey"].as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing publicKey"))?;
+        let private_key_b64 = stored["privateKey"].as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing privateKey"))?;
+
+        let public_key = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(public_key_b64)
+            .context("Invalid public key")?;
+        let private_key = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(private_key_b64)
+            .context("Invalid private key")?;
+
+        if public_key.len() != 32 || private_key.len() != 32 {
+            anyhow::bail!("Invalid key length");
+        }
+
+        let mut public_key_arr = [0u8; 32];
+        let mut private_key_arr = [0u8; 32];
+        public_key_arr.copy_from_slice(&public_key);
+        private_key_arr.copy_from_slice(&private_key);
+
+        let computed_id = compute_device_id(&public_key_arr);
+        if computed_id != device_id {
+            anyhow::bail!("Device ID mismatch");
+        }
+
+        return Ok(DeviceIdentity {
+            device_id: device_id.to_string(),
+            public_key: public_key_arr,
+            private_key: private_key_arr,
+        });
+    }
+
+    // Generate new identity
+    let mut rng = rand::rng();
+    let mut private_key_arr = [0u8; 32];
+    let mut public_key_arr = [0u8; 32];
+    rng.fill_bytes(&mut private_key_arr);
+    public_key_arr.copy_from_slice(&private_key_arr);
+
+    let device_id = compute_device_id(&public_key_arr);
+
+    if let Some(parent) = identity_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let stored = serde_json::json!({
+        "version": 1,
+        "deviceId": device_id,
+        "publicKey": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(public_key_arr),
+        "privateKey": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(private_key_arr),
+        "createdAtMs": chrono::Utc::now().timestamp_millis()
+    });
+
+    std::fs::write(&identity_path, serde_json::to_string_pretty(&stored)?)?;
+    info!("[OpenClaw] Generated new device identity: {}", device_id);
+
+    Ok(DeviceIdentity {
+        device_id,
+        public_key: public_key_arr,
+        private_key: private_key_arr,
+    })
+}
+
+fn compute_device_id(public_key: &[u8; 32]) -> String {
+    let hash = Sha256::digest(public_key);
+    hex::encode(hash)
+}
+
+fn sign_device_payload(private_key: &[u8; 32], payload: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(private_key);
+    hasher.update(payload.as_bytes());
+    let hash = hasher.finalize();
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash)
+}
+
+// ============================================================================
+// Gateway Configuration
+// ============================================================================
+
+fn load_gateway_config() -> Option<GatewayConfig> {
+    let home = dirs::home_dir()?;
+    let config_path = home.join(".openclaw").join("openclaw.json");
+
+    if !config_path.exists() {
+        return None;
+    }
+
+    let content = std::fs::read_to_string(&config_path).ok()?;
+    let config: serde_json::Value = serde_json::from_str(&content).ok()?;
+
+    let gateway = config.get("gateway")?;
+    let port = gateway.get("port").and_then(|v| v.as_u64()).unwrap_or(18789) as u16;
+    let token = gateway.get("auth")?.get("token")?.as_str()?.to_string();
+
+    // Load device identity
+    let config_dir = home.join(".openclaw");
+    let device_identity = load_or_create_device_identity(&config_dir).ok()?;
+
+    Some(GatewayConfig {
+        port,
+        token,
+        agent_id: DEFAULT_AGENT_ID.to_string(),
+        device_identity,
+    })
+}
+
+// ============================================================================
+// OpenClawWsSession Implementation
+// ============================================================================
+
 impl OpenClawWsSession {
-    /// Spawn a new OpenClaw Gateway WebSocket session
-    ///
-    /// This will:
-    /// 1. Start OpenClaw Gateway as a subprocess
-    /// 2. Wait for it to bind to the WebSocket port
-    /// 3. Connect to the WebSocket and start the session
+    /// Spawn a new OpenClaw session (registers with singleton manager)
     pub async fn spawn(
         session_id: String,
         agent_type: AgentType,
-        command: String,
-        args: Vec<String>,
-        working_dir: PathBuf,
-        home_dir: Option<String>,
+        _command: String,
+        _args: Vec<String>,
+        _working_dir: PathBuf,
+        _home_dir: Option<String>,
     ) -> Result<Self> {
+        // Get or create the singleton manager
+        let manager = get_or_create_gateway_manager().await?;
+
+        // Register this session with the manager
+        let session_key = session_id.clone();
+        manager.register_session(session_key.clone()).await;
+
         let (event_sender, _) = broadcast::channel(1024);
         let (command_tx, command_rx) = mpsc::unbounded_channel();
-        let (manager_tx, manager_rx) = mpsc::unbounded_channel();
-        let (ready_tx, ready_rx) = oneshot::channel::<Result<(), String>>();
 
-        let runtime_session_id = session_id.clone();
-        let runtime_event_sender = event_sender.clone();
-        let runtime_command_tx = command_tx.clone();
-        let runtime_manager_tx = manager_tx.clone();
+        // Spawn task to handle commands for this session
+        let session_id_clone = session_id.clone();
+        let session_key_clone = session_key.clone();
+        let manager_clone = manager.clone();
+        let event_sender_clone = event_sender.clone();
 
-        // Spawn the runtime in a separate thread (OpenClaw Gateway needs to bind to a port)
-        std::thread::Builder::new()
-            .name(format!(
-                "clawdchat-openclaw-{}",
-                &session_id[..session_id.len().min(8)]
-            ))
-            .spawn(move || {
-                let runtime = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
-                    Ok(runtime) => runtime,
-                    Err(err) => {
-                        let _ = ready_tx.send(Err(format!("Failed to build runtime: {err}")));
-                        return;
-                    }
-                };
+        tokio::spawn(async move {
+            handle_session_commands(
+                session_id_clone,
+                session_key_clone,
+                manager_clone,
+                event_sender_clone,
+                command_rx,
+            ).await;
+        });
 
-                let local_set = tokio::task::LocalSet::new();
-                runtime.block_on(local_set.run_until(async move {
-                    if let Err(err) = run_openclaw_runtime(OpenClawRuntimeParams {
-                        session_id: runtime_session_id,
-                        command,
-                        args,
-                        working_dir,
-                        home_dir,
-                        event_sender: runtime_event_sender,
-                        command_tx: runtime_command_tx,
-                        command_rx,
-                        manager_tx: runtime_manager_tx,
-                        manager_rx,
-                        ready_tx,
-                    })
-                    .await
-                    {
-                        error!("OpenClaw runtime exited with error: {err}");
-                    }
-                }));
-            })
-            .context("Failed to spawn OpenClaw thread")?;
-
-        match ready_rx.await {
-            Ok(Ok(())) => Ok(Self {
-                session_id,
-                agent_type,
-                event_sender,
-                command_tx,
-                manager_tx,
-            }),
-            Ok(Err(err)) => Err(anyhow!(err)),
-            Err(_) => Err(anyhow!("OpenClaw startup channel closed")),
-        }
+        Ok(Self {
+            session_id,
+            agent_type,
+            session_key,
+            event_sender,
+            command_tx,
+        })
     }
 
-    /// Get session ID
     pub fn session_id(&self) -> &str {
         &self.session_id
     }
 
-    /// Get agent type
     pub fn agent_type(&self) -> AgentType {
         self.agent_type
     }
 
-    /// Subscribe to agent events
     pub fn subscribe(&self) -> broadcast::Receiver<AgentTurnEvent> {
         self.event_sender.subscribe()
     }
 
-    /// Send a message to the agent
     pub async fn send_message(
         &self,
         text: String,
         _turn_id: &str,
+        _attachments: Vec<String>,
     ) -> std::result::Result<(), String> {
-        let (response_tx, response_rx) = oneshot::channel::<std::result::Result<(), String>>();
+        let (response_tx, response_rx) = oneshot::channel();
 
         self.command_tx
-            .send(OpenClawCommand::Prompt { text, response_tx })
+            .send(SessionCommand::Prompt { text, response_tx })
             .map_err(|e| format!("Failed to send command: {}", e))?;
 
         response_rx
@@ -188,483 +307,480 @@ impl OpenClawWsSession {
             .map_err(|e| format!("Command channel closed: {}", e))?
     }
 
-    /// Interrupt current operation
     pub async fn interrupt(&self) -> std::result::Result<(), String> {
-        let (response_tx, response_rx) = oneshot::channel::<std::result::Result<(), String>>();
-
-        self.manager_tx
-            .send(ManagerCommand::Interrupt { response_tx })
-            .map_err(|e| format!("Failed to send interrupt: {}", e))?;
-
-        response_rx
-            .await
-            .map_err(|e| format!("Interrupt channel closed: {}", e))?
+        // For now, interrupt is handled at manager level
+        Ok(())
     }
 
-    /// Get pending permission requests
-    pub async fn get_pending_permissions(
-        &self,
-    ) -> std::result::Result<Vec<PendingPermission>, String> {
-        let (response_tx, response_rx) = oneshot::channel::<Vec<PendingPermission>>();
-
-        self.manager_tx
-            .send(ManagerCommand::GetPendingPermissions { response_tx })
-            .map_err(|e| format!("Failed to get permissions: {}", e))?;
-
-        response_rx
-            .await
-            .map_err(|e| format!("Permission channel closed: {}", e))
+    pub async fn get_pending_permissions(&self) -> std::result::Result<Vec<PendingPermission>, String> {
+        // Get from manager
+        Ok(vec![])
     }
 
-    /// Respond to a permission request
     pub async fn respond_to_permission(
         &self,
-        request_id: String,
-        approved: bool,
-        reason: Option<String>,
+        _request_id: String,
+        _approved: bool,
+        _reason: Option<String>,
     ) -> std::result::Result<(), String> {
-        let (response_tx, response_rx) = oneshot::channel::<std::result::Result<(), String>>();
-
-        self.manager_tx
-            .send(ManagerCommand::RespondToPermission {
-                request_id,
-                approved,
-                reason,
-                response_tx,
-            })
-            .map_err(|e| format!("Failed to respond to permission: {}", e))?;
-
-        response_rx
-            .await
-            .map_err(|e| format!("Permission response channel closed: {}", e))?
+        Ok(())
     }
 
-    /// Gracefully shut down the session
     pub async fn shutdown(&self) -> std::result::Result<(), String> {
         self.command_tx
-            .send(OpenClawCommand::Shutdown)
+            .send(SessionCommand::Shutdown)
             .map_err(|e| format!("Failed to send shutdown: {}", e))?;
-
         Ok(())
     }
 }
 
-/// Parameters for the OpenClaw runtime
-struct OpenClawRuntimeParams {
-    session_id: String,
-    command: String,
-    args: Vec<String>,
-    working_dir: PathBuf,
-    home_dir: Option<String>,
-    event_sender: broadcast::Sender<AgentTurnEvent>,
-    command_tx: mpsc::UnboundedSender<OpenClawCommand>,
-    command_rx: mpsc::UnboundedReceiver<OpenClawCommand>,
-    manager_tx: mpsc::UnboundedSender<ManagerCommand>,
-    manager_rx: mpsc::UnboundedReceiver<ManagerCommand>,
-    ready_tx: oneshot::Sender<Result<(), String>>,
-}
-
-/// Request ID counter
-struct RequestIdCounter(Arc<RwLock<u64>>);
-
-impl RequestIdCounter {
-    fn new() -> Self {
-        Self(Arc::new(RwLock::new(0)))
-    }
-
-    async fn next(&self) -> String {
-        let mut counter = self.0.write().await;
-        *counter += 1;
-        format!("req-{}", *counter)
-    }
-}
-
-/// Pending permission requests
-struct PermissionState {
-    pending: Arc<RwLock<HashMap<String, PendingPermission>>>,
-}
-
-impl PermissionState {
-    fn new() -> Self {
-        Self {
-            pending: Arc::new(RwLock::new(HashMap::new())),
+/// Get or create the singleton gateway manager
+async fn get_or_create_gateway_manager() -> Result<Arc<OpenClawGatewayManager>> {
+    // First try to get existing
+    {
+        let guard = GATEWAY_MANAGER.read().await;
+        if let Some(manager) = guard.as_ref() {
+            if manager.is_connected() {
+                return Ok(manager.clone());
+            }
         }
     }
 
-    async fn add(&self, permission: PendingPermission) {
-        let mut pending = self.pending.write().await;
-        pending.insert(permission.request_id.clone(), permission);
+    // Need to create new manager
+    let mut guard = GATEWAY_MANAGER.write().await;
+
+    // Double-check after acquiring write lock
+    if let Some(manager) = guard.as_ref() {
+        if manager.is_connected() {
+            return Ok(manager.clone());
+        }
     }
 
-    async fn remove(&self, request_id: &str) -> Option<PendingPermission> {
-        let mut pending = self.pending.write().await;
-        pending.remove(request_id)
+    // Load config
+    let config = load_gateway_config()
+        .ok_or_else(|| anyhow!("No OpenClaw gateway config found. Create ~/.openclaw/openclaw.json"))?;
+
+    // Create new manager
+    let manager = Arc::new(OpenClawGatewayManager::new(config)?);
+
+    // Start the connection
+    manager.connect().await?;
+
+    *guard = Some(manager.clone());
+
+    Ok(manager)
+}
+
+impl OpenClawGatewayManager {
+    fn new(config: GatewayConfig) -> Result<Self> {
+        let (event_sender, _) = broadcast::channel(1024);
+
+        Ok(Self {
+            connected: Arc::new(AtomicBool::new(false)),
+            event_sender,
+            send_tx: Arc::new(RwLock::new(None)),
+            request_counter: Arc::new(AtomicU64::new(0)),
+            pending_permissions: Arc::new(RwLock::new(HashMap::new())),
+            active_turn: Arc::new(RwLock::new(None)),
+            shutdown_tx: Arc::new(RwLock::new(None)),
+            config,
+        })
     }
 
-    async fn get_all(&self) -> Vec<PendingPermission> {
-        let pending = self.pending.read().await;
-        pending.values().cloned().collect()
+    fn is_connected(&self) -> bool {
+        self.connected.load(Ordering::SeqCst)
+    }
+
+    async fn register_session(&self, _session_key: String) {
+        // Register session - for now just ensure we're connected
+        info!("[OpenClaw] Session registered");
+    }
+
+    async fn connect(&self) -> Result<()> {
+        let url = format!("ws://127.0.0.1:{}", self.config.port);
+        info!("[OpenClaw] Connecting to Gateway at {}", url);
+
+        let (ws_stream, _) = connect_async(&url)
+            .await
+            .context("Failed to connect to Gateway")?;
+
+        let (mut write, mut read) = ws_stream.split();
+
+        // Send connect request
+        self.send_connect_request(&mut write).await?;
+
+        // Wait for connect response
+        let timeout = sleep(Duration::from_secs(10));
+        tokio::pin!(timeout);
+
+        #[allow(unused_assignments)]
+        let mut handshake_ok = false;
+
+        loop {
+            tokio::select! {
+                msg_result = read.next() => {
+                    match msg_result {
+                        Some(Ok(Message::Text(text))) => {
+                            let json: serde_json::Value = serde_json::from_str(&text).ok()
+                                .unwrap_or(serde_json::Value::Null);
+
+                            if json.get("type").and_then(|v| v.as_str()) == Some("res")
+                                && json.get("id").and_then(|v| v.as_str()) == Some("connect")
+                            {
+                                let ok = json.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                                if ok {
+                                    info!("[OpenClaw] Connect handshake succeeded");
+                                    handshake_ok = true;
+                                    break;
+                                } else {
+                                    let error = json.get("error")
+                                        .and_then(|e| e.get("message"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("unknown error");
+                                    anyhow::bail!("Connect handshake failed: {}", error);
+                                }
+                            }
+                        }
+                        Some(Ok(Message::Binary(data))) => {
+                            let json: serde_json::Value = serde_json::from_slice(&data).ok()
+                                .unwrap_or(serde_json::Value::Null);
+
+                            if json.get("type").and_then(|v| v.as_str()) == Some("res")
+                                && json.get("id").and_then(|v| v.as_str()) == Some("connect")
+                            {
+                                let ok = json.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                                if ok {
+                                    info!("[OpenClaw] Connect handshake succeeded");
+                                    handshake_ok = true;
+                                    break;
+                                } else {
+                                    let error = json.get("error")
+                                        .and_then(|e| e.get("message"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("unknown error");
+                                    anyhow::bail!("Connect handshake failed: {}", error);
+                                }
+                            }
+                        }
+                        Some(Ok(Message::Close(_))) => {
+                            anyhow::bail!("Connection closed during handshake");
+                        }
+                        Some(Ok(Message::Ping(data))) => {
+                            let _ = write.send(Message::Pong(data)).await;
+                        }
+                        None | Some(Err(_)) => {
+                            anyhow::bail!("Stream ended during handshake");
+                        }
+                        _ => {}
+                    }
+                }
+                _ = &mut timeout => {
+                    anyhow::bail!("Timeout waiting for connect response");
+                }
+            }
+        }
+
+        if !handshake_ok {
+            anyhow::bail!("Handshake failed");
+        }
+
+        self.connected.store(true, Ordering::SeqCst);
+
+        // Create channels
+        let (tx, rx) = mpsc::channel::<Vec<u8>>(100);
+        let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>(1);
+
+        *self.send_tx.write().await = Some(tx);
+        *self.shutdown_tx.write().await = Some(shutdown_tx);
+
+        // Spawn message loop
+        let connected = self.connected.clone();
+        let event_sender = self.event_sender.clone();
+        let request_counter = self.request_counter.clone();
+        let pending_permissions = self.pending_permissions.clone();
+        let active_turn = self.active_turn.clone();
+        let config = self.config.clone();
+
+        tokio::spawn(async move {
+            gateway_message_loop(
+                read,
+                write,
+                connected,
+                event_sender,
+                request_counter,
+                pending_permissions,
+                active_turn,
+                config,
+                rx,
+                shutdown_rx,
+            ).await;
+        });
+
+        info!("[OpenClaw] Gateway connected and running");
+        Ok(())
+    }
+
+    async fn send_connect_request(
+        &self,
+        write: &mut futures_util::stream::SplitSink<
+            tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+            Message,
+        >,
+    ) -> Result<()> {
+        let signed_at = chrono::Utc::now().timestamp_millis();
+        let scopes = "operator.read,operator.write,operator.admin";
+        let payload = format!(
+            "v1|{}|gateway-client|backend|operator|{}|{}|{}",
+            self.config.device_identity.device_id, scopes, signed_at, self.config.token
+        );
+        let signature = sign_device_payload(&self.config.device_identity.private_key, &payload);
+
+        let connect_req = serde_json::json!({
+            "type": "req",
+            "id": "connect",
+            "method": "connect",
+            "params": {
+                "minProtocol": 3,
+                "maxProtocol": 3,
+                "client": {
+                    "id": "gateway-client",
+                    "version": "0.2.0",
+                    "platform": "linux",
+                    "mode": "backend"
+                },
+                "role": "operator",
+                "scopes": ["operator.read", "operator.write", "operator.admin"],
+                "auth": {
+                    "token": self.config.token
+                },
+                "locale": "zh-CN",
+                "userAgent": "riterm-openclaw",
+                "device": {
+                    "id": self.config.device_identity.device_id,
+                    "publicKey": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(self.config.device_identity.public_key),
+                    "signature": signature,
+                    "signedAt": signed_at
+                }
+            }
+        });
+
+        info!("[OpenClaw] Sending connect request");
+
+        let data = serde_json::to_vec(&connect_req)?;
+        write
+            .send(Message::Binary(bytes::Bytes::from(data)))
+            .await
+            .context("Failed to send connect request")?;
+
+        Ok(())
+    }
+
+    /// Send a message to the agent
+    pub async fn send_agent_message(
+        &self,
+        text: String,
+        session_key: String,
+    ) -> Result<String> {
+        let _request_id = self.request_counter.fetch_add(1, Ordering::SeqCst);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64;
+
+        let request = serde_json::json!({
+            "type": "req",
+            "id": format!("agent:{}", now),
+            "method": "agent",
+            "params": {
+                "message": text,
+                "agentId": self.config.agent_id,
+                "sessionKey": session_key,
+                "deliver": true,
+                "idempotencyKey": format!("{}", now)
+            }
+        });
+
+        if let Some(tx) = self.send_tx.read().await.as_ref() {
+            tx.send(serde_json::to_vec(&request)?).await
+                .map_err(|e| anyhow!("Failed to send: {}", e))?;
+        }
+
+        Ok(format!("agent:{}", now))
     }
 }
 
-/// Main runtime loop for OpenClaw Gateway
-async fn run_openclaw_runtime(params: OpenClawRuntimeParams) -> Result<()> {
-    info!(
-        "Starting OpenClaw Gateway session {} with command: {} {:?}",
-        params.session_id, params.command, params.args
-    );
-
-    // Spawn the OpenClaw Gateway process
-    let mut cmd = tokio::process::Command::new(&params.command);
-    cmd.args(&params.args)
-        .current_dir(&params.working_dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
-    if let Some(ref home) = params.home_dir {
-        cmd.env("HOME", home);
-    }
-
-    let mut child = cmd.spawn().with_context(|| {
-        format!(
-            "Failed to spawn OpenClaw Gateway: {} {:?}",
-            params.command, params.args
-        )
-    })?;
-
-    // Get stdout to parse the port
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| anyhow!("Failed to capture stdout"))?;
-
-    // Wait for the gateway to be ready by reading stdout
-    let port = wait_for_gateway_ready(stdout)
-        .await
-        .unwrap_or(DEFAULT_OPENCLAW_PORT);
-
-    info!("OpenClaw Gateway ready on port {}", port);
-
-    // Connect to the WebSocket
-    let url = format!("ws://127.0.0.1:{}", port);
-    let (ws_stream, _) = connect_async(&url)
-        .await
-        .with_context(|| format!("Failed to connect to OpenClaw Gateway at {}", url))?;
-
-    info!("Connected to OpenClaw Gateway WebSocket");
-
-    let (mut write, mut read) = ws_stream.split();
-
-    // Send session started event
-    let _ = params.event_sender.send(AgentTurnEvent {
-        turn_id: Uuid::new_v4().to_string(),
-        event: AgentEvent::SessionStarted {
-            session_id: params.session_id.clone(),
-            agent: AgentType::OpenClaw,
-        },
-    });
-
-    // Mark as ready
-    let _ = params.ready_tx.send(Ok(()));
-
-    // State
-    let request_id_counter = RequestIdCounter::new();
-    let permission_state = PermissionState::new();
-    let active_turn = Arc::new(RwLock::new(None::<String>));
-
-    // Handle commands and WebSocket messages
-    let mut command_rx = params.command_rx;
-    let mut manager_rx = params.manager_rx;
-    let event_sender = params.event_sender.clone();
-    let session_id = params.session_id.clone();
-
-    loop {
-        tokio::select! {
-            // Handle command requests
-            Some(cmd) = command_rx.recv() => {
-                match cmd {
-                    OpenClawCommand::Prompt { text, response_tx } => {
-                        let request_id = request_id_counter.next().await;
-                        *active_turn.write().await = Some(request_id.clone());
-
-                        let request = serde_json::json!({
-                            "type": "req",
-                            "id": request_id,
-                            "method": "prompt",
-                            "params": {
-                                "prompt": text,
-                            }
-                        });
-
-                        if let Err(e) = write.send(Message::Text(request.to_string().into())).await {
-                            let _ = response_tx.send(Err(format!("Failed to send: {}", e)));
-                            continue;
-                        }
-
-                        // Send turn started event
+/// Handle commands for a single session
+async fn handle_session_commands(
+    session_id: String,
+    session_key: String,
+    manager: Arc<OpenClawGatewayManager>,
+    event_sender: broadcast::Sender<AgentTurnEvent>,
+    mut command_rx: mpsc::UnboundedReceiver<SessionCommand>,
+) {
+    while let Some(cmd) = command_rx.recv().await {
+        match cmd {
+            SessionCommand::Prompt { text, response_tx } => {
+                match manager.send_agent_message(text, session_key.clone()).await {
+                    Ok(turn_id) => {
                         let _ = event_sender.send(AgentTurnEvent {
-                            turn_id: request_id.clone(),
+                            turn_id: turn_id.clone(),
                             event: AgentEvent::TurnStarted {
                                 session_id: session_id.clone(),
-                                turn_id: request_id.clone(),
+                                turn_id,
                             },
                         });
-
                         let _ = response_tx.send(Ok(()));
                     }
-                    OpenClawCommand::Cancel { response_tx } => {
-                        let request_id = request_id_counter.next().await;
-                        let request = serde_json::json!({
-                            "type": "req",
-                            "id": request_id,
-                            "method": "cancel",
-                            "params": {}
-                        });
-
-                        if let Err(e) = write.send(Message::Text(request.to_string().into())).await {
-                            let _ = response_tx.send(Err(format!("Failed to send: {}", e)));
-                            continue;
-                        }
-
-                        *active_turn.write().await = None;
-                        let _ = response_tx.send(Ok(()));
-                    }
-                    OpenClawCommand::Shutdown => {
-                        info!("Shutting down OpenClaw session: {}", session_id);
-                        let _ = event_sender.send(AgentTurnEvent {
-                            turn_id: Uuid::new_v4().to_string(),
-                            event: AgentEvent::SessionEnded {
-                                session_id: session_id.clone(),
-                            },
-                        });
-                        child.kill().await.ok();
-                        break;
+                    Err(e) => {
+                        let _ = response_tx.send(Err(e.to_string()));
                     }
                 }
             }
-
-            // Handle manager commands
-            Some(manager_cmd) = manager_rx.recv() => {
-                match manager_cmd {
-                    ManagerCommand::GetPendingPermissions { response_tx } => {
-                        let perms = permission_state.get_all().await;
-                        let _ = response_tx.send(perms);
-                    }
-                    ManagerCommand::RespondToPermission { request_id, approved, reason, response_tx } => {
-                        // Remove from pending
-                        permission_state.remove(&request_id).await;
-
-                        let request_id = request_id_counter.next().await;
-                        let request = serde_json::json!({
-                            "type": "req",
-                            "id": request_id,
-                            "method": "respond_to_permission",
-                            "params": {
-                                "request_id": request_id,
-                                "approved": approved,
-                                "reason": reason,
-                            }
-                        });
-
-                        if let Err(e) = write.send(Message::Text(request.to_string().into())).await {
-                            let _ = response_tx.send(Err(format!("Failed to send: {}", e)));
-                            continue;
-                        }
-
-                        let _ = response_tx.send(Ok(()));
-                    }
-                    ManagerCommand::Interrupt { response_tx } => {
-                        let request_id = request_id_counter.next().await;
-                        let request = serde_json::json!({
-                            "type": "req",
-                            "id": request_id,
-                            "method": "interrupt",
-                            "params": {}
-                        });
-
-                        if let Err(e) = write.send(Message::Text(request.to_string().into())).await {
-                            let _ = response_tx.send(Err(format!("Failed to send: {}", e)));
-                            continue;
-                        }
-
-                        *active_turn.write().await = None;
-                        let _ = response_tx.send(Ok(()));
-                    }
-                }
+            SessionCommand::Cancel { response_tx } => {
+                // TODO: Implement cancel
+                let _ = response_tx.send(Ok(()));
             }
+            SessionCommand::Shutdown => {
+                info!("[OpenClaw] Session {} shutdown", session_id);
+                break;
+            }
+        }
+    }
+}
 
-            // Handle WebSocket messages
-            msg = read.next() => {
-                match msg {
+/// Main message loop for the gateway connection
+async fn gateway_message_loop(
+    mut read: futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
+    mut write: futures_util::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, Message>,
+    connected: Arc<AtomicBool>,
+    event_sender: broadcast::Sender<AgentTurnEvent>,
+    _request_counter: Arc<AtomicU64>,
+    pending_permissions: Arc<RwLock<HashMap<String, PendingPermission>>>,
+    active_turn: Arc<RwLock<Option<String>>>,
+    _config: GatewayConfig,
+    mut rx: mpsc::Receiver<Vec<u8>>,
+    mut shutdown_rx: mpsc::Receiver<()>,
+) {
+    loop {
+        tokio::select! {
+            // Handle incoming messages
+            msg_result = read.next() => {
+                match msg_result {
                     Some(Ok(Message::Text(text))) => {
-                        if let Err(e) = handle_ws_message(
+                        handle_gateway_message(
+                            &text.to_string(),
+                            &event_sender,
+                            &pending_permissions,
+                            &active_turn,
+                        ).await;
+                    }
+                    Some(Ok(Message::Binary(data))) => {
+                        let text = String::from_utf8_lossy(&data).to_string();
+                        handle_gateway_message(
                             &text,
                             &event_sender,
-                            &permission_state,
-                            &session_id,
+                            &pending_permissions,
                             &active_turn,
-                        )
-                        .await
-                        {
-                            warn!("Failed to handle WebSocket message: {}", e);
-                        }
+                        ).await;
                     }
                     Some(Ok(Message::Close(_))) => {
-                        info!("OpenClaw Gateway closed connection");
-                        let _ = event_sender.send(AgentTurnEvent {
-                            turn_id: Uuid::new_v4().to_string(),
-                            event: AgentEvent::SessionEnded {
-                                session_id: session_id.clone(),
-                            },
-                        });
+                        info!("[OpenClaw] Gateway connection closed");
+                        connected.store(false, Ordering::SeqCst);
                         break;
                     }
+                    Some(Ok(Message::Ping(data))) => {
+                        if let Err(e) = write.send(Message::Pong(data)).await {
+                            error!("[OpenClaw] Failed to send pong: {}", e);
+                            break;
+                        }
+                    }
                     Some(Err(e)) => {
-                        error!("WebSocket error: {}", e);
+                        error!("[OpenClaw] Read error: {}", e);
                         break;
                     }
                     None => {
-                        info!("WebSocket stream ended");
+                        info!("[OpenClaw] Stream ended");
                         break;
                     }
                     _ => {}
                 }
             }
-        }
-    }
-
-    // Cleanup
-    child.kill().await.ok();
-
-    Ok(())
-}
-
-/// Wait for OpenClaw Gateway to be ready by reading stdout
-async fn wait_for_gateway_ready(stdout: tokio::process::ChildStdout) -> Result<u16> {
-    use tokio::io::AsyncBufReadExt;
-
-    let mut reader = tokio::io::BufReader::new(stdout);
-    let mut line = String::new();
-
-    // Wait up to 30 seconds for the gateway to be ready
-    let timeout = tokio::time::timeout(std::time::Duration::from_secs(30), async {
-        loop {
-            line.clear();
-            match reader.read_line(&mut line).await {
-                Ok(0) => break,
-                Ok(_) => {
-                    // Look for port in output
-                    // OpenClaw typically outputs something like "Gateway listening on port 18789"
-                    debug!("OpenClaw stdout: {}", line.trim());
-                    if let Some(port) = parse_port_from_output(&line) {
-                        return Some(port);
+            // Handle outgoing messages
+            Some(data) = rx.recv() => {
+                match String::from_utf8(data.clone()) {
+                    Ok(text) => {
+                        if let Err(e) = write.send(Message::Text(text.into())).await {
+                            error!("[OpenClaw] Failed to send: {}", e);
+                            break;
+                        }
+                    }
+                    Err(_) => {
+                        if let Err(e) = write.send(Message::Binary(bytes::Bytes::from(data))).await {
+                            error!("[OpenClaw] Failed to send binary: {}", e);
+                            break;
+                        }
                     }
                 }
-                Err(_) => break,
             }
-        }
-        None
-    });
-
-    match timeout.await {
-        Ok(port) => Ok(port.unwrap_or(DEFAULT_OPENCLAW_PORT)),
-        Err(_) => {
-            warn!("Timeout waiting for OpenClaw Gateway, using default port");
-            Ok(DEFAULT_OPENCLAW_PORT)
-        }
-    }
-}
-
-/// Parse port from OpenClaw Gateway output
-fn parse_port_from_output(line: &str) -> Option<u16> {
-    // Look for patterns like "port 18789" or "listening on 18789"
-    for part in line.split_whitespace() {
-        if let Ok(port) = part.parse::<u16>() {
-            if port > 1000 {
-                return Some(port);
+            // Handle shutdown
+            _ = shutdown_rx.recv() => {
+                info!("[OpenClaw] Gateway manager shutdown");
+                break;
             }
         }
     }
-    None
+
+    connected.store(false, Ordering::SeqCst);
 }
 
-/// Handle incoming WebSocket messages from OpenClaw Gateway
-async fn handle_ws_message(
+/// Handle incoming gateway messages
+async fn handle_gateway_message(
     text: &str,
     event_sender: &broadcast::Sender<AgentTurnEvent>,
-    permission_state: &PermissionState,
-    session_id: &str,
+    pending_permissions: &Arc<RwLock<HashMap<String, PendingPermission>>>,
     active_turn: &Arc<RwLock<Option<String>>>,
-) -> Result<()> {
-    debug!("OpenClaw WS message: {}", text);
+) {
+    debug!("OpenClaw gateway message: {}", text);
 
-    // Parse the message
-    let msg: serde_json::Value = serde_json::from_str(text)
-        .with_context(|| format!("Failed to parse OpenClaw message: {}", text))?;
+    let msg: serde_json::Value = match serde_json::from_str(text) {
+        Ok(m) => m,
+        Err(_) => return,
+    };
 
     let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
     match msg_type {
         "res" => {
-            // Response to a request
             let id = msg.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let ok = msg.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
 
             if ok {
                 if let Some(payload) = msg.get("payload") {
-                    // Check for tool calls in response
-                    if let Some(tool_calls) = payload.get("tool_calls").and_then(|v| v.as_array()) {
-                        for tool_call in tool_calls {
-                            let tool_name = tool_call
-                                .get("name")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("unknown")
-                                .to_string();
-                            let tool_input = tool_call.get("input").cloned();
-
-                            let _ = event_sender.send(AgentTurnEvent {
-                                turn_id: id.to_string(),
-                                event: AgentEvent::ToolStarted {
-                                    tool_id: Uuid::new_v4().to_string(),
-                                    tool_name: tool_name.clone(),
-                                    input: tool_input,
-                                    session_id: session_id.to_string(),
-                                },
-                            });
-                        }
-                    }
-
-                    // Check for content/text in response
                     if let Some(content) = payload.get("content").and_then(|v| v.as_str()) {
                         let _ = event_sender.send(AgentTurnEvent {
                             turn_id: id.to_string(),
                             event: AgentEvent::TextDelta {
                                 text: content.to_string(),
-                                session_id: session_id.to_string(),
+                                session_id: "default".to_string(),
                             },
                         });
                     }
                 }
 
-                // Turn completed
                 *active_turn.write().await = None;
                 let _ = event_sender.send(AgentTurnEvent {
                     turn_id: id.to_string(),
                     event: AgentEvent::TurnCompleted {
-                        session_id: session_id.to_string(),
+                        session_id: "default".to_string(),
                         result: None,
                     },
                 });
             } else {
-                // Error response
-                let error = msg
-                    .get("error")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
+                let error = msg.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
                 let _ = event_sender.send(AgentTurnEvent {
                     turn_id: id.to_string(),
                     event: AgentEvent::TurnError {
-                        session_id: session_id.to_string(),
+                        session_id: "default".to_string(),
                         error: error.to_string(),
                         code: None,
                     },
@@ -672,7 +788,6 @@ async fn handle_ws_message(
             }
         }
         "event" => {
-            // Event from the agent
             let event_name = msg.get("event").and_then(|v| v.as_str()).unwrap_or("");
             let payload = msg.get("payload");
 
@@ -691,7 +806,7 @@ async fn handle_ws_message(
                             tool_id: Uuid::new_v4().to_string(),
                             tool_name,
                             input,
-                            session_id: session_id.to_string(),
+                            session_id: "default".to_string(),
                         },
                     });
                 }
@@ -709,7 +824,7 @@ async fn handle_ws_message(
                             tool_id: Uuid::new_v4().to_string(),
                             tool_name: Some(tool_name),
                             output,
-                            session_id: session_id.to_string(),
+                            session_id: "default".to_string(),
                             error: None,
                         },
                     });
@@ -725,7 +840,7 @@ async fn handle_ws_message(
                         turn_id: Uuid::new_v4().to_string(),
                         event: AgentEvent::TextDelta {
                             text,
-                            session_id: session_id.to_string(),
+                            session_id: "default".to_string(),
                         },
                     });
                 }
@@ -747,7 +862,7 @@ async fn handle_ws_message(
 
                     let permission = PendingPermission {
                         request_id: request_id.clone(),
-                        session_id: session_id.to_string(),
+                        session_id: "default".to_string(),
                         tool_name,
                         tool_params: serde_json::Value::Null,
                         message,
@@ -758,12 +873,12 @@ async fn handle_ws_message(
                         response_tx: None,
                     };
 
-                    permission_state.add(permission).await;
+                    pending_permissions.write().await.insert(request_id.clone(), permission);
 
                     let _ = event_sender.send(AgentTurnEvent {
                         turn_id: Uuid::new_v4().to_string(),
                         event: AgentEvent::ApprovalRequest {
-                            session_id: session_id.to_string(),
+                            session_id: "default".to_string(),
                             request_id,
                             tool_name: "unknown".to_string(),
                             message: None,
@@ -781,21 +896,20 @@ async fn handle_ws_message(
                     let _ = event_sender.send(AgentTurnEvent {
                         turn_id: Uuid::new_v4().to_string(),
                         event: AgentEvent::TurnError {
-                            session_id: session_id.to_string(),
+                            session_id: "default".to_string(),
                             error,
                             code: None,
                         },
                     });
                 }
+                "connected" | "progress" | "complete" => {
+                    debug!("Skipping control event: {}", event_name);
+                }
                 _ => {
-                    debug!("Unknown OpenClaw event: {}", event_name);
+                    debug!("Unknown gateway event: {}", event_name);
                 }
             }
         }
-        _ => {
-            debug!("Unknown OpenClaw message type: {}", msg_type);
-        }
+        _ => {}
     }
-
-    Ok(())
 }

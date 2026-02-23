@@ -2497,7 +2497,7 @@ impl SlashCommandMessageHandler {
 
         // 直接发送命令到 Agent 的 stdin
         self.agent_manager
-            .send_message(&session_id, raw_command.clone())
+            .send_message(&session_id, raw_command.clone(), vec![])
             .await?;
 
         // 发送确认响应
@@ -2705,9 +2705,9 @@ impl AgentControlMessageHandler {
         let req_id = request_id.unwrap_or_else(|| Uuid::new_v4().to_string());
 
         let result = match &action {
-            AgentControlAction::SendInput { content } => {
+            AgentControlAction::SendInput { content, attachments } => {
                 self.agent_manager
-                    .send_message(&session_id, content.clone())
+                    .send_message(&session_id, content.clone(), attachments.clone())
                     .await
             }
             AgentControlAction::SendInterrupt => {

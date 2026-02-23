@@ -89,13 +89,14 @@ impl SessionKind {
         &self,
         text: String,
         turn_id: &str,
+        attachments: Vec<String>,
     ) -> std::result::Result<(), String> {
         match self {
-            SessionKind::Acp(s) => s.send_message(text, turn_id).await,
-            SessionKind::Sdk(s) => s.send_message(text, turn_id).await,
-            SessionKind::CodexAcp(s) => s.send_message(text, turn_id).await,
-            SessionKind::ZeroClaw(s) => s.send_message(text, turn_id).await,
-            SessionKind::OpenClawWs(s) => s.send_message(text, turn_id).await,
+            SessionKind::Acp(s) => s.send_message(text, turn_id, attachments).await,
+            SessionKind::Sdk(s) => s.send_message(text, turn_id, attachments).await,
+            SessionKind::CodexAcp(s) => s.send_message(text, turn_id, attachments).await,
+            SessionKind::ZeroClaw(s) => s.send_message(text, turn_id, attachments).await,
+            SessionKind::OpenClawWs(s) => s.send_message(text, turn_id, attachments).await,
         }
     }
 
@@ -395,13 +396,18 @@ impl AgentManager {
     }
 
     /// Send a message to an agent session
-    pub async fn send_message(&self, session_id: &str, message: String) -> Result<()> {
+    pub async fn send_message(
+        &self,
+        session_id: &str,
+        message: String,
+        attachments: Vec<String>,
+    ) -> Result<()> {
         let sessions = self.sessions.read().await;
 
         if let Some(session) = sessions.get(session_id) {
             let turn_id = uuid::Uuid::new_v4().to_string();
             session
-                .send_message(message, turn_id.as_str())
+                .send_message(message, turn_id.as_str(), attachments)
                 .await
                 .map_err(|e| anyhow!("Failed to send message: {}", e))
         } else {

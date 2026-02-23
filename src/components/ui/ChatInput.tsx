@@ -10,11 +10,13 @@
 
 import { type Component, Show, createSignal, createEffect, onMount } from "solid-js";
 import { cn } from "~/lib/utils";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   FiSend,
   FiSquare,
   FiPlus,
   FiCommand,
+  FiX,
 } from "solid-icons/fi";
 
 // ============================================================================
@@ -26,6 +28,8 @@ export interface ChatInputProps {
   onInput: (value: string) => void;
   onSubmit: () => void;
   onInterrupt?: () => void;
+  onAttach?: (files: File[]) => void;
+  attachments?: File[];
   placeholder?: string;
   disabled?: boolean;
   isStreaming?: boolean;
@@ -40,6 +44,32 @@ export interface ChatInputProps {
 export const ChatInput: Component<ChatInputProps> = (props) => {
   let textareaRef: HTMLTextAreaElement | undefined;
   const [focused, setFocused] = createSignal(false);
+
+  // Handle file selection
+  const handleAttach = async () => {
+    if (!props.onAttach) return;
+
+    try {
+      const selected = await open({
+        multiple: true,
+        title: "Select files to attach",
+      });
+
+      if (selected) {
+        const paths = Array.isArray(selected) ? selected : [selected];
+        // Convert paths to File-like objects with basic info
+        const files = paths.map((path) => {
+          const name = path.split(/[\\/]/).pop() || "file";
+          const file = new File([], name, { type: "application/octet-stream" });
+          (file as File & { path: string }).path = path;
+          return file;
+        });
+        props.onAttach(files);
+      }
+    } catch (err) {
+      console.error("Failed to open file dialog:", err);
+    }
+  };
 
   // Auto-resize textarea
   const adjustHeight = () => {
@@ -83,28 +113,29 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   return (
     <div
       class={cn(
-        "flex flex-col gap-2 p-3 bg-base-200 border-t border-border transition-colors",
-        focused() && "bg-base-100",
+        "flex flex-col gap-2 px-4 py-3 bg-background/80 backdrop-blur-md border-t border-border/60",
+        focused() && "bg-background",
         props.class
       )}
     >
       {/* Input Container */}
       <div
         class={cn(
-          "flex items-end gap-2 rounded-xl border bg-background transition-all duration-200",
+          "flex items-end gap-2 rounded-2xl border-2 bg-muted/30 transition-all duration-300",
           focused()
-            ? "border-primary shadow-lg shadow-primary/10"
-            : "border-border hover:border-muted-foreground/30"
+            ? "border-primary/50 shadow-xl shadow-primary/5 bg-background"
+            : "border-border/60 hover:border-muted-foreground/20 hover:bg-muted/50"
         )}
       >
         {/* Attach Button */}
         <button
           type="button"
-          class="p-2.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors shrink-0"
+          class="p-3 text-muted-foreground/60 hover:text-foreground hover:bg-muted/80 rounded-xl transition-all duration-200 shrink-0"
           title="Attach files"
           disabled={props.disabled}
+          onClick={handleAttach}
         >
-          <FiPlus size={20} />
+          <FiPlus size={22} />
         </button>
 
         {/* Textarea */}
@@ -116,7 +147,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder={props.placeholder || "Type your message..."}
-          class="flex-1 py-3 bg-transparent border-none outline-none resize-none text-sm max-h-[200px] min-h-[24px] leading-relaxed"
+          class="flex-1 py-3.5 bg-transparent border-none outline-none resize-none text-sm max-h-[200px] min-h-[24px] leading-relaxed placeholder:text-muted-foreground/40"
           disabled={props.disabled}
           rows={1}
         />
@@ -135,10 +166,10 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             !props.isStreaming && (!props.value.trim() || props.disabled)
           }
           class={cn(
-            "shrink-0 p-2.5 rounded-xl transition-all duration-200",
+            "shrink-0 p-3 rounded-xl transition-all duration-300 shadow-lg",
             props.isStreaming
-              ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              : "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 animate-pulse"
+              : "bg-gradient-to-r from-primary to-primary/90 text-primary-foreground hover:from-primary/90 hover:to-primary/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
           )}
           title={props.isStreaming ? "Stop generation" : "Send message"}
         >
@@ -148,17 +179,36 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
         </button>
       </div>
 
+      {/* Attachments List */}
+      <Show when={props.attachments && props.attachments.length > 0}>
+        <div class="flex flex-wrap gap-2 px-1">
+          {props.attachments!.map((file) => (
+            <div class="flex items-center gap-2 px-3 py-1.5 bg-muted/60 rounded-lg text-xs border border-border/30">
+              <FiPlus size={12} class="rotate-45 text-muted-foreground/60" />
+              <span class="truncate max-w-[150px]">{file.name}</span>
+              <button
+                type="button"
+                class="p-0.5 hover:bg-muted-foreground/20 rounded text-muted-foreground/60"
+                onClick={() => props.onAttach?.([])} // Will be handled via parent
+              >
+                <FiX size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </Show>
+
       {/* Footer */}
-      <div class="flex items-center justify-between px-1 text-[10px] text-muted-foreground/60">
-        <div class="flex items-center gap-3">
-          <span class="flex items-center gap-1">
-            <kbd class="kbd kbd-xs">↵</kbd> send
+      <div class="flex items-center justify-between px-2 text-[10px] text-muted-foreground/40">
+        <div class="flex items-center gap-4">
+          <span class="flex items-center gap-1.5">
+            <kbd class="kbd kbd-xs bg-muted/50 border-border/30">↵</kbd> send
           </span>
           <span class="flex items-center gap-1">
-            <kbd class="kbd kbd-xs">⇧</kbd>+<kbd class="kbd kbd-xs">↵</kbd> new line
+            <kbd class="kbd kbd-xs bg-muted/50 border-border/30">⇧</kbd>+<kbd class="kbd kbd-xs bg-muted/50 border-border/30">↵</kbd> new line
           </span>
         </div>
-        <span>Markdown supported</span>
+        <span class="opacity-60">Markdown supported</span>
       </div>
     </div>
   );

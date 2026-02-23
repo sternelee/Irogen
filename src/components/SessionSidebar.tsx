@@ -84,11 +84,11 @@ const SessionItem: Component<SessionItemProps> = (props) => {
     <div
       role="button"
       tabIndex={0}
-      class={`group relative flex items-center gap-3 px-4 py-3 cursor-pointer transition-all duration-200
+      class={`group relative flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 mx-1
         ${
           props.isActive
-            ? "bg-primary/10 border-r-2 border-primary"
-            : "hover:bg-muted/50 border-r-2 border-transparent"
+            ? "bg-gradient-to-r from-primary/15 to-primary/5 border border-primary/20 shadow-sm"
+            : "hover:bg-muted/60 border border-transparent"
         }`}
       onClick={props.onClick}
       onKeyDown={(e) => {
@@ -99,7 +99,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
       }}
     >
       {/* Agent Icon */}
-      <div class={`shrink-0 ${props.isActive ? "text-primary" : ""}`}>
+      <div class={`shrink-0 ${props.isActive ? "text-primary" : "text-muted-foreground/70"}`}>
         {getAgentIcon(session()?.agentType || "claude")}
       </div>
 
@@ -107,7 +107,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2">
           <span
-            class={`font-medium text-sm truncate ${props.isActive ? "text-primary" : ""}`}
+            class={`font-medium text-sm truncate ${props.isActive ? "text-foreground" : "text-foreground/80"}`}
           >
             {session()?.agentType === "claude" && "Claude"}
             {session()?.agentType === "gemini" && "Gemini"}
@@ -119,31 +119,34 @@ const SessionItem: Component<SessionItemProps> = (props) => {
             {session()?.agentType === "custom" && "Custom"}
           </span>
           <span
-            class={`text-xs text-muted-foreground ${
+            class={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
               session()?.mode === "local"
-                ? "bg-primary/20 px-2 py-0.5 rounded-full"
-                : "bg-muted px-2 py-0.5 rounded-full"
+                ? "bg-primary/15 text-primary/80"
+                : "bg-muted text-muted-foreground/60"
             }`}
           >
             {session()?.mode === "local" ? "Local" : "Remote"}
           </span>
         </div>
-        <div class="text-xs text-muted-foreground/60 truncate">
+        <div class="text-xs text-muted-foreground/50 truncate mt-0.5">
           {session()?.projectPath?.split("/").pop() || "No project"}
         </div>
       </div>
+
+      {/* Status Indicator */}
+      <div class={`w-2 h-2 rounded-full ${session()?.active !== false ? 'bg-green-500/80' : 'bg-muted'}`} />
 
       {/* Close Button */}
       <Button
         type="button"
         variant="ghost"
         size="xs"
-        class={`p-1 rounded opacity-0 inline-flex items-center justify-center group-hover:opacity-100 transition-opacity
+        class={`p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all duration-150 -mr-1
           ${props.isActive ? "hover:bg-primary/20" : "hover:bg-muted"}`}
         onClick={props.onClose}
         title="Close session"
       >
-        <FiX size={16} />
+        <FiX size={14} />
       </Button>
     </div>
   );
@@ -204,19 +207,19 @@ const SavedSessionItem: Component<SavedSessionItemProps> = (props) => {
 
   return (
     <div
-      class="group relative flex items-center gap-3 px-4 py-3 cursor-pointer transition-all duration-200
-        hover:bg-muted/50 border-r-2 border-transparent"
+      class="group relative flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 mx-1
+        hover:bg-muted/60 border border-transparent"
       onClick={handleRestore}
     >
       {/* Agent Icon */}
-      <div class="shrink-0 text-muted-foreground">
+      <div class="shrink-0 text-muted-foreground/50">
         <FiClock size={16} />
       </div>
 
       {/* Session Info */}
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2">
-          <span class="font-medium text-sm truncate">
+          <span class="font-medium text-sm truncate text-foreground/80">
             {props.session.agentType === "claudeCode" && "Claude"}
             {props.session.agentType === "gemini" && "Gemini"}
             {props.session.agentType === "openCode" && "OpenCode"}
@@ -230,25 +233,25 @@ const SavedSessionItem: Component<SavedSessionItemProps> = (props) => {
             {props.session.agentType === "opencode" && "OpenCode"}
             {props.session.agentType === "zeroclaw" && "ClawdAI"}
           </span>
-          <span class="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+          <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-muted/50 text-muted-foreground/60 font-medium">
             {props.session.messages?.length || 0} msgs
           </span>
         </div>
-        <div class="text-xs text-muted-foreground/60 truncate">
+        <div class="text-xs text-muted-foreground/40 truncate mt-0.5">
           {props.session.projectPath?.split("/").pop() || "No project"}
         </div>
-        <div class="text-xs text-muted-foreground/40">
+        <div class="text-[10px] text-muted-foreground/30 mt-0.5">
           {formatDate(props.session.lastActiveAt)}
         </div>
       </div>
 
       {/* Action Buttons */}
-      <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
         <Button
           type="button"
           variant="ghost"
           size="xs"
-          class="p-1 rounded hover:bg-primary/20"
+          class="p-1.5 rounded-md hover:bg-primary/20 text-muted-foreground/60 hover:text-primary"
           onClick={(e) => {
             e.stopPropagation();
             handleRestore();
@@ -262,7 +265,7 @@ const SavedSessionItem: Component<SavedSessionItemProps> = (props) => {
           type="button"
           variant="ghost"
           size="xs"
-          class="p-1 rounded hover:bg-destructive/20 text-destructive"
+          class="p-1.5 rounded-md hover:bg-destructive/20 text-muted-foreground/60 hover:text-destructive"
           onClick={(e) => {
             e.stopPropagation();
             handleDelete();
@@ -449,47 +452,56 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
 
       {/* Sidebar */}
       <aside
-        class={`fixed lg:static inset-y-0 bg-base-300 left-0 z-50 w-80 bg-background border-r border-border
-          transform transition-transform duration-300 ease-in-out
+        class={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-background to-base-200/50 border-r border-border/60
+          transform transition-transform duration-300 ease-in-out backdrop-blur-sm
           ${props.isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
       >
         {/* Header */}
-        <div class="flex items-center justify-between p-4 border-b border-border">
+        <div class="flex items-center justify-between px-4 py-4 border-b border-border/60 bg-background/50 backdrop-blur">
           <div class="flex items-center gap-2">
-            <h3 class="text-sm font-semibold">Sessions</h3>
+            {/* App Logo */}
+            <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg shadow-primary/20">
+              <span class="text-white font-bold text-sm">R</span>
+            </div>
+            <div>
+              <h3 class="text-sm font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">riterm</h3>
+              <p class="text-[10px] text-muted-foreground/60 -mt-0.5">AI Terminal</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-1">
             <Button
               type="button"
               size="sm"
               variant="ghost"
-              class="text-xs h-7"
+              class="text-xs h-7 text-muted-foreground hover:text-foreground"
               onClick={handleToggleSaved}
               title={
                 showSaved() ? "Hide saved sessions" : "Show saved sessions"
               }
             >
-              <FiClock size={14} class="mr-1" />
-              {showSaved() ? "Saved" : "History"}
+              <FiClock size={14} />
             </Button>
-            <span class="text-[10px] text-muted-foreground/50 hidden sm:inline">
-              Press <kbd class="kbd kbd-xs">B</kbd> to toggle
-            </span>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              class="h-7 w-7 lg:hidden"
+              onClick={props.onToggle}
+            >
+              <FiX size={16} />
+            </Button>
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            class="h-8 w-8 lg:hidden"
-            onClick={props.onToggle}
-          >
-            <FiX size={18} />
-          </Button>
         </div>
 
         {/* Session List */}
-        <div class="overflow-y-auto flex-1 p-2">
+        <div class="overflow-y-auto flex-1 p-2 space-y-1">
           {/* Active Sessions */}
           <Show when={!showSaved()}>
             <Show when={sessions().length > 0}>
+              <div class="px-2 py-2 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
+                Active Sessions
+              </div>
               <For each={sessions()}>
                 {(session) => (
                   <SessionItem
@@ -505,9 +517,12 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
               </For>
             </Show>
             <Show when={sessions().length === 0}>
-              <div class="text-center py-8 text-muted-foreground">
-                <p class="text-sm">No active sessions</p>
-                <p class="text-xs mt-1">
+              <div class="flex flex-col items-center justify-center py-10 text-center px-4">
+                <div class="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+                  <FiPlus size={24} class="text-muted-foreground/50" />
+                </div>
+                <p class="text-sm font-medium text-muted-foreground">No active sessions</p>
+                <p class="text-xs text-muted-foreground/60 mt-1 max-w-[160px]">
                   Create a local session or connect to a remote CLI
                 </p>
               </div>
@@ -516,14 +531,14 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
 
           {/* Saved Sessions */}
           <Show when={showSaved()}>
-            <div class="mt-2 pt-2 border-t border-border">
-              <div class="px-2 py-1 text-xs font-medium text-muted-foreground">
+            <div class="pt-2 border-t border-border/40">
+              <div class="px-2 py-2 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
                 Saved Sessions ({savedSessions().length})
               </div>
             </div>
             <Show when={isLoadingSaved()}>
-              <div class="text-center py-4 text-muted-foreground">
-                <p class="text-sm">Loading...</p>
+              <div class="flex items-center justify-center py-6">
+                <div class="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
               </div>
             </Show>
             <Show when={!isLoadingSaved() && savedSessions().length > 0}>
@@ -538,29 +553,33 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
               </For>
             </Show>
             <Show when={!isLoadingSaved() && savedSessions().length === 0}>
-              <div class="text-center py-8 text-muted-foreground">
-                <p class="text-sm">No saved sessions</p>
-                <p class="text-xs mt-1">Sessions will be saved automatically</p>
+              <div class="flex flex-col items-center justify-center py-8 text-center px-4">
+                <p class="text-sm text-muted-foreground/60">No saved sessions</p>
+                <p class="text-xs text-muted-foreground/40 mt-1">Sessions will be saved automatically</p>
               </div>
             </Show>
           </Show>
         </div>
 
         {/* Footer */}
-        <div class="p-3 border-t border-border">
+        <div class="p-3 border-t border-border/60 bg-background/30 backdrop-blur">
           <div class="flex items-center justify-between">
-            <div class="text-xs text-muted-foreground">
-              {activeSessions().length} active session
-              {activeSessions().length !== 1 ? "s" : ""}
+            <div class="flex items-center gap-2 text-xs text-muted-foreground/60">
+              <span class="inline-flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-500/80 animate-pulse" />
+                {activeSessions().length} active
+              </span>
             </div>
             <Button
               type="button"
               size="sm"
               variant="default"
+              class="h-8 px-3 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg shadow-primary/20"
               onClick={() => sessionStore.openNewSessionModal("local")}
               title="New Session"
             >
-              <FiPlus size={18} />
+              <FiPlus size={16} class="mr-1" />
+              <span class="text-xs font-medium">New</span>
             </Button>
           </div>
         </div>

@@ -189,9 +189,9 @@ function MessageBubble(props: { message: ChatMessage }) {
   const isUser = () => props.message.role === "user";
   const isSystem = () => props.message.role === "system";
   const bubbleClass = () => {
-    if (isUser()) return "bg-base-300 text-primary-foreground border-primary";
-    if (isSystem()) return "bg-base-300 text-background border-foreground";
-    return "bg-base-300 text-secondary-foreground border-secondary";
+    if (isUser()) return "bg-gradient-to-br from-primary to-primary/90 text-primary-foreground border-primary/20 shadow-lg shadow-primary/10";
+    if (isSystem()) return "bg-gradient-to-br from-muted to-muted/50 text-muted-foreground border-border/50";
+    return "bg-gradient-to-br from-muted/80 to-muted/40 text-foreground border-border/30";
   };
 
   const handleCopy = () => {
@@ -204,23 +204,23 @@ function MessageBubble(props: { message: ChatMessage }) {
     <div
       class={`flex flex-col gap-1 animate-fade-in ${isUser() ? "items-end" : "items-start"} group/bubble transition-all duration-300`}
     >
-      <div class="flex items-center gap-2 text-xs text-muted-foreground">
+      <div class="flex items-center gap-2 text-xs text-muted-foreground/50 px-1">
         <Show when={isUser()}>
-          <div class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <FiUser size={20} />
+          <div class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/20">
+            <FiUser size={16} />
           </div>
         </Show>
         <Show when={!isUser() && !isSystem()}>
-          <div class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
-            <FiTerminal size={20} />
+          <div class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-secondary to-secondary/80 text-secondary-foreground shadow-md">
+            <FiTerminal size={16} />
           </div>
         </Show>
         <Show when={isSystem()}>
-          <div class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-foreground text-background">
-            <FiTerminal size={20} />
+          <div class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-muted to-muted/80 text-muted-foreground">
+            <FiTerminal size={16} />
           </div>
         </Show>
-        <time class="opacity-70">
+        <time class="opacity-60">
           {new Date(props.message.timestamp || Date.now()).toLocaleTimeString()}
         </time>
         <Show when={!isSystem()}>
@@ -231,13 +231,13 @@ function MessageBubble(props: { message: ChatMessage }) {
             title="Copy message"
           >
             <Show when={copied()} fallback={<FiCopy size={14} />}>
-              <FiCheck size={18} />
+              <FiCheck size={16} />
             </Show>
           </button>
         </Show>
       </div>
       <div
-        class={`max-w-[92vw] rounded-xl border px-4 py-3 shadow-sm ${bubbleClass()}`}
+        class={`max-w-[92vw] rounded-2xl border px-4 py-3 shadow-sm ${bubbleClass()}`}
       >
         <div class="prose prose-sm wrap-break-words text-sm max-w-none">
           <MarkdownRenderer markdown={props.message.content} />
@@ -306,6 +306,7 @@ function PermissionRequestCard(props: {
 // ============================================================================
 
 export function ChatView(props: ChatViewProps) {
+  {
   const session = () => sessionStore.getSession(props.sessionId);
   const isActive = () => session()?.active !== false;
 
@@ -787,6 +788,21 @@ export function ChatView(props: ChatViewProps) {
     messagesEnd()?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // Handle file attachments from ChatInput
+  const handleAttachFiles = (files: File[]) => {
+    const sessionId = props.sessionId;
+    if (!sessionId) return;
+
+    for (const file of files) {
+      chatStore.addAttachment(sessionId, {
+        filename: file.name,
+        mimeType: file.type || "application/octet-stream",
+        size: file.size,
+        path: (file as File & { path?: string }).path,
+      });
+    }
+  };
+
   const handleSend = async () => {
     const sessionId = props.sessionId;
     console.log(
@@ -797,7 +813,7 @@ export function ChatView(props: ChatViewProps) {
     );
 
     const content = inputValue().trim();
-    if (!content) return;
+    if (!content && !chatStore.getAttachments(sessionId).length) return;
     if (!sessionId) {
       console.error("[handleSend] sessionId is undefined!");
       notificationStore.error("No active session", "Error");
@@ -806,6 +822,13 @@ export function ChatView(props: ChatViewProps) {
 
     setInputValue("");
     setIsStreaming(true);
+
+    // Get attachments before clearing
+    const attachments = chatStore.getAttachments(sessionId);
+    const attachmentPaths = attachments.map((a) => a.path).filter(Boolean) as string[];
+
+    // Clear attachments after getting them
+    chatStore.clearAttachments(sessionId);
 
     // Reset textarea height
     const textarea = document.querySelector<HTMLTextAreaElement>(
@@ -850,6 +873,7 @@ export function ChatView(props: ChatViewProps) {
           await invoke("local_send_agent_message", {
             sessionId,
             content,
+            attachments: attachmentPaths,
           });
           console.log("[ChatView] Message sent successfully");
         } catch (error) {
@@ -883,6 +907,7 @@ export function ChatView(props: ChatViewProps) {
             sessionId,
             content,
             controlSessionId,
+            attachments: attachmentPaths,
           });
           console.log("[ChatView] Remote message sent successfully");
         } catch (error) {
@@ -1028,12 +1053,14 @@ export function ChatView(props: ChatViewProps) {
   return (
     <div class="flex flex-col h-full bg-muted relative">
       {/* Header */}
-      <div class="z-20 flex items-center justify-between border-b border-border bg-background pr-4 pl-16 lg:pl-6 py-4 shadow-sm">
+      <div class="z-20 flex items-center justify-between border-b border-border/60 bg-background/80 backdrop-blur-sm pr-4 pl-16 lg:pl-6 py-3 shadow-sm">
         <div class="flex-1">
           <div class="flex items-center gap-3">
-            <div class="text-primary">{getAgentIcon()}</div>
+            <div class="text-primary p-1.5 rounded-lg bg-primary/10">
+              {getAgentIcon()}
+            </div>
             <div>
-              <h2 class="text-lg font-semibold">
+              <h2 class="text-base font-semibold tracking-tight">
                 {props.agentType === "claude" && "Claude Code"}
                 {props.agentType === "codex" && "Codex"}
                 {props.agentType === "opencode" && "OpenCode"}
@@ -1044,10 +1071,15 @@ export function ChatView(props: ChatViewProps) {
                 {props.agentType === "openclaw" && "OpenClaw"}
               </h2>
               <div
-                class="text-xs text-muted-foreground/50 truncate max-w-[24rem]"
+                class="text-xs text-muted-foreground/50 truncate max-w-[20rem] flex items-center gap-1.5"
                 title={props.projectPath}
               >
-                {props.projectPath || "No project path"}
+                <span class="inline-flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-green-500/80" />
+                  Active
+                </span>
+                <span class="text-muted-foreground/30">•</span>
+                <span>{props.projectPath?.split("/").pop() || "No project"}</span>
               </div>
             </div>
           </div>
@@ -1058,9 +1090,9 @@ export function ChatView(props: ChatViewProps) {
             onClick={handleOpenSpawnModal}
             variant="ghost"
             size="icon"
-            class="h-8 w-8"
+            class="h-9 w-9 hover:bg-primary/10 hover:text-primary"
           >
-            <FiPlus size={16} />
+            <FiPlus size={18} />
           </Button>
         </div>
       </div>
@@ -1073,13 +1105,44 @@ export function ChatView(props: ChatViewProps) {
         <Show
           when={messages().length === 0 && pendingPermissions().length === 0}
         >
-          <div class="flex flex-col items-center justify-center h-full text-center p-8 opacity-60">
-            <div class="text-6xl mb-4 grayscale">💬</div>
-            <h3 class="text-xl font-bold mb-2">Ready to assist</h3>
-            <p class="max-w-xs mx-auto text-sm">
-              I can help you write code, explain concepts, or debug issues. Just
-              ask!
+          <div class="flex flex-col items-center text-center p- justify-center h-full8">
+            <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-5 shadow-lg shadow-primary/10">
+              <div class="text-4xl">
+                {getAgentIcon()}
+              </div>
+            </div>
+            <h3 class="text-xl font-semibold mb-2 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+              Ready to assist
+            </h3>
+            <p class="max-w-xs mx-auto text-sm text-muted-foreground/70">
+              I can help you write code, explain concepts, or debug issues. Just ask!
             </p>
+            {/* Quick actions */}
+            <div class="flex items-center gap-2 mt-6">
+              <Button
+                variant="outline"
+                size="sm"
+                class="text-xs"
+                onClick={() => {
+                  const session = sessionStore.getSession(props.sessionId);
+                  if (session?.projectPath) {
+                    setInputValue(`List files in ${session.projectPath}`);
+                  }
+                }}
+              >
+                List files
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                class="text-xs"
+                onClick={() => {
+                  setInputValue("Explain what you can do");
+                }}
+              >
+                What can you do?
+              </Button>
+            </div>
           </div>
         </Show>
 
@@ -1185,12 +1248,20 @@ export function ChatView(props: ChatViewProps) {
           onInput={setInputValue}
           onSubmit={handleSend}
           onInterrupt={handleAbort}
+          onAttach={handleAttachFiles}
+          attachments={chatStore.getAttachments(props.sessionId).map(a => {
+            const file = new File([], a.filename, { type: a.mimeType });
+            (file as File & { path?: string; id?: string }).path = a.path;
+            (file as File & { path?: string; id?: string }).id = a.id;
+            return file;
+          })}
           isStreaming={isStreaming()}
           disabled={!isActive()}
         />
       </Show>
     </div>
   );
+  }
 }
 
 export default ChatView;

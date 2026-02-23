@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **ClawdChat** (directory: `riterm`) is a P2P terminal session sharing tool built with Rust (CLI/backend), SolidJS (frontend), and Tauri 2 (desktop/mobile). It enables real-time collaboration on terminal sessions with automatic history logging and secure P2P networking using iroh.
 
+## Project Naming
+
+- **Binary**: `clawdchat` (Rust CLI binary in `cli/`)
+- **Directory**: `riterm` (repository root)
+- **Frontend**: SolidJS (not React)
+
 ## Architecture
 
 ### Cargo Workspace Structure
@@ -17,6 +23,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | **app/** | Tauri 2 desktop+mobile backend — Tauri commands, P2P client, TCP forwarding |
 | **browser/** | WebAssembly browser client |
 | **zeroclaw/** | Runtime and tool system for AI agent orchestration |
+
+### Session Storage
+
+Persistent session storage uses SQLite:
+- **Location**: `~/.riterm/sessions.db` (macOS/Linux)
+- **Module**: `shared/src/session_store/sqlite.rs`
+- **Schema**: Auto-migrated via `rusqlite_migration`
 
 ### Frontend Structure
 
@@ -55,6 +68,7 @@ The `shared/src/agent/` module manages AI agent subprocesses via three session p
 - **`SessionKind::Sdk`** (`claude_sdk.rs`) — Claude Code uses SDK Control Protocol directly
 - **`SessionKind::Acp`** (`acp.rs`) — OpenCode, Gemini, Copilot, Qwen use Agent Client Protocol (ACP)
 - **`SessionKind::CodexAcp`** (`codex_acp.rs`) — Codex uses codex-core in-process via ACP
+- **`SessionKind::ZeroClaw`** (`zeroclaw_session.rs`) — ZeroClaw agent using in-process runtime
 
 `AgentManager` routes to the correct protocol based on `AgentType`. All three implement a common interface: `send_message`, `interrupt`, `subscribe`, `get_pending_permissions`, `respond_to_permission`, `shutdown`.
 
@@ -96,13 +110,14 @@ pnpm tsc
 ### Rust Development
 
 ```bash
-# Build CLI (release)
+# Build CLI binary (release)
 cargo build -p cli --release
+# Output: cli/target/release/clawdchat
 
 # Run CLI subcommands
-./cli/target/release/cli run --agent claude --project .
-./cli/target/release/cli host
-./cli/target/release/cli connect --ticket <ticket>
+./cli/target/release/clawdchat run --agent claude --project .
+./cli/target/release/clawdchat host
+./cli/target/release/clawdchat connect --ticket <ticket>
 
 # Rust checks
 cargo check
@@ -297,10 +312,10 @@ pnpm tsc  # TypeScript type check
 cargo build -p cli
 
 # Run with logging
-RUST_LOG=debug ./target/debug/cli host
+RUST_LOG=debug ./cli/target/debug/clawdchat host
 
 # Check system info
-./target/debug/cli system-info
+./cli/target/debug/clawdchat system-info
 ```
 
 ### App Debugging

@@ -660,7 +660,7 @@ pub enum AgentControlAction {
     /// 终止 Agent
     Terminate,
     /// 发送用户输入
-    SendInput { content: String },
+    SendInput { content: String, attachments: Vec<String> },
     /// 发送中断信号
     SendInterrupt,
     /// 获取 Agent 状态

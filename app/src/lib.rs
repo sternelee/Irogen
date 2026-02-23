@@ -1721,6 +1721,7 @@ async fn send_slash_command(
                     session_id: session_id.clone(),
                     action: AgentControlAction::SendInput {
                         content: raw_command.to_string(),
+                        attachments: vec![],
                     },
                     request_id: None,
                 }),
@@ -1914,6 +1915,7 @@ async fn local_respond_to_agent_permission(
 async fn send_agent_message(
     session_id: String,
     content: String,
+    attachments: Vec<String>,
     control_session_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
@@ -1940,7 +1942,7 @@ async fn send_agent_message(
         "app".to_string(),
         shared::MessagePayload::AgentControl(shared::AgentControlMessage {
             session_id: session_id,
-            action: AgentControlAction::SendInput { content },
+            action: AgentControlAction::SendInput { content, attachments },
             request_id: None,
         }),
     )
@@ -2157,6 +2159,7 @@ async fn local_stop_agent(session_id: String, state: State<'_, AppState>) -> Res
 async fn local_send_agent_message(
     session_id: String,
     content: String,
+    attachments: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let agent_manager_guard = state.agent_manager.read().await;
@@ -2166,7 +2169,7 @@ async fn local_send_agent_message(
         .clone();
 
     manager
-        .send_message(&session_id, content)
+        .send_message(&session_id, content, attachments)
         .await
         .map_err(|e| format!("Failed to send message to local agent: {}", e))
 }
@@ -2191,8 +2194,10 @@ async fn replay_agent_messages(
     for msg in messages {
         if msg.is_user {
             // Only replay user messages (agent responses would be regenerated)
+            // Extract attachments from the message if available
+            let attachments = msg.attachments.unwrap_or_default();
             manager
-                .send_message(&session_id, msg.content)
+                .send_message(&session_id, msg.content, attachments)
                 .await
                 .map_err(|e| format!("Failed to replay message: {}", e))?;
         }

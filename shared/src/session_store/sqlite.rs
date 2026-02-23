@@ -66,6 +66,7 @@ impl SqliteSessionStore {
                 content TEXT NOT NULL,
                 timestamp INTEGER NOT NULL,
                 sequence INTEGER NOT NULL,
+                attachments TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
             );
@@ -327,7 +328,7 @@ impl SessionStore for SqliteSessionStore {
 
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, is_user, content, timestamp, sequence
+            SELECT id, is_user, content, timestamp, sequence, attachments
             FROM messages
             WHERE session_id = ?1
             ORDER BY sequence ASC
@@ -336,12 +337,24 @@ impl SessionStore for SqliteSessionStore {
 
         let messages = stmt.query_map(params![session_id], |row| {
             let is_user: i32 = row.get(1)?;
+            let attachments_str: Option<String> = row.get(5)?;
+            let attachments: Option<Vec<String>> = match attachments_str {
+                Some(s) => Some(serde_json::from_str(&s).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                })?),
+                None => None,
+            };
             Ok(ChatMessage {
                 id: row.get(0)?,
                 is_user: is_user != 0,
                 content: row.get(2)?,
                 timestamp: row.get(3)?,
                 sequence: row.get(4)?,
+                attachments,
             })
         })?;
 
