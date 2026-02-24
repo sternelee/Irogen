@@ -369,26 +369,16 @@ export const createSessionStore = () => {
     try {
       await initializeNetwork();
 
-      const sessionId = await invoke<string>("connect_to_host", {
+      // Connect to remote host and get the connection session ID
+      const connectionSessionId = await invoke<string>("connect_to_host", {
         sessionTicket: ticket,
       });
 
-      // Add remote session to store
-      addSession({
-        sessionId,
-        agentType: state.newSessionAgent,
-        projectPath: "",
-        startedAt: Date.now(),
-        active: true,
-        controlledByRemote: false,
-        hostname: "remote",
-        os: "remote",
-        currentDir: "",
-        machineId: "remote",
-        mode: "remote",
-      });
+      // Set as target control session to show agent config in modal
+      setTargetControlSessionId(connectionSessionId);
 
-      setActiveSession(sessionId);
+      // Don't close modal - continue with agent config flow
+      // User will select agent type and project path, then click "Create Session"
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
