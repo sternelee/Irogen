@@ -105,12 +105,8 @@ const SessionItem: Component<SessionItemProps> = (props) => {
             {props.session?.agentType === "claude" && "Claude"}
             {props.session?.agentType === "gemini" && "Gemini"}
             {props.session?.agentType === "opencode" && "OpenCode"}
-            {props.session?.agentType === "copilot" && "Copilot"}
-            {props.session?.agentType === "qwen" && "Qwen"}
             {props.session?.agentType === "codex" && "Codex"}
-            {props.session?.agentType === "custom" && "Custom"}
             {props.session?.agentType === "openclaw" && "OpenClaw"}
-            {props.session?.agentType === "goose" && "Goose"}
           </span>
           <span
             class={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
@@ -219,10 +215,7 @@ const SavedSessionItem: Component<SavedSessionItemProps> = (props) => {
             {props.session.agentType === "claudeCode" && "Claude"}
             {props.session.agentType === "gemini" && "Gemini"}
             {props.session.agentType === "openCode" && "OpenCode"}
-            {props.session.agentType === "copilot" && "Copilot"}
-            {props.session.agentType === "qwen" && "Qwen"}
             {props.session.agentType === "codex" && "Codex"}
-            {props.session.agentType === "custom" && "Custom"}
             {/* Also handle lowercase versions from frontend */}
             {props.session.agentType === "claude" && "Claude"}
             {props.session.agentType === "opencode" && "OpenCode"}

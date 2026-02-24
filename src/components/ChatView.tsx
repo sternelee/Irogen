@@ -1074,8 +1074,6 @@ export function ChatView(props: ChatViewProps) {
                   {props.agentType === "codex" && "Codex"}
                   {props.agentType === "opencode" && "OpenCode"}
                   {props.agentType === "gemini" && "Gemini CLI"}
-                  {props.agentType === "copilot" && "GitHub Copilot"}
-                  {props.agentType === "qwen" && "Qwen Code"}
                   {props.agentType === "openclaw" && "OpenClaw"}
                 </h2>
                 <div

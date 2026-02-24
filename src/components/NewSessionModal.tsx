@@ -321,9 +321,6 @@ export const NewSessionModal: Component = () => {
                       <option value="openclaw">OpenClaw</option>
                       <option value="opencode">OpenCode</option>
                       <option value="gemini">Gemini CLI</option>
-                      <option value="copilot">GitHub Copilot</option>
-                      <option value="qwen">Qwen Code</option>
-                      <option value="custom">Custom</option>
                     </>
                   }
                 >

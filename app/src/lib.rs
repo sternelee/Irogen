@@ -1675,7 +1675,7 @@ async fn send_slash_command(
                         "opencode" | "open" => AgentType::OpenCode,
                         "codex" => AgentType::Codex,
                         "gemini" => AgentType::Gemini,
-                        _ => AgentType::Custom,
+                        _ => AgentType::ClaudeCode,
                     };
 
                     let args = if parts.len() > 3 {
@@ -1782,11 +1782,7 @@ async fn remote_spawn_session(
         "opencode" | "open" | "openai" => AgentType::OpenCode,
         "codex" => AgentType::Codex,
         "gemini" | "gemini-cli" => AgentType::Gemini,
-        "copilot" | "gh-copilot" => AgentType::Copilot,
-        "qwen" => AgentType::Qwen,
-        "goose" | "block-goose" => AgentType::Goose,
         "openclaw" | "open-claw" => AgentType::OpenClaw,
-        "custom" => AgentType::Custom,
         _ => return Err(format!("Unknown agent type: {}", agent_type)),
     };
 
@@ -1794,12 +1790,7 @@ async fn remote_spawn_session(
     #[cfg(mobile)]
     {
         // On mobile platforms, check if agent is available
-        if matches!(agent_type, AgentType::Custom) {
-            return Err(format!(
-                "{:?} is not available on mobile platform.",
-                agent_type
-            ));
-        }
+        // All agents in the codebase are available on mobile
     }
     #[cfg(not(mobile))]
     {
@@ -1953,7 +1944,10 @@ async fn send_agent_message(
         "app".to_string(),
         shared::MessagePayload::AgentControl(shared::AgentControlMessage {
             session_id: session_id,
-            action: AgentControlAction::SendInput { content, attachments },
+            action: AgentControlAction::SendInput {
+                content,
+                attachments,
+            },
             request_id: None,
         }),
     )
@@ -2032,11 +2026,7 @@ async fn local_start_agent(
         "opencode" | "open" | "openai" => AgentType::OpenCode,
         "codex" => AgentType::Codex,
         "gemini" | "gemini-cli" => AgentType::Gemini,
-        "copilot" | "gh-copilot" => AgentType::Copilot,
-        "qwen" => AgentType::Qwen,
-        "goose" | "block-goose" => AgentType::Goose,
         "openclaw" | "open-claw" => AgentType::OpenClaw,
-        "custom" => AgentType::Custom,
         _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
     };
 
@@ -2044,12 +2034,7 @@ async fn local_start_agent(
     #[cfg(mobile)]
     {
         // On mobile platforms, check if agent is available
-        if matches!(agent_type, AgentType::Custom) {
-            return Err(format!(
-                "{} is not available on mobile platform.",
-                agent_type_str
-            ));
-        }
+        // All agents in the codebase are available on mobile
     }
     #[cfg(not(mobile))]
     {
@@ -2144,7 +2129,6 @@ async fn local_start_agent(
 
     Ok(session_id)
 }
-
 
 /// Send a message to a local agent
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2257,7 +2241,7 @@ async fn local_get_agent_sessions(
         let agent_type = manager
             .get_session_agent_type(&sid)
             .await
-            .unwrap_or(AgentType::Custom);
+            .unwrap_or(AgentType::ClaudeCode);
         sessions.push(shared::message_protocol::AgentSessionMetadata {
             session_id: sid,
             agent_type,
@@ -2300,11 +2284,8 @@ async fn save_session(
         "opencode" | "open" | "openai" => AgentType::OpenCode,
         "codex" => AgentType::Codex,
         "gemini" | "gemini-cli" => AgentType::Gemini,
-        "copilot" | "gh-copilot" => AgentType::Copilot,
-        "qwen" => AgentType::Qwen,
-        "goose" | "block-goose" => AgentType::Goose,
         "openclaw" | "open-claw" => AgentType::OpenClaw,
-        _ => AgentType::Custom,
+        _ => AgentType::ClaudeCode,
     };
 
     let now = std::time::SystemTime::now()
@@ -2365,11 +2346,8 @@ async fn list_sessions(
         "opencode" | "open" | "openai" => AgentType::OpenCode,
         "codex" => AgentType::Codex,
         "gemini" | "gemini-cli" => AgentType::Gemini,
-        "copilot" | "gh-copilot" => AgentType::Copilot,
-        "qwen" => AgentType::Qwen,
-        "goose" | "block-goose" => AgentType::Goose,
         "openclaw" | "open-claw" => AgentType::OpenClaw,
-        _ => AgentType::Custom,
+        _ => AgentType::ClaudeCode,
     });
 
     let status_enum = status.map(|s| {
@@ -2452,12 +2430,12 @@ async fn update_session_status(
 /// Set permission mode for a session
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command(rename_all = "camelCase")]
-async fn set_permission_mode(
-    session_id: String,
-    mode: String,
-) -> Result<(), String> {
-    info!("Setting permission mode for session {}: {}", session_id, mode);
-    
+async fn set_permission_mode(session_id: String, mode: String) -> Result<(), String> {
+    info!(
+        "Setting permission mode for session {}: {}",
+        session_id, mode
+    );
+
     let _permission_mode = match mode.as_str() {
         "AlwaysAsk" => shared::agent::PermissionMode::AlwaysAsk,
         "AcceptEdits" => shared::agent::PermissionMode::AcceptEdits,
@@ -2465,7 +2443,7 @@ async fn set_permission_mode(
         "Plan" => shared::agent::PermissionMode::Plan,
         _ => return Err(format!("Invalid permission mode: {}", mode)),
     };
-    
+
     // TODO: Integrate with session's permission handler
     Ok(())
 }
@@ -2477,22 +2455,25 @@ async fn approve_permission(
     request_id: String,
     decision: Option<String>,
 ) -> Result<(), String> {
-    info!("Approving permission {} for session {} with decision: {:?}", request_id, session_id, decision);
-    
+    info!(
+        "Approving permission {} for session {} with decision: {:?}",
+        request_id, session_id, decision
+    );
+
     let _approve_for_session = decision.as_deref() == Some("ApprovedForSession");
-    
+
     // TODO: Integrate with session's permission handler
     Ok(())
 }
 
 /// Deny a pending permission request
 #[tauri::command(rename_all = "camelCase")]
-async fn deny_permission(
-    session_id: String,
-    request_id: String,
-) -> Result<(), String> {
-    info!("Denying permission {} for session {}", request_id, session_id);
-    
+async fn deny_permission(session_id: String, request_id: String) -> Result<(), String> {
+    info!(
+        "Denying permission {} for session {}",
+        request_id, session_id
+    );
+
     // TODO: Integrate with session's permission handler
     Ok(())
 }
@@ -2565,7 +2546,7 @@ pub fn run() {
             parse_session_ticket,
             list_directory,
             list_remote_directory, // List remote directory via P2P
-            get_app_dir, // Get app directory for mobile
+            get_app_dir,           // Get app directory for mobile
             // TCP Forwarding Management
             create_tcp_forwarding_session,
             list_tcp_forwarding_sessions,
@@ -2613,12 +2594,13 @@ pub fn run() {
         ])
         .setup(|app| {
             // Initialize session store using Tauri app data directory
-            let app_data_dir = app.path().app_data_dir()
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
                 .expect("Failed to get app data directory");
 
             // Ensure the directory exists
-            std::fs::create_dir_all(&app_data_dir)
-                .expect("Failed to create app data directory");
+            std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
 
             // Create session store
             match shared::session_store::create_session_store(&app_data_dir) {

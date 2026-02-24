@@ -19,13 +19,9 @@ import { notificationStore } from "./notificationStore";
 export type AgentType =
   | "claude"
   | "opencode"
-  | "gemini"
-  | "copilot"
-  | "qwen"
   | "codex"
-  | "openclaw"
-  | "goose"
-  | "custom";
+  | "gemini"
+  | "openclaw";
 
 export type SessionMode = "remote" | "local";
 
