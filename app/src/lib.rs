@@ -2470,6 +2470,53 @@ async fn update_session_status(
         .map_err(|e| format!("Failed to update session: {}", e))
 }
 
+/// Set permission mode for a session
+#[tauri::command(rename_all = "camelCase")]
+async fn set_permission_mode(
+    session_id: String,
+    mode: String,
+) -> Result<(), String> {
+    info!("Setting permission mode for session {}: {}", session_id, mode);
+    
+    let _permission_mode = match mode.as_str() {
+        "AlwaysAsk" => shared::agent::PermissionMode::AlwaysAsk,
+        "AcceptEdits" => shared::agent::PermissionMode::AcceptEdits,
+        "AutoApprove" => shared::agent::PermissionMode::AutoApprove,
+        "Plan" => shared::agent::PermissionMode::Plan,
+        _ => return Err(format!("Invalid permission mode: {}", mode)),
+    };
+    
+    // TODO: Integrate with session's permission handler
+    Ok(())
+}
+
+/// Approve a pending permission request
+#[tauri::command(rename_all = "camelCase")]
+async fn approve_permission(
+    session_id: String,
+    request_id: String,
+    decision: Option<String>,
+) -> Result<(), String> {
+    info!("Approving permission {} for session {} with decision: {:?}", request_id, session_id, decision);
+    
+    let _approve_for_session = decision.as_deref() == Some("ApprovedForSession");
+    
+    // TODO: Integrate with session's permission handler
+    Ok(())
+}
+
+/// Deny a pending permission request
+#[tauri::command(rename_all = "camelCase")]
+async fn deny_permission(
+    session_id: String,
+    request_id: String,
+) -> Result<(), String> {
+    info!("Denying permission {} for session {}", request_id, session_id);
+    
+    // TODO: Integrate with session's permission handler
+    Ok(())
+}
+
 /// Initialize tracing with conditional log levels based on build configuration
 fn init_tracing() {
     // Set different log levels based on build profile and features
@@ -2551,6 +2598,10 @@ pub fn run() {
             send_agent_message,
             abort_agent_action,
             respond_to_agent_permission,
+            // Permission Management Commands
+            set_permission_mode,
+            approve_permission,
+            deny_permission,
             // Local Agent Commands (desktop only)
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             local_start_agent,

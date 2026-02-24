@@ -288,25 +288,6 @@ pub struct AgentTurnEvent {
     pub event: AgentEvent,
 }
 
-/// Permission modes for approval workflow
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PermissionMode {
-    /// Always ask for permission
-    AlwaysAsk,
-    /// Auto-approve file edits, ask for shell commands
-    AcceptEdits,
-    /// Auto-approve everything (dangerous)
-    AutoApprove,
-    /// Plan mode - read-only
-    Plan,
-}
-
-impl Default for PermissionMode {
-    fn default() -> Self {
-        Self::AcceptEdits
-    }
-}
-
 /// Pending permission request state
 #[derive(Debug)]
 pub struct PendingPermission {

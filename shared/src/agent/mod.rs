@@ -4,12 +4,14 @@
 //! ClaudeCode uses SDK Control Protocol directly, other agents use ACP.
 
 pub mod acp;
+pub mod acp_permission;
 pub mod claude_sdk;
 pub mod codex_acp;
 pub mod events;
 pub mod factory;
 pub mod message_adapter;
 pub mod openclaw_ws;
+pub mod permission_handler;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -21,10 +23,13 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 pub use acp::AcpStreamingSession;
+pub use acp_permission::{AcpPermissionHandler, AcpPermissionState};
 pub use claude_sdk::ClaudeSdkSession;
 pub use codex_acp::CodexAcpSession;
-pub use events::{
-    AgentEvent, AgentTurnEvent, PendingPermission, PermissionMode, PermissionResponse,
+pub use events::{AgentEvent, AgentTurnEvent, PendingPermission, PermissionResponse};
+pub use permission_handler::{
+    ApprovalDecision, AutoApprovalDecision, CompletedPermissionEntry, PermissionHandler,
+    PermissionHandlerState, PermissionMode, PermissionStatus, PendingPermissionEntry,
 };
 pub use factory::{Agent, AgentAvailability, AgentFactory};
 pub use message_adapter::event_to_message_content;

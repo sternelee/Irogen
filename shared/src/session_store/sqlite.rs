@@ -393,6 +393,7 @@ mod tests {
                     content: "Hello".to_string(),
                     timestamp: 1000,
                     sequence: 0,
+                    attachments: None,
                 },
                 ChatMessage {
                     id: "msg-2".to_string(),
@@ -400,6 +401,7 @@ mod tests {
                     content: "Hi there!".to_string(),
                     timestamp: 1500,
                     sequence: 1,
+                    attachments: None,
                 },
             ],
             metadata_json: "{}".to_string(),
