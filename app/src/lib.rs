@@ -2450,6 +2450,7 @@ async fn update_session_status(
 }
 
 /// Set permission mode for a session
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command(rename_all = "camelCase")]
 async fn set_permission_mode(
     session_id: String,
@@ -2578,6 +2579,7 @@ pub fn run() {
             abort_agent_action,
             respond_to_agent_permission,
             // Permission Management Commands
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             set_permission_mode,
             approve_permission,
             deny_permission,
