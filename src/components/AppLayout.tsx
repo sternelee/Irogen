@@ -216,7 +216,7 @@ export const AppLayout: Component = () => {
 
       {/* Mobile Menu Button */}
       <Button
-        class="fixed left-4 top-4 z-50 flex bg-card shadow-md lg:hidden fixed-top-safe"
+        class="fixed left-4 top-3 z-50 flex bg-card shadow-md lg:hidden fixed-top-safe"
         size="icon"
         variant="ghost"
         onClick={() => setSidebarOpen(!sidebarOpen())}
@@ -250,7 +250,8 @@ export const AppLayout: Component = () => {
                   Welcome to riterm
                 </h2>
                 <p class="text-muted-foreground/70 mb-8 max-w-xs mx-auto leading-relaxed">
-                  Manage multiple AI agent sessions in one place. Create a new session to get started.
+                  Manage multiple AI agent sessions in one place. Create a new
+                  session to get started.
                 </p>
                 <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
                   <Button
@@ -268,17 +269,23 @@ export const AppLayout: Component = () => {
                   <div class="p-3 rounded-xl bg-muted/50 border border-border/50">
                     <div class="text-lg mb-1">🤖</div>
                     <div class="text-xs font-medium">AI Agents</div>
-                    <div class="text-[10px] text-muted-foreground/60">Claude, Codex & more</div>
+                    <div class="text-[10px] text-muted-foreground/60">
+                      Claude, Codex & more
+                    </div>
                   </div>
                   <div class="p-3 rounded-xl bg-muted/50 border border-border/50">
                     <div class="text-lg mb-1">🔒</div>
                     <div class="text-xs font-medium">P2P Secure</div>
-                    <div class="text-[10px] text-muted-foreground/60">End-to-end encrypted</div>
+                    <div class="text-[10px] text-muted-foreground/60">
+                      End-to-end encrypted
+                    </div>
                   </div>
                   <div class="p-3 rounded-xl bg-muted/50 border border-border/50">
                     <div class="text-lg mb-1">💬</div>
                     <div class="text-xs font-medium">Terminal</div>
-                    <div class="text-[10px] text-muted-foreground/60">Real-time sharing</div>
+                    <div class="text-[10px] text-muted-foreground/60">
+                      Real-time sharing
+                    </div>
                   </div>
                 </div>
               </div>

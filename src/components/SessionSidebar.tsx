@@ -467,9 +467,6 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
               <span class="text-white font-bold text-sm">R</span>
             </div>
             <div>
-              <h3 class="text-sm font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                riterm
-              </h3>
               <p class="text-[10px] text-muted-foreground/60 -mt-0.5">
                 AI Terminal
               </p>
