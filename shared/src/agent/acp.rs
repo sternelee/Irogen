@@ -651,14 +651,26 @@ pub async fn list_agent_history(
     cwd: PathBuf,
     home_dir: Option<String>,
 ) -> Result<Vec<AgentHistoryEntry>> {
-    let mut cmd = Command::new(&command);
+    let home_dir = home_dir.or_else(|| std::env::var("HOME").ok());
+    let resolved_command = resolve_command_path(&command);
+    let extended_path = get_extended_path();
+    info!(
+        "[ACP history] list_agent_history agent={:?} command={} args={:?} cwd={:?} home={:?}",
+        agent_type, command, args, cwd, home_dir
+    );
+    info!(
+        "[ACP history] resolved command '{}' -> '{}'",
+        command, resolved_command
+    );
+    info!("[ACP history] PATH={}", extended_path);
+    let mut cmd = Command::new(&resolved_command);
     cmd.args(&args)
         .current_dir(&cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    cmd.env("PATH", get_extended_path());
+    cmd.env("PATH", &extended_path);
     if let Some(ref home) = home_dir {
         cmd.env("HOME", home);
     }
@@ -672,6 +684,7 @@ pub async fn list_agent_history(
             command
         )
     })?;
+    info!("[ACP history] spawned pid={:?}", child.id());
 
     let stdin = child
         .stdin
@@ -716,6 +729,7 @@ pub async fn list_agent_history(
 
             let local_set = tokio::task::LocalSet::new();
             runtime.block_on(local_set.run_until(async move {
+                info!("[ACP history] initializing connection");
                 let (connection, io_task) = acp::ClientSideConnection::new(
                     AcpListClient,
                     stdin.compat_write(),
@@ -725,8 +739,15 @@ pub async fn list_agent_history(
                     },
                 );
 
-                let init_response = connection
-                    .initialize(
+                tokio::task::spawn_local(async move {
+                    if let Err(err) = io_task.await {
+                        warn!("ACP history IO task error: {err}");
+                    }
+                });
+
+                let init_response = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    connection.initialize(
                         acp::InitializeRequest::new(acp::ProtocolVersion::LATEST)
                             .client_capabilities(
                                 acp::ClientCapabilities::new()
@@ -742,18 +763,33 @@ pub async fn list_agent_history(
                                 )
                                 .title("ClawdChat CLI"),
                             ),
-                    )
-                    .await;
+                    ),
+                )
+                .await;
 
                 let init_response = match init_response {
-                    Ok(resp) => resp,
-                    Err(err) => {
+                    Ok(Ok(resp)) => resp,
+                    Ok(Err(err)) => {
+                        warn!("[ACP history] initialize failed: {}", err);
                         let _ = result_tx.send(Err(anyhow::anyhow!(
                             "ACP history initialize failed: {err}"
                         )));
                         return;
                     }
+                    Err(_) => {
+                        warn!("[ACP history] initialize timed out");
+                        let _ = result_tx.send(Err(anyhow::anyhow!(
+                            "ACP history initialize timed out"
+                        )));
+                        return;
+                    }
                 };
+
+                info!(
+                    "[ACP history] initialize ok, session capabilities: list={:?} resume={:?}",
+                    init_response.agent_capabilities.session_capabilities.list,
+                    init_response.agent_capabilities.session_capabilities.resume
+                );
 
                 if init_response
                     .agent_capabilities
@@ -761,27 +797,40 @@ pub async fn list_agent_history(
                     .list
                     .is_none()
                 {
+                    warn!("[ACP history] list_sessions not supported by agent");
                     let _ = result_tx.send(Ok(Vec::new()));
                     return;
                 }
 
-                let response = connection
-                    .list_sessions(acp::ListSessionsRequest::new().cwd(cwd))
-                    .await;
-
-                if let Err(err) = io_task.await {
-                    warn!("ACP history IO task error: {err}");
-                }
+                info!("[ACP history] calling list_sessions");
+                let response = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    connection.list_sessions(acp::ListSessionsRequest::new().cwd(cwd)),
+                )
+                .await;
 
                 let response = match response {
-                    Ok(resp) => resp,
-                    Err(err) => {
+                    Ok(Ok(resp)) => resp,
+                    Ok(Err(err)) => {
+                        warn!("[ACP history] list_sessions failed: {}", err);
                         let _ = result_tx.send(Err(anyhow::anyhow!(
                             "ACP history list_sessions failed: {err}"
                         )));
                         return;
                     }
+                    Err(_) => {
+                        warn!("[ACP history] list_sessions timed out");
+                        let _ = result_tx.send(Err(anyhow::anyhow!(
+                            "ACP history list_sessions timed out"
+                        )));
+                        return;
+                    }
                 };
+
+                info!(
+                    "[ACP history] list_sessions ok: {} sessions",
+                    response.sessions.len()
+                );
 
                 let entries = response
                     .sessions
@@ -801,8 +850,9 @@ pub async fn list_agent_history(
         })
         .with_context(|| "Failed to spawn history thread")?;
 
-    let result = result_rx
+    let result = tokio::time::timeout(std::time::Duration::from_secs(12), result_rx)
         .await
+        .map_err(|_| anyhow::anyhow!("History result timed out"))?
         .map_err(|_| anyhow::anyhow!("History result channel closed"))?;
 
     let _ = child.kill().await;

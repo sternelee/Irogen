@@ -97,7 +97,7 @@ function PermissionCard(props: PermissionCardProps) {
     <Card class="border-l-4 border-l-amber-500">
       <CardHeader
         title={permission.tool_name}
-        description={`Requested ${formatTimestamp(permission.created_at)}`}
+        // description={`Requested ${formatTimestamp(permission.created_at)}`}
         action={
           <Show when={permission.message}>
             <span class="text-xs text-muted-foreground">

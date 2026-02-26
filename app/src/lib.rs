@@ -2319,8 +2319,12 @@ async fn local_list_agent_history(
         .ok_or("Agent manager not initialized")?
         .clone();
 
+    let home_dir = std::env::var("HOME")
+        .ok()
+        .or_else(|| dirs::home_dir().map(|p| p.to_string_lossy().to_string()));
+
     manager
-        .list_agent_history(agent_type, working_dir, None)
+        .list_agent_history(agent_type, working_dir, home_dir)
         .await
         .map_err(|e| format!("Failed to list agent history: {}", e))
 }

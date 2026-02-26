@@ -124,7 +124,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
       {/* Input Container */}
       <div
         class={cn(
-          "flex items-end gap-2 rounded-2xl border-2 bg-muted/30 transition-all duration-300",
+          "flex items-center gap-2 rounded-2xl border-2 bg-muted/30 transition-all duration-300 pr-1",
           focused()
             ? "border-primary/50 shadow-xl shadow-primary/5 bg-background"
             : "border-border/60 hover:border-muted-foreground/20 hover:bg-muted/50",

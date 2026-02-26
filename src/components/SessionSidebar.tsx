@@ -19,7 +19,7 @@ import { chatStore } from "../stores/chatStore";
 import { notificationStore } from "../stores/notificationStore";
 import { isMobile } from "../stores/deviceStore";
 import type { AgentType, AgentSessionMetadata } from "../stores/sessionStore";
-import { Button, Select } from "./ui/primitives";
+import { Button } from "./ui/primitives";
 
 // ============================================================================
 // Agent Icons - Using @lobehub/icons CDN
@@ -72,6 +72,9 @@ interface SessionItemProps {
   onClick: () => void;
   onClose: (e: Event) => void;
   onSpawnRemoteSession?: () => void;
+  onToggleHistory?: (e: Event) => void;
+  historyOpen?: boolean;
+  historyDisabled?: boolean;
 }
 
 const SessionItem: Component<SessionItemProps> = (props) => {
@@ -133,17 +136,33 @@ const SessionItem: Component<SessionItemProps> = (props) => {
       />
 
       {/* Close Button */}
-      <Button
-        type="button"
-        variant="ghost"
-        size="xs"
-        class={`p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all duration-150 -mr-1
-          ${props.isActive ? "hover:bg-primary/20" : "hover:bg-muted"}`}
-        onClick={props.onClose}
-        title="Close session"
-      >
-        <FiX size={14} />
-      </Button>
+      <div class="flex items-center gap-1">
+        <Show when={props.onToggleHistory}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            class={`p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all duration-150
+              ${props.isActive ? "hover:bg-primary/20" : "hover:bg-muted"}`}
+            onClick={props.onToggleHistory}
+            title={props.historyOpen ? "Hide history" : "Show history"}
+            disabled={props.historyDisabled}
+          >
+            <FiClock size={14} />
+          </Button>
+        </Show>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          class={`p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all duration-150 -mr-1
+            ${props.isActive ? "hover:bg-primary/20" : "hover:bg-muted"}`}
+          onClick={props.onClose}
+          title="Close session"
+        >
+          <FiX size={14} />
+        </Button>
+      </div>
     </div>
   );
 };
@@ -170,13 +189,15 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
   const activeSession = createMemo(() => sessionStore.getActiveSession());
   const activeSessions = createMemo(() => sessionStore.getActiveSessions());
 
-  const [showSaved, setShowSaved] = createSignal(false);
-  const [historyEntries, setHistoryEntries] = createSignal<AgentHistoryEntry[]>(
-    [],
-  );
-  const [isLoadingHistory, setIsLoadingHistory] = createSignal(false);
-  const [historyAgent, setHistoryAgent] = createSignal<AgentType>("claude");
-  const [resumeHistory, setResumeHistory] = createSignal(false);
+  const [historyExpanded, setHistoryExpanded] = createSignal<
+    Record<string, boolean>
+  >({});
+  const [historyEntriesBySession, setHistoryEntriesBySession] = createSignal<
+    Record<string, AgentHistoryEntry[]>
+  >({});
+  const [historyLoadingBySession, setHistoryLoadingBySession] = createSignal<
+    Record<string, boolean>
+  >({});
 
   // Load local sessions on mount
   const handleLoadLocalSessions = async () => {
@@ -301,60 +322,80 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
     void handleLoadLocalSessions();
   });
 
-  // Toggle history panel
-  const handleToggleSaved = async () => {
-    const newShow = !showSaved();
-    setShowSaved(newShow);
-    if (newShow && historyEntries().length === 0) {
-      await loadHistory();
-    }
-  };
-
-  const loadHistory = async () => {
-    if (isMobile()) {
-      setHistoryEntries([]);
+  const loadHistoryForSession = async (session: AgentSessionMetadata) => {
+    if (isMobile() || session.mode !== "local") {
+      setHistoryEntriesBySession((prev) => ({
+        ...prev,
+        [session.sessionId]: [],
+      }));
       return;
     }
-    setIsLoadingHistory(true);
+    setHistoryLoadingBySession((prev) => ({
+      ...prev,
+      [session.sessionId]: true,
+    }));
     try {
-      const basePath =
-        activeSession()?.projectPath ||
-        sessionStore.state.newSessionPath ||
-        ".";
+      const projectPath =
+        session.projectPath || sessionStore.state.newSessionPath || ".";
       const entries = await invoke<AgentHistoryEntry[]>(
         "local_list_agent_history",
         {
-          agentTypeStr: historyAgent(),
-          projectPath: basePath,
+          agentTypeStr: session.agentType,
+          projectPath,
         },
       );
-      setHistoryEntries(entries);
+      setHistoryEntriesBySession((prev) => ({
+        ...prev,
+        [session.sessionId]: entries,
+      }));
     } catch (error) {
       console.error("Failed to load agent history:", error);
       notificationStore.error("Failed to load agent history", "Error");
     } finally {
-      setIsLoadingHistory(false);
+      setHistoryLoadingBySession((prev) => ({
+        ...prev,
+        [session.sessionId]: false,
+      }));
     }
   };
 
-  const handleLoadHistorySession = async (entry: AgentHistoryEntry) => {
+  const handleToggleHistory = async (
+    session: AgentSessionMetadata,
+    e: Event,
+  ) => {
+    e.stopPropagation();
+    setHistoryExpanded((prev) => ({
+      ...prev,
+      [session.sessionId]: !prev[session.sessionId],
+    }));
+
+    const existing = historyEntriesBySession()[session.sessionId];
+    if (!existing) {
+      await loadHistoryForSession(session);
+    }
+  };
+
+  const handleLoadHistorySession = async (
+    session: AgentSessionMetadata,
+    entry: AgentHistoryEntry,
+  ) => {
     try {
       const projectPath =
         entry.cwd ||
-        activeSession()?.projectPath ||
+        session.projectPath ||
         sessionStore.state.newSessionPath ||
         ".";
       const sessionId = await invoke<string>("local_load_agent_history", {
-        agentTypeStr: historyAgent(),
+        agentTypeStr: session.agentType,
         historySessionId: entry.session_id,
         projectPath,
-        resume: resumeHistory(),
+        resume: true,
         extraArgs: [],
       });
 
       const newSession: AgentSessionMetadata = {
         sessionId,
-        agentType: historyAgent(),
+        agentType: session.agentType,
         projectPath,
         startedAt: Date.now(),
         active: true,
@@ -411,16 +452,6 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
           <div class="flex items-center gap-1">
             <Button
               type="button"
-              size="sm"
-              variant="ghost"
-              class="text-xs h-7 text-muted-foreground hover:text-foreground"
-              onClick={handleToggleSaved}
-              title={showSaved() ? "Hide history" : "Show history"}
-            >
-              <FiClock size={14} />
-            </Button>
-            <Button
-              type="button"
               size="icon"
               variant="ghost"
               class="h-7 w-7 lg:hidden"
@@ -433,120 +464,120 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
 
         {/* Session List */}
         <div class="overflow-y-auto flex-1 p-2 space-y-1">
-          {/* Active Sessions */}
-          <Show when={!showSaved()}>
-            <Show when={sessions().length > 0}>
-              <div class="px-2 py-2 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
-                Active Sessions
-              </div>
-              <For each={sessions()}>
-                {(session) => (
-                  <SessionItem
-                    session={session}
-                    isActive={session.sessionId === activeSession()?.sessionId}
-                    onClick={() =>
-                      sessionStore.setActiveSession(session.sessionId)
-                    }
-                    onClose={(e) => handleCloseSession(e, session.sessionId)}
-                    onSpawnRemoteSession={handleSpawnRemoteSession}
-                  />
-                )}
-              </For>
-            </Show>
-            <Show when={sessions().length === 0}>
-              <div class="flex flex-col items-center justify-center py-10 text-center px-4">
-                <div class="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
-                  <FiPlus size={24} class="text-muted-foreground/50" />
-                </div>
-                <p class="text-sm font-medium text-muted-foreground">
-                  No active sessions
-                </p>
-                <p class="text-xs text-muted-foreground/60 mt-1 max-w-[160px]">
-                  Create a local session or connect to a remote CLI
-                </p>
-              </div>
-            </Show>
-          </Show>
+          <Show when={sessions().length > 0}>
+            <div class="px-2 py-2 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
+              Active Sessions
+            </div>
+            <For each={sessions()}>
+              {(session) => {
+                const isExpanded = () => !!historyExpanded()[session.sessionId];
+                const historyEntries = () =>
+                  historyEntriesBySession()[session.sessionId] || [];
+                const isLoading = () =>
+                  historyLoadingBySession()[session.sessionId] || false;
+                const canShowHistory = () => session.mode === "local";
 
-          {/* Agent History */}
-          <Show when={showSaved()}>
-            <div class="pt-2 border-t border-border/40">
-              <div class="px-2 py-2 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
-                Agent History
+                return (
+                  <>
+                    <SessionItem
+                      session={session}
+                      isActive={
+                        session.sessionId === activeSession()?.sessionId
+                      }
+                      onClick={() =>
+                        sessionStore.setActiveSession(session.sessionId)
+                      }
+                      onClose={(e) => handleCloseSession(e, session.sessionId)}
+                      onSpawnRemoteSession={handleSpawnRemoteSession}
+                      onToggleHistory={(e) => handleToggleHistory(session, e)}
+                      historyOpen={isExpanded()}
+                      historyDisabled={!canShowHistory()}
+                    />
+                    <Show when={isExpanded()}>
+                      <div class="mx-2 mb-2 rounded-lg border border-border/60 bg-muted/30 p-2">
+                        <div class="flex items-center justify-between mb-2">
+                          <span class="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
+                            History
+                          </span>
+                          <div class="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => loadHistoryForSession(session)}
+                              title="Refresh history"
+                            >
+                              <FiRefreshCw size={12} />
+                            </Button>
+                          </div>
+                        </div>
+                        <Show when={!canShowHistory()}>
+                          <p class="text-xs text-muted-foreground/60">
+                            History is available for local sessions only.
+                          </p>
+                        </Show>
+                        <Show when={canShowHistory() && isLoading()}>
+                          <div class="flex items-center justify-center py-4">
+                            <div class="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                          </div>
+                        </Show>
+                        <Show when={canShowHistory() && !isLoading()}>
+                          <Show when={historyEntries().length > 0}>
+                            <For each={historyEntries()}>
+                              {(entry) => (
+                                <div class="group flex items-center justify-between p-2 rounded-lg hover:bg-muted/60 transition-colors">
+                                  <button
+                                    type="button"
+                                    class="flex flex-col text-left min-w-0"
+                                    onClick={() =>
+                                      handleLoadHistorySession(session, entry)
+                                    }
+                                  >
+                                    <span class="text-sm font-medium truncate">
+                                      {entry.title ||
+                                        entry.session_id.slice(0, 8)}
+                                    </span>
+                                    <span class="text-xs text-muted-foreground/70 truncate">
+                                      {entry.cwd || "Unknown path"}
+                                    </span>
+                                  </button>
+                                  <div class="text-[10px] text-muted-foreground/60">
+                                    {entry.updated_at || ""}
+                                  </div>
+                                </div>
+                              )}
+                            </For>
+                          </Show>
+                          <Show when={historyEntries().length === 0}>
+                            <div class="flex flex-col items-center justify-center py-4 text-center px-2">
+                              <p class="text-sm text-muted-foreground/60">
+                                No history sessions
+                              </p>
+                              <p class="text-xs text-muted-foreground/40 mt-1">
+                                This agent may not support history
+                              </p>
+                            </div>
+                          </Show>
+                        </Show>
+                      </div>
+                    </Show>
+                  </>
+                );
+              }}
+            </For>
+          </Show>
+          <Show when={sessions().length === 0}>
+            <div class="flex flex-col items-center justify-center py-10 text-center px-4">
+              <div class="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+                <FiPlus size={24} class="text-muted-foreground/50" />
               </div>
+              <p class="text-sm font-medium text-muted-foreground">
+                No active sessions
+              </p>
+              <p class="text-xs text-muted-foreground/60 mt-1 max-w-[160px]">
+                Create a local session or connect to a remote CLI
+              </p>
             </div>
-            <div class="px-2 pb-2 space-y-2">
-              <div class="flex items-center gap-2">
-                <Select
-                  value={historyAgent()}
-                  onChange={(val) => {
-                    setHistoryAgent(val as AgentType);
-                    void loadHistory();
-                  }}
-                >
-                  <option value="claude">Claude Agent</option>
-                  <option value="codex">Codex</option>
-                  <option value="opencode">OpenCode</option>
-                  <option value="gemini">Gemini</option>
-                </Select>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => loadHistory()}
-                  title="Refresh history"
-                >
-                  <FiRefreshCw size={14} />
-                </Button>
-              </div>
-              <label class="flex items-center gap-2 text-xs text-muted-foreground/70">
-                <input
-                  type="checkbox"
-                  class="checkbox checkbox-xs"
-                  checked={resumeHistory()}
-                  onChange={(e) => setResumeHistory(e.currentTarget.checked)}
-                />
-                Resume session (if supported)
-              </label>
-            </div>
-            <Show when={isLoadingHistory()}>
-              <div class="flex items-center justify-center py-6">
-                <div class="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-              </div>
-            </Show>
-            <Show when={!isLoadingHistory() && historyEntries().length > 0}>
-              <For each={historyEntries()}>
-                {(entry) => (
-                  <div class="group flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                    <button
-                      type="button"
-                      class="flex flex-col text-left min-w-0"
-                      onClick={() => handleLoadHistorySession(entry)}
-                    >
-                      <span class="text-sm font-medium truncate">
-                        {entry.title || entry.session_id.slice(0, 8)}
-                      </span>
-                      <span class="text-xs text-muted-foreground/70 truncate">
-                        {entry.cwd || "Unknown path"}
-                      </span>
-                    </button>
-                    <div class="text-[10px] text-muted-foreground/60">
-                      {entry.updated_at || ""}
-                    </div>
-                  </div>
-                )}
-              </For>
-            </Show>
-            <Show when={!isLoadingHistory() && historyEntries().length === 0}>
-              <div class="flex flex-col items-center justify-center py-6 text-center px-4">
-                <p class="text-sm text-muted-foreground/60">
-                  No history sessions
-                </p>
-                <p class="text-xs text-muted-foreground/40 mt-1">
-                  This agent may not support history
-                </p>
-              </div>
-            </Show>
           </Show>
         </div>
 

@@ -33,7 +33,8 @@ import { isMobile } from "../stores/deviceStore";
 import type { AgentType } from "../stores/sessionStore";
 import { notificationStore } from "../stores/notificationStore";
 import type { ChatMessage, PermissionRequest } from "../stores/chatStore";
-import { Alert } from "./ui/primitives";
+import { Dialog } from "./ui/dialog";
+import { PermissionList } from "./ui/PermissionCard";
 import { Button } from "./ui/primitives";
 import { SolidMarkdown } from "solid-markdown";
 import { ToolCallList, ReasoningBlock } from "./ui/EnhancedMessageComponents";
@@ -254,52 +255,6 @@ function MessageBubble(props: { message: ChatMessage }) {
   );
 }
 
-function PermissionRequestCard(props: {
-  permission: PermissionRequest;
-  onApprove: () => void;
-  onDeny: () => void;
-  onApproveForSession: () => void;
-}) {
-  return (
-    <Alert variant="destructive" class="mx-4 max-w-2xl shadow-lg">
-      <FiAlertTriangle size={24} />
-      <div class="flex-1">
-        <h3 class="font-bold">Permission Request</h3>
-        <div class="text-sm opacity-80">{props.permission.description}</div>
-      </div>
-      <div class="flex flex-col sm:flex-row gap-2">
-        <Button
-          type="button"
-          onClick={props.onApprove}
-          variant="default"
-          size="sm"
-        >
-          <FiCheck size={20} />
-          Approve Once
-        </Button>
-        <Button
-          type="button"
-          onClick={props.onApproveForSession}
-          variant="default"
-          size="sm"
-        >
-          <FiCheck size={20} />
-          Approve Session
-        </Button>
-        <Button
-          type="button"
-          onClick={props.onDeny}
-          variant="destructive"
-          size="sm"
-        >
-          <FiX size={20} />
-          Deny
-        </Button>
-      </div>
-    </Alert>
-  );
-}
-
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -319,10 +274,20 @@ export function ChatView(props: ChatViewProps) {
     );
     const [scrollEl, setScrollEl] = createSignal<HTMLElement>();
     const [isScrolledToBottom, setIsScrolledToBottom] = createSignal(true);
-  const [isStreaming, setIsStreaming] = createSignal(false);
-  const [permissionMode, setPermissionMode] = createSignal<
-    "AlwaysAsk" | "AcceptEdits" | "Plan" | "AutoApprove"
-  >("AlwaysAsk");
+    const [isStreaming, setIsStreaming] = createSignal(false);
+    const [permissionMode, setPermissionMode] = createSignal<
+      "AlwaysAsk" | "AcceptEdits" | "Plan" | "AutoApprove"
+    >("AlwaysAsk");
+    const toolMessageIds = new Map<string, string>();
+    const pendingPermissionsForModal = () =>
+      pendingPermissions().map((permission) => ({
+        request_id: permission.id,
+        session_id: permission.sessionId,
+        tool_name: permission.toolName,
+        tool_params: permission.toolParams,
+        message: permission.description,
+        created_at: Math.floor(permission.requestedAt / 1000),
+      }));
 
     // Track scroll position using solid-primitives hook
     const scrollPos = createScrollPosition(scrollEl);
@@ -451,48 +416,73 @@ export function ChatView(props: ChatViewProps) {
                 }
 
                 case "tool_started": {
+                  const toolId = parsed.toolId;
                   const toolName = parsed.toolName || "unknown";
                   const toolInput = parsed.input;
                   const inputStr = toolInput ? JSON.stringify(toolInput) : "";
-                  chatStore.addMessage(props.sessionId, {
-                    role: "system",
-                    content: `[Tool: ${toolName} started]${inputStr ? `\nInput: ${inputStr}` : ""}`,
-                  });
+                  const content = `[Tool: ${toolName} started]${inputStr ? `\nInput: ${inputStr}` : ""}`;
+                  if (toolId) {
+                    upsertToolMessage(toolId, content);
+                  } else {
+                    chatStore.addMessage(props.sessionId, {
+                      role: "system",
+                      content,
+                    });
+                  }
                   break;
                 }
 
                 case "tool_inputUpdated": {
+                  const toolId = parsed.toolId;
                   const updateToolName = parsed.toolName || "unknown";
                   const updatedInput = parsed.input;
                   const updateStr = updatedInput
                     ? JSON.stringify(updatedInput)
                     : "";
-                  chatStore.addMessage(props.sessionId, {
-                    role: "system",
-                    content: `[Tool: ${updateToolName} input updated]${updateStr ? `\n${updateStr}` : ""}`,
-                  });
+                  const content = `[Tool: ${updateToolName} input updated]${updateStr ? `\n${updateStr}` : ""}`;
+                  if (toolId) {
+                    upsertToolMessage(toolId, content);
+                  } else {
+                    chatStore.addMessage(props.sessionId, {
+                      role: "system",
+                      content,
+                    });
+                  }
                   break;
                 }
 
                 case "tool_completed": {
+                  const toolId = parsed.toolId;
                   const compToolName = parsed.toolName || "unknown";
                   const compOutput = parsed.output;
                   const compError = parsed.error;
+                  const outputStr = compOutput
+                    ? typeof compOutput === "string"
+                      ? compOutput
+                      : JSON.stringify(compOutput, null, 2)
+                    : "";
                   if (compError) {
-                    chatStore.addMessage(props.sessionId, {
-                      role: "system",
-                      content: `[Tool: ${compToolName} failed]\nError: ${compError}`,
-                    });
+                    const content = `[Tool: ${compToolName} failed]\nError: ${compError}`;
+                    if (toolId) {
+                      upsertToolMessage(toolId, content);
+                      toolMessageIds.delete(toolId);
+                    } else {
+                      chatStore.addMessage(props.sessionId, {
+                        role: "system",
+                        content,
+                      });
+                    }
                   } else {
-                    const outputStr = compOutput
-                      ? typeof compOutput === "string"
-                        ? compOutput
-                        : JSON.stringify(compOutput, null, 2)
-                      : "";
-                    chatStore.addMessage(props.sessionId, {
-                      role: "system",
-                      content: `[Tool: ${compToolName} completed]${outputStr ? `\n${outputStr}` : ""}`,
-                    });
+                    const content = `[Tool: ${compToolName} completed]${outputStr ? `\n${outputStr}` : ""}`;
+                    if (toolId) {
+                      upsertToolMessage(toolId, content);
+                      toolMessageIds.delete(toolId);
+                    } else {
+                      chatStore.addMessage(props.sessionId, {
+                        role: "system",
+                        content,
+                      });
+                    }
                   }
                   break;
                 }
@@ -1046,7 +1036,6 @@ export function ChatView(props: ChatViewProps) {
         notificationStore.error("Failed to send permission response", "Error");
       }
 
-
       // Resume streaming if approved?
       // Backend should handle resumption upon receiving permission response
       if (response !== "denied") {
@@ -1063,6 +1052,27 @@ export function ChatView(props: ChatViewProps) {
       } else {
         // Open modal in local mode
         sessionStore.openNewSessionModal("local");
+      }
+    };
+
+    const upsertToolMessage = (toolId: string, content: string) => {
+      const existingId = toolMessageIds.get(toolId);
+      if (existingId) {
+        chatStore.updateMessage(props.sessionId, existingId, {
+          content,
+          timestamp: Date.now(),
+        });
+        return;
+      }
+
+      chatStore.addMessage(props.sessionId, {
+        role: "system",
+        content,
+      });
+      const messages = chatStore.getMessages(props.sessionId);
+      const last = messages[messages.length - 1];
+      if (last) {
+        toolMessageIds.set(toolId, last.id);
       }
     };
 
@@ -1159,8 +1169,11 @@ export function ChatView(props: ChatViewProps) {
               value={permissionMode()}
               onChange={(e) =>
                 handlePermissionModeChange(
-                  e.currentTarget
-                    .value as "AlwaysAsk" | "AcceptEdits" | "Plan" | "AutoApprove",
+                  e.currentTarget.value as
+                    | "AlwaysAsk"
+                    | "AcceptEdits"
+                    | "Plan"
+                    | "AutoApprove",
                 )
               }
               title="Permission mode"
@@ -1230,30 +1243,33 @@ export function ChatView(props: ChatViewProps) {
             </div>
           </Show>
 
-          {/* Permission Requests */}
-          <div class="space-y-4 mb-6">
-            <TransitionGroup name="message">
-              <For each={pendingPermissions()}>
-                {(permission) => (
-                  <PermissionRequestCard
-                    permission={permission}
-                    onApprove={() =>
-                      handlePermissionResponse(permission.id, "approved")
-                    }
-                    onDeny={() =>
-                      handlePermissionResponse(permission.id, "denied")
-                    }
-                    onApproveForSession={() =>
-                      handlePermissionResponse(
-                        permission.id,
-                        "approved_for_session",
-                      )
-                    }
-                  />
-                )}
-              </For>
-            </TransitionGroup>
-          </div>
+          <Dialog
+            open={pendingPermissionsForModal().length > 0}
+            onClose={() => undefined}
+            contentClass="max-w-xl"
+          >
+            <h3 class="font-bold text-lg flex items-center gap-2">
+              <FiAlertTriangle size={18} />
+              Permission Required
+            </h3>
+            <div class="mt-4">
+              <PermissionList
+                permissions={pendingPermissionsForModal()}
+                disabled={!isActive()}
+                permissionMode={permissionMode()}
+                onApprove={(requestId, decision) => {
+                  const response =
+                    decision === "ApprovedForSession"
+                      ? "approved_for_session"
+                      : "approved";
+                  handlePermissionResponse(requestId, response);
+                }}
+                onDeny={(requestId) => {
+                  handlePermissionResponse(requestId, "denied");
+                }}
+              />
+            </div>
+          </Dialog>
 
           {/* Messages */}
           <div class="space-y-6 mb-4">
