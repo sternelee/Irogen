@@ -339,6 +339,7 @@ export const NewSessionModal: Component = () => {
                     ? value.slice(0, -1)
                     : value;
                   sessionStore.setNewSessionPath(cleanPath);
+                  setDirEntries([]);
                 }}
                 onInputChange={(value) => {
                   sessionStore.setNewSessionPath(value);
