@@ -53,7 +53,11 @@ fn agent_config_path() -> Option<std::path::PathBuf> {
         return Some(config_dir.join("clawdchat").join("agents.json"));
     }
     if let Ok(home) = std::env::var("HOME") {
-        return Some(std::path::PathBuf::from(home).join(".clawdchat").join("agents.json"));
+        return Some(
+            std::path::PathBuf::from(home)
+                .join(".clawdchat")
+                .join("agents.json"),
+        );
     }
     None
 }
@@ -82,7 +86,9 @@ fn resolve_launch_config(agent_type: AgentType) -> AgentLaunchConfig {
         env: HashMap::new(),
     };
 
-    if let Some(entry) = load_agent_config().and_then(|cfg| cfg.agents.get(agent_key(agent_type)).cloned()) {
+    if let Some(entry) =
+        load_agent_config().and_then(|cfg| cfg.agents.get(agent_key(agent_type)).cloned())
+    {
         if let Some(command) = entry.command {
             config.command = command;
         }

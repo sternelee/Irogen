@@ -284,7 +284,9 @@ impl OpenClawWsSession {
             _session_key: session_key,
             event_sender,
             command_tx,
-            permission_mode: Arc::new(RwLock::new(super::permission_handler::PermissionMode::AlwaysAsk)),
+            permission_mode: Arc::new(RwLock::new(
+                super::permission_handler::PermissionMode::AlwaysAsk,
+            )),
         })
     }
 

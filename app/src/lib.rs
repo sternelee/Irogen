@@ -658,10 +658,67 @@ async fn connect_to_peer(
                                                 #[cfg(any(debug_assertions, not(feature = "release-logging")))]
                                                 tracing::info!("Received directory listing response");
 
+                                                let mut normalized = data_json.clone();
+                                                if let Some(entries) = normalized.get_mut("entries") {
+                                                    if let Some(entries_array) = entries.as_array() {
+                                                        let mut normalized_entries = Vec::with_capacity(entries_array.len());
+                                                        for entry in entries_array {
+                                                            match entry {
+                                                                serde_json::Value::String(name) => {
+                                                                    if !name.starts_with('.') {
+                                                                        normalized_entries.push(serde_json::json!({
+                                                                            "name": name,
+                                                                            "is_dir": true
+                                                                        }));
+                                                                    }
+                                                                }
+                                                                serde_json::Value::Object(obj) => {
+                                                                    let is_dir = obj
+                                                                        .get("is_dir")
+                                                                        .and_then(|v| v.as_bool())
+                                                                        .unwrap_or(false);
+                                                                    let name_val = obj.get("name");
+                                                                    let name = match name_val {
+                                                                        Some(serde_json::Value::String(s)) => Some(s.clone()),
+                                                                        Some(serde_json::Value::Object(map)) => map
+                                                                            .get("Unix")
+                                                                            .and_then(|v| v.as_array())
+                                                                            .map(|arr| {
+                                                                                let bytes: Vec<u8> = arr
+                                                                                    .iter()
+                                                                                    .filter_map(|v| v.as_u64().map(|n| n as u8))
+                                                                                    .collect();
+                                                                                String::from_utf8_lossy(&bytes).to_string()
+                                                                            }),
+                                                                        _ => None,
+                                                                    };
+                                                                    if let Some(name) = name {
+                                                                        if !name.starts_with('.') {
+                                                                            let mut item = serde_json::Map::new();
+                                                                            item.insert("name".into(), serde_json::Value::String(name));
+                                                                            item.insert("is_dir".into(), serde_json::Value::Bool(is_dir));
+                                                                            if let Some(size) = obj.get("size") {
+                                                                                item.insert("size".into(), size.clone());
+                                                                            }
+                                                                            normalized_entries.push(serde_json::Value::Object(item));
+                                                                        }
+                                                                    }
+                                                                }
+                                                                _ => {}
+                                                            }
+                                                        }
+                                                        *entries = serde_json::Value::Array(normalized_entries);
+                                                    }
+                                                }
+
                                                 // Emit directory listing to frontend
                                                 let _ = app_handle_clone.emit(
                                                     &format!("remote-directory-listing-{}", session_id_clone),
-                                                    &data_json,
+                                                    &normalized,
+                                                );
+                                                let _ = app_handle_clone.emit(
+                                                    "remote-directory-listing",
+                                                    &normalized,
                                                 );
                                             }
                                             // Check if this is a TCP forwarding session creation response
@@ -1948,7 +2005,13 @@ async fn local_respond_to_agent_permission(
         .clone();
 
     manager
-        .respond_to_permission(&session_id, permission_id, approved, approve_for_session, None)
+        .respond_to_permission(
+            &session_id,
+            permission_id,
+            approved,
+            approve_for_session,
+            None,
+        )
         .await
         .map_err(|e| format!("Failed to respond to local agent permission: {}", e))
 }
@@ -2168,9 +2231,10 @@ async fn local_start_agent(
                         "input": input,
                         "message": message,
                     }),
-                    _ => serde_json::to_value(
-                        shared::message_adapter::event_to_message_content(&event.event, None),
-                    )
+                    _ => serde_json::to_value(shared::message_adapter::event_to_message_content(
+                        &event.event,
+                        None,
+                    ))
                     .unwrap_or_else(|_| serde_json::json!({ "type": "unknown" })),
                 };
                 let session_id_clone = session_id_for_spawn.clone();
@@ -2208,7 +2272,6 @@ async fn local_send_agent_message(
         .await
         .map_err(|e| format!("Failed to send message to local agent: {}", e))
 }
-
 
 /// Abort a local agent action
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2419,8 +2482,7 @@ async fn local_load_agent_history(
 
     let buffered_events = manager.drain_event_buffer(&session_id).await;
     for event in buffered_events {
-        let event_payload =
-            shared::message_adapter::event_to_message_content(&event.event, None);
+        let event_payload = shared::message_adapter::event_to_message_content(&event.event, None);
         let frontend_event = serde_json::json!({
             "sessionId": session_id.clone(),
             "turnId": event.turn_id,
@@ -2450,7 +2512,6 @@ async fn local_load_agent_history(
 
     Ok(session_id)
 }
-
 
 /// Set permission mode for a session
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2518,8 +2579,13 @@ async fn set_permission_mode(
         }),
     );
 
-    send_message_via_client(&state, &connection_id, control_message, "set permission mode")
-        .await?;
+    send_message_via_client(
+        &state,
+        &connection_id,
+        control_message,
+        "set permission mode",
+    )
+    .await?;
     Ok(())
 }
 
@@ -2586,7 +2652,6 @@ async fn get_permission_mode(
 
     Ok(mode.to_string())
 }
-
 
 /// Initialize tracing with conditional log levels based on build configuration
 fn init_tracing() {

@@ -1251,33 +1251,40 @@ impl QuicMessageClient {
             // 如果消息需要响应，等待读取响应
             if message.requires_response {
                 debug!("Waiting for response to message: {}", message.id);
-                let mut buffer = vec![0u8; 8192];
-                match recv_stream.read(&mut buffer).await {
-                    Ok(Some(n)) => {
-                        let response_data = &buffer[..n];
-                        match MessageSerializer::deserialize_from_network(response_data) {
-                            Ok(response) => {
-                                debug!(
-                                    "Received response: type={:?}, broadcasting to {} subscribers",
-                                    response.message_type,
-                                    self.message_tx.receiver_count()
-                                );
-                                // 广播接收到的响应
-                                if let Err(e) = self.message_tx.send(response) {
-                                    error!("Failed to broadcast response: {} (no receivers?)", e);
-                                }
-                            }
-                            Err(e) => {
-                                error!("Failed to deserialize response: {}", e);
-                            }
+                let mut response_data = Vec::new();
+                loop {
+                    let mut buffer = vec![0u8; 8192];
+                    match recv_stream.read(&mut buffer).await {
+                        Ok(Some(n)) => {
+                            response_data.extend_from_slice(&buffer[..n]);
+                        }
+                        Ok(None) => break,
+                        Err(e) => {
+                            error!("Error reading response: {}", e);
+                            break;
                         }
                     }
-                    Ok(None) => {
-                        debug!("Response stream closed by server");
+                }
+
+                if !response_data.is_empty() {
+                    match MessageSerializer::deserialize_from_network(&response_data) {
+                        Ok(response) => {
+                            debug!(
+                                "Received response: type={:?}, broadcasting to {} subscribers",
+                                response.message_type,
+                                self.message_tx.receiver_count()
+                            );
+                            // 广播接收到的响应
+                            if let Err(e) = self.message_tx.send(response) {
+                                error!("Failed to broadcast response: {} (no receivers?)", e);
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to deserialize response: {}", e);
+                        }
                     }
-                    Err(e) => {
-                        error!("Error reading response: {}", e);
-                    }
+                } else {
+                    debug!("Response stream closed by server");
                 }
             }
 

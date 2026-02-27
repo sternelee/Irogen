@@ -56,13 +56,22 @@ export const NewSessionModal: Component = () => {
         if (!requestId) return;
 
         const entries = event.payload.entries || [];
+        const toName = (e: string | RemoteDirEntry) => {
+          if (typeof e === "string") return e;
+          if (Array.isArray((e as any).name?.Unix)) {
+            return String.fromCharCode(...((e as any).name.Unix as number[]));
+          }
+          return String(e.name ?? "");
+        };
+
         const dirs = entries
-          .filter((e) => e.is_dir)
+          .filter((e) => (typeof e === "string" ? true : e.is_dir))
           .map((e) => ({
-            name: e.name,
+            name: toName(e),
             path: "", // Remote doesn't provide full path
             is_dir: true,
-          }));
+          }))
+          .filter((e) => e.name && !e.name.startsWith("."));
         setDirEntries(dirs);
       },
     );
@@ -108,15 +117,19 @@ export const NewSessionModal: Component = () => {
     }
 
     // Check if we have an active remote session
-    const remoteSession = remoteConnections()[0];
+    const targetSessionId = sessionStore.state.targetControlSessionId || null;
+    const remoteSession =
+      remoteConnections().find((s) => s.sessionId === targetSessionId) ||
+      remoteConnections()[0];
     const isRemote =
-      sessionStore.state.newSessionMode === "remote" && remoteSession;
+      sessionStore.state.newSessionMode === "remote" &&
+      (!!targetSessionId || !!remoteSession);
 
     if (isRemote) {
       // Use P2P to list remote directory
       try {
         const requestId = await invoke<string>("list_remote_directory", {
-          sessionId: remoteSession.sessionId,
+          sessionId: targetSessionId || remoteSession.sessionId,
           path: dirToList,
         });
         setCurrentRequestId(requestId);

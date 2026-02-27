@@ -239,8 +239,7 @@ impl AgentManager {
                     if !availability.available {
                         let mut error_msg = format!(
                             "Agent {:?} is not available. Please ensure '{}' is installed and in your PATH.",
-                            agent_type,
-                            availability.executable
+                            agent_type, availability.executable
                         );
 
                         // Provide specific instructions for common agents
@@ -253,7 +252,9 @@ impl AgentManager {
                                 if installed {
                                     match AgentFactory::check_available_with_config(agent_type) {
                                         Ok(recheck) if recheck.available => {
-                                            info!("✅ Claude Agent ACP adapter installed successfully.");
+                                            info!(
+                                                "✅ Claude Agent ACP adapter installed successfully."
+                                            );
                                         }
                                         _ => {
                                             error_msg += " Auto-install attempted but still not available. Please ensure claude-agent-acp is on PATH or pass an explicit --binary-path.";
@@ -318,21 +319,15 @@ impl AgentManager {
                     );
 
                     let installed = match agent_type {
-                        AgentType::ClaudeCode => {
-                            task::spawn_blocking(|| try_install_claude_acp())
-                                .await
-                                .unwrap_or_else(|_| Ok(false))?
-                        }
-                        AgentType::Codex => {
-                            task::spawn_blocking(|| try_install_codex_acp())
-                                .await
-                                .unwrap_or_else(|_| Ok(false))?
-                        }
-                        AgentType::Gemini => {
-                            task::spawn_blocking(|| try_install_gemini_cli())
-                                .await
-                                .unwrap_or_else(|_| Ok(false))?
-                        }
+                        AgentType::ClaudeCode => task::spawn_blocking(|| try_install_claude_acp())
+                            .await
+                            .unwrap_or_else(|_| Ok(false))?,
+                        AgentType::Codex => task::spawn_blocking(|| try_install_codex_acp())
+                            .await
+                            .unwrap_or_else(|_| Ok(false))?,
+                        AgentType::Gemini => task::spawn_blocking(|| try_install_gemini_cli())
+                            .await
+                            .unwrap_or_else(|_| Ok(false))?,
                         _ => false,
                     };
 
@@ -492,8 +487,7 @@ impl AgentManager {
                     if !availability.available {
                         let mut error_msg = format!(
                             "Agent {:?} is not available. Please ensure '{}' is installed and in your PATH.",
-                            agent_type,
-                            availability.executable
+                            agent_type, availability.executable
                         );
                         match agent_type {
                             AgentType::ClaudeCode => {
@@ -561,7 +555,10 @@ impl AgentManager {
 
         // Store session
         let mut sessions = self.sessions.write().await;
-        sessions.insert(session_id.clone(), Arc::new(SessionKind::Acp(Arc::new(acp_session))));
+        sessions.insert(
+            session_id.clone(),
+            Arc::new(SessionKind::Acp(Arc::new(acp_session))),
+        );
 
         let project_path_str = working_dir.to_string_lossy().to_string();
         let hostname = gethostname::gethostname().to_string_lossy().to_string();
@@ -811,11 +808,7 @@ impl AgentManager {
     }
 
     /// Set permission mode for a session
-    pub async fn set_permission_mode(
-        &self,
-        session_id: &str,
-        mode: PermissionMode,
-    ) -> Result<()> {
+    pub async fn set_permission_mode(&self, session_id: &str, mode: PermissionMode) -> Result<()> {
         let sessions = self.sessions.read().await;
 
         if let Some(session) = sessions.get(session_id) {

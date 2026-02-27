@@ -547,12 +547,7 @@ impl AcpStreamingSession {
         reason: Option<String>,
     ) -> std::result::Result<(), String> {
         if approved && approve_for_session {
-            if let Some(tool_name) = self
-                .pending_tool_names
-                .write()
-                .await
-                .remove(&request_id)
-            {
+            if let Some(tool_name) = self.pending_tool_names.write().await.remove(&request_id) {
                 let mut handler = self.permission_handler.write().await;
                 handler.add_allowed_tool(tool_name);
             }
@@ -783,16 +778,14 @@ pub async fn list_agent_history(
                     Ok(Ok(resp)) => resp,
                     Ok(Err(err)) => {
                         warn!("[ACP history] initialize failed: {}", err);
-                        let _ = result_tx.send(Err(anyhow::anyhow!(
-                            "ACP history initialize failed: {err}"
-                        )));
+                        let _ = result_tx
+                            .send(Err(anyhow::anyhow!("ACP history initialize failed: {err}")));
                         return;
                     }
                     Err(_) => {
                         warn!("[ACP history] initialize timed out");
-                        let _ = result_tx.send(Err(anyhow::anyhow!(
-                            "ACP history initialize timed out"
-                        )));
+                        let _ = result_tx
+                            .send(Err(anyhow::anyhow!("ACP history initialize timed out")));
                         return;
                     }
                 };
@@ -832,9 +825,8 @@ pub async fn list_agent_history(
                     }
                     Err(_) => {
                         warn!("[ACP history] list_sessions timed out");
-                        let _ = result_tx.send(Err(anyhow::anyhow!(
-                            "ACP history list_sessions timed out"
-                        )));
+                        let _ = result_tx
+                            .send(Err(anyhow::anyhow!("ACP history list_sessions timed out")));
                         return;
                     }
                 };
@@ -975,16 +967,16 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
     let tool_name_map = Arc::new(Mutex::new(HashMap::<String, String>::new()));
     let terminals = Arc::new(Mutex::new(HashMap::<acp::TerminalId, TerminalState>::new()));
 
-        let client = AcpClientHandler {
-            session_id: params.session_id.clone(),
-            agent_type: params.agent_type,
-            event_sender: params.event_sender.clone(),
-            event_buffer: params.event_buffer.clone(),
-            active_turn: active_turn.clone(),
-            tool_name_map: tool_name_map.clone(),
-            command_tx: params.command_tx.clone(),
-            terminals: terminals.clone(),
-            permission_handler: params.permission_handler.clone(),
+    let client = AcpClientHandler {
+        session_id: params.session_id.clone(),
+        agent_type: params.agent_type,
+        event_sender: params.event_sender.clone(),
+        event_buffer: params.event_buffer.clone(),
+        active_turn: active_turn.clone(),
+        tool_name_map: tool_name_map.clone(),
+        command_tx: params.command_tx.clone(),
+        terminals: terminals.clone(),
+        permission_handler: params.permission_handler.clone(),
         pending_tool_names: params.pending_tool_names.clone(),
     };
 

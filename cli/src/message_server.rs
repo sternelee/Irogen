@@ -7,13 +7,12 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use shared::{
     AgentControlAction, AgentPermissionMode, AgentSessionAction, AgentSessionMetadata, AgentType,
-    AvailableTools,
-    BuiltinCommand, CommunicationManager, FileBrowserAction, GitAction, Message, MessageBuilder,
-    MessageHandler, MessagePayload, MessageType, NotificationData, NotificationType, OSInfo,
-    OutputFormat, PackageManager, QuicMessageServer, QuicMessageServerConfig, RemoteSpawnAction,
-    ResponseMessage, ShellInfo, SlashCommand, SlashCommandResponseContent, SystemAction,
-    SystemInfo, SystemInfoAction, TcpDataType, TcpForwardingAction, TcpForwardingType,
-    TcpStreamHandler, Tool, UserInfo,
+    AvailableTools, BuiltinCommand, CommunicationManager, FileBrowserAction, GitAction, Message,
+    MessageBuilder, MessageHandler, MessagePayload, MessageType, NotificationData,
+    NotificationType, OSInfo, OutputFormat, PackageManager, QuicMessageServer,
+    QuicMessageServerConfig, RemoteSpawnAction, ResponseMessage, ShellInfo, SlashCommand,
+    SlashCommandResponseContent, SystemAction, SystemInfo, SystemInfoAction, TcpDataType,
+    TcpForwardingAction, TcpForwardingType, TcpStreamHandler, Tool, UserInfo,
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -1851,45 +1850,19 @@ impl FileBrowserMessageHandler {
         }
     }
 
-    async fn handle_list_directory(&self, path: String) -> Result<Option<Message>> {
-        use std::fs;
-
-        // Expand ~ to home directory
-        let expanded_path = if path.starts_with("~/") {
-            if let Some(home) = dirs::home_dir() {
-                home.join(&path[2..]).to_string_lossy().to_string()
-            } else {
-                path.clone()
-            }
-        } else if path == "~" {
-            dirs::home_dir()
-                .map(|h| h.to_string_lossy().to_string())
-                .unwrap_or(path.clone())
-        } else {
-            path.clone()
-        };
-
-        let mut entries = vec![];
-        let read_result = fs::read_dir(&expanded_path);
-        let dir_iter = match read_result {
-            Ok(d) => d,
-            Err(_) => fs::read_dir(".")?,
-        };
-
-        for entry in dir_iter.flatten() {
-            if let Ok(meta) = entry.metadata() {
-                entries.push(serde_json::json!({
-                    "name": entry.file_name(),
-                    "is_dir": meta.is_dir(),
-                    "size": meta.len(),
-                }));
-            }
-        }
+    async fn handle_list_directory(
+        &self,
+        path: String,
+        request_id: Option<String>,
+    ) -> Result<Option<Message>> {
+        let entries = shared::list_directory(&path)
+            .map_err(|e| anyhow::anyhow!("Failed to list directory: {}", e))?;
+        let entries_json = serde_json::to_value(entries)?;
         Ok(Some(MessageBuilder::response(
             "cli".to_string(),
-            Uuid::new_v4().to_string(),
+            request_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
             true,
-            Some(serde_json::json!({"entries": entries})),
+            Some(serde_json::json!({ "entries": entries_json })),
             None,
         )))
     }
@@ -1921,7 +1894,8 @@ impl MessageHandler for FileBrowserMessageHandler {
         if let MessagePayload::FileBrowser(fb) = &message.payload {
             match &fb.action {
                 FileBrowserAction::ListDirectory { path } => {
-                    self.handle_list_directory(path.clone()).await
+                    self.handle_list_directory(path.clone(), fb.request_id.clone())
+                        .await
                 }
                 FileBrowserAction::ReadFile { path } => self.handle_read_file(path.clone()).await,
                 _ => Ok(None),
