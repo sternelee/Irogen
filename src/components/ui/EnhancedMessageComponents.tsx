@@ -7,7 +7,14 @@
  * - TerminalOutput: Terminal output with ANSI support
  */
 
-import { type Component, type JSX, Show, createSignal, For, createMemo } from "solid-js";
+import {
+  type Component,
+  type JSX,
+  Show,
+  createSignal,
+  For,
+  createMemo,
+} from "solid-js";
 import { cn } from "~/lib/utils";
 import type { ToolCall } from "~/stores/chatStore";
 import {
@@ -70,7 +77,9 @@ export const ToolCallItem: Component<ToolCallItemProps> = (props) => {
   const [isExpanded, setIsExpanded] = createSignal(props.expanded ?? false);
   const [copied, setCopied] = createSignal(false);
 
-  const config = createMemo(() => statusConfig[props.toolCall.status] || statusConfig.started);
+  const config = createMemo(
+    () => statusConfig[props.toolCall.status] || statusConfig.started,
+  );
   const StatusIcon = config().icon;
 
   const hasOutput = () => !!props.toolCall.output;
@@ -92,7 +101,12 @@ export const ToolCallItem: Component<ToolCallItemProps> = (props) => {
   };
 
   return (
-    <div class={cn("rounded-lg border border-border bg-muted/30 overflow-hidden", props.class)}>
+    <div
+      class={cn(
+        "rounded-lg border border-border bg-muted/30 overflow-hidden",
+        props.class,
+      )}
+    >
       {/* Header - always visible */}
       <button
         type="button"
@@ -107,11 +121,18 @@ export const ToolCallItem: Component<ToolCallItemProps> = (props) => {
         {/* Tool Name */}
         <div class="flex items-center gap-1.5 flex-1 min-w-0">
           <FiTool size={12} class="text-muted-foreground shrink-0" />
-          <span class="font-medium text-sm truncate">{props.toolCall.toolName}</span>
+          <span class="font-medium text-sm truncate">
+            {props.toolCall.toolName}
+          </span>
         </div>
 
         {/* Status Badge */}
-        <span class={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", config().class)}>
+        <span
+          class={cn(
+            "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+            config().class,
+          )}
+        >
           {config().label}
         </span>
 
@@ -129,7 +150,9 @@ export const ToolCallItem: Component<ToolCallItemProps> = (props) => {
       <Show when={isExpanded() && hasOutput()}>
         <div class="border-t border-border">
           <div class="flex items-center justify-between px-3 py-1.5 bg-muted/20">
-            <span class="text-[10px] text-muted-foreground uppercase tracking-wide">Output</span>
+            <span class="text-[10px] text-muted-foreground uppercase tracking-wide">
+              Output
+            </span>
             <button
               type="button"
               onClick={handleCopy}
@@ -187,11 +210,16 @@ export interface ReasoningBlockProps {
 }
 
 export const ReasoningBlock: Component<ReasoningBlockProps> = (props) => {
-  const [isExpanded, setIsExpanded] = createSignal(true);
+  const [isExpanded, setIsExpanded] = createSignal(false);
 
   return (
     <Show when={props.thinking}>
-      <div class={cn("rounded-lg border border-info/30 bg-info/5 overflow-hidden", props.class)}>
+      <div
+        class={cn(
+          "rounded-lg border border-info/30 bg-info/5 overflow-hidden",
+          props.class,
+        )}
+      >
         {/* Header */}
         <button
           type="button"
@@ -255,7 +283,12 @@ export const TerminalOutput: Component<TerminalOutputProps> = (props) => {
   };
 
   return (
-    <div class={cn("rounded-lg border border-border bg-base-300 overflow-hidden", props.class)}>
+    <div
+      class={cn(
+        "rounded-lg border border-border bg-base-300 overflow-hidden",
+        props.class,
+      )}
+    >
       {/* Header */}
       <div class="flex items-center gap-2 px-3 py-2 bg-base-200 border-b border-border">
         <FiTerminal size={14} class="text-muted-foreground" />
@@ -263,7 +296,9 @@ export const TerminalOutput: Component<TerminalOutputProps> = (props) => {
           {props.command || "Terminal Output"}
         </span>
         <Show when={props.exitCode !== undefined}>
-          <span class={cn("text-xs px-1.5 py-0.5 rounded font-mono", statusColor())}>
+          <span
+            class={cn("text-xs px-1.5 py-0.5 rounded font-mono", statusColor())}
+          >
             {props.exitCode}
           </span>
         </Show>
@@ -322,17 +357,22 @@ export interface EmptyStateProps {
 
 export const EmptyState: Component<EmptyStateProps> = (props) => {
   return (
-    <div class={cn("flex flex-col items-center justify-center gap-3 p-8 text-center", props.class)}>
+    <div
+      class={cn(
+        "flex flex-col items-center justify-center gap-3 p-8 text-center",
+        props.class,
+      )}
+    >
       <Show when={props.icon}>
-        <div class="text-muted-foreground/50">
-          {props.icon!( { size: 48 } )}
-        </div>
+        <div class="text-muted-foreground/50">{props.icon!({ size: 48 })}</div>
       </Show>
       <Show when={props.title}>
         <h3 class="text-lg font-semibold">{props.title}</h3>
       </Show>
       <Show when={props.description}>
-        <p class="text-sm text-muted-foreground max-w-sm">{props.description}</p>
+        <p class="text-sm text-muted-foreground max-w-sm">
+          {props.description}
+        </p>
       </Show>
       <Show when={props.action}>
         <div class="mt-2">{props.action}</div>
@@ -354,7 +394,7 @@ export const Shimmer: Component<ShimmerProps> = (props) => {
     <div
       class={cn(
         "animate-pulse bg-gradient-to-r from-muted via-muted-foreground/10 to-muted bg-[length:200%_100%]",
-        props.class
+        props.class,
       )}
     />
   );

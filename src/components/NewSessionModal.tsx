@@ -316,11 +316,11 @@ export const NewSessionModal: Component = () => {
                   }
                   fallback={
                     <>
-                      <option value="claude">Claude Agent</option>
+                      <option value="claude">Claude Code</option>
                       <option value="codex">Codex</option>
                       <option value="openclaw">OpenClaw</option>
                       <option value="opencode">OpenCode</option>
-                      <option value="gemini">Gemini</option>
+                      <option value="gemini">Gemini CLI</option>
                     </>
                   }
                 >
@@ -387,7 +387,8 @@ export const NewSessionModal: Component = () => {
                 }}
               />
               <p class="text-xs text-muted-foreground">
-                Passed to the agent process. Supports JSON array or space-separated args.
+                Passed to the agent process. Supports JSON array or
+                space-separated args.
               </p>
             </div>
           </Show>

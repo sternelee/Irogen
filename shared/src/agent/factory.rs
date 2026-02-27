@@ -259,8 +259,8 @@ impl Agent for GeminiAgent {
     }
 
     fn default_args(&self) -> Vec<String> {
-        // Gemini CLI uses --stdio for ACP communication
-        vec!["--stdio".to_string()]
+        // Gemini CLI uses --experimental-acp for ACP communication
+        vec!["--experimental-acp".to_string()]
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
