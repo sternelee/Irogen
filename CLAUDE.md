@@ -35,8 +35,8 @@ Persistent session storage uses SQLite:
 | Directory | Purpose |
 |-----------|---------|
 | **src/** | SolidJS frontend (Vite + vite-plugin-solid + TailwindCSS v4 + DaisyUI) |
-| **src/stores/** | State management (sessionStore, chatStore, settingsStore) |
-| **src/components/** | UI components (ChatView, SessionSidebar, NewSessionModal, etc.) |
+| **src/stores/** | State management (sessionStore, chatStore, settingsStore, deviceStore, fileBrowserStore, gitStore, notificationStore) |
+| **src/components/** | UI components (ChatView, SessionSidebar, NewSessionModal, FileBrowserView, GitDiffView, SettingsModal, etc.) |
 | **src/hooks/** | Custom SolidJS hooks |
 | **src/utils/** | Utility functions |
 | **plugins/** | Custom Vite plugins (e.g., `fix-cjs-modules.ts` for solid-markdown) |
@@ -219,7 +219,8 @@ The project uses a custom `fix-cjs-modules` plugin in `plugins/fix-cjs-modules.t
 
 ### Styling
 
-- Tailwind CSS v4 is configured in `tailwind.config.js`
+- Tailwind CSS v4 via `@tailwindcss/vite` plugin (see `vite.config.ts`)
+- Base configuration in `tailwind.config.js` for DaisyUI integration
 - Prefer utility classes; avoid `@apply`
 - Use the existing font stacks
 
@@ -303,10 +304,11 @@ cargo test -p app <test_name>
 cargo test -- --nocapture
 ```
 
-### CLI-specific Test Helper
+### CLI-specific Testing
 
 ```bash
-./test_ticket_output.sh  # Test CLI ticket generation
+# Test CLI ticket generation and P2P connection flow
+cargo test -p cli -- --nocapture
 ```
 
 ## Linting & Formatting
@@ -367,6 +369,8 @@ idevicesyslog | grep ClawdChat
 | `shared/src/message_protocol.rs` | Central message protocol definition |
 | `shared/src/agent/mod.rs` | AgentManager routing logic and SessionKind enum |
 | `shared/src/agent/factory.rs` | Agent session factory |
+| `shared/src/agent/acp.rs` | ACP session implementation |
+| `shared/src/agent/openclaw_ws.rs` | OpenClaw WebSocket session |
 | `cli/src/command_router.rs` | Slash command routing |
 | `cli/src/message_server.rs` | Message handling |
 | `cli/src/main.rs` | CLI entry point (host subcommand) |
@@ -374,10 +378,12 @@ idevicesyslog | grep ClawdChat
 | `src/components/ChatView.tsx` | Main chat interface |
 | `src/stores/sessionStore.ts` | Session state management |
 | `src/stores/chatStore.ts` | Messages and permissions |
+| `src/stores/fileBrowserStore.ts` | File browser state |
+| `src/stores/gitStore.ts` | Git status and diff state |
 
 ## Package Manager
 
-**pnpm@10.28.2** (specified in package.json)
+**pnpm v10+** (lockfileVersion 9.0 in `pnpm-lock.yaml`)
 
 ## Notes
 
