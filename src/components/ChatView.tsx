@@ -1195,7 +1195,7 @@ export function ChatView(props: ChatViewProps) {
         {/* Messages Area */}
         <div
           ref={setScrollEl}
-          class="flex-1 overflow-y-auto px-4 py-6 scroll-smooth"
+          class="flex-1 overflow-y-auto px-4 py-6 scroll-smooth overflow-x-hidden"
         >
           <Show
             when={messages().length === 0 && pendingPermissions().length === 0}

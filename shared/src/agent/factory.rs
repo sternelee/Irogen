@@ -97,6 +97,19 @@ fn resolve_launch_config(agent_type: AgentType) -> AgentLaunchConfig {
     config
 }
 
+fn command_exists(command: &str, env: &HashMap<String, String>) -> bool {
+    let output = Command::new("which")
+        .arg(command)
+        .env("PATH", get_extended_path())
+        .envs(env)
+        .output();
+
+    match output {
+        Ok(out) => out.status.success() && !out.stdout.is_empty(),
+        Err(_) => false,
+    }
+}
+
 /// 统一的 Agent 接口
 ///
 /// 所有 agent 类型都通过 ACP 协议接入，因此都需要提供
@@ -492,12 +505,12 @@ impl AgentFactory {
             .envs(&config.env)
             .output()?;
 
-        let available = output.status.success();
-        let version = if available {
+        let version = if output.status.success() {
             Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
         } else {
             None
         };
+        let available = output.status.success() || command_exists(&config.command, &config.env);
 
         Ok(AgentAvailability {
             available,
