@@ -21,10 +21,6 @@ import { isMobile } from "../stores/deviceStore";
 import type { AgentType, AgentSessionMetadata } from "../stores/sessionStore";
 import { Button } from "./ui/primitives";
 
-// ============================================================================
-// Agent Icons - Using @lobehub/icons CDN
-// ============================================================================
-
 const getAgentIcon = (agentType: AgentType) => {
   const normalizedType = agentType?.toLowerCase() || "";
   const iconClass = "w-9 h-9 rounded-xl flex items-center justify-center";
@@ -529,7 +525,8 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                                   }
                                 >
                                   <span class="block text-sm font-medium truncate">
-                                    {entry.title || entry.session_id.slice(0, 8)}
+                                    {entry.title ||
+                                      entry.session_id.slice(0, 8)}
                                   </span>
                                   <span class="block text-[10px] text-muted-foreground/60">
                                     {entry.updated_at || ""}

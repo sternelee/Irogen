@@ -3,14 +3,12 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
 import tailwindcss from "@tailwindcss/vite";
-import wasm from "vite-plugin-wasm";
 import { fixCjsModules } from "./plugins/fix-cjs-modules";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [
-    wasm(),
     solid(),
     tailwindcss(),
     fixCjsModules(), // Fix CJS modules that cause issues
