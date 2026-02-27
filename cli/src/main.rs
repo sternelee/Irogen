@@ -286,7 +286,8 @@ async fn run_server_status_loop(server: &CliMessageServer) {
     }
 }
 
-/// Daemonize the current process by forking
+/// Daemonize the current process by forking (Unix-only).
+#[cfg(unix)]
 fn daemonize() -> Result<()> {
     // 调用 fork 创建子进程
     match unsafe { libc::fork() } {
@@ -332,6 +333,14 @@ fn daemonize() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Daemon mode is not supported on non-Unix platforms.
+#[cfg(not(unix))]
+fn daemonize() -> Result<()> {
+    Err(anyhow::anyhow!(
+        "Daemon mode (--daemon) is only supported on Unix-like systems"
+    ))
 }
 
 /// Setup logging for daemon process (reconfigure after fork)
