@@ -521,26 +521,20 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                           <Show when={historyEntries().length > 0}>
                             <For each={historyEntries()}>
                               {(entry) => (
-                                <div class="group flex items-center justify-between p-2 rounded-lg hover:bg-muted/60 transition-colors">
-                                  <button
-                                    type="button"
-                                    class="flex flex-col text-left min-w-0"
-                                    onClick={() =>
-                                      handleLoadHistorySession(session, entry)
-                                    }
-                                  >
-                                    <span class="text-sm font-medium truncate">
-                                      {entry.title ||
-                                        entry.session_id.slice(0, 8)}
-                                    </span>
-                                    <span class="text-xs text-muted-foreground/70 truncate">
-                                      {entry.cwd || "Unknown path"}
-                                    </span>
-                                  </button>
-                                  <div class="text-[10px] text-muted-foreground/60">
+                                <button
+                                  type="button"
+                                  class="group w-full text-left p-2 rounded-lg hover:bg-muted/60 transition-colors"
+                                  onClick={() =>
+                                    handleLoadHistorySession(session, entry)
+                                  }
+                                >
+                                  <span class="block text-sm font-medium truncate">
+                                    {entry.title || entry.session_id.slice(0, 8)}
+                                  </span>
+                                  <span class="block text-[10px] text-muted-foreground/60">
                                     {entry.updated_at || ""}
-                                  </div>
-                                </div>
+                                  </span>
+                                </button>
                               )}
                             </For>
                           </Show>
