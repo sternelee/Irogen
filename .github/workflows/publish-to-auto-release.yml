@@ -84,15 +84,19 @@ jobs:
           - name: macOS ARM64
             platform: macos-latest
             args: --target aarch64-apple-darwin
+            artifact_id: macos-arm64
           - name: macOS AMD64
             platform: macos-13
             args: --target x86_64-apple-darwin
+            artifact_id: macos-amd64
           - platform: ubuntu-22.04
             name: Linux (Ubuntu 22.04)
             args: ""
+            artifact_id: linux
           - platform: windows-latest
             name: Windows
             args: ""
+            artifact_id: windows
 
     steps:
       - name: Checkout code
@@ -146,6 +150,15 @@ jobs:
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
 
+      - name: Upload desktop app artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawdchat_tauri_${{ matrix.artifact_id }}
+          if-no-files-found: warn
+          path: |
+            target/release/bundle/**
+            target/*/release/bundle/**
+
   build-android:
     name: Build App Android
     runs-on: ubuntu-latest
@@ -193,7 +206,7 @@ jobs:
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android
 
       - name: Setup Java
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
@@ -242,17 +255,66 @@ jobs:
 
       - name: Build Android app (APK + AAB)
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
-        run: pnpm tauri android build --config app/tauri.conf.json --target aarch64 armv7 i686 x86_64 --apk --aab
+        run: pnpm tauri android build --config app/tauri.conf.json --target aarch64 armv7 i686 --apk --aab --split-per-abi
 
-      - name: Upload Android artifacts
+      - name: Prepare Android ABI artifacts
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/android/aarch64 dist/android/armv7 dist/android/i686 dist/android/aab
+
+          while IFS= read -r -d '' apk; do
+            name="$(basename "$apk")"
+            lower_name="$(echo "$name" | tr '[:upper:]' '[:lower:]')"
+            if [[ "$lower_name" == *"arm64"* || "$lower_name" == *"aarch64"* ]]; then
+              cp "$apk" "dist/android/aarch64/clawdchat_android-aarch64.apk"
+            elif [[ "$lower_name" == *"armeabi-v7a"* || "$lower_name" == *"armv7"* ]]; then
+              cp "$apk" "dist/android/armv7/clawdchat_android-armv7.apk"
+            elif [[ "$lower_name" == *"x86_64"* ]]; then
+              continue
+            elif [[ "$lower_name" == *"x86"* || "$lower_name" == *"i686"* ]]; then
+              cp "$apk" "dist/android/i686/clawdchat_android-i686.apk"
+            fi
+          done < <(find app/gen/android/app/build/outputs/apk -type f -name "*.apk" -print0)
+
+          find app/gen/android/app/build/outputs/bundle -type f -name "*.aab" -exec cp {} dist/android/aab/ \;
+
+          test -f dist/android/aarch64/clawdchat_android-aarch64.apk
+          test -f dist/android/armv7/clawdchat_android-armv7.apk
+          test -f dist/android/i686/clawdchat_android-i686.apk
+
+      - name: Upload Android aarch64 APK
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: clawdchat_android
+          name: clawdchat_android_aarch64
           if-no-files-found: error
-          path: |
-            app/gen/android/app/build/outputs/apk/**/release/*.apk
-            app/gen/android/app/build/outputs/bundle/**/release/*.aab
+          path: dist/android/aarch64/*.apk
+
+      - name: Upload Android armv7 APK
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawdchat_android_armv7
+          if-no-files-found: error
+          path: dist/android/armv7/*.apk
+
+      - name: Upload Android i686 APK
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawdchat_android_i686
+          if-no-files-found: error
+          path: dist/android/i686/*.apk
+
+      - name: Upload Android AAB
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawdchat_android_aab
+          if-no-files-found: warn
+          path: dist/android/aab/*.aab
 
   release:
     name: Publish Release Assets
@@ -278,7 +340,8 @@ jobs:
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          name: clawdchat_android
+          pattern: clawdchat_android_*
+          merge-multiple: false
           path: dist/android
 
       - name: Show downloaded files
