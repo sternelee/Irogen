@@ -86,7 +86,7 @@ jobs:
             args: --target aarch64-apple-darwin
             artifact_id: macos-arm64
           - name: macOS AMD64
-            platform: macos-13
+            platform: macos-15-intel
             args: --target x86_64-apple-darwin
             artifact_id: macos-amd64
           - platform: ubuntu-22.04
@@ -153,7 +153,7 @@ jobs:
       - name: Upload desktop app artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: clawdchat_tauri_${{ matrix.artifact_id }}
+          name: clawdchat_app_${{ matrix.artifact_id }}
           if-no-files-found: warn
           path: |
             target/release/bundle/**
@@ -213,7 +213,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: zulu
-          java-version: '17'
+          java-version: "17"
 
       - name: Setup Android SDK
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
