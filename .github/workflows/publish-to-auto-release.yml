@@ -145,42 +145,69 @@ jobs:
   build-android:
     name: Build App Android
     runs-on: ubuntu-latest
-    if: ${{ secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' && secrets.ANDROID_KEY_BASE64 != '' }}
+    outputs:
+      has_android_secrets: ${{ steps.check-secrets.outputs.has_android_secrets }}
+    env:
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
 
     steps:
+      - name: Check Android signing secrets
+        id: check-secrets
+        shell: bash
+        run: |
+          if [[ -n "$ANDROID_KEY_ALIAS" && -n "$ANDROID_KEY_PASSWORD" && -n "$ANDROID_KEY_BASE64" ]]; then
+            echo "has_android_secrets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_android_secrets=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip Android build (missing signing secrets)
+        if: steps.check-secrets.outputs.has_android_secrets != 'true'
+        run: echo "Skipping Android build because signing secrets are not configured."
+
       - name: Checkout code
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: actions/checkout@v4
 
       - name: Setup pnpm
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10
           run_install: false
 
       - name: Setup Node.js
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
 
       - name: Install Rust toolchain (Android targets)
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
 
       - name: Setup Java
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: '17'
 
       - name: Setup Android SDK
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: android-actions/setup-android@v3
 
       - name: Install frontend dependencies
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Set up Android signing
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
         shell: bash
         run: |
           cd app/gen/android
@@ -192,9 +219,11 @@ jobs:
           echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > "$RUNNER_TEMP/upload-keystore.jks"
 
       - name: Build Android app (APK + AAB)
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
         run: pnpm tauri android build --config app/tauri.conf.json --target aarch64-linux-android --apk --aab
 
       - name: Upload Android artifacts
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: clawdchat_android
