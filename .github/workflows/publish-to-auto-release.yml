@@ -142,21 +142,93 @@ jobs:
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
 
+  build-android:
+    name: Build App Android
+    runs-on: ubuntu-latest
+    if: ${{ secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' && secrets.ANDROID_KEY_BASE64 != '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Rust toolchain (Android targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up Android signing
+        shell: bash
+        run: |
+          cd app/gen/android
+          cat > keystore.properties << EOF
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          password=${{ secrets.ANDROID_KEY_PASSWORD }}
+          storeFile=$RUNNER_TEMP/upload-keystore.jks
+          EOF
+          echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > "$RUNNER_TEMP/upload-keystore.jks"
+
+      - name: Build Android app (APK + AAB)
+        run: pnpm tauri android build --config app/tauri.conf.json --target aarch64-linux-android --apk --aab
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawdchat_android
+          if-no-files-found: error
+          path: |
+            app/gen/android/app/build/outputs/apk/**/release/*.apk
+            app/gen/android/app/build/outputs/bundle/**/release/*.aab
+
   release:
     name: Publish Release Assets
+    if: ${{ needs.build-cli.result == 'success' && needs.build-tauri.result == 'success' && (needs.build-android.result == 'success' || needs.build-android.result == 'skipped') }}
     needs:
       - build-cli
       - build-tauri
+      - build-android
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download all CLI artifacts
+      - name: Download CLI artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: clawdchat_cli-*
+          merge-multiple: false
           path: dist
+
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: clawdchat_android
+          path: dist/android
 
       - name: Show downloaded files
         run: ls -lahR dist
@@ -189,6 +261,8 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
+            dist/android/**/*.apk
+            dist/android/**/*.aab
           draft: false
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
           generate_release_notes: true

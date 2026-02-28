@@ -96,6 +96,22 @@ Workflow: `.github/workflows/publish-to-auto-release.yml`
 - App packaging via official `tauri-apps/tauri-action`
 - CLI artifacts published as `clawdchat_cli-*`
 
+### Android Signing Secrets (GitHub Actions)
+
+To enable Android release builds in CI, configure these repository secrets in:
+`GitHub Repository -> Settings -> Secrets and variables -> Actions -> New repository secret`
+
+- `ANDROID_KEY_ALIAS`: keystore key alias
+- `ANDROID_KEY_PASSWORD`: key password (used as store password in current workflow)
+- `ANDROID_KEY_BASE64`: base64-encoded `*.jks` keystore content
+
+Generate `ANDROID_KEY_BASE64` locally:
+
+```bash
+keytool -list -v -keystore your.jks
+base64 -i upload-keystore.jks | tr -d '\n'
+```
+
 ## Documentation
 
 - Chinese README: `README_cn.md`
