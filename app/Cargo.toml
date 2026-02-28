@@ -46,13 +46,13 @@ tauri-plugin-http = "2"
 tauri-plugin-os = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
-tauri-plugin-shell = "2"
 
 # Desktop build: full agent support with all agent protocols
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 shared = { path = "../shared", features = ["std"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
+tauri-plugin-shell = "2"
 
 [features]
 default = ["custom-protocol"]

@@ -17,8 +17,15 @@ import {
 import { FiPlus, FiHome, FiCloud } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import {
+  checkPermissions,
+  Format,
+  requestPermissions,
+  scan,
+} from "@tauri-apps/plugin-barcode-scanner";
 import { sessionStore, AgentType } from "../stores/sessionStore";
 import { isMobile } from "../stores/deviceStore";
+import { notificationStore } from "../stores/notificationStore";
 import { Alert } from "./ui/primitives";
 import { Button } from "./ui/primitives";
 import { Combobox } from "./ui/combobox";
@@ -173,6 +180,33 @@ export const NewSessionModal: Component = () => {
     (sessionStore.state.newSessionMode === "remote" &&
       sessionStore.state.targetControlSessionId);
 
+  const handleScanBarcode = async () => {
+    try {
+      let permissionStatus = await checkPermissions();
+      if (permissionStatus !== "granted") {
+        permissionStatus = await requestPermissions();
+      }
+
+      if (permissionStatus !== "granted") {
+        notificationStore.error(
+          "Camera permission is required to scan QR codes",
+          "Scan Error",
+        );
+        return;
+      }
+
+      const result = await scan({ formats: [Format.QRCode] });
+      if (result?.content) {
+        sessionStore.setSessionTicket(result.content);
+        sessionStore.setConnectionError(null);
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("Scan error:", error);
+      notificationStore.error(`Scan failed: ${msg}`, "Scan Error");
+    }
+  };
+
   return (
     <Show when={sessionStore.state.isNewSessionModalOpen}>
       <Dialog
@@ -263,7 +297,19 @@ export const NewSessionModal: Component = () => {
           {/* Remote Mode: Ticket Input */}
           <Show when={isConnectingToNew()}>
             <div class="mb-4 space-y-2">
-              <Label for="session-ticket">Session Ticket</Label>
+              <div class="flex items-center justify-between gap-2">
+                <Label for="session-ticket">Session Ticket</Label>
+                <Show when={isMobile()}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleScanBarcode}
+                  >
+                    Scan QR
+                  </Button>
+                </Show>
+              </div>
               <Textarea
                 id="session-ticket"
                 class="h-24 font-mono text-sm"
