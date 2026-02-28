@@ -67,7 +67,7 @@ export const Card: Component<CardProps> = (props) => {
         "rounded-xl overflow-hidden",
         variantClasses[variant],
         paddingClasses[padding],
-        props.class
+        props.class,
       )}
     >
       {props.children}
@@ -114,7 +114,7 @@ export const CardFooter: Component<CardFooterProps> = (props) => {
     <div
       class={cn(
         "flex items-center justify-end gap-2 mt-4 pt-4 border-t border-border",
-        props.class
+        props.class,
       )}
     >
       {props.children}
@@ -132,7 +132,9 @@ export interface CardTitleProps {
 }
 
 export const CardTitle: Component<CardTitleProps> = (props) => {
-  return <h3 class={cn("text-lg font-semibold", props.class)}>{props.children}</h3>;
+  return (
+    <h3 class={cn("text-lg font-semibold", props.class)}>{props.children}</h3>
+  );
 };
 
 // ============================================================================
@@ -167,7 +169,7 @@ export const CardAction: Component<CardActionProps> = (props) => {
     <div
       class={cn(
         "cursor-pointer hover:opacity-80 transition-opacity",
-        props.class
+        props.class,
       )}
       onClick={props.onClick}
     >

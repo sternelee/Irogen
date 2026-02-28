@@ -166,28 +166,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
 
       {/* Close Button */}
       <div class="flex items-center gap-1">
-        <Show
-          when={!isMobile()}
-          fallback={
-            <div onClick={(e) => e.stopPropagation()}>
-              <Dropdown
-                class="min-w-0"
-                options={mobileSessionActions()}
-                value=""
-                onChange={handleMobileAction}
-                trigger={
-                  <button
-                    type="button"
-                    class="btn btn-ghost btn-xs btn-square"
-                    title="Session actions"
-                  >
-                    <FiMoreVertical size={12} />
-                  </button>
-                }
-              />
-            </div>
-          }
-        >
+        <div class="hidden md:flex items-center gap-1">
           <Show when={props.onToggleHistory}>
             <Button
               type="button"
@@ -219,7 +198,25 @@ const SessionItem: Component<SessionItemProps> = (props) => {
           >
             <FiX size={14} />
           </Button>
-        </Show>
+        </div>
+        <div class="md:hidden" onClick={(e) => e.stopPropagation()}>
+          <Dropdown
+            class="min-w-0"
+            options={mobileSessionActions()}
+            value=""
+            onChange={handleMobileAction}
+            compact
+            trigger={
+              <button
+                type="button"
+                class="btn btn-ghost btn-xs btn-square"
+                title="Session actions"
+              >
+                <FiMoreVertical size={12} />
+              </button>
+            }
+          />
+        </div>
       </div>
     </div>
   );

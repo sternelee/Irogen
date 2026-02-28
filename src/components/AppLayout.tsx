@@ -224,7 +224,7 @@ export const AppLayout: Component = () => {
 
       {/* Mobile Menu Button */}
       <Button
-        class="fixed left-4 top-3 z-50 flex bg-card shadow-md lg:hidden fixed-top-safe"
+        class="fixed left-4 top-0 z-50 flex bg-card shadow-md lg:hidden fixed-top-safe"
         size="icon"
         variant="ghost"
         onClick={() => setSidebarOpen(!sidebarOpen())}

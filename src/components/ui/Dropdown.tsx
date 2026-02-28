@@ -16,10 +16,7 @@ import {
 } from "solid-js";
 import { Portal } from "solid-js/web";
 import { cn } from "~/lib/utils";
-import {
-  FiChevronDown,
-  FiCheck,
-} from "solid-icons/fi";
+import { FiChevronDown, FiCheck } from "solid-icons/fi";
 
 // ============================================================================
 // Types
@@ -42,6 +39,7 @@ export interface DropdownProps {
   placeholder?: string;
   class?: string;
   trigger?: JSX.Element;
+  compact?: boolean;
 }
 
 // ============================================================================
@@ -58,7 +56,8 @@ export const Dropdown: Component<DropdownProps> = (props) => {
   const hasCustomTrigger = () => !!props.trigger;
 
   // Get selected option
-  const selectedOption = () => props.options.find((opt) => opt.id === props.value);
+  const selectedOption = () =>
+    props.options.find((opt) => opt.id === props.value);
 
   // Close on click outside
   onMount(() => {
@@ -124,12 +123,22 @@ export const Dropdown: Component<DropdownProps> = (props) => {
               "px-3 py-2 text-sm min-w-[120px]",
             )}
           >
-            <Show when={selectedOption()} fallback={<span class="text-muted-foreground">{props.placeholder || "Select..."}</span>}>
+            <Show
+              when={selectedOption()}
+              fallback={
+                <span class="text-muted-foreground">
+                  {props.placeholder || "Select..."}
+                </span>
+              }
+            >
               <span>{selectedOption()!.label}</span>
             </Show>
             <FiChevronDown
               size={14}
-              class={cn("text-muted-foreground transition-transform", isOpen() && "rotate-180")}
+              class={cn(
+                "text-muted-foreground transition-transform",
+                isOpen() && "rotate-180",
+              )}
             />
           </button>
         }
@@ -149,23 +158,28 @@ export const Dropdown: Component<DropdownProps> = (props) => {
           class={cn(
             "absolute z-50 mt-1 min-w-[180px] w-full",
             "bg-base-100 border border-border rounded-xl shadow-xl",
-            "animate-fade-in origin-top-right overflow-hidden"
+            "animate-fade-in origin-top-right overflow-hidden",
           )}
         >
           <div class="p-1 max-h-[300px] overflow-y-auto">
             <For each={props.options}>
               {(option) => (
-                <Show when={!option.divider} fallback={<div class="h-px bg-border my-1" />}>
+                <Show
+                  when={!option.divider}
+                  fallback={<div class="h-px bg-border my-1" />}
+                >
                   <button
                     type="button"
                     onClick={() => handleSelect(option)}
                     disabled={option.disabled}
                     class={cn(
-                      "w-full flex items-center gap-2 px-3 py-2 rounded-lg",
-                      "text-sm text-left transition-colors",
+                      "w-full flex items-center rounded-lg text-left transition-colors",
+                      props.compact
+                        ? "gap-1 px-2 py-0 text-xs h-8"
+                        : "gap-2 px-3 py-2 text-sm",
                       option.disabled && "opacity-50 cursor-not-allowed",
                       !option.disabled && "hover:bg-muted",
-                      option.danger && "text-error hover:bg-error/10"
+                      option.danger && "text-error hover:bg-error/10",
                     )}
                   >
                     <Show when={option.icon}>
@@ -174,9 +188,16 @@ export const Dropdown: Component<DropdownProps> = (props) => {
                       </div>
                     </Show>
                     <div class="flex-1 min-w-0">
-                      <div class={cn(option.danger && "text-error")}>{option.label}</div>
+                      <div class={cn(option.danger && "text-error")}>
+                        {option.label}
+                      </div>
                       <Show when={option.description}>
-                        <div class="text-xs text-muted-foreground truncate">
+                        <div
+                          class={cn(
+                            "text-muted-foreground truncate",
+                            props.compact ? "text-[10px]" : "text-xs",
+                          )}
+                        >
                           {option.description}
                         </div>
                       </Show>
@@ -197,24 +218,29 @@ export const Dropdown: Component<DropdownProps> = (props) => {
             class={cn(
               "fixed z-[100] min-w-[180px]",
               "bg-base-100 border border-border rounded-xl shadow-xl",
-              "animate-fade-in origin-top-right overflow-hidden"
+              "animate-fade-in origin-top-right overflow-hidden",
             )}
             style={fixedMenuStyle()}
           >
             <div class="p-1 max-h-[300px] overflow-y-auto">
               <For each={props.options}>
                 {(option) => (
-                  <Show when={!option.divider} fallback={<div class="h-px bg-border my-1" />}>
+                  <Show
+                    when={!option.divider}
+                    fallback={<div class="h-px bg-border my-1" />}
+                  >
                     <button
                       type="button"
                       onClick={() => handleSelect(option)}
                       disabled={option.disabled}
                       class={cn(
-                        "w-full flex items-center gap-2 px-3 py-2 rounded-lg",
-                        "text-sm text-left transition-colors",
+                        "w-full flex items-center rounded-lg text-left transition-colors",
+                        props.compact
+                          ? "gap-1 px-2 py-0 text-xs h-8"
+                          : "gap-2 px-3 py-2 text-sm",
                         option.disabled && "opacity-50 cursor-not-allowed",
                         !option.disabled && "hover:bg-muted",
-                        option.danger && "text-error hover:bg-error/10"
+                        option.danger && "text-error hover:bg-error/10",
                       )}
                     >
                       <Show when={option.icon}>
@@ -223,9 +249,16 @@ export const Dropdown: Component<DropdownProps> = (props) => {
                         </div>
                       </Show>
                       <div class="flex-1 min-w-0">
-                        <div class={cn(option.danger && "text-error")}>{option.label}</div>
+                        <div class={cn(option.danger && "text-error")}>
+                          {option.label}
+                        </div>
                         <Show when={option.description}>
-                          <div class="text-xs text-muted-foreground truncate">
+                          <div
+                            class={cn(
+                              "text-muted-foreground truncate",
+                              props.compact ? "text-[10px]" : "text-xs",
+                            )}
+                          >
                             {option.description}
                           </div>
                         </Show>

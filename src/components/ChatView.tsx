@@ -540,9 +540,8 @@ export function ChatView(props: ChatViewProps) {
     const [permissionMode, setPermissionMode] = createSignal<
       "AlwaysAsk" | "AcceptEdits" | "Plan" | "AutoApprove"
     >("AlwaysAsk");
-    const [rightPanelView, setRightPanelView] = createSignal<RightPanelView>(
-      "none",
-    );
+    const [rightPanelView, setRightPanelView] =
+      createSignal<RightPanelView>("none");
     const toolMessageIds = new Map<string, string>();
     const pendingPermissionsForModal = () =>
       pendingPermissions().map((permission) => ({
@@ -1402,6 +1401,15 @@ export function ChatView(props: ChatViewProps) {
       },
       { id: "divider-1", label: "", divider: true },
       {
+        id: "panel:file",
+        label: "File Browser",
+      },
+      {
+        id: "panel:git",
+        label: "Git Changes",
+      },
+      { id: "divider-1b", label: "", divider: true },
+      {
         id: "perm:AlwaysAsk",
         label: "Always ask",
       },
@@ -1436,6 +1444,14 @@ export function ChatView(props: ChatViewProps) {
       }
       if (value === "action:new-session") {
         handleOpenSpawnModal();
+        return;
+      }
+      if (value === "panel:file") {
+        setRightPanelView("file");
+        return;
+      }
+      if (value === "panel:git") {
+        setRightPanelView("git");
       }
     };
 
@@ -1474,205 +1490,217 @@ export function ChatView(props: ChatViewProps) {
     };
 
     return (
-      <div class="flex h-full bg-muted relative pb-safe lg:pb-0 overflow-hidden">
-        <div class="flex flex-col h-full min-w-0 flex-1">
-        {/* Header */}
-        <div class="z-20 flex items-center justify-between border-b border-border/60 bg-background/80 backdrop-blur-sm pr-4 pl-16 lg:pl-6 md:py-3 shadow-sm">
-          <div class="flex-1">
-            <div class="flex items-center gap-3">
-              <div class="text-primary p-1.5 rounded-lg bg-primary/10 shrink-0">
-                {getAgentIcon()}
+      <div
+        class={`drawer drawer-end h-full ${rightPanelView() !== "none" ? "drawer-open" : ""}`}
+      >
+        <input
+          type="checkbox"
+          class="drawer-toggle"
+          checked={rightPanelView() !== "none"}
+          readOnly
+        />
+        <div class="drawer-content flex h-full bg-muted relative pb-safe lg:pb-0 overflow-hidden">
+          <div class="flex flex-col h-full min-w-0 flex-1">
+            {/* Header */}
+            <div class="z-20 flex items-center justify-between border-b border-border/60 bg-background/80 backdrop-blur-sm pr-4 pl-16 lg:pl-6 md:py-3 shadow-sm">
+              <div class="flex-1">
+                <div class="flex items-center gap-3">
+                  <div class="text-primary p-1.5 rounded-lg bg-primary/10 shrink-0">
+                    {getAgentIcon()}
+                  </div>
+                  <div>
+                    <h2 class="text-base font-semibold tracking-tight">
+                      {props.agentType === "claude" && "Claude Code"}
+                      {props.agentType === "codex" && "Codex"}
+                      {props.agentType === "opencode" && "OpenCode"}
+                      {props.agentType === "gemini" && "Gemini CLI"}
+                      {props.agentType === "openclaw" && "OpenClaw"}
+                    </h2>
+                    <div
+                      class="text-xs text-muted-foreground/50 truncate max-w-[20rem] flex items-center gap-1.5"
+                      title={props.projectPath}
+                    >
+                      <span class="inline-flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-green-500/80" />
+                        Active
+                      </span>
+                      <span class="text-muted-foreground/30">•</span>
+                      <span class="truncate max-w-full">
+                        {props.projectPath?.split("/").pop() || "No project"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div>
-                <h2 class="text-base font-semibold tracking-tight">
-                  {props.agentType === "claude" && "Claude Code"}
-                  {props.agentType === "codex" && "Codex"}
-                  {props.agentType === "opencode" && "OpenCode"}
-                  {props.agentType === "gemini" && "Gemini CLI"}
-                  {props.agentType === "openclaw" && "OpenClaw"}
-                </h2>
-                <div
-                  class="text-xs text-muted-foreground/50 truncate max-w-[20rem] flex items-center gap-1.5"
-                  title={props.projectPath}
-                >
-                  <span class="inline-flex items-center gap-1">
-                    <span class="w-1.5 h-1.5 rounded-full bg-green-500/80" />
-                    Active
-                  </span>
-                  <span class="text-muted-foreground/30">•</span>
-                  <span class="truncate max-w-full">
-                    {props.projectPath?.split("/").pop() || "No project"}
-                  </span>
+              <div class="flex items-center gap-1.5 md:gap-2">
+                <div class="hidden md:flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant={rightPanelView() === "file" ? "default" : "ghost"}
+                    size="sm"
+                    class="h-8 px-2.5"
+                    onClick={() => toggleRightPanel("file")}
+                    title="Toggle file browser"
+                  >
+                    <FiFolder size={14} />
+                    <span class="ml-1 text-xs">Files</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={rightPanelView() === "git" ? "default" : "ghost"}
+                    size="sm"
+                    class="h-8 px-2.5"
+                    onClick={() => toggleRightPanel("git")}
+                    title="Toggle git panel"
+                  >
+                    <FiGitBranch size={14} />
+                    <span class="ml-1 text-xs">Git</span>
+                  </Button>
+                </div>
+                <div class="md:hidden">
+                  <Dropdown
+                    class="min-w-0"
+                    options={mobileHeaderOptions()}
+                    value={`perm:${permissionMode()}`}
+                    onChange={handleMobileHeaderAction}
+                    compact
+                    trigger={
+                      <button
+                        type="button"
+                        class="btn btn-ghost btn-xs btn-square h-8"
+                        title="Chat actions"
+                      >
+                        <FiMoreVertical size={12} />
+                      </button>
+                    }
+                  />
+                </div>
+                <div class="hidden md:flex items-center gap-2">
+                  <select
+                    class="select select-xs h-8 bg-background/60 border-border/50"
+                    value={permissionMode()}
+                    onChange={(e) =>
+                      handlePermissionModeChange(
+                        e.currentTarget.value as
+                          | "AlwaysAsk"
+                          | "AcceptEdits"
+                          | "Plan"
+                          | "AutoApprove",
+                      )
+                    }
+                    title="Permission mode"
+                  >
+                    <option value="AlwaysAsk">Always ask</option>
+                    <option value="AcceptEdits">Accept edits</option>
+                    <option value="Plan">Plan (read-only)</option>
+                    <option value="AutoApprove">Auto approve</option>
+                  </select>
+                  <Button
+                    type="button"
+                    onClick={handleOpenSpawnModal}
+                    variant="ghost"
+                    size="icon"
+                    class="h-9 w-9 hover:bg-primary/10 hover:text-primary"
+                  >
+                    <FiPlus size={18} />
+                  </Button>
                 </div>
               </div>
             </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <Show when={!isMobile()}>
-              <Button
-                type="button"
-                variant={rightPanelView() === "file" ? "default" : "ghost"}
-                size="sm"
-                class="h-8 px-2.5"
-                onClick={() => toggleRightPanel("file")}
-                title="Toggle file browser"
-              >
-                <FiFolder size={14} />
-                <span class="ml-1 text-xs">Files</span>
-              </Button>
-              <Button
-                type="button"
-                variant={rightPanelView() === "git" ? "default" : "ghost"}
-                size="sm"
-                class="h-8 px-2.5"
-                onClick={() => toggleRightPanel("git")}
-                title="Toggle git panel"
-              >
-                <FiGitBranch size={14} />
-                <span class="ml-1 text-xs">Git</span>
-              </Button>
-            </Show>
-            <Show
-              when={!isMobile()}
-              fallback={
-                <Dropdown
-                  class="min-w-0"
-                  options={mobileHeaderOptions()}
-                  value={`perm:${permissionMode()}`}
-                  onChange={handleMobileHeaderAction}
-                  trigger={
-                    <button
-                      type="button"
-                      class="btn btn-ghost btn-xs btn-square"
-                      title="Chat actions"
-                    >
-                      <FiMoreVertical size={12} />
-                    </button>
-                  }
-                />
-              }
+
+            {/* Messages Area */}
+            <div
+              ref={setScrollEl}
+              onScroll={handleMessageScroll}
+              class="flex-1 overflow-y-auto px-4 py-6 scroll-smooth overflow-x-hidden scrollbar-hide"
             >
-              <select
-                class="select select-xs h-8 bg-background/60 border-border/50"
-                value={permissionMode()}
-                onChange={(e) =>
-                  handlePermissionModeChange(
-                    e.currentTarget.value as
-                      | "AlwaysAsk"
-                      | "AcceptEdits"
-                      | "Plan"
-                      | "AutoApprove",
-                  )
+              <Show
+                when={
+                  messages().length === 0 && pendingPermissions().length === 0
                 }
-                title="Permission mode"
               >
-                <option value="AlwaysAsk">Always ask</option>
-                <option value="AcceptEdits">Accept edits</option>
-                <option value="Plan">Plan (read-only)</option>
-                <option value="AutoApprove">Auto approve</option>
-              </select>
-              <Button
-                type="button"
-                onClick={handleOpenSpawnModal}
-                variant="ghost"
-                size="icon"
-                class="h-9 w-9 hover:bg-primary/10 hover:text-primary"
-              >
-                <FiPlus size={18} />
-              </Button>
-            </Show>
-          </div>
-        </div>
+                <div class="flex flex-col items-center text-center justify-center h-full8">
+                  <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-5 shadow-lg shadow-primary/10">
+                    <div class="text-2xl scale-200">{getAgentIcon()}</div>
+                  </div>
+                  <h3 class="text-xl font-semibold mb-2 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+                    Ready to assist
+                  </h3>
+                  <p class="max-w-xs mx-auto text-sm text-muted-foreground/70">
+                    I can help you write code, explain concepts, or debug
+                    issues. Just ask!
+                  </p>
+                  {/* Quick actions */}
+                  <div class="flex items-center gap-2 mt-6">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="text-xs"
+                      onClick={() => {
+                        const session = sessionStore.getSession(
+                          props.sessionId,
+                        );
+                        if (session?.projectPath) {
+                          setInputValue(`List files in ${session.projectPath}`);
+                        }
+                      }}
+                    >
+                      List files
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="text-xs"
+                      onClick={() => {
+                        setInputValue("Explain what you can do");
+                      }}
+                    >
+                      What can you do?
+                    </Button>
+                  </div>
+                </div>
+              </Show>
 
-        {/* Messages Area */}
-        <div
-          ref={setScrollEl}
-          onScroll={handleMessageScroll}
-          class="flex-1 overflow-y-auto px-4 py-6 scroll-smooth overflow-x-hidden scrollbar-hide"
-        >
-          <Show
-            when={messages().length === 0 && pendingPermissions().length === 0}
-          >
-            <div class="flex flex-col items-center text-center justify-center h-full8">
-              <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-5 shadow-lg shadow-primary/10">
-                <div class="text-2xl scale-200">{getAgentIcon()}</div>
-              </div>
-              <h3 class="text-xl font-semibold mb-2 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                Ready to assist
-              </h3>
-              <p class="max-w-xs mx-auto text-sm text-muted-foreground/70">
-                I can help you write code, explain concepts, or debug issues.
-                Just ask!
-              </p>
-              {/* Quick actions */}
-              <div class="flex items-center gap-2 mt-6">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  class="text-xs"
-                  onClick={() => {
-                    const session = sessionStore.getSession(props.sessionId);
-                    if (session?.projectPath) {
-                      setInputValue(`List files in ${session.projectPath}`);
-                    }
-                  }}
-                >
-                  List files
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  class="text-xs"
-                  onClick={() => {
-                    setInputValue("Explain what you can do");
-                  }}
-                >
-                  What can you do?
-                </Button>
+              <Dialog
+                open={pendingPermissionsForModal().length > 0}
+                onClose={() => undefined}
+                contentClass="max-w-xl"
+              >
+                <h3 class="font-bold text-lg flex items-center gap-2">
+                  <FiAlertTriangle size={18} />
+                  Permission Required
+                </h3>
+                <div class="mt-4">
+                  <PermissionList
+                    permissions={pendingPermissionsForModal()}
+                    disabled={!isActive()}
+                    permissionMode={permissionMode()}
+                    onApprove={(requestId, decision) => {
+                      const response =
+                        decision === "ApprovedForSession"
+                          ? "approved_for_session"
+                          : "approved";
+                      handlePermissionResponse(requestId, response);
+                    }}
+                    onDeny={(requestId) => {
+                      handlePermissionResponse(requestId, "denied");
+                    }}
+                  />
+                </div>
+              </Dialog>
+
+              {/* Messages */}
+              <div class="space-y-6 mb-4">
+                <TransitionGroup name="message">
+                  <For each={messages()}>
+                    {(message) => <MessageBubble message={message} />}
+                  </For>
+                </TransitionGroup>
               </div>
             </div>
-          </Show>
 
-          <Dialog
-            open={pendingPermissionsForModal().length > 0}
-            onClose={() => undefined}
-            contentClass="max-w-xl"
-          >
-            <h3 class="font-bold text-lg flex items-center gap-2">
-              <FiAlertTriangle size={18} />
-              Permission Required
-            </h3>
-            <div class="mt-4">
-              <PermissionList
-                permissions={pendingPermissionsForModal()}
-                disabled={!isActive()}
-                permissionMode={permissionMode()}
-                onApprove={(requestId, decision) => {
-                  const response =
-                    decision === "ApprovedForSession"
-                      ? "approved_for_session"
-                      : "approved";
-                  handlePermissionResponse(requestId, response);
-                }}
-                onDeny={(requestId) => {
-                  handlePermissionResponse(requestId, "denied");
-                }}
-              />
-            </div>
-          </Dialog>
-
-          {/* Messages */}
-          <div class="space-y-6 mb-4">
-            <TransitionGroup name="message">
-              <For each={messages()}>
-                {(message) => <MessageBubble message={message} />}
-              </For>
-            </TransitionGroup>
-          </div>
-        </div>
-
-        <style>
-          {`
+            <style>
+              {`
         .message-enter {
           opacity: 0;
           transform: translateY(10px);
@@ -1689,71 +1717,80 @@ export function ChatView(props: ChatViewProps) {
           position: absolute;
         }
       `}
-        </style>
+            </style>
 
-        {/* Scroll to bottom button */}
-        <Show when={!isScrolledToBottom() && messages().length > 0}>
-          <Button
-            type="button"
-            onClick={() => {
-              setIsScrolledToBottom(true);
-              scrollToBottom("smooth");
-            }}
-            class="fixed bottom-24 right-6 z-10 h-8 w-8 bg-background shadow-lg"
-            size="icon"
-            variant="ghost"
-            aria-label="Scroll to bottom"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+            {/* Scroll to bottom button */}
+            <Show when={!isScrolledToBottom() && messages().length > 0}>
+              <Button
+                type="button"
+                onClick={() => {
+                  setIsScrolledToBottom(true);
+                  scrollToBottom("smooth");
+                }}
+                class="fixed bottom-24 right-6 z-10 h-8 w-8 bg-background shadow-lg"
+                size="icon"
+                variant="ghost"
+                aria-label="Scroll to bottom"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <title>Scroll to bottom</title>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                  />
+                </svg>
+              </Button>
+            </Show>
+
+            {/* Input Area */}
+            <Show
+              when={isActive()}
+              fallback={
+                <div class="flex items-center justify-center p-4 bg-muted/50 rounded-lg border border-dashed border-border">
+                  <span class="text-sm text-muted-foreground/50 flex items-center gap-2">
+                    <FiAlertTriangle size={16} />
+                    This session is inactive. Connection might be lost.
+                  </span>
+                </div>
+              }
             >
-              <title>Scroll to bottom</title>
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 14l-7 7m0 0l-7-7m7 7V3"
+              <ChatInput
+                value={inputValue()}
+                onInput={setInputValue}
+                onSubmit={handleSend}
+                onInterrupt={handleAbort}
+                onAttach={handleAttachFiles}
+                attachments={chatStore
+                  .getAttachments(props.sessionId)
+                  .map((a) => {
+                    const file = new File([], a.filename, { type: a.mimeType });
+                    (file as File & { path?: string; id?: string }).path =
+                      a.path;
+                    (file as File & { path?: string; id?: string }).id = a.id;
+                    return file;
+                  })}
+                isStreaming={isStreaming()}
+                disabled={!isActive()}
               />
-            </svg>
-          </Button>
-        </Show>
-
-        {/* Input Area */}
-        <Show
-          when={isActive()}
-          fallback={
-            <div class="flex items-center justify-center p-4 bg-muted/50 rounded-lg border border-dashed border-border">
-              <span class="text-sm text-muted-foreground/50 flex items-center gap-2">
-                <FiAlertTriangle size={16} />
-                This session is inactive. Connection might be lost.
-              </span>
-            </div>
-          }
-        >
-          <ChatInput
-            value={inputValue()}
-            onInput={setInputValue}
-            onSubmit={handleSend}
-            onInterrupt={handleAbort}
-            onAttach={handleAttachFiles}
-            attachments={chatStore.getAttachments(props.sessionId).map((a) => {
-              const file = new File([], a.filename, { type: a.mimeType });
-              (file as File & { path?: string; id?: string }).path = a.path;
-              (file as File & { path?: string; id?: string }).id = a.id;
-              return file;
-            })}
-            isStreaming={isStreaming()}
-            disabled={!isActive()}
+            </Show>
+          </div>
+        </div>
+        <div class="drawer-side z-40">
+          <button
+            type="button"
+            class="drawer-overlay"
+            aria-label="Close tools drawer"
+            onClick={closeRightPanel}
           />
-        </Show>
-      </div>
-
-        <Show when={!isMobile() && rightPanelView() !== "none"}>
-          <aside class="h-full w-[360px] max-w-[42vw] border-l border-border/60 bg-background/95 backdrop-blur-sm flex flex-col overflow-hidden">
+          <aside class="h-full w-screen sm:w-[28rem] md:w-[340px] lg:w-[360px] border-l border-border/60 bg-background/95 backdrop-blur-sm flex flex-col overflow-hidden">
             <div class="h-11 px-3 border-b border-border/60 flex items-center justify-between">
               <div class="text-sm font-medium flex items-center gap-2">
                 <Show
@@ -1789,7 +1826,7 @@ export function ChatView(props: ChatViewProps) {
               </Show>
             </div>
           </aside>
-        </Show>
+        </div>
       </div>
     );
   }

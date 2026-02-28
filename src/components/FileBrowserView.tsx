@@ -4,8 +4,24 @@
  * P2P file browser component for browsing remote directories and viewing files.
  */
 
-import { Component, For, Show, onMount } from "solid-js";
+import { Component, For, Show, createMemo, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import Prism from "prismjs";
+import "prismjs/themes/prism.css";
+import "prismjs/components/prism-clike";
+import "prismjs/components/prism-markup";
+import "prismjs/components/prism-css";
+import "prismjs/components/prism-javascript";
+import "prismjs/components/prism-typescript";
+import "prismjs/components/prism-jsx";
+import "prismjs/components/prism-tsx";
+import "prismjs/components/prism-json";
+import "prismjs/components/prism-bash";
+import "prismjs/components/prism-rust";
+import "prismjs/components/prism-toml";
+import "prismjs/components/prism-yaml";
+import "prismjs/components/prism-markdown";
+import "prismjs/components/prism-diff";
 import { fileBrowserStore } from "../stores/fileBrowserStore";
 import type { FileEntry } from "../stores/fileBrowserStore";
 import { notificationStore } from "../stores/notificationStore";
@@ -22,6 +38,39 @@ interface FileBrowserViewProps {
   class?: string;
   onPathChange?: (path: string) => void;
 }
+
+const extensionLanguageMap: Record<string, string> = {
+  rs: "rust",
+  ts: "typescript",
+  tsx: "tsx",
+  js: "javascript",
+  jsx: "jsx",
+  json: "json",
+  md: "markdown",
+  html: "markup",
+  htm: "markup",
+  xml: "markup",
+  css: "css",
+  yml: "yaml",
+  yaml: "yaml",
+  toml: "toml",
+  sh: "bash",
+  bash: "bash",
+  zsh: "bash",
+  diff: "diff",
+  patch: "diff",
+};
+
+const escapeHtml = (input: string): string =>
+  input.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+const getLanguageFromPath = (path: string): string => {
+  const fileName = path.split("/").pop() ?? "";
+  const extension = fileName.includes(".")
+    ? fileName.split(".").pop()?.toLowerCase()
+    : undefined;
+  return (extension && extensionLanguageMap[extension]) || "none";
+};
 
 // ============================================================================
 // Icons
@@ -87,17 +136,12 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
   const {
     state,
     navigateToPath,
-    navigateBack,
-    navigateForward,
-    navigateUp,
     setEntries,
     setLoading,
     setError,
     viewFile,
     closeFile,
     setViewMode,
-    canGoBack,
-    canGoForward,
     canGoUp,
     getDirectories,
     getFiles,
@@ -176,6 +220,14 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
     loadDirectory(state.currentPath);
   };
 
+  const goUp = () => {
+    if (state.currentPath === ".") return;
+    const parts = state.currentPath.split("/").filter(Boolean);
+    parts.pop();
+    const parentPath = parts.join("/") || ".";
+    loadDirectory(parentPath);
+  };
+
   // Initial load
   onMount(() => {
     loadDirectory(state.currentPath);
@@ -199,6 +251,23 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
       }));
   };
 
+  const highlightedFileContent = createMemo(() => {
+    const viewingFile = state.viewingFile;
+    if (!viewingFile) return "";
+
+    const language = getLanguageFromPath(viewingFile.path);
+    const grammar = Prism.languages[language];
+    if (!grammar) return escapeHtml(viewingFile.content);
+
+    return Prism.highlight(viewingFile.content, grammar, language);
+  });
+
+  const viewingLanguage = createMemo(() => {
+    const viewingFile = state.viewingFile;
+    if (!viewingFile) return "none";
+    return getLanguageFromPath(viewingFile.path);
+  });
+
   return (
     <div class={`file-browser ${props.class || ""}`}>
       {/* Header */}
@@ -210,48 +279,8 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
             <Button
               variant="ghost"
               size="xs"
-              disabled={!canGoBack()}
-              onClick={navigateBack}
-              title="Back"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-            </Button>
-            <Button
-              variant="ghost"
-              size="xs"
-              disabled={!canGoForward()}
-              onClick={navigateForward}
-              title="Forward"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-            </Button>
-            <Button
-              variant="ghost"
-              size="xs"
               disabled={!canGoUp()}
-              onClick={navigateUp}
+              onClick={goUp}
               title="Up"
             >
               <svg
@@ -497,9 +526,12 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
                 {state.viewingFile?.path}
               </h3>
             </div>
-            <div class="flex-1 overflow-auto font-mono text-sm bg-muted rounded-sm p-4">
-              <pre class="whitespace-pre-wrap break-words scrollbar-thin">
-                {state.viewingFile?.content}
+            <div class="flex-1 overflow-auto rounded-sm bg-muted p-4">
+              <pre class="scrollbar-thin text-xs leading-5">
+                <code
+                  class={`language-${viewingLanguage()} font-mono`}
+                  innerHTML={highlightedFileContent()}
+                />
               </pre>
             </div>
           </div>

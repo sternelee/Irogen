@@ -140,12 +140,11 @@ export const createFileBrowserStore = () => {
   }
 
   const navigateUp = () => {
-    const parts = state.currentPath.split('/')
-    if (parts.length > 1 && state.currentPath !== '.') {
-      parts.pop()
-      const parentPath = parts.join('/') || '.'
-      navigateToPath(parentPath)
-    }
+    if (state.currentPath === '.') return
+    const parts = state.currentPath.split('/').filter(Boolean)
+    parts.pop()
+    const parentPath = parts.join('/') || '.'
+    navigateToPath(parentPath)
   }
 
   // ========================================================================
@@ -186,7 +185,7 @@ export const createFileBrowserStore = () => {
 
   const canGoBack = () => state.historyIndex > 0
   const canGoForward = () => state.historyIndex < state.history.length - 1
-  const canGoUp = () => state.currentPath !== '.' && state.currentPath.includes('/')
+  const canGoUp = () => state.currentPath !== '.'
 
   const getSelectedEntry = (): FileEntry | undefined => {
     if (!state.selectedPath) return undefined
