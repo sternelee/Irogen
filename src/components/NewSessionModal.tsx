@@ -323,7 +323,6 @@ export const NewSessionModal: Component = () => {
                   sessionStore.setNewSessionAgent(val as AgentType)
                 }
               >
-                {/* Local mode on mobile only supports ClawdAI */}
                 <Show
                   when={
                     sessionStore.state.newSessionMode === "local" && isMobile()

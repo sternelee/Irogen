@@ -689,11 +689,11 @@ textarea:focus {
 
   /* Focus ring improvements */
   .focus-ring {
-    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-base-100;
+    @apply outline-none ring-1 ring-primary ring-offset-1 ring-offset-base-100;
   }
 
   .focus-ring-inset {
-    @apply outline-none ring-2 ring-primary ring-inset;
+    @apply outline-none ring-1 ring-primary ring-inset;
   }
 
   /* Interactive states */
@@ -1224,4 +1224,14 @@ textarea:focus {
 .mermaid-preview-content svg {
   max-width: 100%;
   max-height: 100%;
+}
+
+/* Prism overrides for file preview: prevent white fringe from default text-shadow */
+.file-preview-prism,
+.file-preview-prism code,
+.file-preview-prism span {
+  text-shadow: none !important;
+  background: transparent !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }

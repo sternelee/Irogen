@@ -527,7 +527,7 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
               </h3>
             </div>
             <div class="flex-1 overflow-auto rounded-sm bg-muted p-4">
-              <pre class="scrollbar-thin text-xs leading-5">
+              <pre class="file-preview-prism scrollbar-thin text-xs leading-5">
                 <code
                   class={`language-${viewingLanguage()} font-mono`}
                   innerHTML={highlightedFileContent()}

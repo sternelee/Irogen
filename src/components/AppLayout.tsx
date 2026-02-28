@@ -204,7 +204,6 @@ export const AppLayout: Component = () => {
         items={commands}
         placeholder="Type a command..."
       />
-
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog
         open={shortcutsDialogOpen()}
@@ -221,7 +220,6 @@ export const AppLayout: Component = () => {
           </div>
         </div>
       </Show>
-
       {/* Mobile Menu Button */}
       <Button
         class="fixed left-4 top-0 z-50 flex bg-card shadow-md lg:hidden fixed-top-safe"
@@ -231,13 +229,11 @@ export const AppLayout: Component = () => {
       >
         <MenuIcon />
       </Button>
-
       {/* Sidebar */}
       <SessionSidebar
         isOpen={sidebarOpen()}
         onToggle={() => setSidebarOpen(!sidebarOpen())}
       />
-
       {/* Main Content */}
       <main class="flex-1 flex flex-col min-w-0 lg:ml-0">
         <Show

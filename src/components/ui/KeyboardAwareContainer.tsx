@@ -21,7 +21,9 @@ interface KeyboardAwareContainerProps {
 export function KeyboardAwareContainer(props: KeyboardAwareContainerProps) {
   const [keyboardVisible, setKeyboardVisible] = createSignal(false);
   const [keyboardHeight, setKeyboardHeight] = createSignal(0);
-  const [effectiveHeight, setEffectiveHeight] = createSignal(window.innerHeight);
+  const [effectiveHeight, setEffectiveHeight] = createSignal(
+    window.innerHeight,
+  );
   const [isPulling, setIsPulling] = createSignal(false);
   const [pullDistance, setPullDistance] = createSignal(0);
 
@@ -35,20 +37,22 @@ export function KeyboardAwareContainer(props: KeyboardAwareContainerProps) {
   const maxPullDistance = 200;
 
   createEffect(() => {
-    const unsubscribe = MobileKeyboard.onVisibilityChange((visible, keyboardInfo) => {
-      setKeyboardVisible(visible);
-      if (visible && keyboardInfo) {
-        setKeyboardHeight(keyboardInfo.height);
-        setEffectiveHeight(
-          keyboardInfo.viewportHeight - (keyboardInfo.viewportOffsetTop || 0),
-        );
-        props.onKeyboardShow?.(keyboardInfo);
-      } else {
-        setKeyboardHeight(0);
-        setEffectiveHeight(window.innerHeight);
-        props.onKeyboardHide?.();
-      }
-    });
+    const unsubscribe = MobileKeyboard.onVisibilityChange(
+      (visible, keyboardInfo) => {
+        setKeyboardVisible(visible);
+        if (visible && keyboardInfo) {
+          setKeyboardHeight(keyboardInfo.height);
+          setEffectiveHeight(
+            keyboardInfo.viewportHeight - (keyboardInfo.viewportOffsetTop || 0),
+          );
+          props.onKeyboardShow?.(keyboardInfo);
+        } else {
+          setKeyboardHeight(0);
+          setEffectiveHeight(window.innerHeight);
+          props.onKeyboardHide?.();
+        }
+      },
+    );
     onCleanup(() => unsubscribe());
   });
 
@@ -95,7 +99,8 @@ export function KeyboardAwareContainer(props: KeyboardAwareContainerProps) {
         setPullDistance(0);
       }}
       onTouchMove={(e) => {
-        if (!props.enablePullToHide || !isPulling() || !keyboardVisible()) return;
+        if (!props.enablePullToHide || !isPulling() || !keyboardVisible())
+          return;
         const deltaY = e.touches[0].clientY - touchStartY;
         if (deltaY <= 0) return;
         const distance = Math.min(deltaY, maxPullDistance);
@@ -105,7 +110,10 @@ export function KeyboardAwareContainer(props: KeyboardAwareContainerProps) {
         if (!props.enablePullToHide || !isPulling()) return;
         const distance = pullDistance();
         const duration = Date.now() - touchStartTime;
-        if (distance >= pullToHideThreshold || (distance > 50 && duration < 200)) {
+        if (
+          distance >= pullToHideThreshold ||
+          (distance > 50 && duration < 200)
+        ) {
           MobileKeyboard.hide();
           if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
         }
@@ -113,7 +121,11 @@ export function KeyboardAwareContainer(props: KeyboardAwareContainerProps) {
         setPullDistance(0);
       }}
     >
-      <Show when={isMobile && props.enablePullToHide && keyboardVisible() && isPulling()}>
+      <Show
+        when={
+          isMobile && props.enablePullToHide && keyboardVisible() && isPulling()
+        }
+      >
         <div
           class="pointer-events-none fixed left-0 right-0 top-0 z-50 flex justify-center"
           style={{
@@ -135,7 +147,9 @@ export function KeyboardAwareContainer(props: KeyboardAwareContainerProps) {
         </div>
       </Show>
 
-      <div class={cn("h-full", !isPulling() ? "transition-all duration-200" : "")}>
+      <div
+        class={cn("h-full", !isPulling() ? "transition-all duration-200" : "")}
+      >
         {props.children}
       </div>
 
@@ -196,7 +210,7 @@ export function KeyboardAwareInput(props: KeyboardAwareInputProps) {
           placeholder={props.placeholder}
           class={cn(
             props.icon ? "pl-10" : "",
-            isFocused() ? "ring-2 ring-ring ring-offset-1" : "",
+            isFocused() ? "ring-1 ring-ring ring-offset-1" : "",
           )}
           value={props.value}
           onInput={(e) => props.onInput(e.currentTarget.value)}
@@ -236,9 +250,7 @@ interface KeyboardAwareButtonProps {
 
 export function KeyboardAwareButton(props: KeyboardAwareButtonProps) {
   const variant =
-    props.variant === "accent"
-      ? "secondary"
-      : (props.variant ?? "primary");
+    props.variant === "accent" ? "secondary" : (props.variant ?? "primary");
 
   return (
     <Button
@@ -246,7 +258,11 @@ export function KeyboardAwareButton(props: KeyboardAwareButtonProps) {
       size={props.size ?? "md"}
       loading={props.loading}
       disabled={props.disabled}
-      class={cn(props.fullWidth ? "w-full" : "", "mobile-button-optimized", props.class)}
+      class={cn(
+        props.fullWidth ? "w-full" : "",
+        "mobile-button-optimized",
+        props.class,
+      )}
       onClick={() => {
         if (props.keyboardAware && MobileKeyboard.isKeyboardVisible()) {
           MobileKeyboard.hide();

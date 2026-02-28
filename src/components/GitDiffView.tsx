@@ -361,7 +361,10 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
                 </h3>
                 <For each={getUntrackedFiles()}>
                   {(entry) => (
-                    <div class="flex items-center gap-2 p-1.5 rounded hover:bg-muted text-sm">
+                    <div
+                      class="flex items-center gap-2 p-1.5 rounded hover:bg-muted cursor-pointer text-sm"
+                      onClick={() => loadDiff(entry.from)}
+                    >
                       <span class="text-lg text-foreground/30">?</span>
                       <FileIcon />
                       <span class="flex-1 truncate">{entry.from}</span>
@@ -431,10 +434,28 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
             </Show>
 
             {/* Raw Diff */}
-            <Show when={!state.isLoadingDiff && !state.currentDiff?.hunks}>
+            <Show
+              when={
+                !state.isLoadingDiff &&
+                !state.currentDiff?.hunks &&
+                !!state.currentDiff?.diff.trim()
+              }
+            >
               <pre class="bg-muted rounded-lg p-2.5 text-xs overflow-x-auto whitespace-pre-wrap">
                 {state.currentDiff?.diff}
               </pre>
+            </Show>
+
+            <Show
+              when={
+                !state.isLoadingDiff &&
+                state.currentDiff &&
+                !state.currentDiff.diff.trim()
+              }
+            >
+              <div class="mt-2 rounded-lg border border-border p-2.5 text-xs text-foreground/60">
+                No diff content available for this file.
+              </div>
             </Show>
           </div>
         </Show>

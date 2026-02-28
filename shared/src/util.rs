@@ -164,15 +164,49 @@ pub fn git_status(path: &str) -> Result<String, String> {
 
 pub fn git_diff(path: &str, file: &str) -> Result<String, String> {
     let normalized = normalize_path(path);
-    let output = Command::new("git")
-        .args(["diff", "--", file])
-        .current_dir(&normalized)
-        .output()
-        .map_err(|e| format!("Failed to execute git diff: {}", e))?;
+    let run_diff = |args: &[&str]| -> Result<(bool, String, String), String> {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(&normalized)
+            .output()
+            .map_err(|e| format!("Failed to execute git diff: {}", e))?;
 
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+        Ok((
+            output.status.success(),
+            String::from_utf8_lossy(&output.stdout).to_string(),
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ))
+    };
+
+    // 1) Working tree changes
+    let (ok, stdout, stderr) = run_diff(&["diff", "--", file])?;
+    if ok && !stdout.trim().is_empty() {
+        return Ok(stdout);
     }
+
+    // 2) Staged/index changes
+    let (ok, stdout, stderr_cached) = run_diff(&["diff", "--cached", "--", file])?;
+    if ok && !stdout.trim().is_empty() {
+        return Ok(stdout);
+    }
+
+    // 3) Untracked files: compare with empty file via no-index.
+    // git may return non-zero status for --no-index when differences exist,
+    // but stdout still contains a valid unified diff.
+    let (ok, stdout, stderr_no_index) = run_diff(&["diff", "--no-index", "--", "/dev/null", file])?;
+    if (ok || !stderr_no_index.contains("usage:")) && !stdout.trim().is_empty() {
+        return Ok(stdout);
+    }
+
+    if !stderr.is_empty() {
+        return Err(stderr);
+    }
+    if !stderr_cached.is_empty() {
+        return Err(stderr_cached);
+    }
+    if !stderr_no_index.is_empty() {
+        return Err(stderr_no_index);
+    }
+
+    Ok(String::new())
 }
