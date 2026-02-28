@@ -1,70 +1,66 @@
-# 终端会话管理功能
+# 会话管理（多 Agent）
 
-ClawdChat 现在支持全局状态管理来保存多个终端的会话记录，方便切换时能恢复上下文。
-...
+本文档描述 ClawdChat 当前的会话模型：多 Agent + 本地/远程双模式。
 
-- `clawdchat-terminal-sessions`：会话数据
-- `clawdchat-recently-used-sessions`：最近使用的会话列表
+## 会话模型
 
-### 数据结构
+会话由 `sessionStore` 管理，核心维度如下：
 
-每个会话包含以下信息：
+- `sessionId`：会话唯一标识
+- `agentType`：Agent 类型（如 `claude`、`codex`、`gemini`、`opencode`、`openclaw`）
+- `mode`：`local` 或 `remote`
+- `projectPath/currentDir`：会话关联目录
+- `active`：是否活跃
 
-```typescript
-interface TerminalSession {
-  id: string; // 会话唯一ID
-  sessionId: string; // 远程会话ID
-  name?: string; // 会话名称
-  terminalId: string; // 终端ID
-  shellType: string; // Shell类型
-  currentDir: string; // 当前目录
-  status: string; // 会话状态
-  createdAt: number; // 创建时间
-  lastActivity: number; // 最后活动时间
-  size: [number, number]; // 终端尺寸
-  processId?: number; // 进程ID
+## 两种会话模式
 
-  // 恢复相关数据
-  terminalContent?: string; // 终端内容缓存
-  scrollback?: string[]; // 滚动历史
-  workingDirectory?: string; // 工作目录
-  environmentVars?: Record<string, string>; // 环境变量
-  commandHistory?: string[]; // 命令历史
-  lastCommand?: string; // 最后执行的命令
-  connectionState?: "connected" | "disconnected" | "reconnecting"; // 连接状态
-}
-```
+### Local
 
-## 性能考虑
+- 在本机直接启动和管理 Agent
+- 适用于本地开发与调试
+- 可加载本地 Agent 历史会话
 
-- 会话数据有大小限制，避免存储过多内容
-- 滚动历史会限制最大行数
-- 自动保存间隔可调节，平衡性能和数据安全性
-- 定期清理过期会话释放存储空间
+### Remote
 
-## 故障排除
+- 通过连接会话控制远端 Agent
+- 适用于跨设备或远端运行环境
+- 可由本地会话派生远程会话
 
-### 会话数据丢失
+## 侧边栏行为
 
-- 检查浏览器localStorage是否被清理
-- 确认自动保存功能已开启
-- 检查存储空间是否充足
+`SessionSidebar` 提供统一入口：
 
-### 恢复失败
+- 显示所有活跃会话
+- 切换当前活跃会话
+- 关闭会话（会尝试停止对应本地 agent）
+- 本地会话支持展开历史并加载历史 session
 
-- 确认会话数据格式正确
-- 检查终端是否支持内容恢复
-- 尝试手动导入备份的会话数据
+移动端适配：
 
-### 性能问题
+- 历史/关闭操作使用下拉菜单触发
+- 避免会话项内多按钮造成触控拥挤
 
-- 减少最大滚动历史行数
-- 增加自动保存间隔
-- 定期清理不需要的会话
+## 新建会话
 
-## 隐私和安全
+通过 New Session 流程创建会话：
 
-- 会话数据仅存储在本地浏览器中
-- 不会发送到任何服务器
-- 敏感命令和内容可能会被保存，请谨慎使用
-- 导出的JSON文件包含完整的会话数据，请妥善保管
+- `local`：直接创建本地会话
+- `remote`：基于控制会话创建远端会话
+
+## 权限模式
+
+每个会话可配置权限策略：
+
+- `AlwaysAsk`
+- `AcceptEdits`
+- `Plan`
+- `AutoApprove`
+
+权限模式由前端设置并同步到后端命令通道。
+
+## 相关代码
+
+- `src/stores/sessionStore.ts`
+- `src/components/SessionSidebar.tsx`
+- `src/components/NewSessionModal.tsx`
+- `src/components/ChatView.tsx`
