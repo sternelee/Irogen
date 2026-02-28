@@ -709,6 +709,7 @@ async fn connect_to_peer(
                                                                 serde_json::Value::Object(obj) => {
                                                                     let is_dir = obj
                                                                         .get("is_dir")
+                                                                        .or_else(|| obj.get("isDir"))
                                                                         .and_then(|v| v.as_bool())
                                                                         .unwrap_or(false);
                                                                     let name_val = obj.get("name");
