@@ -51,7 +51,8 @@ Override agent commands/args/env in `~/.config/clawdpilot/agents.json` (or `~/.c
 | Directory | Purpose |
 |-----------|---------|
 | **src/** | SolidJS frontend (Vite + vite-plugin-solid + TailwindCSS v4 + DaisyUI) |
-| **src/stores/** | State management (sessionStore, chatStore, settingsStore, deviceStore, fileBrowserStore, gitStore, notificationStore) |
+| **src/stores/** | State management (sessionStore, chatStore, settingsStore, deviceStore, fileBrowserStore, gitStore, notificationStore, sessionEventRouter) |
+| **src/components/ui/** | Reusable UI primitives (Accordion, Avatar, Card, Dropdown, Tabs, Toast, Tooltip, MessageList, ChatInput, PermissionCard, etc.) |
 | **src/components/** | UI components (ChatView, SessionSidebar, NewSessionModal, FileBrowserView, GitDiffView, SettingsModal, etc.) |
 | **src/hooks/** | Custom SolidJS hooks |
 | **src/utils/** | Utility functions |
@@ -64,6 +65,14 @@ Frontend (ChatView.tsx) → Tauri invoke → P2P (QUIC/iroh) → CLI Host
   → AgentManager → SessionKind → AI agent subprocess
   → AgentTurnEvent broadcast → Tauri event ("agent-message") → Frontend
 ```
+
+### Multi-Session Event Routing
+
+The `sessionEventRouter.ts` provides centralized event management for concurrent sessions:
+- Single global listener per event type (not per ChatView instance)
+- Routes events to correct session handlers by sessionId
+- Tracks streaming state and unread indicators per session
+- Active session is exempt from unread notifications
 
 ### Message Protocol (`shared/src/message_protocol.rs`)
 
@@ -325,8 +334,11 @@ cargo test -p cli -- --nocapture
 cargo fmt --all -- --check  # Verify formatting
 cargo clippy --workspace -- -D warnings  # Lint (strict)
 
-# Frontend formatting
-pnpm tsc  # TypeScript type check
+# Frontend type check
+pnpm tsc
+
+# Frontend formatting (optional)
+pnpm exec prettier --write "src/**/*.{ts,tsx}"
 ```
 
 ## Debugging
@@ -383,10 +395,12 @@ idevicesyslog | grep ClawdPilot
 | `cli/src/main.rs` | CLI entry point (host subcommand) |
 | `app/src/lib.rs` | Tauri commands and P2P client |
 | `src/components/ChatView.tsx` | Main chat interface |
+| `src/components/ui/ChatInput.tsx` | Chat input with tool buttons and file attachment |
 | `src/stores/sessionStore.ts` | Session state management |
 | `src/stores/chatStore.ts` | Messages and permissions |
 | `src/stores/fileBrowserStore.ts` | File browser state |
 | `src/stores/gitStore.ts` | Git status and diff state |
+| `src/stores/sessionEventRouter.ts` | Multi-session event routing and unread tracking |
 
 ## Package Manager
 

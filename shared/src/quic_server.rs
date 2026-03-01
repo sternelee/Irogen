@@ -842,7 +842,8 @@ impl QuicMessageServer {
                             node_id, conn_id
                         );
                         // 尝试关闭连接（可能已经断开，忽略错误）
-                        conn.connection.close(0u32.into(), b"Send failed, auto cleanup");
+                        conn.connection
+                            .close(0u32.into(), b"Send failed, auto cleanup");
                     }
                 }
             }
