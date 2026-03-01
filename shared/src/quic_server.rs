@@ -803,10 +803,15 @@ impl QuicMessageServer {
     }
 
     /// 广播消息到所有连接的节点
+    ///
+    /// 当发送失败时，会自动清理断开的连接。客户端重连后可以恢复接收消息。
     pub async fn broadcast_message(&self, message: Message) -> Result<()> {
         let connections = self.connections.read().await;
         #[cfg(debug_assertions)]
         debug!("Broadcasting message to {} connections", connections.len());
+
+        // 收集发送失败的节点ID
+        let mut failed_node_ids: Vec<EndpointId> = Vec::new();
 
         for connection in connections.values() {
             if let Err(e) = self
@@ -817,6 +822,29 @@ impl QuicMessageServer {
                     "Failed to send message to node {:?}: {}",
                     connection.node_id, e
                 );
+                failed_node_ids.push(connection.node_id.clone());
+            }
+        }
+
+        // 释放读锁
+        drop(connections);
+
+        // 清理发送失败的连接
+        if !failed_node_ids.is_empty() {
+            let mut connections = self.connections.write().await;
+            for node_id in failed_node_ids {
+                // 找到并移除断开的连接
+                if let Some((conn_id, _)) = connections.iter().find(|(_, c)| c.node_id == node_id) {
+                    let conn_id = conn_id.clone();
+                    if let Some(conn) = connections.remove(&conn_id) {
+                        info!(
+                            "🔌 Auto cleanup disconnected node: {:?} (connection: {})",
+                            node_id, conn_id
+                        );
+                        // 尝试关闭连接（可能已经断开，忽略错误）
+                        conn.connection.close(0u32.into(), b"Send failed, auto cleanup");
+                    }
+                }
             }
         }
 
