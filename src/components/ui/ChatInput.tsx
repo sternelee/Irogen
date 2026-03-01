@@ -33,7 +33,11 @@ import { FaSolidStopCircle } from "solid-icons/fa";
 // Types
 // ============================================================================
 
-export type PermissionMode = "AlwaysAsk" | "AcceptEdits" | "Plan" | "AutoApprove";
+export type PermissionMode =
+  | "AlwaysAsk"
+  | "AcceptEdits"
+  | "Plan"
+  | "AutoApprove";
 export type RightPanelView = "none" | "file" | "git";
 
 export interface ChatInputProps {
@@ -135,166 +139,164 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   return (
     <div
       class={cn(
-        "flex flex-col gap-2 px-4 py-3 bg-background/80 backdrop-blur-md border-t border-border/60",
+        "flex flex-col gap-2 px-4 pt-3 pb-1 bg-background/80 backdrop-blur-md",
         focused() && "bg-background",
         props.class,
       )}
     >
-      {/* Input Container */}
+      {/* Input Container with Toolbar Inside */}
       <div
         class={cn(
-          "flex items-center gap-2 rounded-2xl border-2 bg-muted/30 transition-all duration-300 pr-1",
+          "flex flex-col rounded-2xl border-2 bg-muted/30 transition-all duration-300",
           focused()
             ? "border-primary/50 shadow-xl shadow-primary/5 bg-background"
             : "border-border/60 hover:border-muted-foreground/20 hover:bg-muted/50",
         )}
       >
-        {/* Attach Button */}
-        <button
-          type="button"
-          class="p-3 text-muted-foreground/60 hover:text-foreground hover:bg-muted/80 rounded-xl transition-all duration-200 shrink-0 hidden"
-          title="Attach files"
-          disabled={props.disabled}
-          onClick={handleAttach}
-        >
-          <FiPlus size={22} />
-        </button>
+        {/* Top Row: Textarea + Send Button */}
+        <div class="flex items-end gap-2 p-2 pb-1">
+          {/* Attach Button */}
+          <button
+            type="button"
+            class="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted/80 rounded-xl transition-all duration-200 shrink-0 hidden"
+            title="Attach files"
+            disabled={props.disabled}
+            onClick={handleAttach}
+          >
+            <FiPlus size={20} />
+          </button>
 
-        {/* Textarea */}
-        <textarea
-          ref={textareaRef}
-          value={props.value}
-          onInput={handleInput}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder={props.placeholder || "Type your message..."}
-          class="flex-1 p-3.5 bg-transparent border-none outline-none resize-none text-sm max-h-[200px] min-h-[24px] leading-relaxed placeholder:text-muted-foreground/40 scrollbar-hide"
-          disabled={props.disabled}
-          rows={1}
-        />
-
-        {/* Send/Stop Button */}
-        <button
-          type="button"
-          onClick={() => {
-            if (props.isStreaming && props.onInterrupt) {
-              props.onInterrupt();
-            } else {
-              props.onSubmit();
-            }
-          }}
-          disabled={
-            !props.isStreaming && (!props.value.trim() || props.disabled)
-          }
-          class={cn(
-            "shrink-0 p-3 rounded-xl transition-all duration-300 shadow-lg",
-            props.isStreaming
-              ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 animate-pulse"
-              : "bg-gradient-to-r from-primary to-primary/90 text-primary-foreground hover:from-primary/90 hover:to-primary/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none",
-          )}
-          title={props.isStreaming ? "Stop generation" : "Send message"}
-        >
-          <Show when={props.isStreaming} fallback={<FiSend size={20} />}>
-            <FaSolidStopCircle size={30} color="red" />
-          </Show>
-        </button>
-      </div>
-
-      {/* Attachments List */}
-      <Show when={props.attachments && props.attachments.length > 0}>
-        <div class="flex flex-wrap gap-2 px-1">
-          {props.attachments!.map((file) => (
-            <div class="flex items-center gap-2 px-3 py-1.5 bg-muted/60 rounded-lg text-xs border border-border/30">
-              <FiPlus size={12} class="rotate-45 text-muted-foreground/60" />
-              <span class="truncate max-w-[150px]">{file.name}</span>
-              <button
-                type="button"
-                class="p-0.5 hover:bg-muted-foreground/20 rounded text-muted-foreground/60"
-                onClick={() => props.onAttach?.([])} // Will be handled via parent
-              >
-                <FiX size={12} />
-              </button>
-            </div>
-          ))}
+          {/* Textarea */}
+          <textarea
+            ref={textareaRef}
+            value={props.value}
+            onInput={handleInput}
+            onKeyDown={handleKeyDown}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={props.placeholder || "Type your message..."}
+            class="flex-1 px-3 py-2 bg-transparent border-none outline-none resize-none text-sm max-h-[200px] min-h-[24px] leading-relaxed placeholder:text-muted-foreground/40 scrollbar-hide"
+            disabled={props.disabled}
+            rows={1}
+          />
         </div>
-      </Show>
 
-      {/* Tool Bar */}
-      <div class="flex items-center justify-between px-1">
-        <div class="flex items-center gap-1">
-          {/* Permission Mode Dropdown */}
-          <div class="relative">
-            <select
-              class="select select-xs h-7 bg-muted/50 border-border/40 text-xs pr-6 appearance-none cursor-pointer hover:bg-muted transition-colors"
-              value={props.permissionMode || "AlwaysAsk"}
-              onChange={(e) =>
-                props.onPermissionModeChange?.(
-                  e.currentTarget.value as PermissionMode
-                )
-              }
-              title="Permission mode"
+        {/* Attachments List */}
+        <Show when={props.attachments && props.attachments.length > 0}>
+          <div class="flex flex-wrap gap-2 px-3 pb-1">
+            {props.attachments!.map((file) => (
+              <div class="flex items-center gap-2 px-2.5 py-1 bg-muted/60 rounded-lg text-xs border border-border/30">
+                <FiPlus size={10} class="rotate-45 text-muted-foreground/60" />
+                <span class="truncate max-w-[150px]">{file.name}</span>
+                <button
+                  type="button"
+                  class="p-0.5 hover:bg-muted-foreground/20 rounded text-muted-foreground/60"
+                  onClick={() => props.onAttach?.([])}
+                >
+                  <FiX size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </Show>
+
+        {/* Bottom Toolbar */}
+        <div class="flex items-center px-3 pb-1 gap-2">
+          <div class="flex items-center gap-0.5">
+            {/* Permission Mode Dropdown */}
+            <div class="relative flex items-center">
+              <select
+                class="select select-xs h-6 bg-muted/40 border-border/30 text-[11px] pr-5 appearance-none cursor-pointer hover:bg-muted/60 transition-colors rounded-md"
+                value={props.permissionMode || "AlwaysAsk"}
+                onChange={(e) =>
+                  props.onPermissionModeChange?.(
+                    e.currentTarget.value as PermissionMode,
+                  )
+                }
+                title="Permission mode"
+              >
+                <option value="AlwaysAsk">Ask</option>
+                <option value="AcceptEdits">Edit</option>
+                <option value="Plan">Plan</option>
+                <option value="AutoApprove">Auto</option>
+              </select>
+            </div>
+
+            {/* Divider */}
+            <div class="w-px h-4 bg-border/40 mx-1.5" />
+
+            {/* File Browser Button */}
+            <button
+              type="button"
+              class={cn(
+                "btn btn-ghost btn-xs h-6 min-h-0 px-2 gap-1 text-[11px] transition-all rounded-md",
+                props.rightPanelView === "file"
+                  ? "bg-primary/15 text-primary hover:bg-primary/20"
+                  : "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50",
+              )}
+              onClick={props.onToggleFileBrowser}
+              title="Toggle file browser"
+              disabled={props.disabled}
             >
-              <option value="AlwaysAsk">Ask</option>
-              <option value="AcceptEdits">Edit</option>
-              <option value="Plan">Plan</option>
-              <option value="AutoApprove">Auto</option>
-            </select>
-            <FiShield
-              size={10}
-              class="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 pointer-events-none"
-            />
+              <FiFolder size={12} />
+              <span class="hidden sm:inline">Files</span>
+            </button>
+
+            {/* Git Panel Button */}
+            <button
+              type="button"
+              class={cn(
+                "btn btn-ghost btn-xs h-6 min-h-0 px-2 gap-1 text-[11px] transition-all rounded-md",
+                props.rightPanelView === "git"
+                  ? "bg-primary/15 text-primary hover:bg-primary/20"
+                  : "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50",
+              )}
+              onClick={props.onToggleGitPanel}
+              title="Toggle git panel"
+              disabled={props.disabled}
+            >
+              <FiGitBranch size={12} />
+              <span class="hidden sm:inline">Git</span>
+            </button>
           </div>
 
-          {/* Divider */}
-          <div class="w-px h-5 bg-border/50 mx-1" />
+          {/* Right side: Keyboard hints */}
+          <div class="flex items-center gap-2 text-[10px] text-muted-foreground/40">
+            <span class="hidden sm:flex items-center gap-0.5">
+              <kbd class="kbd kbd-xs bg-muted/40 border-border/20">↵</kbd>
+              <span>send</span>
+            </span>
+            <span class="hidden sm:flex items-center gap-0.5">
+              <kbd class="kbd kbd-xs bg-muted/40 border-border/20">⇧↵</kbd>
+              <span>line</span>
+            </span>
+          </div>
 
-          {/* File Browser Button */}
+          {/* Send/Stop Button */}
           <button
             type="button"
+            onClick={() => {
+              if (props.isStreaming && props.onInterrupt) {
+                props.onInterrupt();
+              } else {
+                props.onSubmit();
+              }
+            }}
+            disabled={
+              !props.isStreaming && (!props.value.trim() || props.disabled)
+            }
             class={cn(
-              "btn btn-ghost btn-xs h-7 px-2 gap-1 text-xs transition-all",
-              props.rightPanelView === "file"
-                ? "bg-primary/15 text-primary hover:bg-primary/20"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              "shrink-0 ml-auto inline-flex justify-center items-center p-1 rounded-xl transition-all duration-300 shadow-lg mb-0.5",
+              props.isStreaming
+                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 animate-pulse"
+                : "bg-gradient-to-r from-primary to-primary/90 text-primary-foreground hover:from-primary/90 hover:to-primary/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none",
             )}
-            onClick={props.onToggleFileBrowser}
-            title="Toggle file browser"
-            disabled={props.disabled}
+            title={props.isStreaming ? "Stop generation" : "Send message"}
           >
-            <FiFolder size={14} />
-            <span class="hidden sm:inline">Files</span>
+            <Show when={props.isStreaming} fallback={<FiSend size={18} />}>
+              <FaSolidStopCircle size={24} color="red" />
+            </Show>
           </button>
-
-          {/* Git Panel Button */}
-          <button
-            type="button"
-            class={cn(
-              "btn btn-ghost btn-xs h-7 px-2 gap-1 text-xs transition-all",
-              props.rightPanelView === "git"
-                ? "bg-primary/15 text-primary hover:bg-primary/20"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-            )}
-            onClick={props.onToggleGitPanel}
-            title="Toggle git panel"
-            disabled={props.disabled}
-          >
-            <FiGitBranch size={14} />
-            <span class="hidden sm:inline">Git</span>
-          </button>
-        </div>
-
-        {/* Right side: Keyboard hints */}
-        <div class="flex items-center gap-3 text-[10px] text-muted-foreground/40">
-          <span class="hidden sm:flex items-center gap-1">
-            <kbd class="kbd kbd-xs bg-muted/50 border-border/30">↵</kbd>
-            <span>send</span>
-          </span>
-          <span class="hidden sm:flex items-center gap-1">
-            <kbd class="kbd kbd-xs bg-muted/50 border-border/30">⇧↵</kbd>
-            <span>new line</span>
-          </span>
-          <span class="opacity-60">Markdown</span>
         </div>
       </div>
     </div>

@@ -1520,7 +1520,7 @@ export function ChatView(props: ChatViewProps) {
         <div class="drawer-content flex h-full bg-muted relative pb-safe lg:pb-0 overflow-hidden">
           <div class="flex flex-col h-full min-w-0 flex-1">
             {/* Header */}
-            <div class="z-20 flex items-center justify-between border-b border-border/60 bg-background/80 backdrop-blur-sm pr-4 pl-16 lg:pl-6 md:py-3 shadow-sm">
+            <div class="z-20 flex items-center min-h-11 box-border justify-between border-b border-border/60 bg-background/80 backdrop-blur-sm pr-4 pl-16 lg:pl-6 md:py-3 shadow-sm">
               <div class="flex-1">
                 <div class="flex items-center gap-3">
                   <div class="text-primary p-1.5 rounded-lg bg-primary/10 shrink-0">
