@@ -27,9 +27,9 @@ import {
   FiX,
 } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { chatStore } from "../stores/chatStore";
 import { sessionStore } from "../stores/sessionStore";
+import { sessionEventRouter, type SessionEvent } from "../stores/sessionEventRouter";
 import { isMobile } from "../stores/deviceStore";
 import type { AgentType } from "../stores/sessionStore";
 import { notificationStore } from "../stores/notificationStore";
@@ -78,6 +78,7 @@ interface ParsedEvent {
   text?: string;
   content?: string;
   thinking?: boolean;
+  messageId?: string;
   // Turn lifecycle
   result?: unknown;
   error?: string;
@@ -87,10 +88,14 @@ interface ParsedEvent {
   toolName?: string;
   input?: unknown;
   output?: unknown;
+  status?: string;
   // Permission
   requestId?: string;
   message?: string;
   createdAt?: number;
+  requestedAt?: number;
+  toolParams?: unknown;
+  description?: string;
   // Usage
   inputTokens?: number;
   outputTokens?: number;
@@ -105,7 +110,6 @@ interface ParsedEvent {
   // File operations
   operation?: string;
   path?: string;
-  status?: string;
   // Terminal
   command?: string;
   exitCode?: number;
@@ -667,443 +671,334 @@ export function ChatView(props: ChatViewProps) {
       }
     };
 
-    // Listen for incoming agent messages from backend
+    // ========================================================================
+    // Session Event Handler (using centralized router)
+    // ========================================================================
+
+    const handleSessionEvent = (event: SessionEvent) => {
+      // Parse event using helper that handles both Rust and frontend formats
+      const parsed = parseEvent(event as unknown as Record<string, unknown>);
+      const eventType = parsed.type;
+      const content = parsed.content || parsed.text || "";
+      const thinking = parsed.thinking || false;
+
+      // Handle different event types
+      switch (eventType) {
+        case "text_delta": {
+          const deltaContent = content || "";
+          const currentMessages = messages();
+          const lastMessage = currentMessages[currentMessages.length - 1];
+
+          if (lastMessage?.role === "assistant") {
+            chatStore.updateMessage(props.sessionId, lastMessage.id, {
+              content: lastMessage.content + deltaContent,
+              thinking,
+              timestamp: Date.now(),
+            });
+          } else {
+            chatStore.addMessage(props.sessionId, {
+              role: "assistant",
+              content: deltaContent,
+              thinking,
+            });
+          }
+          setIsStreaming(true);
+          break;
+        }
+
+        case "response": {
+          // Full response - replace existing message or create new one
+          const responseContent = content || "";
+          const responseThinking = thinking;
+          const messageId = parsed.messageId;
+
+          setIsStreaming(true);
+
+          const currentMessages = messages();
+          const lastMessage = currentMessages[currentMessages.length - 1];
+
+          if (
+            (messageId && lastMessage?.messageId === messageId) ||
+            (!messageId && lastMessage?.role === "assistant")
+          ) {
+            chatStore.updateMessage(props.sessionId, lastMessage.id, {
+              content: responseContent,
+              thinking: responseThinking,
+              timestamp: Date.now(),
+            });
+          } else {
+            chatStore.addMessage(props.sessionId, {
+              role: "assistant",
+              content: responseContent,
+              thinking: responseThinking,
+              messageId,
+            });
+          }
+          break;
+        }
+
+        case "turn_started":
+          setIsStreaming(true);
+          break;
+
+        case "turn_completed": {
+          setIsStreaming(false);
+          const currentMessages = messages();
+          const lastMessage = currentMessages[currentMessages.length - 1];
+          if (lastMessage?.role === "assistant" && lastMessage.thinking) {
+            chatStore.updateMessage(props.sessionId, lastMessage.id, {
+              thinking: false,
+            });
+          }
+          break;
+        }
+
+        case "turn_error": {
+          setIsStreaming(false);
+          const error = parsed.error || "Unknown error";
+          chatStore.addMessage(props.sessionId, {
+            role: "system",
+            content: `Error: ${error}`,
+          });
+          break;
+        }
+
+        case "reasoning_delta": {
+          const reasoningContent = content || "";
+          const reasonMessages = messages();
+          const lastReasonMsg = reasonMessages[reasonMessages.length - 1];
+
+          if (lastReasonMsg?.role === "assistant") {
+            chatStore.updateMessage(props.sessionId, lastReasonMsg.id, {
+              content: lastReasonMsg.content + reasoningContent,
+              thinking: true,
+              timestamp: Date.now(),
+            });
+          } else {
+            chatStore.addMessage(props.sessionId, {
+              role: "assistant",
+              content: reasoningContent,
+              thinking: true,
+            });
+          }
+          setIsStreaming(true);
+          break;
+        }
+
+        case "tool_started": {
+          const toolId = parsed.toolId;
+          const toolName = parsed.toolName || "unknown";
+          const toolInput = parsed.input;
+          const inputStr = toolInput ? JSON.stringify(toolInput) : "";
+          const toolContent = `[Tool: ${toolName} started]${inputStr ? `\nInput: ${inputStr}` : ""}`;
+          if (toolId) {
+            upsertToolMessage(toolId, toolContent);
+          } else {
+            chatStore.addMessage(props.sessionId, {
+              role: "system",
+              content: toolContent,
+            });
+          }
+          break;
+        }
+
+        case "tool_inputUpdated": {
+          const toolId = parsed.toolId;
+          const updateToolName = parsed.toolName || "unknown";
+          const updatedInput = parsed.input;
+          const updateStr = updatedInput ? JSON.stringify(updatedInput) : "";
+          const toolContent = `[Tool: ${updateToolName} input updated]${updateStr ? `\n${updateStr}` : ""}`;
+          if (toolId) {
+            upsertToolMessage(toolId, toolContent);
+          } else {
+            chatStore.addMessage(props.sessionId, {
+              role: "system",
+              content: toolContent,
+            });
+          }
+          break;
+        }
+
+        case "tool_completed": {
+          const toolId = parsed.toolId;
+          const compToolName = parsed.toolName || "unknown";
+          const compOutput = parsed.output;
+          const compError = parsed.error;
+          const outputStr = compOutput
+            ? typeof compOutput === "string"
+              ? compOutput
+              : JSON.stringify(compOutput, null, 2)
+            : "";
+          if (compError) {
+            const toolContent = `[Tool: ${compToolName} failed]\nError: ${compError}`;
+            if (toolId) {
+              upsertToolMessage(toolId, toolContent);
+              toolMessageIds.delete(toolId);
+            } else {
+              chatStore.addMessage(props.sessionId, {
+                role: "system",
+                content: toolContent,
+              });
+            }
+          } else {
+            const toolContent = `[Tool: ${compToolName} completed]${outputStr ? `\n${outputStr}` : ""}`;
+            if (toolId) {
+              upsertToolMessage(toolId, toolContent);
+              toolMessageIds.delete(toolId);
+            } else {
+              chatStore.addMessage(props.sessionId, {
+                role: "system",
+                content: toolContent,
+              });
+            }
+          }
+          break;
+        }
+
+        case "approval_request":
+        case "permission_request": {
+          const permToolName = parsed.toolName || "unknown";
+          const permMessage =
+            parsed.message || `Permission request for ${permToolName}`;
+          const permInput = parsed.input || parsed.toolParams;
+          const permRequestDesc = `${permMessage}${permInput ? `\nInput: ${JSON.stringify(permInput)}` : ""}`;
+          chatStore.addPermissionRequest(props.sessionId, {
+            sessionId: props.sessionId,
+            id: parsed.requestId,
+            toolName: permToolName,
+            toolParams: permInput as Record<string, unknown>,
+            description: permRequestDesc,
+            requestedAt:
+              typeof parsed.createdAt === "number"
+                ? parsed.createdAt * 1000
+                : typeof parsed.requestedAt === "number"
+                  ? parsed.requestedAt * 1000
+                  : undefined,
+          });
+          setIsStreaming(false);
+          break;
+        }
+
+        case "tool_call": {
+          const legacyToolName = parsed.toolName || "unknown";
+          const legacyStatus = parsed.status || "started";
+          const legacyToolOutput = parsed.output as string | undefined;
+          chatStore.addMessage(props.sessionId, {
+            role: "system",
+            content: `[Tool: ${legacyToolName}] Status: ${legacyStatus}${legacyToolOutput ? `\n${legacyToolOutput}` : ""}`,
+          });
+          break;
+        }
+
+        case "session_started": {
+          const agentName = parsed.agent || "Agent";
+          chatStore.addMessage(props.sessionId, {
+            role: "system",
+            content: `[Session started: ${agentName}]`,
+          });
+          break;
+        }
+
+        case "session_ended":
+          setIsStreaming(false);
+          break;
+
+        case "usage_update": {
+          const inputTokens = parsed.inputTokens;
+          const outputTokens = parsed.outputTokens;
+          const modelUsage = parsed.modelUsage;
+          if (inputTokens || outputTokens || modelUsage) {
+            const usageParts: string[] = [];
+            if (modelUsage) usageParts.push(`Model: ${modelUsage}`);
+            if (inputTokens !== undefined)
+              usageParts.push(`Input tokens: ${inputTokens}`);
+            if (outputTokens !== undefined)
+              usageParts.push(`Output tokens: ${outputTokens}`);
+            chatStore.addMessage(props.sessionId, {
+              role: "system",
+              content: `[Token Usage] ${usageParts.join(" | ")}`,
+            });
+          }
+          break;
+        }
+
+        case "progress_update": {
+          const progress = parsed.progress || 0;
+          const progressMsg = parsed.message || "";
+          const operation = parsed.operation || "Operation";
+          const progressPercent = Math.round(progress * 100);
+          chatStore.addMessage(props.sessionId, {
+            role: "system",
+            content: `[Progress] ${operation}: ${progressPercent}%${progressMsg ? ` - ${progressMsg}` : ""}`,
+          });
+          break;
+        }
+
+        case "notification": {
+          const notifLevel = parsed.level || "Info";
+          const notifMessage = parsed.message || "";
+          if (notifLevel === "Info" && (!notifMessage || !notifMessage.trim())) return;
+          chatStore.addMessage(props.sessionId, {
+            role: "system",
+            content: `[${notifLevel}] ${notifMessage}`,
+          });
+          break;
+        }
+
+        case "file_operation": {
+          const fileOp = parsed.operation || "unknown";
+          const filePath = parsed.path || "";
+          const fileStatus = parsed.status || "";
+          chatStore.addMessage(props.sessionId, {
+            role: "system",
+            content: `[File: ${fileOp} ${filePath}]${fileStatus ? ` - ${fileStatus}` : ""}`,
+          });
+          break;
+        }
+
+        case "terminal_output": {
+          const termCmd = parsed.command || "";
+          const termOutput = (parsed.output as string) || "";
+          const termExitCode = parsed.exitCode;
+          if (termCmd) {
+            if (termExitCode === 0) {
+              chatStore.addMessage(props.sessionId, {
+                role: "system",
+                content: `[Command completed: ${termCmd}]\n${termOutput}`,
+              });
+            } else if (termExitCode && termExitCode > 0) {
+              chatStore.addMessage(props.sessionId, {
+                role: "system",
+                content: `[Command failed (exit ${termExitCode}): ${termCmd}]\n${termOutput}`,
+              });
+            } else {
+              chatStore.addMessage(props.sessionId, {
+                role: "system",
+                content: `[Command output: ${termCmd}]\n${termOutput}`,
+              });
+            }
+          }
+          break;
+        }
+
+        default:
+          console.log("[ChatView] Unknown event type:", eventType, parsed);
+      }
+    };
+
+    // Subscribe to session events via centralized router
     onMount(() => {
-      // Listen for local agent events
-      const unlistenLocalPromise = listen<Record<string, unknown>>(
-        "local-agent-event",
-        (event) => {
-          console.log("[ChatView] Received local-agent-event:", event.payload);
-          try {
-            const data = event.payload as {
-              sessionId: string;
-              turnId: string;
-              event: Record<string, unknown>;
-            };
-            if (data.sessionId === props.sessionId) {
-              // Parse event using helper that handles both Rust and frontend formats
-              const parsed = parseEvent(data.event);
-              const eventType = parsed.type;
-              const content = parsed.content || parsed.text || "";
-              const thinking = parsed.thinking || false;
-
-              // Handle different event types from local agent
-              switch (eventType) {
-                case "text_delta": {
-                  const deltaContent = content || "";
-                  // Update or create message
-                  const currentMessages = messages();
-                  const lastMessage =
-                    currentMessages[currentMessages.length - 1];
-
-                  if (lastMessage?.role === "assistant") {
-                    chatStore.updateMessage(props.sessionId, lastMessage.id, {
-                      content: lastMessage.content + deltaContent,
-                      thinking,
-                      timestamp: Date.now(),
-                    });
-                  } else {
-                    chatStore.addMessage(props.sessionId, {
-                      role: "assistant",
-                      content: deltaContent,
-                      thinking,
-                    });
-                  }
-                  setIsStreaming(true);
-                  break;
-                }
-
-                case "turn_started":
-                  setIsStreaming(true);
-                  break;
-
-                case "turn_completed": {
-                  setIsStreaming(false);
-                  const currentMessages2 = messages();
-                  const lastMessage2 =
-                    currentMessages2[currentMessages2.length - 1];
-                  if (
-                    lastMessage2?.role === "assistant" &&
-                    lastMessage2.thinking
-                  ) {
-                    chatStore.updateMessage(props.sessionId, lastMessage2.id, {
-                      thinking: false,
-                    });
-                  }
-                  break;
-                }
-
-                case "turn_error": {
-                  setIsStreaming(false);
-                  const error = parsed.error || "Unknown error";
-                  chatStore.addMessage(props.sessionId, {
-                    role: "system",
-                    content: `Error: ${error}`,
-                  });
-                  break;
-                }
-
-                case "reasoning_delta": {
-                  const reasoningContent = content || "";
-                  // Append to current message or create new one
-                  const reasonMessages = messages();
-                  const lastReasonMsg =
-                    reasonMessages[reasonMessages.length - 1];
-
-                  if (lastReasonMsg?.role === "assistant") {
-                    // Append thinking indicator text
-                    chatStore.updateMessage(props.sessionId, lastReasonMsg.id, {
-                      content: lastReasonMsg.content + reasoningContent,
-                      thinking: true,
-                      timestamp: Date.now(),
-                    });
-                  } else {
-                    // New message with thinking
-                    chatStore.addMessage(props.sessionId, {
-                      role: "assistant",
-                      content: reasoningContent,
-                      thinking: true,
-                    });
-                  }
-                  setIsStreaming(true);
-                  break;
-                }
-
-                case "tool_started": {
-                  const toolId = parsed.toolId;
-                  const toolName = parsed.toolName || "unknown";
-                  const toolInput = parsed.input;
-                  const inputStr = toolInput ? JSON.stringify(toolInput) : "";
-                  const content = `[Tool: ${toolName} started]${inputStr ? `\nInput: ${inputStr}` : ""}`;
-                  if (toolId) {
-                    upsertToolMessage(toolId, content);
-                  } else {
-                    chatStore.addMessage(props.sessionId, {
-                      role: "system",
-                      content,
-                    });
-                  }
-                  break;
-                }
-
-                case "tool_inputUpdated": {
-                  const toolId = parsed.toolId;
-                  const updateToolName = parsed.toolName || "unknown";
-                  const updatedInput = parsed.input;
-                  const updateStr = updatedInput
-                    ? JSON.stringify(updatedInput)
-                    : "";
-                  const content = `[Tool: ${updateToolName} input updated]${updateStr ? `\n${updateStr}` : ""}`;
-                  if (toolId) {
-                    upsertToolMessage(toolId, content);
-                  } else {
-                    chatStore.addMessage(props.sessionId, {
-                      role: "system",
-                      content,
-                    });
-                  }
-                  break;
-                }
-
-                case "tool_completed": {
-                  const toolId = parsed.toolId;
-                  const compToolName = parsed.toolName || "unknown";
-                  const compOutput = parsed.output;
-                  const compError = parsed.error;
-                  const outputStr = compOutput
-                    ? typeof compOutput === "string"
-                      ? compOutput
-                      : JSON.stringify(compOutput, null, 2)
-                    : "";
-                  if (compError) {
-                    const content = `[Tool: ${compToolName} failed]\nError: ${compError}`;
-                    if (toolId) {
-                      upsertToolMessage(toolId, content);
-                      toolMessageIds.delete(toolId);
-                    } else {
-                      chatStore.addMessage(props.sessionId, {
-                        role: "system",
-                        content,
-                      });
-                    }
-                  } else {
-                    const content = `[Tool: ${compToolName} completed]${outputStr ? `\n${outputStr}` : ""}`;
-                    if (toolId) {
-                      upsertToolMessage(toolId, content);
-                      toolMessageIds.delete(toolId);
-                    } else {
-                      chatStore.addMessage(props.sessionId, {
-                        role: "system",
-                        content,
-                      });
-                    }
-                  }
-                  break;
-                }
-
-                case "approval_request": {
-                  const permToolName = parsed.toolName || "unknown";
-                  const permMessage =
-                    parsed.message || `Permission request for ${permToolName}`;
-                  const permInput = parsed.input;
-                  const permRequestDesc = `${permMessage}${permInput ? `\nInput: ${JSON.stringify(permInput)}` : ""}`;
-                  chatStore.addPermissionRequest(props.sessionId, {
-                    sessionId: props.sessionId,
-                    id: parsed.requestId,
-                    toolName: permToolName,
-                    toolParams: permInput as Record<string, unknown>,
-                    description: permRequestDesc,
-                    requestedAt:
-                      typeof parsed.createdAt === "number"
-                        ? parsed.createdAt * 1000
-                        : undefined,
-                  });
-                  setIsStreaming(false);
-                  break;
-                }
-
-                case "tool_call": {
-                  const legacyToolName = parsed.toolName || "unknown";
-                  const legacyStatus = parsed.status || "started";
-                  const legacyToolOutput = parsed.output as string | undefined;
-                  chatStore.addMessage(props.sessionId, {
-                    role: "system",
-                    content: `[Tool: ${legacyToolName}] Status: ${legacyStatus}${legacyToolOutput ? `\n${legacyToolOutput}` : ""}`,
-                  });
-                  break;
-                }
-
-                case "session_started": {
-                  const agentName = parsed.agent || "Agent";
-                  chatStore.addMessage(props.sessionId, {
-                    role: "system",
-                    content: `[Session started: ${agentName}]`,
-                  });
-                  break;
-                }
-
-                case "session_ended":
-                  setIsStreaming(false);
-                  break;
-
-                case "usage_update": {
-                  const inputTokens = parsed.inputTokens;
-                  const outputTokens = parsed.outputTokens;
-                  const modelUsage = parsed.modelUsage;
-                  if (inputTokens || outputTokens || modelUsage) {
-                    const usageParts: string[] = [];
-                    if (modelUsage) usageParts.push(`Model: ${modelUsage}`);
-                    if (inputTokens !== undefined)
-                      usageParts.push(`Input tokens: ${inputTokens}`);
-                    if (outputTokens !== undefined)
-                      usageParts.push(`Output tokens: ${outputTokens}`);
-                    chatStore.addMessage(props.sessionId, {
-                      role: "system",
-                      content: `[Token Usage] ${usageParts.join(" | ")}`,
-                    });
-                  }
-                  break;
-                }
-
-                case "progress_update": {
-                  const progress = parsed.progress || 0;
-                  const progressMsg = parsed.message || "";
-                  const operation = parsed.operation || "Operation";
-                  const progressPercent = Math.round(progress * 100);
-                  chatStore.addMessage(props.sessionId, {
-                    role: "system",
-                    content: `[Progress] ${operation}: ${progressPercent}%${progressMsg ? ` - ${progressMsg}` : ""}`,
-                  });
-                  break;
-                }
-
-                case "notification": {
-                  const notifLevel = parsed.level || "Info";
-                  const notifMessage = parsed.message || "";
-                  if (notifMessage) {
-                    chatStore.addMessage(props.sessionId, {
-                      role: "system",
-                      content: `[${notifLevel}] ${notifMessage}`,
-                    });
-                  }
-                  break;
-                }
-
-                case "file_operation": {
-                  const fileOp = parsed.operation || "unknown";
-                  const filePath = parsed.path || "";
-                  const fileStatus = parsed.status || "";
-                  chatStore.addMessage(props.sessionId, {
-                    role: "system",
-                    content: `[File: ${fileOp} ${filePath}]${fileStatus ? ` - ${fileStatus}` : ""}`,
-                  });
-                  break;
-                }
-
-                case "terminal_output": {
-                  const termCmd = parsed.command || "";
-                  const termOutput = (parsed.output as string) || "";
-                  const termExitCode = parsed.exitCode;
-                  if (termCmd) {
-                    if (termExitCode === 0) {
-                      chatStore.addMessage(props.sessionId, {
-                        role: "system",
-                        content: `[Command completed: ${termCmd}]\n${termOutput}`,
-                      });
-                    } else if (termExitCode && termExitCode > 0) {
-                      chatStore.addMessage(props.sessionId, {
-                        role: "system",
-                        content: `[Command failed (exit ${termExitCode}): ${termCmd}]\n${termOutput}`,
-                      });
-                    } else {
-                      chatStore.addMessage(props.sessionId, {
-                        role: "system",
-                        content: `[Command output: ${termCmd}]\n${termOutput}`,
-                      });
-                    }
-                  }
-                  break;
-                }
-
-                default:
-                  console.log(
-                    "[ChatView] Unknown local agent event:",
-                    eventType,
-                    parsed,
-                  );
-              }
-            }
-          } catch (e) {
-            console.error("Failed to handle local agent event:", e);
-          }
-        },
+      const unsubscribe = sessionEventRouter.subscribe(
+        props.sessionId,
+        handleSessionEvent
       );
 
-      // Listen for remote agent events from CLI
-      const unlistenPromise = listen<Record<string, unknown>>(
-        "agent-message",
-        (event) => {
-          console.log(
-            "[ChatView] Received agent-message event:",
-            event.payload,
-          );
-          try {
-            const data = event.payload;
-            if (data.sessionId === props.sessionId) {
-              if (data.type === "text_delta") {
-                const content = (data.content as string) || "";
-                const thinking = (data.thinking as boolean) || false;
-
-                // Ensure we show streaming state during response
-                setIsStreaming(true);
-
-                const currentMessages = messages();
-                const lastMessage = currentMessages[currentMessages.length - 1];
-
-                // Update existing message if it's an assistant message
-                if (lastMessage?.role === "assistant") {
-                  chatStore.updateMessage(props.sessionId, lastMessage.id, {
-                    content: lastMessage.content + content,
-                    thinking,
-                    timestamp: Date.now(),
-                  });
-                } else {
-                  // New message
-                  chatStore.addMessage(props.sessionId, {
-                    role: "assistant",
-                    content,
-                    thinking,
-                  });
-                }
-              } else if (data.type === "response") {
-                // Full response - replace existing message or create new one
-                const content = (data.content as string) || "";
-                const thinking = (data.thinking as boolean) || false;
-                const messageId = data.messageId as string | undefined;
-
-                setIsStreaming(true);
-
-                const currentMessages = messages();
-                const lastMessage = currentMessages[currentMessages.length - 1];
-
-                // Update existing message if matching ID or streaming chunk (assistant role)
-                if (
-                  (messageId && lastMessage?.messageId === messageId) ||
-                  (!messageId && lastMessage?.role === "assistant")
-                ) {
-                  chatStore.updateMessage(props.sessionId, lastMessage.id, {
-                    content: content, // Replace content instead of appending
-                    thinking,
-                    timestamp: Date.now(),
-                  });
-                } else {
-                  // New message
-                  chatStore.addMessage(props.sessionId, {
-                    role: "assistant",
-                    content,
-                    thinking,
-                    messageId,
-                  });
-                }
-              } else if (data.type === "permission_request") {
-                chatStore.addPermissionRequest(props.sessionId, {
-                  sessionId: props.sessionId,
-                  id: data.requestId as string | undefined,
-                  toolName: data.toolName as string,
-                  toolParams: data.toolParams as Record<string, unknown>,
-                  description:
-                    (data.description as string) ||
-                    `Permission request for ${data.toolName}`,
-                  requestedAt:
-                    typeof data.requestedAt === "number"
-                      ? data.requestedAt * 1000
-                      : undefined,
-                });
-                setIsStreaming(false); // Pause streaming on permission request
-              } else if (data.type === "tool_call") {
-                chatStore.addMessage(props.sessionId, {
-                  role: "system",
-                  content: `[Tool: ${data.toolName}] Status: ${data.status}${data.output ? `\n${data.output}` : ""}`,
-                });
-              } else if (data.type === "notification") {
-                const level = data.level as string;
-                const message = data.message as string;
-                if (level === "Info" && (!message || !message.trim())) return;
-                chatStore.addMessage(props.sessionId, {
-                  role: "system",
-                  content: `[${level}] ${message}`,
-                });
-              } else if (data.type === "turn_started") {
-                setIsStreaming(true);
-              } else if (data.type === "turn_completed") {
-                setIsStreaming(false);
-                // Ensure the last message is not thinking
-                const currentMessages = messages();
-                const lastMessage = currentMessages[currentMessages.length - 1];
-                if (lastMessage?.role === "assistant" && lastMessage.thinking) {
-                  chatStore.updateMessage(props.sessionId, lastMessage.id, {
-                    thinking: false,
-                  });
-                }
-              } else if (data.type === "turn_error") {
-                setIsStreaming(false);
-                chatStore.addMessage(props.sessionId, {
-                  role: "system",
-                  content: `Error: ${data.error}`,
-                });
-              }
-            }
-          } catch (e) {
-            console.error("Failed to handle agent message:", e);
-          }
-        },
-      );
+      // Sync streaming state from router
+      const routerState = sessionEventRouter.getStreamingState(props.sessionId);
+      setIsStreaming(routerState.isStreaming);
 
       onCleanup(() => {
-        // Cleanup local agent event listener
-        unlistenLocalPromise.then((fn) => fn());
-        // Cleanup remote agent event listener
-        unlistenPromise.then((fn) => fn());
+        unsubscribe();
       });
     });
 

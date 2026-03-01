@@ -25,7 +25,6 @@ import {
   FiX,
   FiFolder,
   FiGitBranch,
-  FiShield,
 } from "solid-icons/fi";
 import { FaSolidStopCircle } from "solid-icons/fa";
 
