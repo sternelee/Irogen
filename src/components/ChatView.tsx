@@ -41,6 +41,27 @@ import { PermissionList } from "./ui/PermissionCard";
 import { Button } from "./ui/primitives";
 import { Dropdown } from "./ui/Dropdown";
 import { SolidMarkdown } from "solid-markdown";
+import Prism from "prismjs";
+import "prismjs/components/prism-clike";
+import "prismjs/components/prism-markup";
+import "prismjs/components/prism-css";
+import "prismjs/components/prism-javascript";
+import "prismjs/components/prism-typescript";
+import "prismjs/components/prism-jsx";
+import "prismjs/components/prism-tsx";
+import "prismjs/components/prism-json";
+import "prismjs/components/prism-bash";
+import "prismjs/components/prism-rust";
+import "prismjs/components/prism-toml";
+import "prismjs/components/prism-yaml";
+import "prismjs/components/prism-markdown";
+import "prismjs/components/prism-diff";
+import "prismjs/components/prism-python";
+import "prismjs/components/prism-go";
+import "prismjs/components/prism-java";
+import "prismjs/components/prism-c";
+import "prismjs/components/prism-cpp";
+import "prismjs/components/prism-sql";
 import { ToolCallList, ReasoningBlock } from "./ui/EnhancedMessageComponents";
 import { ChatInput } from "./ui/ChatInput";
 import { FileBrowserView } from "./FileBrowserView";
@@ -94,6 +115,55 @@ interface ParsedEvent {
   // Raw fields
   data?: unknown;
 }
+
+// ============================================================================
+// Prism Code Highlighting
+// ============================================================================
+
+const prismLanguageMap: Record<string, string> = {
+  js: "javascript",
+  ts: "typescript",
+  tsx: "tsx",
+  jsx: "jsx",
+  json: "json",
+  md: "markdown",
+  html: "markup",
+  htm: "markup",
+  xml: "markup",
+  css: "css",
+  yml: "yaml",
+  yaml: "yaml",
+  toml: "toml",
+  sh: "bash",
+  bash: "bash",
+  zsh: "bash",
+  shell: "bash",
+  diff: "diff",
+  patch: "diff",
+  rs: "rust",
+  py: "python",
+  go: "go",
+  java: "java",
+  c: "c",
+  cpp: "cpp",
+  sql: "sql",
+};
+
+const escapeHtml = (input: string): string =>
+  input.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+const highlightCode = (code: string, language: string): string => {
+  const lang = prismLanguageMap[language.toLowerCase()] || language.toLowerCase();
+  const grammar = Prism.languages[lang];
+  if (grammar) {
+    try {
+      return Prism.highlight(code, grammar, lang);
+    } catch {
+      return escapeHtml(code);
+    }
+  }
+  return escapeHtml(code);
+};
 
 /**
  * Parse event from either format:
@@ -496,7 +566,31 @@ function MessageBubble(props: { message: ChatMessage }) {
           when={isSystem()}
           fallback={
             <div class="prose prose-sm wrap-break-words text-sm max-w-none leading-6">
-              <SolidMarkdown children={props.message.content} />
+              <SolidMarkdown
+                children={props.message.content}
+                components={{
+                  code({ inline, class: className, children, ...props }) {
+                    const match = /language-(\w+)/.exec(className || "");
+                    const codeString = String(children).replace(/\n$/, "");
+                    if (inline || !match) {
+                      return (
+                        <code class={className} {...props}>
+                          {children}
+                        </code>
+                      );
+                    }
+                    const language = match[1];
+                    const highlighted = highlightCode(codeString, language);
+                    return (
+                      <code
+                        class={`language-${language} prism-highlighted`}
+                        innerHTML={highlighted}
+                        {...props}
+                      />
+                    );
+                  },
+                }}
+              />
             </div>
           }
         >
