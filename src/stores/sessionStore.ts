@@ -364,6 +364,10 @@ export const createSessionStore = () => {
   };
 
   const buildExtraArgs = (): string[] => {
+    if (state.newSessionAgent === "openclaw") {
+      return [];
+    }
+
     const raw = state.newSessionArgs.trim();
     if (!raw) return [];
 

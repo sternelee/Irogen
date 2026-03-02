@@ -180,6 +180,58 @@ export const NewSessionModal: Component = () => {
     (sessionStore.state.newSessionMode === "remote" &&
       sessionStore.state.targetControlSessionId);
 
+  const agentArgsConfig = createMemo(() => {
+    const agent = sessionStore.state.newSessionAgent;
+
+    switch (agent) {
+      case "codex":
+        return {
+          supported: true,
+          placeholder:
+            'e.g. --model gpt-5 --profile default or ["--model","gpt-5"]',
+          hint: "Passed to Codex CLI. Supports JSON array or space-separated args.",
+        };
+      case "claude":
+        return {
+          supported: true,
+          placeholder:
+            'e.g. --model sonnet --allowedTools "Read,Edit" or ["--model","sonnet"]',
+          hint:
+            "Passed to Claude Code process. Supports JSON array or space-separated args.",
+        };
+      case "gemini":
+        return {
+          supported: true,
+          placeholder:
+            'e.g. --model gemini-2.5-pro --yolo or ["--model","gemini-2.5-pro"]',
+          hint:
+            "Passed to Gemini CLI process. Supports JSON array or space-separated args.",
+        };
+      case "opencode":
+        return {
+          supported: true,
+          placeholder:
+            'e.g. --model gpt-5 --provider openai or ["--model","gpt-5"]',
+          hint:
+            "Passed to OpenCode process. Supports JSON array or space-separated args.",
+        };
+      case "openclaw":
+        return {
+          supported: false,
+          placeholder: "",
+          hint: "OpenClaw does not support custom Agent Args.",
+        };
+      default:
+        return {
+          supported: true,
+          placeholder:
+            'e.g. --model gpt-5 --max-tokens 2048 or ["--model","gpt-5"]',
+          hint:
+            "Passed to the agent process. Supports JSON array or space-separated args.",
+        };
+    }
+  });
+
   const handleScanBarcode = async () => {
     try {
       let permissionStatus = await checkPermissions();
@@ -365,9 +417,13 @@ export const NewSessionModal: Component = () => {
               <Select
                 id="agent-type"
                 value={sessionStore.state.newSessionAgent}
-                onChange={(val) =>
-                  sessionStore.setNewSessionAgent(val as AgentType)
-                }
+                onChange={(val) => {
+                  const nextAgent = val as AgentType;
+                  sessionStore.setNewSessionAgent(nextAgent);
+                  if (nextAgent === "openclaw") {
+                    sessionStore.setNewSessionArgs("");
+                  }
+                }}
               >
                 <Show
                   when={
@@ -434,22 +490,33 @@ export const NewSessionModal: Component = () => {
               </p>
             </div>
 
-            <div class="mb-4 space-y-2">
-              <Label for="agent-args">Agent Args</Label>
-              <Textarea
-                id="agent-args"
-                class="h-20 font-mono text-sm"
-                placeholder='e.g. --model gpt-5 --max-tokens 2048 or ["--model","gpt-5"]'
-                value={sessionStore.state.newSessionArgs}
-                onInput={(e) => {
-                  sessionStore.setNewSessionArgs(e.currentTarget.value);
-                }}
-              />
-              <p class="text-xs text-muted-foreground">
-                Passed to the agent process. Supports JSON array or
-                space-separated args.
-              </p>
-            </div>
+            <Show
+              when={agentArgsConfig().supported}
+              fallback={
+                <div class="mb-4 space-y-2">
+                  <Label>Agent Args</Label>
+                  <p class="text-xs text-muted-foreground">
+                    {agentArgsConfig().hint}
+                  </p>
+                </div>
+              }
+            >
+              <div class="mb-4 space-y-2">
+                <Label for="agent-args">Agent Args</Label>
+                <Textarea
+                  id="agent-args"
+                  class="h-20 font-mono text-sm"
+                  placeholder={agentArgsConfig().placeholder}
+                  value={sessionStore.state.newSessionArgs}
+                  onInput={(e) => {
+                    sessionStore.setNewSessionArgs(e.currentTarget.value);
+                  }}
+                />
+                <p class="text-xs text-muted-foreground">
+                  {agentArgsConfig().hint}
+                </p>
+              </div>
+            </Show>
           </Show>
 
           <div class="mt-8 flex justify-end gap-2">

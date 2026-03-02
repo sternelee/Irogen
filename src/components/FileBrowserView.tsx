@@ -4,7 +4,14 @@
  * P2P file browser component for browsing remote directories and viewing files.
  */
 
-import { Component, For, Show, createMemo, onMount } from "solid-js";
+import {
+  Component,
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  onMount,
+} from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Prism from "prismjs";
 import "prismjs/themes/prism.css";
@@ -36,6 +43,7 @@ import { Spinner } from "./ui/primitives";
 
 interface FileBrowserViewProps {
   class?: string;
+  projectPath?: string;
   onPathChange?: (path: string) => void;
 }
 
@@ -142,13 +150,29 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
     viewFile,
     closeFile,
     setViewMode,
-    canGoUp,
     getDirectories,
     getFiles,
   } = fileBrowserStore;
+  let lastRootPath: string | null = null;
+
+  const rootPath = createMemo(() => {
+    const raw = (props.projectPath || ".").trim();
+    if (!raw) return ".";
+    if (raw === "/") return raw;
+    return raw.replace(/\/+$/, "");
+  });
+
+  const resolvePath = (path: string): string =>
+    path === "." ? rootPath() : path;
+
+  const joinPath = (base: string, name: string): string => {
+    if (base === "/") return `/${name}`;
+    return `${base}/${name}`;
+  };
 
   // Load directory content
   const loadDirectory = async (path: string) => {
+    const resolvedPath = resolvePath(path);
     setLoading(true);
     setError(null);
 
@@ -157,11 +181,11 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
         success: boolean;
         entries?: FileEntry[];
         error?: string;
-      }>("file_browser_list", { path });
+      }>("file_browser_list", { path: resolvedPath });
       if (response?.success) {
         setEntries(response.entries || []);
-        navigateToPath(path);
-        props.onPathChange?.(path);
+        navigateToPath(resolvedPath);
+        props.onPathChange?.(resolvedPath);
       } else {
         throw new Error(response?.error || "Failed to load directory");
       }
@@ -203,10 +227,8 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
 
   // Handle entry click
   const handleEntryClick = (entry: { name: string; isDir: boolean }) => {
-    const fullPath =
-      state.currentPath === "."
-        ? entry.name
-        : `${state.currentPath}/${entry.name}`;
+    const basePath = resolvePath(state.currentPath);
+    const fullPath = joinPath(basePath, entry.name);
 
     if (entry.isDir) {
       loadDirectory(fullPath);
@@ -217,20 +239,36 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
 
   // Refresh current directory
   const refresh = () => {
-    loadDirectory(state.currentPath);
+    loadDirectory(resolvePath(state.currentPath));
   };
 
   const goUp = () => {
-    if (state.currentPath === ".") return;
-    const parts = state.currentPath.split("/").filter(Boolean);
+    const current = resolvePath(state.currentPath);
+    const root = rootPath();
+    if (current === root) return;
+    const parts = current.split("/").filter(Boolean);
     parts.pop();
-    const parentPath = parts.join("/") || ".";
+    const parentPath = current.startsWith("/")
+      ? `/${parts.join("/")}` || "/"
+      : parts.join("/") || ".";
     loadDirectory(parentPath);
   };
 
   // Initial load
   onMount(() => {
-    loadDirectory(state.currentPath);
+    loadDirectory(rootPath());
+  });
+
+  createEffect(() => {
+    const nextRoot = rootPath();
+    if (lastRootPath === null) {
+      lastRootPath = nextRoot;
+      return;
+    }
+    if (lastRootPath !== nextRoot) {
+      lastRootPath = nextRoot;
+      loadDirectory(nextRoot);
+    }
   });
 
   // Format file size
@@ -242,13 +280,21 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
 
   // Breadcrumb path segments
   const pathSegments = () => {
-    if (state.currentPath === ".") return [{ name: "Root", path: "." }];
-    return state.currentPath
-      .split("/")
-      .map((seg: string, i: number, arr: string[]) => ({
-        name: seg || "Root",
-        path: arr.slice(0, i + 1).join("/") || ".",
-      }));
+    const root = rootPath();
+    const current = resolvePath(state.currentPath);
+    if (current === root) return [];
+
+    const rootWithSlash = root.endsWith("/") ? root : `${root}/`;
+    if (!current.startsWith(rootWithSlash)) {
+      return [];
+    }
+
+    const relative = current.slice(rootWithSlash.length);
+    const segments = relative.split("/").filter(Boolean);
+    return segments.map((seg, i) => ({
+      name: seg,
+      path: joinPath(root, segments.slice(0, i + 1).join("/")),
+    }));
   };
 
   const highlightedFileContent = createMemo(() => {
@@ -279,7 +325,7 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
             <Button
               variant="ghost"
               size="xs"
-              disabled={!canGoUp()}
+              disabled={resolvePath(state.currentPath) === rootPath()}
               onClick={goUp}
               title="Up"
             >
@@ -309,7 +355,7 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
             <Button
               variant="ghost"
               size="xs"
-              onClick={() => loadDirectory(".")}
+              onClick={() => loadDirectory(rootPath())}
               title="Home"
             >
               <HomeIcon />

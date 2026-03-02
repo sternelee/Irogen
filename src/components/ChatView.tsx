@@ -1660,7 +1660,10 @@ export function ChatView(props: ChatViewProps) {
             </div>
             <div class="flex-1 overflow-auto">
               <Show when={rightPanelView() === "file"}>
-                <FileBrowserView class="h-full" />
+                <FileBrowserView
+                  class="h-full"
+                  projectPath={session()?.projectPath || props.projectPath}
+                />
               </Show>
               <Show when={rightPanelView() === "git"}>
                 <GitDiffView
