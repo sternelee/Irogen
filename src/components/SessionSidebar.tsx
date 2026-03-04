@@ -21,7 +21,11 @@ import {
   FiMoreVertical,
 } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
-import { sessionStore } from "../stores/sessionStore";
+import {
+  type BackendSessionMetadata,
+  mapBackendSessionMetadata,
+  sessionStore,
+} from "../stores/sessionStore";
 import { chatStore } from "../stores/chatStore";
 import { notificationStore } from "../stores/notificationStore";
 import { sessionEventRouter } from "../stores/sessionEventRouter";
@@ -294,22 +298,6 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
   // Load local sessions on mount
   const handleLoadLocalSessions = async () => {
     try {
-      // 定义后端返回的类型 (snake_case)
-      type BackendSessionMetadata = {
-        session_id: string;
-        agent_type: string;
-        project_path: string;
-        started_at: number;
-        active: boolean;
-        controlled_by_remote: boolean;
-        hostname: string;
-        os: string;
-        agent_version?: string;
-        current_dir: string;
-        git_branch?: string;
-        machine_id: string;
-      };
-
       const localSessions =
         await invoke<BackendSessionMetadata[]>("local_list_agents");
       console.log(
@@ -317,33 +305,9 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
         localSessions,
       );
 
-      // Add mode property to each session and convert snake_case to camelCase
-      // Also normalize agentType to lowercase for consistency
-      const normalizeAgentType = (type: string): AgentType => {
-        const lower = type.toLowerCase();
-        // Map common variations
-        if (lower === "claudecode" || lower === "claude-code") return "claude";
-        if (lower === "opencode") return "opencode";
-        if (lower === "gemini-cli") return "gemini";
-        if (lower === "open-claw") return "openclaw";
-        return lower as AgentType;
-      };
-
-      const sessionsWithMode = localSessions.map((s) => ({
-        sessionId: s.session_id,
-        agentType: normalizeAgentType(s.agent_type),
-        projectPath: s.project_path,
-        startedAt: s.started_at,
-        active: s.active,
-        controlledByRemote: s.controlled_by_remote,
-        hostname: s.hostname,
-        os: s.os,
-        agentVersion: s.agent_version,
-        currentDir: s.current_dir,
-        gitBranch: s.git_branch,
-        machineId: s.machine_id,
-        mode: "local" as const,
-      }));
+      const sessionsWithMode = localSessions.map((s) =>
+        mapBackendSessionMetadata(s, "local"),
+      );
 
       console.log(
         "[handleLoadLocalSessions] Mapped sessions:",
@@ -366,6 +330,33 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
       );
     } catch (error) {
       console.error("Failed to load local sessions:", error);
+    }
+  };
+
+  // Load remote sessions from connected CLI on mount
+  const handleLoadRemoteSessions = async () => {
+    try {
+      const controlSessionId = sessionStore.state.targetControlSessionId;
+      if (!controlSessionId) {
+        return;
+      }
+
+      const remoteSessions = await invoke<BackendSessionMetadata[]>(
+        "remote_list_agents",
+        {
+          controlSessionId,
+        },
+      );
+
+      const sessionsWithMode = remoteSessions.map((s) =>
+        mapBackendSessionMetadata(s, "remote", controlSessionId),
+      );
+
+      for (const session of sessionsWithMode) {
+        sessionStore.addSession(session);
+      }
+    } catch (error) {
+      console.error("Failed to load remote sessions:", error);
     }
   };
 
@@ -411,6 +402,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
 
   onMount(() => {
     void handleLoadLocalSessions();
+    void handleLoadRemoteSessions();
   });
 
   const loadHistoryForSession = async (session: AgentSessionMetadata) => {

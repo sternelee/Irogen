@@ -843,6 +843,8 @@ pub enum RemoteSpawnAction {
         project_path: String,
         args: Vec<String>,
     },
+    /// 列出远程 CLI 已创建的 agent 会话
+    ListSessions,
     /// 列出可用的 agent 类型
     ListAvailableAgents,
 }

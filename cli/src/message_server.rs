@@ -2315,6 +2315,21 @@ impl RemoteSpawnMessageHandler {
 
         Ok(Some(response))
     }
+
+    /// 处理列出远程已创建会话请求
+    async fn handle_list_sessions(&self, request_id: Option<String>) -> Result<Option<Message>> {
+        let sessions = self.agent_manager.get_all_session_metadata().await;
+        let sessions_json = serde_json::to_value(&sessions)?;
+        let response = MessageBuilder::response(
+            "cli".to_string(),
+            request_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+            true,
+            Some(sessions_json),
+            None,
+        );
+
+        Ok(Some(response))
+    }
 }
 
 #[async_trait::async_trait]
@@ -2339,6 +2354,10 @@ impl MessageHandler for RemoteSpawnMessageHandler {
                 }
                 RemoteSpawnAction::ListAvailableAgents => {
                     self.handle_list_available_agents(spawn_msg.request_id.clone())
+                        .await
+                }
+                RemoteSpawnAction::ListSessions => {
+                    self.handle_list_sessions(spawn_msg.request_id.clone())
                         .await
                 }
             }

@@ -2024,6 +2024,79 @@ async fn remote_spawn_session(
     Ok("spawn_request_sent".to_string())
 }
 
+/// List all active remote agent sessions from connected CLI
+#[tauri::command(rename_all = "camelCase")]
+async fn remote_list_agents(
+    control_session_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<shared::message_protocol::AgentSessionMetadata>, String> {
+    let connection_id = if let Some(cs_id) = control_session_id {
+        let sessions = state.sessions.read().await;
+        sessions
+            .get(&cs_id)
+            .map(|s| s.connection_id.clone())
+            .ok_or_else(|| format!("Control session not found: {}", cs_id))?
+    } else {
+        let sessions = state.sessions.read().await;
+        if let Some(first_session) = sessions.values().next() {
+            first_session.connection_id.clone()
+        } else {
+            return Ok(Vec::new());
+        }
+    };
+
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let list_message = ClawdChatMessage::new(
+        shared::MessageType::RemoteSpawn,
+        "app".to_string(),
+        shared::MessagePayload::RemoteSpawn(shared::RemoteSpawnMessage {
+            action: shared::RemoteSpawnAction::ListSessions,
+            request_id: Some(request_id.clone()),
+        }),
+    )
+    .requires_response();
+
+    let response = send_message_via_client_with_response(
+        &state,
+        &connection_id,
+        list_message,
+        &request_id,
+        "list remote agents",
+        10,
+    )
+    .await?;
+
+    if !response.success {
+        return Err(response
+            .message
+            .unwrap_or_else(|| "Failed to list remote agents".to_string()));
+    }
+
+    let data = response
+        .data
+        .ok_or_else(|| "Missing remote agents response data".to_string())?;
+
+    if let Ok(metadata) =
+        serde_json::from_str::<Vec<shared::message_protocol::AgentSessionMetadata>>(&data)
+    {
+        return Ok(metadata);
+    }
+
+    // Backward-compatibility guard: old CLI may return session_id[] instead of metadata[]
+    if let Ok(value) = serde_json::from_str::<Value>(&data) {
+        if let Some(arr) = value.as_array() {
+            if arr.iter().all(|v| v.is_string()) {
+                return Err(
+                    "Remote CLI is outdated: remote_list_agents expects metadata but got session IDs. Please update remote CLI/App to the same version."
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    Err("Invalid remote agents response data".to_string())
+}
+
 /// Respond to an agent permission request
 #[tauri::command(rename_all = "camelCase")]
 async fn respond_to_agent_permission(
@@ -2838,6 +2911,7 @@ pub fn run() {
             // AI Agent Commands
             send_slash_command,
             remote_spawn_session,
+            remote_list_agents,
             send_agent_message,
             abort_agent_action,
             respond_to_agent_permission,

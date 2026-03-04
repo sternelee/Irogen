@@ -44,6 +44,51 @@ export interface AgentSessionMetadata {
   controlSessionId?: string; // ID of the connection session
 }
 
+export interface BackendSessionMetadata {
+  session_id: string;
+  agent_type: string;
+  project_path: string;
+  started_at: number;
+  active: boolean;
+  controlled_by_remote: boolean;
+  hostname: string;
+  os: string;
+  agent_version?: string;
+  current_dir: string;
+  git_branch?: string;
+  machine_id: string;
+}
+
+export const normalizeAgentType = (type: string): AgentType => {
+  const lower = type.toLowerCase();
+  if (lower === "claudecode" || lower === "claude-code") return "claude";
+  if (lower === "opencode") return "opencode";
+  if (lower === "gemini-cli") return "gemini";
+  if (lower === "open-claw") return "openclaw";
+  return lower as AgentType;
+};
+
+export const mapBackendSessionMetadata = (
+  session: BackendSessionMetadata,
+  mode: SessionMode,
+  controlSessionId?: string,
+): AgentSessionMetadata => ({
+  sessionId: session.session_id,
+  agentType: normalizeAgentType(session.agent_type),
+  projectPath: session.project_path,
+  startedAt: session.started_at,
+  active: session.active,
+  controlledByRemote: session.controlled_by_remote,
+  hostname: session.hostname,
+  os: session.os,
+  agentVersion: session.agent_version,
+  currentDir: session.current_dir,
+  gitBranch: session.git_branch,
+  machineId: session.machine_id,
+  mode,
+  controlSessionId,
+});
+
 // Session filter for listing (reserved for future use)
 export interface SessionFilter {
   agentType?: AgentType;
@@ -350,6 +395,20 @@ export const createSessionStore = () => {
 
       // Set as target control session to show agent config in modal
       setTargetControlSessionId(connectionSessionId);
+
+      // Load existing remote agent sessions from connected CLI
+      const remoteSessions = await invoke<BackendSessionMetadata[]>(
+        "remote_list_agents",
+        {
+          controlSessionId: connectionSessionId,
+        },
+      );
+
+      for (const s of remoteSessions) {
+        addSession(
+          mapBackendSessionMetadata(s, "remote", connectionSessionId),
+        );
+      }
 
       // Don't close modal - continue with agent config flow
       // User will select agent type and project path, then click "Create Session"
