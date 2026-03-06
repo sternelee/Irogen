@@ -14,18 +14,150 @@ use super::events::AgentEvent;
 
 /// Convert an AgentEvent to a JSON value for frontend consumption
 ///
-/// This function serializes the AgentEvent directly, preserving the original
-/// event structure with the `type` field for frontend parsing.
+/// This function converts AgentEvent to a format expected by the frontend,
+/// using snake_case event types (e.g., "text_delta" instead of "text:delta").
 pub fn event_to_message_content(
     event: &AgentEvent,
     _message_id: Option<String>,
 ) -> serde_json::Value {
-    serde_json::to_value(event).unwrap_or_else(|_| {
-        serde_json::json!({
-            "type": "unknown",
-            "error": "Failed to serialize event"
-        })
-    })
+    let result = match event {
+        AgentEvent::TextDelta { session_id, text } => serde_json::json!({
+            "type": "text_delta",
+            "sessionId": session_id,
+            "text": text,
+        }),
+
+        AgentEvent::ReasoningDelta { session_id, text } => serde_json::json!({
+            "type": "reasoning_delta",
+            "sessionId": session_id,
+            "text": text,
+        }),
+
+        AgentEvent::TurnStarted { session_id, turn_id } => serde_json::json!({
+            "type": "turn_started",
+            "sessionId": session_id,
+            "turnId": turn_id,
+        }),
+
+        AgentEvent::TurnCompleted { session_id, result } => {
+            let content = result.as_ref().and_then(|v| {
+                if let Some(obj) = v.as_object() {
+                    obj.get("content")
+                        .and_then(|c| c.as_str())
+                        .map(|s| s.to_string())
+                } else {
+                    None
+                }
+            });
+            serde_json::json!({
+                "type": "turn_completed",
+                "sessionId": session_id,
+                "content": content,
+            })
+        }
+
+        AgentEvent::TurnError { session_id, error, code } => serde_json::json!({
+            "type": "turn_error",
+            "sessionId": session_id,
+            "error": error,
+            "code": code,
+        }),
+
+        AgentEvent::ToolStarted { session_id, tool_id, tool_name, input } => serde_json::json!({
+            "type": "tool_started",
+            "sessionId": session_id,
+            "toolId": tool_id,
+            "toolName": tool_name,
+            "input": input,
+        }),
+
+        AgentEvent::ToolInputUpdated { session_id, tool_id, tool_name, input } => serde_json::json!({
+            "type": "tool_input_updated",
+            "sessionId": session_id,
+            "toolId": tool_id,
+            "toolName": tool_name,
+            "input": input,
+        }),
+
+        AgentEvent::ToolCompleted { session_id, tool_id, tool_name, output, error } => serde_json::json!({
+            "type": "tool_completed",
+            "sessionId": session_id,
+            "toolId": tool_id,
+            "toolName": tool_name,
+            "output": output,
+            "error": error,
+        }),
+
+        AgentEvent::ApprovalRequest { session_id, request_id, tool_name, input, message } => serde_json::json!({
+            "type": "approval_request",
+            "sessionId": session_id,
+            "requestId": request_id,
+            "toolName": tool_name,
+            "input": input,
+            "message": message,
+        }),
+
+        AgentEvent::UsageUpdate { session_id, input_tokens, output_tokens, cached_tokens, model_context_window } => serde_json::json!({
+            "type": "usage_update",
+            "sessionId": session_id,
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "cachedTokens": cached_tokens,
+            "modelContextWindow": model_context_window,
+        }),
+
+        AgentEvent::SessionStarted { session_id, agent } => serde_json::json!({
+            "type": "session_started",
+            "sessionId": session_id,
+            "agent": agent,
+        }),
+
+        AgentEvent::SessionEnded { session_id } => serde_json::json!({
+            "type": "session_ended",
+            "sessionId": session_id,
+        }),
+
+        AgentEvent::ProgressUpdate { session_id, operation, progress, message } => serde_json::json!({
+            "type": "progress_update",
+            "sessionId": session_id,
+            "operation": operation,
+            "progress": progress,
+            "message": message,
+        }),
+
+        AgentEvent::Notification { session_id, level, message, details } => serde_json::json!({
+            "type": "notification",
+            "sessionId": session_id,
+            "level": level,
+            "message": message,
+            "details": details,
+        }),
+
+        AgentEvent::FileOperation { session_id, operation, path, status } => serde_json::json!({
+            "type": "file_operation",
+            "sessionId": session_id,
+            "operation": operation,
+            "path": path,
+            "status": status,
+        }),
+
+        AgentEvent::TerminalOutput { session_id, command, output, exit_code } => serde_json::json!({
+            "type": "terminal_output",
+            "sessionId": session_id,
+            "command": command,
+            "output": output,
+            "exitCode": exit_code,
+        }),
+
+        AgentEvent::Raw { session_id, data, agent } => serde_json::json!({
+            "type": "raw",
+            "sessionId": session_id,
+            "agent": agent,
+            "data": data,
+        }),
+    };
+
+    result
 }
 
 /// Convert an AgentEvent to P2P AgentMessageContent

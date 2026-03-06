@@ -31,7 +31,10 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { chatStore } from "../stores/chatStore";
 import { sessionStore } from "../stores/sessionStore";
-import { sessionEventRouter, type SessionEvent } from "../stores/sessionEventRouter";
+import {
+  sessionEventRouter,
+  type SessionEvent,
+} from "../stores/sessionEventRouter";
 import { isMobile } from "../stores/deviceStore";
 import type { AgentType } from "../stores/sessionStore";
 import { notificationStore } from "../stores/notificationStore";
@@ -174,8 +177,41 @@ const highlightCode = (code: string, language: string): string => {
  * 1. Rust externally tagged: {TurnStarted: {turn_id: "..."}} -> type: "turn_started"
  * 2. Frontend inline format: {type: "text_delta", content: "..."}
  * 3. External agent protocol format: {type: "text:delta", sessionId: "...", text: "..."}
+ * 4. Wrapped format: {event: {type: "text_delta", ...}, sessionId: "...", turnId: "..."}
  */
 function parseEvent(eventObj: Record<string, unknown>): ParsedEvent {
+  // Check for wrapped format first (event: {type: "...", ...})
+  if ("event" in eventObj && typeof eventObj.event === "object" && eventObj.event !== null) {
+    const nestedEvent = eventObj.event as Record<string, unknown>;
+    if ("type" in nestedEvent) {
+      const result: ParsedEvent = { type: nestedEvent.type as string };
+
+      // Convert protocol type names from colon to underscore
+      const typeStr = result.type;
+      if (typeStr.includes(":")) {
+        result.type = typeStr.replace(":", "_");
+      }
+
+      // Copy all properties from nested event, converting snake_case to camelCase
+      for (const key of Object.keys(nestedEvent)) {
+        if (key !== "type") {
+          const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+          (result as unknown as Record<string, unknown>)[camelKey] = nestedEvent[key];
+        }
+      }
+
+      // Also copy top-level properties (sessionId, turnId)
+      for (const key of Object.keys(eventObj)) {
+        if (key !== "event") {
+          const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+          (result as unknown as Record<string, unknown>)[camelKey] = eventObj[key];
+        }
+      }
+
+      return result;
+    }
+  }
+
   // Check for inline protocol format first (type: "text_delta" or "text:delta")
   if ("type" in eventObj) {
     const result: ParsedEvent = { type: eventObj.type as string };
@@ -449,8 +485,10 @@ function SystemMessageCard(props: { content: string }) {
   const [isDetailsExpanded, setIsDetailsExpanded] = createSignal(false);
   const parsed = () => parseSystemMessage(props.content);
   const isToolDetails = () => parsed().kind === "tool" && !!parsed().details;
-  const normalizedSubtitle = () => (parsed().subtitle || "").replace(/\\n/g, "\n");
-  const normalizedDetails = () => (parsed().details || "").replace(/\\n/g, "\n");
+  const normalizedSubtitle = () =>
+    (parsed().subtitle || "").replace(/\\n/g, "\n");
+  const normalizedDetails = () =>
+    (parsed().details || "").replace(/\\n/g, "\n");
 
   const statusClass = () => {
     switch (parsed().status) {
@@ -557,7 +595,7 @@ function MessageBubble(props: { message: ChatMessage }) {
     <div
       class={`flex flex-col gap-1.5 animate-fade-in ${isUser() ? "items-end" : "items-start"} group/bubble transition-all duration-300`}
     >
-      <div class="flex items-center gap-2 text-[11px] text-muted-foreground/70 px-1">
+      <div class="flex items-center gap-2 text-[11px] text-muted-foreground/70 px-1 hidden">
         <Show when={isUser()}>
           <div class="inline-flex h-6 w-6 items-center justify-center rounded-md border border-primary/30 bg-primary/15 text-primary">
             <FiUser size={13} />
@@ -969,7 +1007,8 @@ export function ChatView(props: ChatViewProps) {
         case "notification": {
           const notifLevel = parsed.level || "Info";
           const notifMessage = parsed.message || "";
-          if (notifLevel === "Info" && (!notifMessage || !notifMessage.trim())) return;
+          if (notifLevel === "Info" && (!notifMessage || !notifMessage.trim()))
+            return;
           chatStore.addMessage(props.sessionId, {
             role: "system",
             content: `[${notifLevel}] ${notifMessage}`,
@@ -1019,15 +1058,38 @@ export function ChatView(props: ChatViewProps) {
     };
 
     // Subscribe to session events via centralized router
-    onMount(() => {
+    onMount(async () => {
       const unsubscribe = sessionEventRouter.subscribe(
         props.sessionId,
-        handleSessionEvent
+        handleSessionEvent,
       );
 
       // Sync streaming state from router
       const routerState = sessionEventRouter.getStreamingState(props.sessionId);
       setIsStreaming(routerState.isStreaming);
+
+      // For remote sessions: load local history and request message sync for reconnection recovery
+      if (props.sessionMode === "remote") {
+        try {
+          // Load locally cached messages first
+          const localHistory = await sessionEventRouter.loadSessionHistory(
+            props.sessionId,
+          );
+          if (localHistory.length > 0) {
+            console.log(
+              `[ChatView] Loaded ${localHistory.length} messages from local history for session ${props.sessionId}`,
+            );
+          }
+
+          // Request message sync from CLI to get any missed messages
+          await sessionEventRouter.requestMessageSync(props.sessionId);
+        } catch (error) {
+          console.error(
+            `[ChatView] Failed to load history or request sync:`,
+            error,
+          );
+        }
+      }
 
       onCleanup(() => {
         unsubscribe();

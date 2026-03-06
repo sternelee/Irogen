@@ -993,9 +993,9 @@ async fn connect_to_peer(
 
                                     match &sync_msg.action {
                                         shared::MessageSyncAction::SyncResponse { session_id, messages } => {
-                                            // Emit sync response to frontend
+                                            // Emit sync response to frontend (global event, payload contains sessionId)
                                             let _ = app_handle_clone.emit(
-                                                &format!("message-sync-{}", session_id),
+                                                "message-sync",
                                                 &serde_json::json!({
                                                     "sessionId": session_id,
                                                     "messages": messages,
