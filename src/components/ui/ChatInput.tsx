@@ -139,7 +139,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   return (
     <div
       class={cn(
-        "flex flex-col gap-1.5 px-3 sm:px-4 py-2 sm:py-3 bg-background/80 backdrop-blur-md sticky bottom-0",
+        "flex flex-col gap-1.5 px-3 sm:px-4 py-2 sm:py-3 mb-10 sm:mb-0 bg-background/80 backdrop-blur-md sticky bottom-0",
         focused() && "bg-background",
         props.class,
       )}

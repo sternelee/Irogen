@@ -106,6 +106,7 @@ export default function App() {
           machineId,
           mode: "remote",
           controlSessionId: payload.control_session_id,
+          lastReceivedSequence: 0,
         });
 
         // Set as active session

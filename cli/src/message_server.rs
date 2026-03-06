@@ -13,6 +13,7 @@ use shared::{
     QuicMessageServerConfig, RemoteSpawnAction, ResponseMessage, ShellInfo, SlashCommand,
     SlashCommandResponseContent, SystemAction, SystemInfo, SystemInfoAction, TcpDataType,
     TcpForwardingAction, TcpForwardingType, TcpStreamHandler, Tool, UserInfo,
+    MessageSyncAction, MessageSyncService, MessageStore,
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -136,12 +137,23 @@ pub struct CliMessageServer {
     system_status: Arc<RwLock<SystemStatus>>,
     /// AI Agent 管理器
     agent_manager: Arc<AgentManager>,
+    /// 消息存储（用于断线重连恢复）
+    message_store: Arc<MessageStore>,
+    /// 消息同步服务（处理同步请求和持久化）
+    message_sync_service: Arc<MessageSyncService>,
 }
 
 impl CliMessageServer {
     /// 创建新的 CLI 消息服务器
     pub async fn new(config: QuicMessageServerConfig) -> Result<Self> {
         info!("Initializing CLI message server...");
+
+        // 创建消息存储和同步服务
+        let base_dir = dirs::home_dir()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get home directory"))?
+            .join(".riterm/messages");
+        let message_store = Arc::new(MessageStore::new(base_dir)?);
+        let message_sync_service = Arc::new(MessageSyncService::new(message_store.clone()));
 
         // 创建通信管理器
         let communication_manager =
@@ -163,6 +175,8 @@ impl CliMessageServer {
                 memory_usage: 0,
             })),
             agent_manager: Arc::new(AgentManager::new()),
+            message_store,
+            message_sync_service,
         };
 
         // 注册消息处理器
@@ -352,6 +366,7 @@ impl CliMessageServer {
             self.communication_manager.clone(),
             self.agent_manager.clone(),
             self.quic_server.clone(),
+            self.message_sync_service.clone(),
         ));
         self.communication_manager
             .register_message_handler(remote_spawn_handler)
@@ -390,6 +405,14 @@ impl CliMessageServer {
         ));
         self.communication_manager
             .register_message_handler(agent_control_handler)
+            .await;
+
+        // 注册消息同步处理器（用于断线重连）
+        let message_sync_handler = Arc::new(MessageSyncMessageHandler::new(
+            self.message_sync_service.clone(),
+        ));
+        self.communication_manager
+            .register_message_handler(message_sync_handler)
             .await;
 
         info!("All message handlers registered successfully");
@@ -2107,6 +2130,8 @@ pub struct RemoteSpawnMessageHandler {
     /// Active event forwarding tasks by session_id
     event_forwarders:
         Arc<tokio::sync::RwLock<std::collections::HashMap<String, tokio::task::JoinHandle<()>>>>,
+    /// Message sync service for persisting messages (reconnection recovery)
+    message_sync_service: Arc<MessageSyncService>,
 }
 
 impl RemoteSpawnMessageHandler {
@@ -2114,12 +2139,14 @@ impl RemoteSpawnMessageHandler {
         communication_manager: Arc<CommunicationManager>,
         agent_manager: Arc<AgentManager>,
         quic_server: QuicMessageServer,
+        message_sync_service: Arc<MessageSyncService>,
     ) -> Self {
         Self {
             communication_manager,
             agent_manager,
             quic_server,
             event_forwarders: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            message_sync_service,
         }
     }
 
@@ -2133,6 +2160,7 @@ impl RemoteSpawnMessageHandler {
         let forwarders_for_task = self.event_forwarders.clone();
         let forwarders_for_insert = self.event_forwarders.clone();
         let sid = session_id.clone();
+        let message_sync_service = self.message_sync_service.clone();
 
         let handle = tokio::spawn(async move {
             tracing::info!("[event_forwarder] Started for session: {}", sid);
@@ -2153,6 +2181,22 @@ impl RemoteSpawnMessageHandler {
                             &turn_event.event,
                             None,
                         );
+
+                        // Persist message BEFORE broadcasting (for reconnection recovery)
+                        // Extract the agent message content for persistence
+                        if let MessagePayload::AgentMessage(agent_msg) = &message.payload {
+                            if let Err(e) = message_sync_service
+                                .persist_agent_message(&sid, agent_msg)
+                                .await
+                            {
+                                tracing::warn!(
+                                    "[event_forwarder] Failed to persist message for session {}: {}",
+                                    sid,
+                                    e
+                                );
+                                // Continue anyway - persistence failure shouldn't block sending
+                            }
+                        }
 
                         // Forward to all connected P2P clients via QUIC
                         if let Err(e) = quic_server.broadcast_message(message).await {
@@ -2179,7 +2223,16 @@ impl RemoteSpawnMessageHandler {
                 }
             }
 
-            // Clean up
+            // Clean up session messages from store when session ends
+            if let Err(e) = message_sync_service.clear_session(&sid).await {
+                tracing::warn!(
+                    "[event_forwarder] Failed to clear message store for session {}: {}",
+                    sid,
+                    e
+                );
+            }
+
+            // Clean up forwarder handle
             let mut forwarders = forwarders_for_task.write().await;
             forwarders.remove(&sid);
             tracing::info!("[event_forwarder] Stopped for session: {}", sid);
@@ -2824,6 +2877,55 @@ impl MessageHandler for AgentControlMessageHandler {
 
     fn supported_message_types(&self) -> Vec<MessageType> {
         vec![MessageType::AgentControl]
+    }
+}
+
+// ============================================================================
+// Message Sync Message Handler (断线重连)
+// ============================================================================
+
+/// 消息同步处理器（用于断线重连）
+pub struct MessageSyncMessageHandler {
+    message_sync_service: Arc<MessageSyncService>,
+}
+
+impl MessageSyncMessageHandler {
+    pub fn new(message_sync_service: Arc<MessageSyncService>) -> Self {
+        Self {
+            message_sync_service,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl MessageHandler for MessageSyncMessageHandler {
+    async fn handle_message(&self, message: &Message) -> Result<Option<Message>> {
+        if let MessagePayload::MessageSync(sync_msg) = &message.payload {
+            if let MessageSyncAction::RequestSync {
+                session_id,
+                last_sequence,
+            } = &sync_msg.action
+            {
+                tracing::info!(
+                    "Received message sync request: session={}, last_seq={}",
+                    session_id,
+                    last_sequence
+                );
+                self.message_sync_service
+                    .handle_sync_request(session_id, *last_sequence)
+                    .await
+                    .map(Some)
+            } else {
+                tracing::warn!("Unknown message sync action: {:?}", sync_msg.action);
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn supported_message_types(&self) -> Vec<MessageType> {
+        vec![MessageType::MessageSync]
     }
 }
 

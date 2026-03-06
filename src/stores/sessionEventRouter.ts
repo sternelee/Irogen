@@ -6,9 +6,16 @@
  * - Routes events to correct session handlers by sessionId
  * - Supports concurrent sessions with independent streaming states
  * - Tracks unread state for non-active sessions
+ * - Persists messages for reconnection recovery
  */
 
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { sessionStore } from "./sessionStore";
+import {
+  persistMessage,
+  loadStoredMessages,
+  type StoredMessageEntry,
+} from "./messagePersistStore";
 
 // ============================================================================
 // Types
@@ -27,6 +34,19 @@ export interface StreamingState {
   turnId: string | null;
   startedAt: number | null;
 }
+
+// Event types that should be persisted for reconnection
+const PERSISTABLE_EVENT_TYPES = new Set([
+  "text_delta",
+  "response",
+  "tool_started",
+  "tool_result",
+  "permission_request",
+  "turn_started",
+  "TurnStarted",
+  "turn_complete",
+  "TurnComplete",
+]);
 
 // Event types that should trigger unread notification
 const MESSAGE_EVENT_TYPES = new Set([
@@ -51,7 +71,9 @@ class SessionEventRouter {
   private unreadSessions = new Set<string>();
 
   // Callback when session has unread change
-  private onUnreadChange: ((sessionId: string, hasUnread: boolean) => void) | null = null;
+  private onUnreadChange:
+    | ((sessionId: string, hasUnread: boolean) => void)
+    | null = null;
 
   // Global unlisten functions
   private unlistenFns: UnlistenFn[] = [];
@@ -78,19 +100,88 @@ class SessionEventRouter {
     // Listen for local agent events
     const unlistenLocal = await listen<SessionEvent>(
       "local-agent-event",
-      (event) => this.routeEvent(event.payload)
+      (event) => this.routeEvent(event.payload),
     );
     this.unlistenFns.push(unlistenLocal);
 
     // Listen for remote agent events
     const unlistenRemote = await listen<SessionEvent>(
       "agent-message",
-      (event) => this.routeEvent(event.payload)
+      (event) => this.routeEvent(event.payload),
     );
     this.unlistenFns.push(unlistenRemote);
 
+    // Listen for message sync responses
+    const unlistenSync = await listen<SessionEvent>("message-sync", (event) =>
+      this.handleMessageSync(event.payload),
+    );
+    this.unlistenFns.push(unlistenSync);
+
     this.initialized = true;
     console.log("[SessionEventRouter] Initialized with global listeners");
+  }
+
+  /**
+   * Handle message sync response
+   */
+  private handleMessageSync(event: SessionEvent): void {
+    const payload = event as unknown as {
+      sessionId: string;
+      messages: Array<{
+        sequence: number;
+        timestamp: number;
+        messageData: string;
+      }>;
+    };
+
+    const { sessionId, messages } = payload;
+
+    console.log(
+      `[SessionEventRouter] Received message sync for session ${sessionId}:`,
+      messages.length,
+      "messages",
+    );
+
+    // Process each synced message
+    for (const syncedMessage of messages) {
+      try {
+        // Parse the message data
+        const messageData = JSON.parse(syncedMessage.messageData);
+
+        // Route the message as if it came from the agent
+        const agentEvent: SessionEvent = {
+          sessionId,
+          ...messageData,
+        };
+
+        this.routeEvent(agentEvent);
+
+        // Update last received sequence
+        sessionStore.updateLastReceivedSequence(
+          sessionId,
+          syncedMessage.sequence,
+        );
+      } catch (err) {
+        console.error(`Failed to process synced message:`, err);
+      }
+    }
+  }
+
+  /**
+   * Load stored message history for a session
+   * This should be called when a session becomes active
+   */
+  async loadSessionHistory(sessionId: string): Promise<StoredMessageEntry[]> {
+    console.log(`[SessionEventRouter] Loading history for session ${sessionId}`);
+    const messages = await loadStoredMessages(sessionId);
+
+    // Update last sequence if we have messages
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      sessionStore.updateLastReceivedSequence(sessionId, lastMessage.sequence);
+    }
+
+    return messages;
   }
 
   /**
@@ -101,6 +192,11 @@ class SessionEventRouter {
 
     // Update streaming state
     this.updateStreamingState(sessionId, type, event);
+
+    // Persist message for reconnection recovery (async, non-blocking)
+    if (PERSISTABLE_EVENT_TYPES.has(type)) {
+      this.persistEvent(sessionId, event);
+    }
 
     // Track unread for non-active sessions on message events
     if (
@@ -126,10 +222,26 @@ class SessionEventRouter {
       } catch (err) {
         console.error(
           `[SessionEventRouter] Handler error for session ${sessionId}:`,
-          err
+          err,
         );
       }
     });
+  }
+
+  /**
+   * Persist event to local storage for reconnection recovery
+   */
+  private async persistEvent(sessionId: string, event: SessionEvent): Promise<void> {
+    try {
+      const messageData = JSON.stringify(event);
+      await persistMessage(sessionId, messageData);
+    } catch (err) {
+      // Log but don't throw - persistence failure shouldn't affect event processing
+      console.warn(
+        `[SessionEventRouter] Failed to persist event for session ${sessionId}:`,
+        err,
+      );
+    }
   }
 
   /**
@@ -148,7 +260,7 @@ class SessionEventRouter {
   private updateStreamingState(
     sessionId: string,
     type: string,
-    event: SessionEvent
+    event: SessionEvent,
   ): void {
     const state = this.streamingStates.get(sessionId) || {
       isStreaming: false,
@@ -192,7 +304,7 @@ class SessionEventRouter {
     this.handlers.get(sessionId)!.add(handler);
 
     console.log(
-      `[SessionEventRouter] Subscribed to session ${sessionId} (${this.handlers.get(sessionId)!.size} handlers)`
+      `[SessionEventRouter] Subscribed to session ${sessionId} (${this.handlers.get(sessionId)!.size} handlers)`,
     );
 
     // Return unsubscribe function
@@ -205,7 +317,9 @@ class SessionEventRouter {
           this.streamingStates.delete(sessionId);
         }
       }
-      console.log(`[SessionEventRouter] Unsubscribed from session ${sessionId}`);
+      console.log(
+        `[SessionEventRouter] Unsubscribed from session ${sessionId}`,
+      );
     };
   }
 
@@ -287,9 +401,21 @@ class SessionEventRouter {
   }
 
   /**
+   * Request message sync for reconnection recovery
+   */
+  async requestMessageSync(sessionId: string): Promise<void> {
+    console.log(
+      `[SessionEventRouter] Requesting message sync for session ${sessionId}`,
+    );
+    await sessionStore.requestMessageSync(sessionId);
+  }
+
+  /**
    * Set callback for unread state changes
    */
-  setOnUnreadChange(callback: (sessionId: string, hasUnread: boolean) => void): void {
+  setOnUnreadChange(
+    callback: (sessionId: string, hasUnread: boolean) => void,
+  ): void {
     this.onUnreadChange = callback;
   }
 

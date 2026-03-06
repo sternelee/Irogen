@@ -3,11 +3,15 @@
 pub mod agent;
 pub mod event_manager;
 pub mod message_protocol;
+pub mod message_store;
+pub mod message_sync;
 pub mod quic_server;
 pub mod util;
 
 pub use event_manager::*;
 pub use message_protocol::*;
+pub use message_store::*;
+pub use message_sync::*;
 pub use quic_server::*;
 pub use util::*;
 

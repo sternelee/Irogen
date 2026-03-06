@@ -17,12 +17,7 @@ import { getLastTicket, saveTicket } from "../utils/localStorage";
 // Types
 // ============================================================================
 
-export type AgentType =
-  | "claude"
-  | "opencode"
-  | "codex"
-  | "gemini"
-  | "openclaw";
+export type AgentType = "claude" | "opencode" | "codex" | "gemini" | "openclaw";
 
 export type SessionMode = "remote" | "local";
 
@@ -43,6 +38,7 @@ export interface AgentSessionMetadata {
   thinking?: boolean;
   mode?: SessionMode;
   controlSessionId?: string; // ID of the connection session
+  lastReceivedSequence: number; // Last received message sequence for reconnection
 }
 
 export interface BackendSessionMetadata {
@@ -88,6 +84,7 @@ export const mapBackendSessionMetadata = (
   machineId: session.machine_id,
   mode,
   controlSessionId,
+  lastReceivedSequence: 0,
 });
 
 // Session filter for listing (reserved for future use)
@@ -379,6 +376,48 @@ export const createSessionStore = () => {
     setState("isHistoryLoading", loading);
   };
 
+  // ========================================================================
+  // Message Sync (断线重连）
+  // ========================================================================
+
+  const updateLastReceivedSequence = (sessionId: string, sequence: number) => {
+    setState(
+      produce((s: SessionState) => {
+        const session = s.sessions[sessionId];
+        if (session) {
+          session.lastReceivedSequence = sequence;
+        }
+      }),
+    );
+  };
+
+  const requestMessageSync = async (sessionId: string) => {
+    const session = getSession(sessionId);
+    if (!session) {
+      console.error(`Session not found: ${sessionId}`);
+      return;
+    }
+
+    const lastSequence = session.lastReceivedSequence;
+
+    try {
+      await invoke("request_message_sync", {
+        sessionId,
+        lastSequence,
+      });
+      console.log(
+        `Requested message sync for session ${sessionId}, last_sequence: ${lastSequence}`,
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      notificationStore.error(
+        `Failed to request message sync: ${errorMessage}`,
+        "Error",
+      );
+    }
+  };
+
   const handleRemoteConnect = async () => {
     const ticket = state.sessionTicket.trim();
     if (!ticket) {
@@ -409,9 +448,7 @@ export const createSessionStore = () => {
       );
 
       for (const s of remoteSessions) {
-        addSession(
-          mapBackendSessionMetadata(s, "remote", connectionSessionId),
-        );
+        addSession(mapBackendSessionMetadata(s, "remote", connectionSessionId));
       }
 
       // Don't close modal - continue with agent config flow
@@ -437,7 +474,10 @@ export const createSessionStore = () => {
     if (raw.startsWith("[")) {
       try {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.every((v) => typeof v === "string")) {
+        if (
+          Array.isArray(parsed) &&
+          parsed.every((v) => typeof v === "string")
+        ) {
           return parsed;
         }
         notificationStore.error(
@@ -535,6 +575,7 @@ export const createSessionStore = () => {
         currentDir: state.newSessionPath,
         machineId: "local",
         mode: "local",
+        lastReceivedSequence: 0,
       };
 
       addSession(newSession);
@@ -623,6 +664,11 @@ export const createSessionStore = () => {
     initializeNetwork,
     setStartingAgent,
     setHistoryLoading,
+
+    // Message Sync
+    updateLastReceivedSequence,
+    requestMessageSync,
+
     handleCreateSession,
     handleRemoteConnect,
     handleRemoteSpawn,

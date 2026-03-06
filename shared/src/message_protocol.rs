@@ -56,6 +56,8 @@ pub enum MessageType {
     Notification = 0x18,
     /// 斜杠命令消息（转发给 AI Agent 的命令）
     SlashCommand = 0x19,
+    /// 消息同步消息（断线重连时使用）
+    MessageSync = 0x1A,
 }
 
 impl TryFrom<u8> for MessageType {
@@ -80,6 +82,7 @@ impl TryFrom<u8> for MessageType {
             0x17 => Ok(MessageType::RemoteSpawn),
             0x18 => Ok(MessageType::Notification),
             0x19 => Ok(MessageType::SlashCommand),
+            0x1A => Ok(MessageType::MessageSync),
             _ => Err(anyhow::anyhow!("Invalid message type: {}", value)),
         }
     }
@@ -279,6 +282,8 @@ pub enum MessagePayload {
     Notification(NotificationMessage),
     /// 斜杠命令载荷
     SlashCommand(SlashCommandMessage),
+    /// 消息同步载荷
+    MessageSync(MessageSyncMessage),
 }
 
 /// 心跳消息
@@ -995,6 +1000,43 @@ pub enum OutputFormat {
     Table,
 }
 
+/// 消息同步动作（断线重连）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MessageSyncAction {
+    /// 请求同步：App 端请求自指定 sequence 之后的消息
+    RequestSync {
+        /// 会话 ID
+        session_id: String,
+        /// 最后接收到的 sequence 号（请求此 sequence 之后的消息）
+        last_sequence: u64,
+    },
+    /// 同步响应：Host 端返回历史消息
+    SyncResponse {
+        /// 会话 ID
+        session_id: String,
+        /// 历史消息列表
+        messages: Vec<SynchedMessageEntry>,
+    },
+}
+
+/// 同步的消息条目
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SynchedMessageEntry {
+    /// 消息 sequence 号
+    pub sequence: u64,
+    /// 消息时间戳
+    pub timestamp: u64,
+    /// 消息数据（序列化的 AgentMessageMessage）
+    pub message_data: String,
+}
+
+/// 消息同步消息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageSyncMessage {
+    pub action: MessageSyncAction,
+    pub request_id: Option<String>,
+}
+
 /// Agent 特定的命令定义
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentCommandDefinition {
@@ -1472,6 +1514,41 @@ impl MessageBuilder {
             read: false,
         };
         Self::notification(sender_id, notification)
+    }
+
+    /// 创建消息同步请求
+    pub fn sync_request(
+        sender_id: String,
+        session_id: String,
+        last_sequence: u64,
+    ) -> Message {
+        let payload = MessagePayload::MessageSync(MessageSyncMessage {
+            action: MessageSyncAction::RequestSync {
+                session_id: session_id.to_string(),
+                last_sequence,
+            },
+            request_id: None,
+        });
+        Message::new(MessageType::MessageSync, sender_id, payload)
+            .with_priority(MessagePriority::High)
+            .requires_response()
+    }
+
+    /// 创建消息同步响应
+    pub fn sync_response(
+        sender_id: String,
+        session_id: String,
+        messages: Vec<SynchedMessageEntry>,
+    ) -> Message {
+        let payload = MessagePayload::MessageSync(MessageSyncMessage {
+            action: MessageSyncAction::SyncResponse {
+                session_id: session_id.to_string(),
+                messages,
+            },
+            request_id: None,
+        });
+        Message::new(MessageType::MessageSync, sender_id, payload)
+            .with_priority(MessagePriority::Normal)
     }
 }
 
