@@ -253,7 +253,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
 
   // Track sessions with unread messages
   const [unreadSessions, setUnreadSessions] = createSignal<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   // Set up unread change listener
@@ -524,7 +524,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
             </div>
             <div>
               <p class="text-[10px] text-muted-foreground/60 -mt-0.5">
-                AI Copilot
+                AI Copilot workspace
               </p>
             </div>
           </div>

@@ -96,7 +96,6 @@ export const NewSessionModal: Component = () => {
     // On mobile, get the app directory as default path
     if (isMobile()) {
       try {
-        // const appDir = await invoke<string>("get_app_dir");
         const appDir = "~";
         if (appDir) {
           sessionStore.setNewSessionPath(appDir);
@@ -185,7 +184,10 @@ export const NewSessionModal: Component = () => {
     return { dirToList, partialName };
   };
 
-  const filterDirEntriesByPartial = (entries: DirEntry[], partialName: string) => {
+  const filterDirEntriesByPartial = (
+    entries: DirEntry[],
+    partialName: string,
+  ) => {
     const keyword = partialName.trim().toLowerCase();
     if (!keyword) return entries;
     return entries.filter((e) => e.name.toLowerCase().includes(keyword));
@@ -243,24 +245,21 @@ export const NewSessionModal: Component = () => {
           supported: true,
           placeholder:
             'e.g. --model sonnet --allowedTools "Read,Edit" or ["--model","sonnet"]',
-          hint:
-            "Passed to Claude Code process. Supports JSON array or space-separated args.",
+          hint: "Passed to Claude Code process. Supports JSON array or space-separated args.",
         };
       case "gemini":
         return {
           supported: true,
           placeholder:
             'e.g. --model gemini-2.5-pro --yolo or ["--model","gemini-2.5-pro"]',
-          hint:
-            "Passed to Gemini CLI process. Supports JSON array or space-separated args.",
+          hint: "Passed to Gemini CLI process. Supports JSON array or space-separated args.",
         };
       case "opencode":
         return {
           supported: true,
           placeholder:
             'e.g. --model gpt-5 --provider openai or ["--model","gpt-5"]',
-          hint:
-            "Passed to OpenCode process. Supports JSON array or space-separated args.",
+          hint: "Passed to OpenCode process. Supports JSON array or space-separated args.",
         };
       case "openclaw":
         return {
@@ -273,8 +272,7 @@ export const NewSessionModal: Component = () => {
           supported: true,
           placeholder:
             'e.g. --model gpt-5 --max-tokens 2048 or ["--model","gpt-5"]',
-          hint:
-            "Passed to the agent process. Supports JSON array or space-separated args.",
+          hint: "Passed to the agent process. Supports JSON array or space-separated args.",
         };
     }
   });
@@ -509,7 +507,9 @@ export const NewSessionModal: Component = () => {
                   }
                 }}
                 items={dirEntries().map((e) => {
-                  const query = getPathQueryParts(sessionStore.state.newSessionPath);
+                  const query = getPathQueryParts(
+                    sessionStore.state.newSessionPath,
+                  );
                   const basePath = query?.dirToList || "";
                   return {
                     value: basePath + e.name,

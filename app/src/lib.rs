@@ -29,9 +29,8 @@ use shared::AgentManager;
 use shared::{
     AgentControlAction, AgentPermissionMode, AgentPermissionResponse, AgentType,
     CommunicationManager, DirEntry, Event, EventListener, EventType, FileBrowserAction,
-    FileBrowserEntry, Message as ClawdChatMessage, MessageBuilder, MessagePayload,
+    FileBrowserEntry, Message as ClawdChatMessage, MessageBuilder, MessagePayload, MessageStore,
     QuicMessageClientHandle, TcpDataType, TcpForwardingAction, TcpForwardingType,
-    MessageStore,
 };
 
 use crate::tcp_forwarding::TcpForwardingManager;
@@ -1349,16 +1348,6 @@ async fn send_directed_message(
     Err("Directed messages are deprecated. Use terminal commands instead.".to_string())
 }
 
-#[tauri::command(rename_all = "camelCase")]
-async fn execute_remote_command(
-    _command: String,
-    _session_id: String,
-    _terminal_id: String,
-    _state: State<'_, AppState>,
-) -> Result<(), String> {
-    Err("Remote terminal commands are deprecated. Use agent sessions instead.".to_string())
-}
-
 #[tauri::command]
 async fn disconnect_session(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
     #[cfg(any(debug_assertions, not(feature = "release-logging")))]
@@ -1503,36 +1492,6 @@ async fn git_diff(path: String, file: String) -> GitDiffResponse {
             diff: None,
             error: Some(error),
         },
-    }
-}
-
-#[tauri::command]
-async fn get_app_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
-    // Get the app's resource directory (where the app is installed)
-    // On mobile, this is the app's private directory
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        // On mobile, use the app data directory
-        let path = app_handle
-            .path()
-            .app_data_dir()
-            .map_err(|e| e.to_string())?;
-        Ok(path.to_string_lossy().to_string())
-    }
-
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        // On desktop, use the current working directory as fallback
-        // or the resource directory if available
-        match app_handle.path().resource_dir() {
-            Ok(path) => Ok(path.to_string_lossy().to_string()),
-            Err(_) => {
-                // Fallback to current directory
-                Ok(std::env::current_dir()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| ".".to_string()))
-            }
-        }
     }
 }
 
@@ -1683,11 +1642,8 @@ async fn request_message_sync(
             .ok_or("Session not found")?
     };
 
-    let sync_message = MessageBuilder::sync_request(
-        "app".to_string(),
-        session_id.clone(),
-        last_sequence,
-    );
+    let sync_message =
+        MessageBuilder::sync_request("app".to_string(), session_id.clone(), last_sequence);
 
     let connection_id = session.connection_id;
 
@@ -3094,7 +3050,6 @@ pub fn run() {
             initialize_network,
             connect_to_host,
             connect_to_peer,
-            execute_remote_command, // Kept for compatibility but redirects to terminal input
             disconnect_session,
             get_active_sessions,
             get_node_info,
@@ -3105,7 +3060,6 @@ pub fn run() {
             git_status,
             git_diff,
             list_remote_directory, // List remote directory via P2P
-            get_app_dir,           // Get app directory for mobile
             // TCP Forwarding Management
             create_tcp_forwarding_session,
             list_tcp_forwarding_sessions,
