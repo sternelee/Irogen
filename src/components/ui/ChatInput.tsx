@@ -12,7 +12,6 @@
 import {
   type Component,
   Show,
-  For,
   createSignal,
   createEffect,
   onMount,
@@ -29,7 +28,6 @@ import {
   FiCheck,
 } from "solid-icons/fi";
 import { FaSolidStopCircle } from "solid-icons/fa";
-import { filterCommands, type Command, type AgentType } from "~/lib/commands";
 
 // ============================================================================
 // Types
@@ -54,7 +52,6 @@ export interface ChatInputProps {
   isStreaming?: boolean;
   maxHeight?: number;
   class?: string;
-  agentType?: AgentType;
   // Tool buttons
   permissionMode?: PermissionMode;
   onPermissionModeChange?: (mode: PermissionMode) => void;
@@ -71,9 +68,6 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   let textareaRef: HTMLTextAreaElement | undefined;
   const [focused, setFocused] = createSignal(false);
   const [showSettings, setShowSettings] = createSignal(false);
-  const [showCommands, setShowCommands] = createSignal(false);
-  const [commands, setCommands] = createSignal<Command[]>([]);
-  const [selectedCommandIndex, setSelectedCommandIndex] = createSignal(0);
 
   const permissionOptions: {
     value: PermissionMode;
@@ -130,13 +124,6 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
     adjustHeight();
   });
 
-  // Hide commands when clicking outside or pressing escape
-  createEffect(() => {
-    if (!focused()) {
-      setShowCommands(false);
-    }
-  });
-
   // Focus textarea on mount
   onMount(() => {
     if (textareaRef) {
@@ -145,34 +132,6 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   });
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    // Handle command navigation
-    if (showCommands()) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedCommandIndex((i) => Math.min(i + 1, commands().length - 1));
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedCommandIndex((i) => Math.max(i - 1, 0));
-        return;
-      }
-      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
-        e.preventDefault();
-        const selected = commands()[selectedCommandIndex()];
-        if (selected) {
-          props.onInput(selected.name + " ");
-          setShowCommands(false);
-        }
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setShowCommands(false);
-        return;
-      }
-    }
-
     // Send on Shift+Enter, keep Enter as newline
     if (e.key === "Enter" && e.shiftKey) {
       e.preventDefault();
@@ -182,22 +141,6 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
       } else if (props.value.trim()) {
         props.onSubmit();
       }
-    }
-  };
-
-  const handleInput = (e: InputEvent) => {
-    const target = e.currentTarget as HTMLTextAreaElement;
-    const value = target.value;
-    props.onInput(value);
-
-    // Show command suggestions when user types "/"
-    if (value.startsWith("/")) {
-      const filtered = filterCommands(value, props.agentType);
-      setCommands(filtered);
-      setShowCommands(filtered.length > 0);
-      setSelectedCommandIndex(0);
-    } else {
-      setShowCommands(false);
     }
   };
 
@@ -235,7 +178,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
           <textarea
             ref={textareaRef}
             value={props.value}
-            onInput={handleInput}
+            onInput={(e) => props.onInput(e.currentTarget.value)}
             onKeyDown={handleKeyDown}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
@@ -244,35 +187,6 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             disabled={props.disabled}
             rows={1}
           />
-
-          {/* Command Suggestions Dropdown */}
-          <Show when={showCommands() && commands().length > 0}>
-            <div class="absolute bottom-full left-0 right-0 mb-1 bg-popover border rounded-lg shadow-lg overflow-hidden z-50 max-h-60 overflow-y-auto">
-              <div class="text-xs text-muted-foreground px-3 py-1.5 border-b bg-muted/30">
-                Commands (Tab to select)
-              </div>
-              <For each={commands()}>
-                {(cmd, index) => (
-                  <button
-                    type="button"
-                    class={cn(
-                      "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors",
-                      index() === selectedCommandIndex()
-                        ? "bg-primary/10 text-primary"
-                        : "hover:bg-muted"
-                    )}
-                    onClick={() => {
-                      props.onInput(cmd.name + " ");
-                      setShowCommands(false);
-                    }}
-                  >
-                    <span class="font-mono text-sm font-medium">{cmd.name}</span>
-                    <span class="text-muted-foreground text-sm truncate">{cmd.description}</span>
-                  </button>
-                )}
-              </For>
-            </div>
-          </Show>
         </div>
 
         {/* Attachments List */}
@@ -438,7 +352,6 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
     </div>
   );
 };
-
 
 // ============================================================================
 // Prompt Suggestions Component
