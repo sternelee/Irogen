@@ -313,7 +313,7 @@ export function ChatView(props: ChatViewProps) {
               thinking,
             });
           }
-          setIsStreaming(true);
+          // Don't set isStreaming here - only user sending message should trigger it
           break;
         }
 
@@ -323,7 +323,7 @@ export function ChatView(props: ChatViewProps) {
           const responseThinking = thinking;
           const messageId = parsed.messageId;
 
-          setIsStreaming(true);
+          // Don't set isStreaming here - only user sending message should trigger it
 
           const currentMessages = messages();
           const lastMessage = currentMessages[currentMessages.length - 1];
@@ -349,7 +349,7 @@ export function ChatView(props: ChatViewProps) {
         }
 
         case "turn_started":
-          setIsStreaming(true);
+          // Don't set isStreaming here - only user sending message should trigger it
           break;
 
         case "turn_completed": {
@@ -392,7 +392,7 @@ export function ChatView(props: ChatViewProps) {
               thinking: true,
             });
           }
-          setIsStreaming(true);
+          // Don't set isStreaming here - only user sending message should trigger it
           break;
         }
 
@@ -632,6 +632,15 @@ export function ChatView(props: ChatViewProps) {
       onCleanup(() => {
         unsubscribe();
       });
+    });
+
+    // Sync streaming state when sessionId changes (handles session switching)
+    createEffect(() => {
+      const sid = props.sessionId;
+      if (sid) {
+        const routerState = sessionEventRouter.getStreamingState(sid);
+        setIsStreaming(routerState.isStreaming);
+      }
     });
 
     // Load pending permissions for local sessions (restore after reload)

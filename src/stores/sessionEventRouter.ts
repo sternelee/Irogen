@@ -99,7 +99,12 @@ class SessionEventRouter {
    * Route event to correct session handlers
    */
   private routeEvent(event: SessionEvent): void {
-    const { sessionId, type } = event;
+    // Handle both nested event format (from Rust) and flat format
+    // Rust sends: {sessionId, turnId, event: {type, ...}}
+    // Some events may also have type at top level
+    const nestedEvent = event.event as Record<string, unknown> | undefined;
+    const type = (event.type as string) || (nestedEvent?.type as string) || "";
+    const sessionId = (event.sessionId as string) || "";
 
     // Update streaming state
     this.updateStreamingState(sessionId, type, event);
@@ -167,7 +172,9 @@ class SessionEventRouter {
         break;
 
       case "turn_complete":
+      case "turn_completed":
       case "TurnComplete":
+      case "TurnCompleted":
       case "turn_error":
       case "TurnError":
         state.isStreaming = false;
