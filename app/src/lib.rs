@@ -2674,13 +2674,23 @@ async fn local_load_agent_history(
             .map_err(|e| format!("Failed to load agent history: {}", e))?
     };
 
-    // For Codex, load history from JSONL files since ACP adapter doesn't support resume_session
-    if agent_type == AgentType::Codex {
-        info!("[Codex] Loading session history from JSONL files");
+    // For Codex and OpenCode, load history since ACP adapter might not support resume_session
+    if agent_type == AgentType::Codex || agent_type == AgentType::OpenCode {
         let history_id = history_session_id.clone();
-        match shared::agent::load_codex_session_history(&history_id).await {
+
+        let result = if agent_type == AgentType::Codex {
+            // Codex: load from JSONL files
+            shared::agent::load_codex_session_history(&history_id).await
+        } else {
+            // OpenCode: use opencode export command
+            shared::agent::load_opencode_session_history(&history_id).await
+        };
+
+        let agent_name = if agent_type == AgentType::Codex { "Codex" } else { "OpenCode" };
+
+        match result {
             Ok(messages) => {
-                info!("[Codex] Loaded {} history messages", messages.len());
+                info!("[{}] Loaded {} history messages", agent_name, messages.len());
                 for msg in messages {
                     // Send each message as a text_delta event to the frontend
                     let event_payload = serde_json::json!({
@@ -2696,7 +2706,7 @@ async fn local_load_agent_history(
                 }
             }
             Err(e) => {
-                warn!("[Codex] Failed to load history: {}", e);
+                warn!("[{}] Failed to load history: {}", agent_name, e);
             }
         }
     }

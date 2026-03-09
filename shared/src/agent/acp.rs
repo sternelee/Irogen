@@ -986,6 +986,135 @@ pub async fn load_codex_session_history(
     Ok(messages)
 }
 
+/// Load OpenCode session messages using `opencode export` command
+pub async fn load_opencode_session_history(
+    session_id: &str,
+) -> Result<Vec<CodexHistoryMessage>> {
+    info!("[OpenCode history] Loading session {} via opencode export", session_id);
+
+    // Use tokio::process::Command to run opencode export
+    let output = tokio::process::Command::new("opencode")
+        .arg("export")
+        .arg(session_id)
+        .output()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to run opencode export: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("opencode export failed: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Parse the JSON output - with fallback for large strings that may cause parsing issues
+    let json: serde_json::Value = match serde_json::from_str(&stdout) {
+        Ok(v) => v,
+        Err(e) => {
+            // Try to recover by truncating extremely long strings
+            warn!("[OpenCode] Full JSON parse failed: {}, attempting recovery", e);
+            let truncated = truncate_large_strings(&stdout, 50000);
+            serde_json::from_str(&truncated)
+                .map_err(|e2| anyhow::anyhow!("Failed to parse opencode export output: {} (recovery also failed: {})", e, e2))?
+        }
+    };
+
+    let messages: Vec<CodexHistoryMessage> = json.get("messages")
+        .and_then(|m| m.as_array())
+        .map(|arr| {
+            arr.iter().filter_map(|msg| {
+                let role = msg.get("info")?.get("role")?.as_str()?;
+                let content = msg.get("parts")?.as_array()?.iter()
+                    .filter_map(|part| {
+                        if part.get("type")?.as_str() == Some("text") {
+                            part.get("text")?.as_str().map(|s| s.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                if content.is_empty() {
+                    None
+                } else {
+                    Some(CodexHistoryMessage {
+                        role: role.to_string(),
+                        content,
+                        timestamp: msg.get("info")?
+                            .get("time")?
+                            .get("created")?
+                            .as_i64()
+                            .unwrap_or(0),
+                    })
+                }
+            }).collect()
+        })
+        .unwrap_or_default();
+
+    info!("[OpenCode history] Loaded {} messages from session {}", messages.len(), session_id);
+    Ok(messages)
+}
+
+/// Truncate extremely long strings in JSON to allow parsing to succeed.
+/// This handles cases where opencode export produces very large strings that cause parsing failures.
+fn truncate_large_strings(input: &str, max_len: usize) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut in_string = false;
+    let mut current_string = String::new();
+    let mut escape_next = false;
+
+    for c in input.chars() {
+        if escape_next {
+            current_string.push(c);
+            escape_next = false;
+            continue;
+        }
+
+        match c {
+            '\\' if in_string => {
+                escape_next = true;
+                current_string.push(c);
+            }
+            '"' if in_string => {
+                // End of string - check if too long
+                if current_string.len() > max_len {
+                    result.push_str(&format!("\"{}... [truncated]\"", &current_string[..max_len.min(current_string.len())]));
+                } else {
+                    result.push('"');
+                    result.push_str(&current_string);
+                    result.push('"');
+                }
+                current_string.clear();
+                in_string = false;
+            }
+            '"' => {
+                in_string = true;
+            }
+            _ => {
+                if in_string {
+                    current_string.push(c);
+                } else {
+                    result.push(c);
+                }
+            }
+        }
+    }
+
+    // Handle any remaining string
+    if in_string && !current_string.is_empty() {
+        if current_string.len() > max_len {
+            result.push_str(&format!("\"{}... [truncated]\"", &current_string[..max_len.min(current_string.len())]));
+        } else {
+            result.push('"');
+            result.push_str(&current_string);
+            result.push('"');
+        }
+    }
+
+    result
+}
+
 /// Resolve a command name to its full path by searching common directories.
 /// Returns the original command if no full path is found (will rely on PATH).
 pub(super) fn resolve_command_path(command: &str) -> String {

@@ -22,7 +22,7 @@ use tokio::sync::RwLock;
 use tokio::task;
 use tracing::{debug, info, warn};
 
-pub use acp::{load_codex_session_history, AcpSessionStartMode, AcpStreamingSession};
+pub use acp::{load_codex_session_history, load_opencode_session_history, AcpSessionStartMode, AcpStreamingSession};
 pub use acp_permission::{AcpPermissionHandler, AcpPermissionState};
 pub use events::{AgentEvent, AgentTurnEvent, PendingPermission, PermissionResponse};
 pub use factory::{Agent, AgentAvailability, AgentFactory};

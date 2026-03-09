@@ -15,9 +15,7 @@ import {
   onCleanup,
 } from "solid-js";
 import { TransitionGroup } from "solid-transition-group";
-import {
-  FiAlertTriangle,
-} from "solid-icons/fi";
+import { FiAlertTriangle } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { chatStore } from "../stores/chatStore";
 import { sessionStore } from "../stores/sessionStore";
@@ -99,7 +97,11 @@ interface ParsedEvent {
  */
 function parseEvent(eventObj: Record<string, unknown>): ParsedEvent {
   // Check for wrapped format first (event: {type: "...", ...})
-  if ("event" in eventObj && typeof eventObj.event === "object" && eventObj.event !== null) {
+  if (
+    "event" in eventObj &&
+    typeof eventObj.event === "object" &&
+    eventObj.event !== null
+  ) {
     const nestedEvent = eventObj.event as Record<string, unknown>;
     if ("type" in nestedEvent) {
       const result: ParsedEvent = { type: nestedEvent.type as string };
@@ -114,7 +116,8 @@ function parseEvent(eventObj: Record<string, unknown>): ParsedEvent {
       for (const key of Object.keys(nestedEvent)) {
         if (key !== "type") {
           const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-          (result as unknown as Record<string, unknown>)[camelKey] = nestedEvent[key];
+          (result as unknown as Record<string, unknown>)[camelKey] =
+            nestedEvent[key];
         }
       }
 
@@ -122,7 +125,8 @@ function parseEvent(eventObj: Record<string, unknown>): ParsedEvent {
       for (const key of Object.keys(eventObj)) {
         if (key !== "event") {
           const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-          (result as unknown as Record<string, unknown>)[camelKey] = eventObj[key];
+          (result as unknown as Record<string, unknown>)[camelKey] =
+            eventObj[key];
         }
       }
 
@@ -243,7 +247,8 @@ export function ChatView(props: ChatViewProps) {
     // Use props if provided, otherwise use internal state
     const [internalRightPanelView, setInternalRightPanelView] =
       createSignal<RightPanelView>("none");
-    const rightPanelView = () => props.rightPanelView ?? internalRightPanelView();
+    const rightPanelView = () =>
+      props.rightPanelView ?? internalRightPanelView();
     const toolMessageIds = new Map<string, string>();
     const pendingPermissionsForModal = () =>
       pendingPermissions().map((permission) => ({
@@ -464,7 +469,8 @@ export function ChatView(props: ChatViewProps) {
         case "user_question": {
           const questionText = parsed.question || "Please select an option";
           const questionOptions = parsed.options || [];
-          const questionId = parsed.questionId || parsed.requestId || crypto.randomUUID();
+          const questionId =
+            parsed.questionId || parsed.requestId || crypto.randomUUID();
 
           chatStore.addUserQuestion(props.sessionId, {
             sessionId: props.sessionId,
@@ -601,6 +607,11 @@ export function ChatView(props: ChatViewProps) {
           }
           break;
         }
+
+        case "tool_input_updated":
+          // Tool input updates are typically handled by the permission UI
+          // No action needed for display - just suppress the unknown event log
+          break;
 
         default:
           console.log("[ChatView] Unknown event type:", eventType, parsed);
@@ -1170,10 +1181,16 @@ export function ChatView(props: ChatViewProps) {
                           decision === "ApprovedForSession"
                             ? "approved_for_session"
                             : "approved";
-                        handlePermissionResponse(permission.request_id, response);
+                        handlePermissionResponse(
+                          permission.request_id,
+                          response,
+                        );
                       }}
                       onDeny={() => {
-                        handlePermissionResponse(permission.request_id, "denied");
+                        handlePermissionResponse(
+                          permission.request_id,
+                          "denied",
+                        );
                       }}
                     />
                   )}
@@ -1186,9 +1203,13 @@ export function ChatView(props: ChatViewProps) {
                       question={question.question}
                       options={question.options}
                       questionId={question.id}
-                      disabled={!isActive() || question.status === 'answered'}
+                      disabled={!isActive() || question.status === "answered"}
                       onSelect={(option) => {
-                        chatStore.answerQuestion(props.sessionId, question.id, option);
+                        chatStore.answerQuestion(
+                          props.sessionId,
+                          question.id,
+                          option,
+                        );
                         // Send the answer back to the agent
                         // For now, just clear the question - backend should handle sending response
                         chatStore.clearQuestion(props.sessionId, question.id);
