@@ -126,6 +126,8 @@ pub enum SystemAction {
     Shutdown,
     /// 获取日志
     GetLogs { limit: Option<u32> },
+    /// 安装/升级 ACP 包
+    InstallAcp { agent_type: String },
 }
 
 /// 消息优先级

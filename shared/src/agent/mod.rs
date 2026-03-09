@@ -306,6 +306,26 @@ impl AgentManager {
                                     return Err(anyhow!(error_msg));
                                 }
                             }
+                            AgentType::OpenCode => {
+                                let installed = task::spawn_blocking(|| try_install_opencode())
+                                    .await
+                                    .unwrap_or_else(|_| Ok(false))?;
+
+                                if installed {
+                                    match AgentFactory::check_available_with_config(agent_type) {
+                                        Ok(recheck) if recheck.available => {
+                                            info!("✅ OpenCode installed successfully.");
+                                        }
+                                        _ => {
+                                            error_msg += " Auto-install attempted but still not available. Please ensure opencode is on PATH or pass an explicit --binary-path.";
+                                            return Err(anyhow!(error_msg));
+                                        }
+                                    }
+                                } else {
+                                    error_msg += " Auto-install failed. Install opencode-ai or pass an explicit --binary-path.";
+                                    return Err(anyhow!(error_msg));
+                                }
+                            }
                             _ => {}
                         }
 
@@ -328,6 +348,9 @@ impl AgentManager {
                         AgentType::Gemini => task::spawn_blocking(|| try_install_gemini_cli())
                             .await
                             .unwrap_or_else(|_| Ok(false))?,
+                        AgentType::OpenCode => task::spawn_blocking(|| try_install_opencode())
+                            .await
+                            .unwrap_or_else(|_| Ok(false))?,
                         _ => false,
                     };
 
@@ -344,7 +367,7 @@ impl AgentManager {
                         }
                     } else if matches!(
                         agent_type,
-                        AgentType::ClaudeCode | AgentType::Codex | AgentType::Gemini
+                        AgentType::ClaudeCode | AgentType::Codex | AgentType::Gemini | AgentType::OpenCode
                     ) {
                         return Err(anyhow!(
                             "Agent auto-install failed. Install the agent CLI or pass an explicit --binary-path."
@@ -857,7 +880,11 @@ fn try_install_gemini_cli() -> Result<bool> {
     try_install_package("@google/gemini-cli", "Gemini CLI")
 }
 
-fn try_install_package(package: &str, label: &str) -> Result<bool> {
+fn try_install_opencode() -> Result<bool> {
+    try_install_package("opencode-ai", "OpenCode")
+}
+
+pub fn try_install_package(package: &str, label: &str) -> Result<bool> {
     let installers: [(&str, &[&str]); 4] = [
         ("pnpm", &["add", "-g", package]),
         ("npm", &["install", "-g", package]),
@@ -870,15 +897,27 @@ fn try_install_package(package: &str, label: &str) -> Result<bool> {
             continue;
         }
         info!("Attempting to install {} via {}...", label, tool);
-        let status = std::process::Command::new(tool)
+        let output = std::process::Command::new(tool)
             .args(args)
             .env("PATH", get_extended_path())
-            .status();
+            .output(); // Use .output() to wait for completion and capture stdout/stderr
 
-        match status {
-            Ok(status) if status.success() => return Ok(true),
-            Ok(status) => {
-                warn!("Installer {} failed with status: {}", tool, status);
+        match output {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if output.status.success() {
+                    info!("{} installed successfully via {}", label, tool);
+                    if !stdout.is_empty() {
+                        debug!("Installation stdout: {}", stdout);
+                    }
+                    return Ok(true);
+                } else {
+                    warn!(
+                        "Installer {} failed with status: {}. stderr: {}",
+                        tool, output.status, stderr
+                    );
+                }
             }
             Err(err) => {
                 warn!("Installer {} failed to start: {}", tool, err);

@@ -31,7 +31,7 @@ use shared::{
     AgentControlAction, AgentPermissionMode, AgentPermissionResponse, AgentType,
     CommunicationManager, DirEntry, Event, EventListener, EventType, FileBrowserAction,
     FileBrowserEntry, Message as ClawdChatMessage, MessageBuilder, MessagePayload,
-    QuicMessageClientHandle, TcpDataType, TcpForwardingAction, TcpForwardingType,
+    QuicMessageClientHandle, SystemAction, TcpDataType, TcpForwardingAction, TcpForwardingType,
 };
 
 use crate::tcp_forwarding::TcpForwardingManager;
@@ -2198,6 +2198,104 @@ async fn abort_agent_action(
 // ============================================================================
 // Local Agent Management Commands
 // ============================================================================
+// ACP Package Installation Commands
+// ============================================================================
+
+/// Install or upgrade ACP package for specified agent (local mode)
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn install_acp_package_local(agent_type: String) -> Result<String, String> {
+    tracing::info!(
+        "[install_acp_package_local] Installing ACP for agent: {}",
+        agent_type
+    );
+
+    // Determine of ACP package name based on agent type
+    let acp_package = match agent_type.as_str() {
+        "codex" => "@zed-industries/codex-acp",
+        "opencode" => "opencode-ai",
+        "claude" => "@zed-industries/claude-agent-acp",
+        "gemini" => "@google/gemini-cli",
+        "openclaw" => return Err("OpenClaw does not require ACP installation".to_string()),
+        _ => return Err(format!("Unsupported agent type for ACP: {}", agent_type)),
+    };
+
+    // Install package using shared agent module's install logic
+    let installed = tokio::task::spawn_blocking(move || {
+        shared::try_install_package(acp_package, &format!("{} ACP", agent_type))
+            .map_err(|e| format!("Installation error: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Failed to spawn install task: {}", e))??;
+
+    if installed {
+        Ok(format!("{} installed successfully", acp_package))
+    } else {
+        Err(format!(
+            "Installation failed. Please install {} manually or ensure a package manager is available.",
+            acp_package
+        ))
+    }
+}
+
+/// Install or upgrade ACP package on remote CLI host via P2P
+#[tauri::command]
+async fn install_acp_package_remote(
+    session_id: String,
+    agent_type: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    tracing::info!(
+        "[install_acp_package_remote] Installing ACP for agent: {} on remote session: {}",
+        agent_type,
+        session_id
+    );
+
+    let session = {
+        let sessions = state.sessions.read().await;
+        sessions
+            .get(&session_id)
+            .cloned()
+            .ok_or("Session not found")?
+    };
+
+    // Generate a request_id for tracking the response
+    let request_id = uuid::Uuid::new_v4().to_string();
+
+    // Create system control message for installing ACP
+    let action = SystemAction::InstallAcp {
+        agent_type: agent_type.clone(),
+    };
+
+    let message = MessageBuilder::system_control(
+        "clawdchat_app".to_string(),
+        action,
+        Some(request_id.clone()),
+    );
+
+    // Send message via QUIC client and wait for response
+    let response = send_message_via_client_with_response(
+        &state,
+        &session.connection_id,
+        message,
+        &request_id,
+        "install ACP",
+        120, // 2 minute timeout for installation
+    )
+    .await?;
+
+    if response.success {
+        Ok(response
+            .message
+            .unwrap_or_else(|| "ACP installed successfully".to_string()))
+    } else {
+        Err(response
+            .message
+            .unwrap_or_else(|| "Failed to install ACP".to_string()))
+    }
+}
+
+// ============================================================================
 
 /// Start a local AI agent session (in-app, no P2P)
 /// Desktop only
@@ -2835,6 +2933,9 @@ pub fn run() {
             // Permission Management Commands
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             set_permission_mode,
+            // ACP Package Installation
+            install_acp_package_local,
+            install_acp_package_remote,
             // Local Agent Commands (desktop only)
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             local_start_agent,

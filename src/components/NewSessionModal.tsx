@@ -15,7 +15,7 @@ import {
   onCleanup,
   onMount,
 } from "solid-js";
-import { FiPlus, FiHome, FiCloud } from "solid-icons/fi";
+import { FiPlus, FiHome, FiCloud, FiDownload } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -56,6 +56,7 @@ export const NewSessionModal: Component = () => {
   const [currentRequestId, setCurrentRequestId] = createSignal<string | null>(
     null,
   );
+  const [isInstallingAcp, setIsInstallingAcp] = createSignal(false);
 
   let unlistenDirListing: UnlistenFn | null = null;
 
@@ -524,6 +525,72 @@ export const NewSessionModal: Component = () => {
                   <option value="">Select an agent</option>
                 </Show>
               </Select>
+
+              {/* ACP Install Button */}
+              <Show
+                when={
+                  sessionStore.state.newSessionAgent === "codex" ||
+                  sessionStore.state.newSessionAgent === "opencode" ||
+                  sessionStore.state.newSessionAgent === "claude" ||
+                  sessionStore.state.newSessionAgent === "gemini"
+                }
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="w-full mt-2"
+                  disabled={isInstallingAcp()}
+                  loading={isInstallingAcp()}
+                  onClick={async () => {
+                    setIsInstallingAcp(true);
+                    try {
+                      if (sessionStore.state.newSessionMode === "remote") {
+                        // Remote mode: send P2P message to CLI
+                        const targetSessionId =
+                          sessionStore.state.targetControlSessionId;
+                        if (!targetSessionId) {
+                          notificationStore.error(
+                            "No remote connection selected",
+                            "Installation Error",
+                          );
+                          return;
+                        }
+                        await invoke("install_acp_package_remote", {
+                          sessionId: targetSessionId,
+                          agentType: sessionStore.state.newSessionAgent,
+                        });
+                      } else {
+                        // Local mode: install directly
+                        await invoke("install_acp_package_local", {
+                          agentType: sessionStore.state.newSessionAgent,
+                        });
+                      }
+                      notificationStore.success(
+                        `${sessionStore.state.newSessionAgent.toUpperCase()} ACP installed successfully`,
+                        "Installation Complete",
+                      );
+                    } catch (error) {
+                      const msg =
+                        error instanceof Error ? error.message : String(error);
+                      console.error("Failed to install ACP:", error);
+                      notificationStore.error(
+                        `Failed to install ACP: ${msg}`,
+                        "Installation Error",
+                      );
+                    } finally {
+                      setIsInstallingAcp(false);
+                    }
+                  }}
+                >
+                  <Show when={!isInstallingAcp()}>
+                    <FiDownload class="mr-2 size-4" />
+                  </Show>
+                  <Show when={isInstallingAcp()} fallback="Install / Upgrade ACP">
+                    Installing...
+                  </Show>
+                </Button>
+              </Show>
             </div>
 
             <div class="mb-4 space-y-2">

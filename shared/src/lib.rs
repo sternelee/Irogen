@@ -18,4 +18,5 @@ pub use agent::AgentTurnEvent;
 #[cfg(feature = "std")]
 pub use agent::message_adapter;
 #[cfg(feature = "std")]
-pub use agent::{Agent, AgentFactory};
+pub use agent::{Agent, AgentFactory, try_install_package};
+

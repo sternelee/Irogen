@@ -7,13 +7,11 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use shared::{
     AgentControlAction, AgentPermissionMode, AgentSessionAction, AgentSessionMetadata, AgentType,
-    AvailableTools, CommunicationManager, FileBrowserAction, GitAction, Message,
-    MessageBuilder, MessageHandler, MessagePayload, MessageType, NotificationData,
-    NotificationType, OSInfo, PackageManager, QuicMessageServer,
-    QuicMessageServerConfig, RemoteSpawnAction, ResponseMessage, ShellInfo,
-    SystemAction, SystemInfo, SystemInfoAction, TcpDataType,
-    TcpForwardingAction, TcpForwardingType, TcpStreamHandler, Tool, UserInfo,
-
+    AvailableTools, CommunicationManager, FileBrowserAction, GitAction, Message, MessageBuilder,
+    MessageHandler, MessagePayload, MessageType, NotificationData, NotificationType, OSInfo,
+    PackageManager, QuicMessageServer, QuicMessageServerConfig, RemoteSpawnAction, ResponseMessage,
+    ShellInfo, SystemAction, SystemInfo, SystemInfoAction, TcpDataType, TcpForwardingAction,
+    TcpForwardingType, TcpStreamHandler, Tool, UserInfo,
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -517,6 +515,102 @@ impl MessageHandler for SystemControlMessageHandler {
                             message: Some("Get logs not implemented".to_string()),
                         },
                     ))));
+                }
+                SystemAction::InstallAcp { agent_type } => {
+                    info!("Installing ACP for agent: {}", agent_type);
+
+                    // Determine ACP package name based on agent type
+                    let acp_package = match agent_type.as_str() {
+                        "codex" => "@zed-industries/codex-acp",
+                        "opencode" => "opencode-ai",
+                        "claude" => "@zed-industries/claude-agent-acp",
+                        "gemini" => "@google/gemini-cli",
+                        "openclaw" => {
+                            return Ok(Some(message.create_response(MessagePayload::Response(
+                                ResponseMessage {
+                                    request_id: message.id.clone(),
+                                    success: false,
+                                    data: None,
+                                    message: Some(
+                                        "OpenClaw does not require ACP installation".to_string(),
+                                    ),
+                                },
+                            ))));
+                        }
+                        _ => {
+                            return Ok(Some(message.create_response(MessagePayload::Response(
+                                ResponseMessage {
+                                    request_id: message.id.clone(),
+                                    success: false,
+                                    data: None,
+                                    message: Some(format!(
+                                        "Unsupported agent type for ACP: {}",
+                                        agent_type
+                                    )),
+                                },
+                            ))));
+                        }
+                    };
+
+                    // Install package using spawn_blocking to avoid blocking async runtime
+                    let acp_package_owned = acp_package.to_string();
+                    let agent_type_owned = agent_type.clone();
+                    let result = tokio::task::spawn_blocking(move || {
+                        shared::try_install_package(
+                            &acp_package_owned,
+                            &format!("{} ACP", agent_type_owned),
+                        )
+                    })
+                    .await;
+
+                    match result {
+                        Ok(Ok(true)) => {
+                            return Ok(Some(message.create_response(MessagePayload::Response(
+                                ResponseMessage {
+                                    request_id: message.id.clone(),
+                                    success: true,
+                                    data: Some(acp_package.to_string()),
+                                    message: Some(format!(
+                                        "{} installed successfully",
+                                        acp_package
+                                    )),
+                                },
+                            ))));
+                        }
+                        Ok(Ok(false)) => {
+                            return Ok(Some(message.create_response(MessagePayload::Response(
+                                ResponseMessage {
+                                    request_id: message.id.clone(),
+                                    success: false,
+                                    data: None,
+                                    message: Some(format!(
+                                        "Installation failed. Please install {} manually or ensure a package manager is available.",
+                                        acp_package
+                                    )),
+                                },
+                            ))));
+                        }
+                        Ok(Err(e)) => {
+                            return Ok(Some(message.create_response(MessagePayload::Response(
+                                ResponseMessage {
+                                    request_id: message.id.clone(),
+                                    success: false,
+                                    data: None,
+                                    message: Some(format!("Installation error: {}", e)),
+                                },
+                            ))));
+                        }
+                        Err(e) => {
+                            return Ok(Some(message.create_response(MessagePayload::Response(
+                                ResponseMessage {
+                                    request_id: message.id.clone(),
+                                    success: false,
+                                    data: None,
+                                    message: Some(format!("Failed to spawn install task: {}", e)),
+                                },
+                            ))));
+                        }
+                    }
                 }
             },
             _ => {}
