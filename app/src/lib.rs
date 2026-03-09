@@ -2704,6 +2704,16 @@ async fn local_load_agent_history(
                     });
                     let _ = app_handle.emit("local-agent-event", &frontend_event);
                 }
+                // Send turn_completed to reset streaming state after loading history
+                let complete_payload = serde_json::json!({
+                    "type": "turn_completed",
+                });
+                let complete_event = serde_json::json!({
+                    "sessionId": session_id.clone(),
+                    "turnId": uuid::Uuid::new_v4().to_string(),
+                    "event": complete_payload,
+                });
+                let _ = app_handle.emit("local-agent-event", &complete_event);
             }
             Err(e) => {
                 warn!("[{}] Failed to load history: {}", agent_name, e);
