@@ -347,6 +347,14 @@ jobs:
           merge-multiple: false
           path: dist/android
 
+      - name: Download Tauri app artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: clawdpilot_app_*
+          merge-multiple: false
+          path: dist/app
+
       - name: Show downloaded files
         run: ls -lahR dist
 
@@ -355,14 +363,15 @@ jobs:
         run: |
           shopt -s nullglob
           cd dist
-          for dir in */; do
-            dir_name="${dir%/}"
-            binary_name="$(basename "$dir_name")"
 
-            if [[ "$binary_name" == *"windows"* ]]; then
-              zip -j "${binary_name}.zip" "${dir_name}/${binary_name}.exe"
-            else
-              tar -czf "${binary_name}.tar.gz" -C "$dir_name" "$binary_name"
+          # CLI artifacts are individual files - archive them
+          for file in clawdpilot_cli-*; do
+            if [[ -f "$file" && "$file" != *.tar.gz && "$file" != *.zip ]]; then
+              if [[ "$file" == *.exe ]]; then
+                zip -j "${file}.zip" "$file"
+              else
+                tar -czf "${file}.tar.gz" "$file"
+              fi
             fi
           done
 
@@ -386,6 +395,7 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
+            dist/app/**/*
             dist/android/**/*.apk
             dist/android/**/*.aab
           draft: false
@@ -412,6 +422,7 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
+            dist/app/**/*
             dist/android/**/*.apk
             dist/android/**/*.aab
           draft: false
