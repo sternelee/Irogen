@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use tauri::Manager;
 use tauri::{Emitter, State};
+use tauri_plugin_notification::NotificationExt;
 use tokio::sync::{RwLock, broadcast};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -882,12 +883,24 @@ async fn connect_to_peer(
                                         }),
                                         shared::message_protocol::AgentMessageContent::SystemNotification {
                                             level, message
-                                        } => serde_json::json!({
-                                            "sessionId": agent_msg.session_id,
-                                            "type": "notification",
-                                            "level": format!("{:?}", level),
-                                            "message": message,
-                                        }),
+                                        } => {
+                                            // Send notification for non-empty system notifications (e.g., session ended)
+                                            if !message.is_empty() {
+                                                let _ = app_handle_clone
+                                                    .notification()
+                                                    .builder()
+                                                    .title(format!("System {:?}", level))
+                                                    .body(message.clone())
+                                                    .show();
+                                            }
+
+                                            serde_json::json!({
+                                                "sessionId": agent_msg.session_id,
+                                                "type": "notification",
+                                                "level": format!("{:?}", level),
+                                                "message": message,
+                                            })
+                                        },
                                         shared::message_protocol::AgentMessageContent::UserMessage {
                                             content, attachments
                                         } => serde_json::json!({
@@ -913,11 +926,21 @@ async fn connect_to_peer(
                                         }),
                                         shared::message_protocol::AgentMessageContent::TurnCompleted {
                                             content
-                                        } => serde_json::json!({
-                                            "sessionId": agent_msg.session_id,
-                                            "type": "turn_completed",
-                                            "content": content,
-                                        }),
+                                        } => {
+                                            // Send notification when agent completes response
+                                            let _ = app_handle_clone
+                                                .notification()
+                                                .builder()
+                                                .title("Agent Response Complete")
+                                                .body(content.clone().unwrap_or_else(|| "Agent has completed its response".to_string()))
+                                                .show();
+
+                                            serde_json::json!({
+                                                "sessionId": agent_msg.session_id,
+                                                "type": "turn_completed",
+                                                "content": content,
+                                            })
+                                        },
                                         shared::message_protocol::AgentMessageContent::TurnError {
                                             error
                                         } => serde_json::json!({
@@ -947,6 +970,14 @@ async fn connect_to_peer(
                                             request.session_id,
                                             request.tool_name
                                         );
+
+                                        // Send notification for permission request
+                                        let _ = app_handle_clone
+                                            .notification()
+                                            .builder()
+                                            .title("Permission Required")
+                                            .body(format!("{}: {}", request.tool_name, request.description.as_deref().unwrap_or("Needs your approval")))
+                                            .show();
 
                                         // Emit permission request event to frontend
                                         let _ = app_handle_clone.emit(

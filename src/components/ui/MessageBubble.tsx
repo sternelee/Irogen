@@ -283,8 +283,6 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
   const isUser = () => message().role === "user";
   const isSystem = () => message().role === "system";
 
-  console.log("message:", message());
-
   return (
     <Show
       when={isUser()}
