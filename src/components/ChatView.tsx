@@ -17,9 +17,6 @@ import {
 import { TransitionGroup } from "solid-transition-group";
 import {
   FiAlertTriangle,
-  FiFolder,
-  FiGitBranch,
-  FiX,
 } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { chatStore } from "../stores/chatStore";
@@ -35,8 +32,6 @@ import { PermissionMessage, UserQuestionMessage } from "./ui/PermissionCard";
 import { Button } from "./ui/primitives";
 import { MessageBubble } from "./ui/MessageBubble";
 import { ChatInput } from "./ui/ChatInput";
-import { FileBrowserView } from "./FileBrowserView";
-import { GitDiffView } from "./GitDiffView";
 
 // ============================================================================
 // Helper Functions
@@ -214,6 +209,10 @@ interface ChatViewProps {
   agentType?: AgentType;
   projectPath?: string;
   sessionMode?: "remote" | "local"; // Added session mode
+  // Right panel (managed by parent)
+  rightPanelView?: "none" | "file" | "git";
+  onToggleFileBrowser?: () => void;
+  onToggleGitPanel?: () => void;
 }
 
 type RightPanelView = "none" | "file" | "git";
@@ -241,8 +240,10 @@ export function ChatView(props: ChatViewProps) {
     const [permissionMode, setPermissionMode] = createSignal<
       "AlwaysAsk" | "AcceptEdits" | "Plan" | "AutoApprove"
     >("AlwaysAsk");
-    const [rightPanelView, setRightPanelView] =
+    // Use props if provided, otherwise use internal state
+    const [internalRightPanelView, setInternalRightPanelView] =
       createSignal<RightPanelView>("none");
+    const rightPanelView = () => props.rightPanelView ?? internalRightPanelView();
     const toolMessageIds = new Map<string, string>();
     const pendingPermissionsForModal = () =>
       pendingPermissions().map((permission) => ({
@@ -1008,10 +1009,17 @@ export function ChatView(props: ChatViewProps) {
     };
 
     const toggleRightPanel = (view: Exclude<RightPanelView, "none">) => {
-      setRightPanelView((prev) => (prev === view ? "none" : view));
+      if (props.rightPanelView !== undefined) {
+        // Parent manages state - call the parent's toggle
+        if (view === "file") {
+          props.onToggleFileBrowser?.();
+        } else if (view === "git") {
+          props.onToggleGitPanel?.();
+        }
+      } else {
+        setInternalRightPanelView((prev) => (prev === view ? "none" : view));
+      }
     };
-
-    const closeRightPanel = () => setRightPanelView("none");
 
     const getAgentIcon = () => {
       const normalizedType = props.agentType?.toLowerCase() || "";
@@ -1284,53 +1292,6 @@ export function ChatView(props: ChatViewProps) {
               />
             </Show>
           </div>
-        </div>
-        <div class="drawer-side z-40">
-          <button
-            type="button"
-            class="drawer-overlay"
-            aria-label="Close tools drawer"
-            onClick={closeRightPanel}
-          />
-          <aside class="h-full w-screen sm:w-[28rem] md:w-[340px] lg:w-[360px] border-l border-border/60 bg-background/95 backdrop-blur-sm flex flex-col overflow-hidden">
-            <div class="h-11 px-3 border-b border-border/60 flex items-center justify-between">
-              <div class="text-sm font-medium flex items-center gap-2">
-                <Show
-                  when={rightPanelView() === "file"}
-                  fallback={<FiGitBranch size={14} />}
-                >
-                  <FiFolder size={14} />
-                </Show>
-                <span>
-                  {rightPanelView() === "file" ? "File Browser" : "Git Changes"}
-                </span>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                class="btn btn-ghost btn-xs btn-square"
-                onClick={closeRightPanel}
-                title="Close panel"
-              >
-                <FiX size={12} />
-              </Button>
-            </div>
-            <div class="flex-1 overflow-auto scrollbar-thin">
-              <Show when={rightPanelView() === "file"}>
-                <FileBrowserView
-                  class="h-full"
-                  projectPath={session()?.projectPath || props.projectPath}
-                />
-              </Show>
-              <Show when={rightPanelView() === "git"}>
-                <GitDiffView
-                  class="h-full"
-                  projectPath={session()?.projectPath || props.projectPath}
-                />
-              </Show>
-            </div>
-          </aside>
         </div>
       </div>
     );

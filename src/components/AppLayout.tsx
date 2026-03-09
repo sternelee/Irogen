@@ -16,13 +16,15 @@ import {
 } from "solid-js";
 import { SessionSidebar } from "./SessionSidebar";
 import { ChatView } from "./ChatView";
+import { FileBrowserView } from "./FileBrowserView";
+import { GitDiffView } from "./GitDiffView";
 import { sessionStore } from "../stores/sessionStore";
 import { notificationStore } from "../stores/notificationStore";
 import { Button } from "./ui/primitives";
 import { KeyboardShortcutsDialog } from "./ui/KeyboardShortcuts";
 import { SpinnerWithLabel } from "./ui/Spinner";
 import { ThemeSwitcher } from "./ui/ThemeSwitcher";
-import { FiPlus } from "solid-icons/fi";
+import { FiPlus, FiFolder, FiGitBranch, FiX } from "solid-icons/fi";
 
 // ============================================================================
 // Icons
@@ -53,6 +55,15 @@ const MenuIcon: Component = () => (
 export const AppLayout: Component = () => {
   const [sidebarOpen, setSidebarOpen] = createSignal(false);
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = createSignal(false);
+  const [rightPanelView, setRightPanelView] = createSignal<
+    "none" | "file" | "git"
+  >("none");
+
+  // Toggle functions for right panel
+  const toggleRightPanel = (view: "file" | "git") => {
+    setRightPanelView((prev) => (prev === view ? "none" : view));
+  };
+  const closeRightPanel = () => setRightPanelView("none");
 
   // Keyboard shortcuts
   onMount(() => {
@@ -224,13 +235,71 @@ export const AppLayout: Component = () => {
           {(session) => {
             // session is already the AgentSessionMetadata object
             return (
-              <ChatView
-                sessionId={session().sessionId}
-                agentType={session().agentType}
-                projectPath={session().projectPath}
-                sessionMode={session().mode}
-                onSendMessage={handleSendMessage}
-              />
+              <>
+                <ChatView
+                  sessionId={session().sessionId}
+                  agentType={session().agentType}
+                  projectPath={session().projectPath}
+                  sessionMode={session().mode}
+                  onSendMessage={handleSendMessage}
+                  rightPanelView={rightPanelView()}
+                  onToggleFileBrowser={() => toggleRightPanel("file")}
+                  onToggleGitPanel={() => toggleRightPanel("git")}
+                />
+                {/* Right Panel - File Browser / Git Changes */}
+                <Show when={rightPanelView() !== "none"}>
+                  <button
+                    type="button"
+                    class="fixed inset-0 bg-black/50 z-40 lg:hidden w-full h-full border-none cursor-default"
+                    onClick={closeRightPanel}
+                    aria-label="Close tools panel"
+                  />
+                </Show>
+                <aside
+                  class={`fixed right-0 inset-y-0 z-50 w-screen sm:w-[28rem] md:w-[340px] lg:w-[360px] border-l border-border/60 bg-gradient-to-b from-background to-base-200/50 backdrop-blur-md flex flex-col overflow-hidden shadow-2xl shadow-black/20
+                    transform transition-transform duration-300 ease-in-out
+                    ${rightPanelView() !== "none" ? "translate-x-0" : "translate-x-full"}
+                  `}
+                >
+                  <div class="h-11 px-3 border-b border-border/60 flex items-center justify-between">
+                    <div class="text-sm font-medium flex items-center gap-2">
+                      <Show
+                        when={rightPanelView() === "file"}
+                        fallback={<FiGitBranch size={14} />}
+                      >
+                        <FiFolder size={14} />
+                      </Show>
+                      <span>
+                        {rightPanelView() === "file" ? "File Browser" : "Git Changes"}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      class="btn btn-ghost btn-xs btn-square"
+                      onClick={closeRightPanel}
+                      title="Close panel"
+                    >
+                      <FiX size={12} />
+                    </Button>
+                  </div>
+                  <div class="flex-1 overflow-auto scrollbar-thin">
+                    <Show when={rightPanelView() === "file"}>
+                      <FileBrowserView
+                        class="h-full"
+                        projectPath={session()?.projectPath}
+                      />
+                    </Show>
+                    <Show when={rightPanelView() === "git"}>
+                      <GitDiffView
+                        class="h-full"
+                        projectPath={session()?.projectPath}
+                      />
+                    </Show>
+                  </div>
+                </aside>
+              </>
             );
           }}
         </Show>

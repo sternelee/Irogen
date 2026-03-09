@@ -262,7 +262,7 @@ const SystemMessageContent: Component<{ content: string }> = (props) => {
                 [{parsed().toolName}]
               </span>
               <Show when={parsed().output}>
-                <pre class="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">
+                <pre class="mt-2 text-xs text-muted-foreground whitespace-pre-wrap break-all">
                   {parsed().output}
                 </pre>
               </Show>
