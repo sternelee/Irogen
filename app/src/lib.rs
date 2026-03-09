@@ -2686,11 +2686,19 @@ async fn local_load_agent_history(
             shared::agent::load_opencode_session_history(&history_id).await
         };
 
-        let agent_name = if agent_type == AgentType::Codex { "Codex" } else { "OpenCode" };
+        let agent_name = if agent_type == AgentType::Codex {
+            "Codex"
+        } else {
+            "OpenCode"
+        };
 
         match result {
             Ok(messages) => {
-                info!("[{}] Loaded {} history messages", agent_name, messages.len());
+                info!(
+                    "[{}] Loaded {} history messages",
+                    agent_name,
+                    messages.len()
+                );
                 for msg in messages {
                     // Send each message as a text_delta event to the frontend
                     let event_payload = serde_json::json!({
@@ -2983,9 +2991,10 @@ pub fn run() {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             set_permission_mode,
             // ACP Package Installation
-            install_acp_package_local,
             install_acp_package_remote,
             // Local Agent Commands (desktop only)
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            install_acp_package_local,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             local_start_agent,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
