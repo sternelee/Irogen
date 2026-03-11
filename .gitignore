@@ -9,4 +9,4 @@ tsc-cache
 .output
 .vinxi
 *.xml
-app/gen
+.kotlin

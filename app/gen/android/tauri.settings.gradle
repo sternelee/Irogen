@@ -11,3 +11,5 @@ include ':tauri-plugin-fs'
 project(':tauri-plugin-fs').projectDir = new File("/Users/sternelee/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/tauri-plugin-fs-2.4.5/android")
 include ':tauri-plugin-notification'
 project(':tauri-plugin-notification').projectDir = new File("/Users/sternelee/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/tauri-plugin-notification-2.3.3/android")
+include ':tauri-plugin-opener'
+project(':tauri-plugin-opener').projectDir = new File("/Users/sternelee/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/tauri-plugin-opener-2.5.3/android")

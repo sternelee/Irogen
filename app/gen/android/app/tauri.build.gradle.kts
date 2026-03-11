@@ -7,4 +7,5 @@ dependencies {
   implementation(project(":tauri-plugin-dialog"))
   implementation(project(":tauri-plugin-fs"))
   implementation(project(":tauri-plugin-notification"))
+  implementation(project(":tauri-plugin-opener"))
 }
