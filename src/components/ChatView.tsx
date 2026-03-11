@@ -915,6 +915,25 @@ export function ChatView(props: ChatViewProps) {
       }
     };
 
+    const handleQuoteMessage = (content: string) => {
+      const quoted = content
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n");
+      setInputValue((prev) =>
+        prev.trim() ? `${prev}\n\n${quoted}\n` : `${quoted}\n`,
+      );
+    };
+
+    const handleResendMessage = (content: string) => {
+      if (!content.trim() || isStreaming()) return;
+      chatStore.clearAttachments(props.sessionId);
+      setInputValue(content);
+      queueMicrotask(() => {
+        void handleSend();
+      });
+    };
+
     const handleAbort = async () => {
       try {
         if (props.sessionMode === "local") {
@@ -1082,7 +1101,7 @@ export function ChatView(props: ChatViewProps) {
         <div class="drawer-content flex h-full bg-muted relative pb-safe lg:pb-0 overflow-hidden">
           <div class="flex flex-col h-full min-w-0 flex-1">
             {/* Header */}
-            <div class="z-20 flex items-center min-h-11 box-border justify-between border-b border-border/60 bg-background/80 backdrop-blur-sm pr-4 pl-16 lg:pl-6 md:py-3 shadow-sm">
+            <div class="z-20 flex items-center min-h-12 box-border justify-between border-b border-border/60 bg-background/80 backdrop-blur-sm pr-3 sm:pr-4 pl-16 lg:pl-6 py-2.5 sm:py-3 shadow-sm">
               <div class="flex-1">
                 <div class="flex items-center gap-3">
                   <div class="text-primary p-1.5 rounded-lg bg-primary/10 shrink-0">
@@ -1118,14 +1137,14 @@ export function ChatView(props: ChatViewProps) {
             <div
               ref={setScrollEl}
               onScroll={handleMessageScroll}
-              class="flex-1 overflow-y-auto px-4 py-6 scroll-smooth overflow-x-hidden scrollbar-hide"
+              class="flex-1 overflow-y-auto px-4 py-5 sm:py-6 pb-24 sm:pb-8 scroll-smooth overflow-x-hidden scrollbar-hide"
             >
               <Show
                 when={
                   messages().length === 0 && pendingPermissions().length === 0
                 }
               >
-                <div class="flex flex-col items-center text-center justify-center h-full8">
+                <div class="flex flex-col items-center text-center justify-center h-full">
                   <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-5 shadow-lg shadow-primary/10">
                     <div class="text-2xl scale-200">{getAgentIcon()}</div>
                   </div>
@@ -1171,7 +1190,13 @@ export function ChatView(props: ChatViewProps) {
               <div class="space-y-6 mb-4">
                 <TransitionGroup name="message">
                   <For each={messages()}>
-                    {(message) => <MessageBubble message={message} />}
+                    {(message) => (
+                      <MessageBubble
+                        message={message}
+                        onQuote={handleQuoteMessage}
+                        onResend={handleResendMessage}
+                      />
+                    )}
                   </For>
                 </TransitionGroup>
 
@@ -1262,7 +1287,7 @@ export function ChatView(props: ChatViewProps) {
                   setIsScrolledToBottom(true);
                   scrollToBottom("smooth");
                 }}
-                class="fixed bottom-30 right-6 z-10 h-8 w-8 bg-background shadow-lg"
+                class="fixed bottom-[6.25rem] right-4 sm:right-6 z-10 h-9 w-9 bg-background/95 shadow-lg"
                 size="icon"
                 variant="ghost"
                 aria-label="Scroll to bottom"

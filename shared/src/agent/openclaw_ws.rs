@@ -14,7 +14,7 @@
 //!
 //! 1. Connect to WebSocket
 //! 2. Wait for `connect.challenge` event to get nonce
-//! 3. Send connect request with device identity and signed payload (v2 format with nonce)
+//! 3. Send connect request with device identity and signed payload (v3 format with nonce)
 //! 4. Wait for connect response with ok:true
 
 use std::collections::HashMap;
@@ -30,7 +30,7 @@ use futures_util::{SinkExt, StreamExt};
 use rand_core::OsRng;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use tokio::sync::{RwLock, broadcast, mpsc};
+use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
 use tokio::time::sleep;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, error, info};
@@ -58,6 +58,12 @@ pub struct OpenClawGatewayManager {
     send_tx: mpsc::Sender<Vec<u8>>,
     /// Request ID counter
     request_counter: Arc<AtomicU64>,
+    /// Pending request context keyed by gateway request id
+    request_contexts: Arc<RwLock<HashMap<String, RequestContext>>>,
+    /// Pending RPC response waiters keyed by gateway request id
+    pending_rpc: PendingRpcMap,
+    /// Streaming state per session key
+    session_states: Arc<RwLock<HashMap<String, SessionStreamState>>>,
     /// Pending permissions
     pending_permissions: Arc<RwLock<HashMap<String, PendingPermission>>>,
     /// Gateway config
@@ -72,8 +78,6 @@ pub struct OpenClawWsSession {
     agent_type: AgentType,
     /// Session key for gateway
     session_key: String,
-    /// Event receiver subscribed to manager's broadcaster
-    event_receiver: broadcast::Receiver<AgentTurnEvent>,
     /// Event sender (cloned from manager for resubscription)
     event_sender: broadcast::Sender<AgentTurnEvent>,
     /// Permission mode for this session
@@ -87,6 +91,32 @@ struct GatewayConfig {
     token: String,
     agent_id: String,
     device_identity: DeviceIdentity,
+}
+
+#[derive(Debug, Clone)]
+struct RequestContext {
+    session_id: String,
+    turn_id: String,
+    method: String,
+    emit_events: bool,
+}
+
+type GatewayRpcResult = Result<serde_json::Value, String>;
+type PendingRpcSender = oneshot::Sender<GatewayRpcResult>;
+type PendingRpcMap = Arc<RwLock<HashMap<String, PendingRpcSender>>>;
+
+#[derive(Debug, Default, Clone)]
+struct SessionStreamState {
+    turn_id: Option<String>,
+    last_content: String,
+}
+
+#[derive(Clone)]
+struct GatewayRuntimeState {
+    pending_permissions: Arc<RwLock<HashMap<String, PendingPermission>>>,
+    request_contexts: Arc<RwLock<HashMap<String, RequestContext>>>,
+    pending_rpc: PendingRpcMap,
+    session_states: Arc<RwLock<HashMap<String, SessionStreamState>>>,
 }
 
 // ============================================================================
@@ -188,6 +218,19 @@ fn compute_device_id(public_key: &[u8; 32]) -> String {
     hex::encode(hash)
 }
 
+/// Per OpenClaw auth spec, only ASCII uppercase letters are lowercased.
+fn normalize_device_metadata(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_uppercase() {
+                c.to_ascii_lowercase()
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 /// Sign device auth payload using Ed25519
 fn sign_device_payload(private_key: &[u8; 32], payload: &str) -> String {
     let signing_key = SigningKey::from_bytes(private_key);
@@ -275,7 +318,6 @@ impl OpenClawWsSession {
         let session_key = session_id.clone();
 
         // Subscribe to the manager's event broadcaster
-        let event_receiver = manager.subscribe();
         let event_sender = manager.event_sender();
 
         info!(
@@ -287,7 +329,6 @@ impl OpenClawWsSession {
             session_id,
             agent_type,
             session_key,
-            event_receiver,
             event_sender,
             permission_mode: Arc::new(RwLock::new(
                 super::permission_handler::PermissionMode::AlwaysAsk,
@@ -324,7 +365,7 @@ impl OpenClawWsSession {
     pub async fn send_message(
         &self,
         text: String,
-        _turn_id: &str,
+        turn_id: &str,
         _attachments: Vec<String>,
     ) -> std::result::Result<(), String> {
         // Get the manager
@@ -333,7 +374,7 @@ impl OpenClawWsSession {
             .map_err(|e| e.to_string())?;
 
         manager
-            .send_agent_request(&text, &self.session_key)
+            .send_agent_request(&text, &self.session_key, Some(turn_id))
             .await
             .map_err(|e| e.to_string())?;
 
@@ -342,23 +383,59 @@ impl OpenClawWsSession {
     }
 
     pub async fn interrupt(&self) -> std::result::Result<(), String> {
-        // TODO: Implement interrupt
+        let manager = get_or_create_gateway_manager()
+            .await
+            .map_err(|e| e.to_string())?;
+        manager
+            .abort_session_runs(&self.session_key, None)
+            .await
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub async fn get_pending_permissions(
         &self,
     ) -> std::result::Result<Vec<PendingPermission>, String> {
-        Ok(vec![])
+        let manager = get_or_create_gateway_manager()
+            .await
+            .map_err(|e| e.to_string())?;
+        let pending = manager.pending_permissions.read().await;
+        let items = pending
+            .values()
+            .filter(|p| p.session_id == self.session_key)
+            .cloned()
+            .collect::<Vec<_>>();
+        Ok(items)
     }
 
     pub async fn respond_to_permission(
         &self,
-        _request_id: String,
-        _approved: bool,
-        _approve_for_session: bool,
+        request_id: String,
+        approved: bool,
+        approve_for_session: bool,
         _reason: Option<String>,
     ) -> std::result::Result<(), String> {
+        let decision = if approved {
+            if approve_for_session {
+                "allow-always"
+            } else {
+                "allow-once"
+            }
+        } else {
+            "deny"
+        };
+        let manager = get_or_create_gateway_manager()
+            .await
+            .map_err(|e| e.to_string())?;
+        manager
+            .resolve_exec_approval(&request_id, decision)
+            .await
+            .map_err(|e| e.to_string())?;
+        manager
+            .pending_permissions
+            .write()
+            .await
+            .remove(&request_id);
         Ok(())
     }
 
@@ -373,10 +450,10 @@ async fn get_or_create_gateway_manager() -> Result<Arc<OpenClawGatewayManager>> 
     // First try to get existing
     {
         let guard = GATEWAY_MANAGER.read().await;
-        if let Some(manager) = guard.as_ref() {
-            if manager.is_connected() {
-                return Ok(manager.clone());
-            }
+        if let Some(manager) = guard.as_ref()
+            && manager.is_connected()
+        {
+            return Ok(manager.clone());
         }
     }
 
@@ -384,10 +461,10 @@ async fn get_or_create_gateway_manager() -> Result<Arc<OpenClawGatewayManager>> 
     let mut guard = GATEWAY_MANAGER.write().await;
 
     // Double-check after acquiring write lock
-    if let Some(manager) = guard.as_ref() {
-        if manager.is_connected() {
-            return Ok(manager.clone());
-        }
+    if let Some(manager) = guard.as_ref()
+        && manager.is_connected()
+    {
+        return Ok(manager.clone());
     }
 
     // Load config
@@ -427,11 +504,20 @@ impl OpenClawGatewayManager {
         let connected = Arc::new(AtomicBool::new(false));
         let request_counter = Arc::new(AtomicU64::new(0));
         let pending_permissions = Arc::new(RwLock::new(HashMap::new()));
+        let request_contexts = Arc::new(RwLock::new(HashMap::new()));
+        let pending_rpc = Arc::new(RwLock::new(HashMap::new()));
+        let session_states = Arc::new(RwLock::new(HashMap::new()));
+        let runtime_state = Arc::new(GatewayRuntimeState {
+            pending_permissions: pending_permissions.clone(),
+            request_contexts: request_contexts.clone(),
+            pending_rpc: pending_rpc.clone(),
+            session_states: session_states.clone(),
+        });
 
         // Clone for the connection loop
         let connected_clone = connected.clone();
         let event_sender_clone = event_sender.clone();
-        let pending_permissions_clone = pending_permissions.clone();
+        let runtime_state_clone = runtime_state.clone();
         let config_clone = config.clone();
 
         // Spawn connection loop
@@ -440,7 +526,7 @@ impl OpenClawGatewayManager {
                 config_clone,
                 connected_clone,
                 event_sender_clone,
-                pending_permissions_clone,
+                runtime_state_clone,
                 send_rx,
             )
             .await;
@@ -452,6 +538,9 @@ impl OpenClawGatewayManager {
             send_tx,
             request_counter,
             pending_permissions,
+            request_contexts,
+            pending_rpc,
+            session_states,
             config,
         })
     }
@@ -460,24 +549,29 @@ impl OpenClawGatewayManager {
         self.connected.load(Ordering::SeqCst)
     }
 
-    /// Subscribe to events
-    fn subscribe(&self) -> broadcast::Receiver<AgentTurnEvent> {
-        self.event_sender.subscribe()
-    }
-
     /// Get event sender for resubscription
     fn event_sender(&self) -> broadcast::Sender<AgentTurnEvent> {
         self.event_sender.clone()
     }
 
     /// Send an agent request
-    async fn send_agent_request(&self, message: &str, session_key: &str) -> Result<()> {
+    async fn send_agent_request(
+        &self,
+        message: &str,
+        session_key: &str,
+        turn_id_hint: Option<&str>,
+    ) -> Result<()> {
         if !self.is_connected() {
             anyhow::bail!("Not connected to gateway");
         }
 
-        let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
-        let request_id = format!("agent:{}", now);
+        let seq = self.request_counter.fetch_add(1, Ordering::SeqCst) + 1;
+        let now = chrono::Utc::now().timestamp_millis();
+        let request_id = format!("agent:{}:{}", now, seq);
+        let turn_id = turn_id_hint
+            .filter(|v| !v.trim().is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
         let request = AgentRequest {
             msg_type: "req".to_string(),
@@ -488,9 +582,26 @@ impl OpenClawGatewayManager {
                 agent_id: self.config.agent_id.clone(),
                 session_key: session_key.to_string(),
                 deliver: false, // Don't deliver to external webhook - we receive responses directly
-                idempotency_key: format!("{}", now),
+                idempotency_key: turn_id.clone(),
             },
         };
+
+        self.request_contexts.write().await.insert(
+            request_id.clone(),
+            RequestContext {
+                session_id: session_key.to_string(),
+                turn_id: turn_id.clone(),
+                method: "agent".to_string(),
+                emit_events: true,
+            },
+        );
+
+        {
+            let mut states = self.session_states.write().await;
+            let state = states.entry(session_key.to_string()).or_default();
+            state.turn_id = Some(turn_id);
+            state.last_content.clear();
+        }
 
         let data = serde_json::to_vec(&request)?;
         self.send_tx
@@ -502,33 +613,109 @@ impl OpenClawGatewayManager {
         Ok(())
     }
 
+    async fn send_control_request(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        if !self.is_connected() {
+            anyhow::bail!("Not connected to gateway");
+        }
+
+        let seq = self.request_counter.fetch_add(1, Ordering::SeqCst) + 1;
+        let now = chrono::Utc::now().timestamp_millis();
+        let request_id = format!("ctl:{}:{}", now, seq);
+        let request = serde_json::json!({
+            "type": "req",
+            "id": request_id,
+            "method": method,
+            "params": params,
+        });
+        let data = serde_json::to_vec(&request)?;
+        let (tx, rx) = oneshot::channel();
+        self.pending_rpc
+            .write()
+            .await
+            .insert(request_id.clone(), tx);
+        self.request_contexts.write().await.insert(
+            request_id.clone(),
+            RequestContext {
+                session_id: String::new(),
+                turn_id: request_id.clone(),
+                method: method.to_string(),
+                emit_events: false,
+            },
+        );
+
+        if let Err(e) = self.send_tx.send(data).await {
+            self.pending_rpc.write().await.remove(&request_id);
+            self.request_contexts.write().await.remove(&request_id);
+            return Err(anyhow!("Failed to send message: {}", e));
+        }
+
+        let timeout = sleep(Duration::from_secs(8));
+        tokio::pin!(timeout);
+        tokio::select! {
+            outcome = rx => {
+                match outcome {
+                    Ok(Ok(payload)) => Ok(payload),
+                    Ok(Err(err)) => Err(anyhow!(err)),
+                    Err(_) => Err(anyhow!("Gateway control request canceled")),
+                }
+            }
+            _ = &mut timeout => {
+                self.pending_rpc.write().await.remove(&request_id);
+                self.request_contexts.write().await.remove(&request_id);
+                Err(anyhow!("Gateway control request timeout: {}", method))
+            }
+        }
+    }
+
+    async fn abort_session_runs(&self, session_key: &str, run_id: Option<&str>) -> Result<bool> {
+        let params = serde_json::json!({
+            "sessionKey": session_key,
+            "runId": run_id,
+        });
+        let payload = self.send_control_request("chat.abort", params).await?;
+        Ok(payload
+            .get("aborted")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false))
+    }
+
+    async fn resolve_exec_approval(&self, request_id: &str, decision: &str) -> Result<()> {
+        let params = serde_json::json!({
+            "id": request_id,
+            "decision": decision,
+        });
+        let _ = self
+            .send_control_request("exec.approval.resolve", params)
+            .await?;
+        Ok(())
+    }
+
     /// Connection loop with auto-reconnect
     async fn connection_loop(
         config: GatewayConfig,
         connected: Arc<AtomicBool>,
         event_sender: broadcast::Sender<AgentTurnEvent>,
-        pending_permissions: Arc<RwLock<HashMap<String, PendingPermission>>>,
+        runtime_state: Arc<GatewayRuntimeState>,
         mut send_rx: mpsc::Receiver<Vec<u8>>,
     ) {
         let mut reconnect_delay = Duration::from_secs(1);
         let max_reconnect_delay = Duration::from_secs(30);
 
-        // Track last sent content to compute incremental deltas
-        let last_sent_content = Arc::new(RwLock::new(String::new()));
-
         loop {
             info!("[OpenClaw] Starting connection attempt...");
 
-            // Reset content tracker on new connection
-            *last_sent_content.write().await = String::new();
+            runtime_state.session_states.write().await.clear();
 
             let result = Self::connect_and_read(
                 &config,
                 &connected,
                 &event_sender,
-                &pending_permissions,
+                &runtime_state,
                 &mut send_rx,
-                &last_sent_content,
             )
             .await;
 
@@ -566,9 +753,8 @@ impl OpenClawGatewayManager {
         config: &GatewayConfig,
         connected: &Arc<AtomicBool>,
         event_sender: &broadcast::Sender<AgentTurnEvent>,
-        pending_permissions: &Arc<RwLock<HashMap<String, PendingPermission>>>,
+        runtime_state: &Arc<GatewayRuntimeState>,
         send_rx: &mut mpsc::Receiver<Vec<u8>>,
-        last_sent_content: &Arc<RwLock<String>>,
     ) -> Result<()> {
         let url = format!("ws://127.0.0.1:{}", config.port);
         info!("[OpenClaw] Connecting to {}", url);
@@ -664,11 +850,21 @@ impl OpenClawGatewayManager {
                 msg_result = read.next() => {
                     match msg_result {
                         Some(Ok(Message::Text(text))) => {
-                            handle_gateway_message(&text, event_sender, pending_permissions, last_sent_content).await;
+                            handle_gateway_message(
+                                &text,
+                                event_sender,
+                                runtime_state,
+                            )
+                            .await;
                         }
                         Some(Ok(Message::Binary(data))) => {
                             let text = String::from_utf8_lossy(&data);
-                            handle_gateway_message(&text, event_sender, pending_permissions, last_sent_content).await;
+                            handle_gateway_message(
+                                &text,
+                                event_sender,
+                                runtime_state,
+                            )
+                            .await;
                         }
                         Some(Ok(Message::Close(_))) => {
                             info!("[OpenClaw] Connection closed by server");
@@ -738,11 +934,12 @@ impl OpenClawGatewayManager {
                                 let event = json.get("event").and_then(|v| v.as_str());
 
                                 if msg_type == Some("event") && event == Some("connect.challenge") {
-                                    if let Some(payload) = json.get("payload") {
-                                        if let Some(nonce) = payload.get("nonce").and_then(|v| v.as_str()) {
-                                            info!("[OpenClaw] Received connect challenge with nonce");
-                                            return Ok(nonce.to_string());
-                                        }
+                                    if let Some(payload) = json.get("payload")
+                                        && let Some(nonce) =
+                                            payload.get("nonce").and_then(|v| v.as_str())
+                                    {
+                                        info!("[OpenClaw] Received connect challenge with nonce");
+                                        return Ok(nonce.to_string());
                                     }
                                     anyhow::bail!("connect.challenge missing nonce payload");
                                 }
@@ -754,11 +951,12 @@ impl OpenClawGatewayManager {
                                 let event = json.get("event").and_then(|v| v.as_str());
 
                                 if msg_type == Some("event") && event == Some("connect.challenge") {
-                                    if let Some(payload) = json.get("payload") {
-                                        if let Some(nonce) = payload.get("nonce").and_then(|v| v.as_str()) {
-                                            info!("[OpenClaw] Received connect challenge with nonce");
-                                            return Ok(nonce.to_string());
-                                        }
+                                    if let Some(payload) = json.get("payload")
+                                        && let Some(nonce) =
+                                            payload.get("nonce").and_then(|v| v.as_str())
+                                    {
+                                        info!("[OpenClaw] Received connect challenge with nonce");
+                                        return Ok(nonce.to_string());
                                     }
                                     anyhow::bail!("connect.challenge missing nonce payload");
                                 }
@@ -783,7 +981,7 @@ impl OpenClawGatewayManager {
         }
     }
 
-    /// Send the initial connect handshake with v2 payload format
+    /// Send the initial connect handshake with v3 payload format
     async fn send_connect_request(
         write: &mut futures_util::stream::SplitSink<
             tokio_tungstenite::WebSocketStream<
@@ -797,12 +995,14 @@ impl OpenClawGatewayManager {
     ) -> Result<()> {
         let signed_at = chrono::Utc::now().timestamp_millis();
 
-        // Build device auth payload (v2 format with nonce):
-        // v2|deviceId|clientId|clientMode|role|scopes|signedAtMs|token|nonce
+        // Build device auth payload (v3 format):
+        // v3|deviceId|clientId|clientMode|role|scopes|signedAtMs|token|nonce|platform|deviceFamily
         let scopes = "operator.read,operator.write,operator.admin";
+        let platform = normalize_device_metadata("linux");
+        let device_family = normalize_device_metadata("server");
         let payload = format!(
-            "v2|{}|gateway-client|backend|operator|{}|{}|{}|{}",
-            device_identity.device_id, scopes, signed_at, token, nonce
+            "v3|{}|gateway-client|backend|operator|{}|{}|{}|{}|{}|{}",
+            device_identity.device_id, scopes, signed_at, token, nonce, platform, device_family
         );
 
         let signature = sign_device_payload(&device_identity.private_key, &payload);
@@ -818,6 +1018,7 @@ impl OpenClawGatewayManager {
                     "id": "gateway-client",
                     "version": "0.2.0",
                     "platform": "linux",
+                    "deviceFamily": "server",
                     "mode": "backend"
                 },
                 "role": "operator",
@@ -856,8 +1057,7 @@ impl OpenClawGatewayManager {
 async fn handle_gateway_message(
     text: &str,
     event_sender: &broadcast::Sender<AgentTurnEvent>,
-    pending_permissions: &Arc<RwLock<HashMap<String, PendingPermission>>>,
-    last_sent_content: &Arc<RwLock<String>>,
+    runtime_state: &Arc<GatewayRuntimeState>,
 ) {
     // Always log received messages for debugging (truncate safely at char boundary)
     let log_text = if text.len() > 500 {
@@ -880,324 +1080,301 @@ async fn handle_gateway_message(
 
     match msg_type {
         "res" => {
-            let id = msg.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let response_id = msg
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
             let ok = msg.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+            let payload = msg.get("payload");
 
-            info!(
-                "[OpenClaw] Response id={}, ok={}, payload={:?}",
-                id,
-                ok,
-                msg.get("payload")
-            );
+            let ctx = runtime_state
+                .request_contexts
+                .write()
+                .await
+                .remove(&response_id);
+            if let Some(waiter) = runtime_state.pending_rpc.write().await.remove(&response_id) {
+                if ok {
+                    let _ = waiter.send(Ok(payload.cloned().unwrap_or(serde_json::Value::Null)));
+                } else {
+                    let err = msg
+                        .get("error")
+                        .and_then(|e| e.get("message"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown error")
+                        .to_string();
+                    let _ = waiter.send(Err(err));
+                }
+            }
+
+            let emit_events = ctx.as_ref().map(|c| c.emit_events).unwrap_or(true);
+            let method = ctx.as_ref().map(|c| c.method.as_str()).unwrap_or_default();
+            if !emit_events || method != "agent" {
+                return;
+            }
+
+            let session_id = ctx
+                .as_ref()
+                .map(|c| c.session_id.clone())
+                .or_else(|| extract_session_key(payload))
+                .unwrap_or_else(|| "default".to_string());
+            let turn_id = ctx
+                .as_ref()
+                .map(|c| c.turn_id.clone())
+                .or_else(|| extract_turn_id(payload))
+                .unwrap_or_else(|| response_id.clone());
 
             if ok {
-                // Check for content in payload
-                if let Some(payload) = msg.get("payload") {
-                    info!("[OpenClaw] Response payload: {:?}", payload);
-                    // Handle agent response with content
-                    if let Some(content) = payload.get("content").and_then(|v| v.as_str()) {
-                        info!(
-                            "[OpenClaw] Found content in response: {} bytes",
-                            content.len()
-                        );
-                        let _ = event_sender.send(AgentTurnEvent {
-                            turn_id: id.to_string(),
-                            event: AgentEvent::TextDelta {
-                                text: content.to_string(),
-                                session_id: "default".to_string(),
-                            },
-                        });
-                    }
+                let content = payload
+                    .and_then(extract_text_from_payload)
+                    .unwrap_or_default();
+                if !content.is_empty() {
+                    emit_event(
+                        event_sender,
+                        &turn_id,
+                        AgentEvent::TextDelta {
+                            session_id: session_id.clone(),
+                            text: content,
+                        },
+                    );
                 }
 
-                // Mark turn as completed
-                info!("[OpenClaw] Turn completed: {}", id);
-                let _ = event_sender.send(AgentTurnEvent {
-                    turn_id: id.to_string(),
-                    event: AgentEvent::TurnCompleted {
-                        session_id: "default".to_string(),
-                        result: None,
+                emit_event(
+                    event_sender,
+                    &turn_id,
+                    AgentEvent::TurnCompleted {
+                        session_id: session_id.clone(),
+                        result: payload.cloned(),
                     },
-                });
+                );
             } else {
                 let error = msg
                     .get("error")
                     .and_then(|e| e.get("message"))
                     .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                info!("[OpenClaw] Turn error: {}", error);
-                let _ = event_sender.send(AgentTurnEvent {
-                    turn_id: id.to_string(),
-                    event: AgentEvent::TurnError {
-                        session_id: "default".to_string(),
-                        error: error.to_string(),
+                    .unwrap_or("Unknown error")
+                    .to_string();
+                emit_event(
+                    event_sender,
+                    &turn_id,
+                    AgentEvent::TurnError {
+                        session_id: session_id.clone(),
+                        error,
                         code: None,
                     },
-                });
+                );
             }
+
+            clear_session_state(&runtime_state.session_states, &session_id).await;
         }
         "event" => {
             let event_name = msg.get("event").and_then(|v| v.as_str()).unwrap_or("");
             let payload = msg.get("payload");
 
-            info!("[OpenClaw] Event: {}, payload: {:?}", event_name, payload);
+            let session_id = extract_session_key(payload).unwrap_or_else(|| "default".to_string());
+            let mut turn_id = extract_turn_id(payload).unwrap_or_default();
+            if turn_id.is_empty() {
+                turn_id = resolve_turn_id(&runtime_state.session_states, &session_id).await;
+            }
 
             match event_name {
-                // OpenClaw Gateway agent event (streaming content)
                 "agent" => {
                     let stream = payload
                         .and_then(|p| p.get("stream"))
-                        .and_then(|v| v.as_str());
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    if stream == "assistant" {
+                        let data = payload.and_then(|p| p.get("data"));
+                        let cumulative = data
+                            .and_then(|d| d.get("text"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        let raw_delta = data
+                            .and_then(|d| d.get("delta"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string();
 
-                    match stream {
-                        Some("assistant") => {
-                            // Streaming text content
-                            let data = payload.and_then(|p| p.get("data"));
-                            let delta = data
-                                .and_then(|d| d.get("delta"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            // Also get cumulative text for tracking
-                            let cumulative_text = data
-                                .and_then(|d| d.get("text"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
+                        let delta = if !raw_delta.is_empty() {
+                            raw_delta
+                        } else {
+                            compute_incremental_delta(
+                                &read_last_content(&runtime_state.session_states, &session_id)
+                                    .await,
+                                &cumulative,
+                            )
+                        };
 
-                            if !delta.is_empty() {
-                                info!(
-                                    "[OpenClaw] Broadcasting agent delta: {} bytes (cumulative: {})",
-                                    delta.len(),
-                                    cumulative_text.len()
-                                );
-                                let _ = event_sender.send(AgentTurnEvent {
-                                    turn_id: "stream".to_string(),
-                                    event: AgentEvent::TextDelta {
-                                        text: delta,
-                                        session_id: "default".to_string(),
-                                    },
-                                });
-                                // Update tracker with cumulative text so chat events can compute correct delta
-                                *last_sent_content.write().await = cumulative_text;
-                            }
+                        if !delta.is_empty() {
+                            emit_event(
+                                event_sender,
+                                &turn_id,
+                                AgentEvent::TextDelta {
+                                    session_id: session_id.clone(),
+                                    text: delta,
+                                },
+                            );
+                            write_last_content(
+                                &runtime_state.session_states,
+                                &session_id,
+                                cumulative,
+                                &turn_id,
+                            )
+                            .await;
                         }
-                        Some("lifecycle") => {
-                            // Lifecycle events (start, end)
-                            let phase = payload
-                                .and_then(|p| p.get("data"))
-                                .and_then(|d| d.get("phase"))
-                                .and_then(|v| v.as_str());
-                            info!("[OpenClaw] Agent lifecycle: {:?}", phase);
+                    } else if stream == "lifecycle" {
+                        let phase = payload
+                            .and_then(|p| p.get("data"))
+                            .and_then(|d| d.get("phase"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default();
 
-                            match phase {
-                                Some("start") => {
-                                    // Reset content tracker for new turn
-                                    *last_sent_content.write().await = String::new();
-                                    // Send turn started event
-                                    let _ = event_sender.send(AgentTurnEvent {
-                                        turn_id: "stream".to_string(),
-                                        event: AgentEvent::TurnStarted {
-                                            session_id: "default".to_string(),
-                                            turn_id: "stream".to_string(),
-                                        },
-                                    });
-                                }
-                                Some("end") => {
-                                    // Turn ended - handled by chat state=final
-                                }
-                                _ => {}
-                            }
-                        }
-                        _ => {
-                            info!("[OpenClaw] Unknown agent stream type: {:?}", stream);
+                        if phase == "start" {
+                            set_session_turn(&runtime_state.session_states, &session_id, &turn_id)
+                                .await;
+                            emit_event(
+                                event_sender,
+                                &turn_id,
+                                AgentEvent::TurnStarted {
+                                    session_id: session_id.clone(),
+                                    turn_id: turn_id.clone(),
+                                },
+                            );
+                        } else if phase == "end" {
+                            emit_event(
+                                event_sender,
+                                &turn_id,
+                                AgentEvent::TurnCompleted {
+                                    session_id: session_id.clone(),
+                                    result: payload.cloned(),
+                                },
+                            );
+                            clear_session_state(&runtime_state.session_states, &session_id).await;
                         }
                     }
                 }
-                // OpenClaw Gateway chat event (structured messages)
-                // Note: chat event content is cumulative, so we need to compute incremental delta
                 "chat" => {
                     let state = payload
                         .and_then(|p| p.get("state"))
-                        .and_then(|v| v.as_str());
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let content = payload
+                        .and_then(extract_text_from_payload)
+                        .unwrap_or_default();
 
-                    match state {
-                        Some("delta") => {
-                            // Extract text from content array
-                            let content = payload
-                                .and_then(|p| p.get("message"))
-                                .and_then(|m| m.get("content"))
-                                .and_then(|c| c.as_array())
-                                .and_then(|arr| arr.first())
-                                .and_then(|item| item.get("text"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-
-                            // Compute incremental delta (content is cumulative)
-                            let mut last = last_sent_content.write().await;
-                            let delta = if content.starts_with(&*last) {
-                                // Content extends previous content, send only new part
-                                content[last.len()..].to_string()
-                            } else {
-                                // Content changed completely, send full content
-                                content.clone()
-                            };
-
-                            if !delta.is_empty() {
-                                info!(
-                                    "[OpenClaw] Broadcasting chat delta (state=delta): {} bytes (full: {})",
-                                    delta.len(),
-                                    content.len()
-                                );
-                                let _ = event_sender.send(AgentTurnEvent {
-                                    turn_id: "stream".to_string(),
-                                    event: AgentEvent::TextDelta {
-                                        text: delta,
-                                        session_id: "default".to_string(),
-                                    },
-                                });
-                                // Update last sent content
-                                *last = content;
-                            }
-                        }
-                        Some("final") => {
-                            // Extract text from content array for final message
-                            let content = payload
-                                .and_then(|p| p.get("message"))
-                                .and_then(|m| m.get("content"))
-                                .and_then(|c| c.as_array())
-                                .and_then(|arr| arr.first())
-                                .and_then(|item| item.get("text"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-
-                            // Compute incremental delta for final content
-                            let mut last = last_sent_content.write().await;
-                            let delta = if content.starts_with(&*last) && content.len() > last.len()
-                            {
-                                content[last.len()..].to_string()
-                            } else if content != *last {
-                                content.clone()
-                            } else {
-                                String::new()
-                            };
-
-                            if !delta.is_empty() {
-                                info!(
-                                    "[OpenClaw] Broadcasting chat delta (state=final): {} bytes (full: {})",
-                                    delta.len(),
-                                    content.len()
-                                );
-                                let _ = event_sender.send(AgentTurnEvent {
-                                    turn_id: "stream".to_string(),
-                                    event: AgentEvent::TextDelta {
-                                        text: delta,
-                                        session_id: "default".to_string(),
-                                    },
-                                });
-                            }
-
-                            // Update last sent content and reset for next turn
-                            *last = content;
-
-                            // Mark turn as completed
-                            info!("[OpenClaw] Turn completed (chat state=final)");
-                            let _ = event_sender.send(AgentTurnEvent {
-                                turn_id: "stream".to_string(),
-                                event: AgentEvent::TurnCompleted {
-                                    session_id: "default".to_string(),
-                                    result: None,
+                    if state == "delta" {
+                        let previous =
+                            read_last_content(&runtime_state.session_states, &session_id).await;
+                        let delta = compute_incremental_delta(&previous, &content);
+                        if !delta.is_empty() {
+                            emit_event(
+                                event_sender,
+                                &turn_id,
+                                AgentEvent::TextDelta {
+                                    session_id: session_id.clone(),
+                                    text: delta,
                                 },
-                            });
-
-                            // Reset content tracker for next turn
-                            *last = String::new();
+                            );
+                            write_last_content(
+                                &runtime_state.session_states,
+                                &session_id,
+                                content,
+                                &turn_id,
+                            )
+                            .await;
                         }
-                        _ => {
-                            info!("[OpenClaw] Unknown chat state: {:?}", state);
+                    } else if state == "final" {
+                        let previous =
+                            read_last_content(&runtime_state.session_states, &session_id).await;
+                        let delta = compute_incremental_delta(&previous, &content);
+                        if !delta.is_empty() {
+                            emit_event(
+                                event_sender,
+                                &turn_id,
+                                AgentEvent::TextDelta {
+                                    session_id: session_id.clone(),
+                                    text: delta,
+                                },
+                            );
                         }
-                    }
-                }
-                // Legacy agent.delta format
-                "agent.delta" => {
-                    // Content can be in payload.content or payload.message.content
-                    let text = payload
-                        .and_then(|p| p.get("content"))
-                        .and_then(|v| v.as_str())
-                        .or_else(|| {
-                            payload
-                                .and_then(|p| p.get("message"))
-                                .and_then(|m| m.get("content"))
-                                .and_then(|v| v.as_str())
-                        })
-                        .unwrap_or("")
-                        .to_string();
-
-                    if !text.is_empty() {
-                        info!("[OpenClaw] Broadcasting agent.delta: {} bytes", text.len());
-                        let _ = event_sender.send(AgentTurnEvent {
-                            turn_id: "stream".to_string(),
-                            event: AgentEvent::TextDelta {
-                                text,
-                                session_id: "default".to_string(),
+                        emit_event(
+                            event_sender,
+                            &turn_id,
+                            AgentEvent::TurnCompleted {
+                                session_id: session_id.clone(),
+                                result: payload.cloned(),
                             },
-                        });
-                    }
-                }
-                // OpenClaw Gateway final event
-                "agent.final" => {
-                    // Content can be in payload.content or payload.message.content
-                    let text = payload
-                        .and_then(|p| p.get("content"))
-                        .and_then(|v| v.as_str())
-                        .or_else(|| {
-                            payload
-                                .and_then(|p| p.get("message"))
-                                .and_then(|m| m.get("content"))
-                                .and_then(|v| v.as_str())
-                        })
-                        .unwrap_or("")
-                        .to_string();
-
-                    if !text.is_empty() {
-                        info!(
-                            "[OpenClaw] Broadcasting agent.final content: {} bytes",
-                            text.len()
                         );
-                        let _ = event_sender.send(AgentTurnEvent {
-                            turn_id: "stream".to_string(),
-                            event: AgentEvent::TextDelta {
-                                text,
-                                session_id: "default".to_string(),
+                        clear_session_state(&runtime_state.session_states, &session_id).await;
+                    } else if state == "error" || state == "aborted" {
+                        let error = payload
+                            .and_then(|p| p.get("errorMessage"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown error")
+                            .to_string();
+                        emit_event(
+                            event_sender,
+                            &turn_id,
+                            AgentEvent::TurnError {
+                                session_id: session_id.clone(),
+                                error,
+                                code: None,
                             },
-                        });
+                        );
+                        clear_session_state(&runtime_state.session_states, &session_id).await;
                     }
                 }
-                // Legacy text_delta format (some agents might still use this)
-                "text_delta" => {
+                "agent.delta" | "text_delta" => {
                     let text = payload
-                        .and_then(|p| p.get("text"))
-                        .and_then(|v| v.as_str())
-                        .or_else(|| {
-                            payload
-                                .and_then(|p| p.get("content"))
-                                .and_then(|v| v.as_str())
-                        })
-                        .unwrap_or("")
-                        .to_string();
-
+                        .and_then(extract_text_from_payload)
+                        .unwrap_or_default();
                     if !text.is_empty() {
-                        info!("[OpenClaw] Broadcasting text_delta: {} bytes", text.len());
-                        let _ = event_sender.send(AgentTurnEvent {
-                            turn_id: "stream".to_string(),
-                            event: AgentEvent::TextDelta {
-                                text,
-                                session_id: "default".to_string(),
+                        emit_event(
+                            event_sender,
+                            &turn_id,
+                            AgentEvent::TextDelta {
+                                session_id: session_id.clone(),
+                                text: text.clone(),
                             },
-                        });
+                        );
+                        write_last_content(
+                            &runtime_state.session_states,
+                            &session_id,
+                            text,
+                            &turn_id,
+                        )
+                        .await;
                     }
+                }
+                "agent.final" => {
+                    let text = payload
+                        .and_then(extract_text_from_payload)
+                        .unwrap_or_default();
+                    if !text.is_empty() {
+                        let previous =
+                            read_last_content(&runtime_state.session_states, &session_id).await;
+                        let delta = compute_incremental_delta(&previous, &text);
+                        if !delta.is_empty() {
+                            emit_event(
+                                event_sender,
+                                &turn_id,
+                                AgentEvent::TextDelta {
+                                    session_id: session_id.clone(),
+                                    text: delta,
+                                },
+                            );
+                        }
+                    }
+                    emit_event(
+                        event_sender,
+                        &turn_id,
+                        AgentEvent::TurnCompleted {
+                            session_id: session_id.clone(),
+                            result: payload.cloned(),
+                        },
+                    );
+                    clear_session_state(&runtime_state.session_states, &session_id).await;
                 }
                 "tool_started" => {
                     let tool_name = payload
@@ -1206,83 +1383,161 @@ async fn handle_gateway_message(
                         .unwrap_or("unknown")
                         .to_string();
                     let input = payload.and_then(|p| p.get("input")).cloned();
+                    let tool_id = payload
+                        .and_then(|p| p.get("tool_id"))
+                        .and_then(|v| v.as_str())
+                        .map(ToOwned::to_owned)
+                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-                    let _ = event_sender.send(AgentTurnEvent {
-                        turn_id: uuid::Uuid::new_v4().to_string(),
-                        event: AgentEvent::ToolStarted {
-                            tool_id: uuid::Uuid::new_v4().to_string(),
+                    emit_event(
+                        event_sender,
+                        &turn_id,
+                        AgentEvent::ToolStarted {
+                            session_id: session_id.clone(),
+                            tool_id,
                             tool_name,
                             input,
-                            session_id: "default".to_string(),
                         },
-                    });
+                    );
                 }
                 "tool_completed" => {
                     let tool_name = payload
                         .and_then(|p| p.get("name"))
                         .and_then(|v| v.as_str())
-                        .unwrap_or("unknown")
-                        .to_string();
+                        .map(ToOwned::to_owned);
                     let output = payload.and_then(|p| p.get("output")).cloned();
+                    let error = payload
+                        .and_then(|p| p.get("error"))
+                        .and_then(|v| v.as_str())
+                        .map(ToOwned::to_owned);
+                    let tool_id = payload
+                        .and_then(|p| p.get("tool_id"))
+                        .and_then(|v| v.as_str())
+                        .map(ToOwned::to_owned)
+                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-                    let _ = event_sender.send(AgentTurnEvent {
-                        turn_id: uuid::Uuid::new_v4().to_string(),
-                        event: AgentEvent::ToolCompleted {
-                            tool_id: uuid::Uuid::new_v4().to_string(),
-                            tool_name: Some(tool_name),
+                    emit_event(
+                        event_sender,
+                        &turn_id,
+                        AgentEvent::ToolCompleted {
+                            session_id: session_id.clone(),
+                            tool_id,
+                            tool_name,
                             output,
-                            session_id: "default".to_string(),
-                            error: None,
+                            error,
                         },
-                    });
+                    );
                 }
                 "permission_request" => {
                     let request_id = payload
                         .and_then(|p| p.get("request_id"))
                         .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
+                        .map(ToOwned::to_owned)
+                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
                     let tool_name = payload
                         .and_then(|p| p.get("tool_name"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("unknown")
                         .to_string();
+                    let tool_params = payload
+                        .and_then(|p| p.get("tool_params"))
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
                     let message = payload
                         .and_then(|p| p.get("message"))
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
+                        .map(ToOwned::to_owned);
 
-                    let permission = PendingPermission {
-                        request_id: request_id.clone(),
-                        session_id: "default".to_string(),
-                        tool_name: tool_name.clone(),
-                        tool_params: serde_json::Value::Null,
-                        message,
-                        created_at: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
-                        response_tx: None,
-                    };
+                    runtime_state.pending_permissions.write().await.insert(
+                        request_id.clone(),
+                        PendingPermission {
+                            request_id: request_id.clone(),
+                            session_id: session_id.clone(),
+                            tool_name: tool_name.clone(),
+                            tool_params: tool_params.clone(),
+                            message: message.clone(),
+                            created_at: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                            response_tx: None,
+                        },
+                    );
 
-                    pending_permissions
-                        .write()
-                        .await
-                        .insert(request_id.clone(), permission);
-
-                    let _ = event_sender.send(AgentTurnEvent {
-                        turn_id: uuid::Uuid::new_v4().to_string(),
-                        event: AgentEvent::ApprovalRequest {
-                            session_id: "default".to_string(),
+                    emit_event(
+                        event_sender,
+                        &turn_id,
+                        AgentEvent::ApprovalRequest {
+                            session_id: session_id.clone(),
                             request_id,
                             tool_name,
-                            message: None,
-                            input: None,
+                            input: Some(tool_params),
+                            message,
                         },
-                    });
+                    );
+                }
+                "exec.approval.requested" => {
+                    let approval_id = payload
+                        .and_then(|p| p.get("id"))
+                        .and_then(|v| v.as_str())
+                        .map(ToOwned::to_owned)
+                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                    let request = payload.and_then(|p| p.get("request"));
+                    let approval_session_id = request
+                        .and_then(|r| r.get("sessionKey"))
+                        .and_then(|v| v.as_str())
+                        .map(ToOwned::to_owned)
+                        .unwrap_or_else(|| session_id.clone());
+                    let command = request
+                        .and_then(|r| r.get("command"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("exec");
+                    let message = Some(format!("Exec approval required: {}", command));
+                    let tool_params = request.cloned().unwrap_or(serde_json::Value::Null);
+
+                    runtime_state.pending_permissions.write().await.insert(
+                        approval_id.clone(),
+                        PendingPermission {
+                            request_id: approval_id.clone(),
+                            session_id: approval_session_id.clone(),
+                            tool_name: "exec".to_string(),
+                            tool_params: tool_params.clone(),
+                            message: message.clone(),
+                            created_at: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                            response_tx: None,
+                        },
+                    );
+
+                    emit_event(
+                        event_sender,
+                        &turn_id,
+                        AgentEvent::ApprovalRequest {
+                            session_id: approval_session_id,
+                            request_id: approval_id,
+                            tool_name: "exec".to_string(),
+                            input: Some(tool_params),
+                            message,
+                        },
+                    );
+                }
+                "exec.approval.resolved" => {
+                    let approval_id = payload
+                        .and_then(|p| p.get("id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    if !approval_id.is_empty() {
+                        runtime_state
+                            .pending_permissions
+                            .write()
+                            .await
+                            .remove(&approval_id);
+                    }
                 }
                 "error" | "agent.error" | "agent.abort" => {
-                    // Error can be in payload.message, payload.error, or payload.errorMessage
                     let error = payload
                         .and_then(|p| p.get("message"))
                         .and_then(|v| v.as_str())
@@ -1298,51 +1553,34 @@ async fn handle_gateway_message(
                         })
                         .unwrap_or("Unknown error")
                         .to_string();
-
-                    info!("[OpenClaw] Agent error: {}", error);
-                    let _ = event_sender.send(AgentTurnEvent {
-                        turn_id: uuid::Uuid::new_v4().to_string(),
-                        event: AgentEvent::TurnError {
-                            session_id: "default".to_string(),
+                    emit_event(
+                        event_sender,
+                        &turn_id,
+                        AgentEvent::TurnError {
+                            session_id: session_id.clone(),
                             error,
                             code: None,
                         },
-                    });
+                    );
+                    clear_session_state(&runtime_state.session_states, &session_id).await;
                 }
                 "connected" | "progress" | "complete" | "connect.challenge"
                 | "gateway.response" => {
                     info!("[OpenClaw] Skipping control event: {}", event_name);
                 }
-                // Health event from OpenClaw Gateway
-                "health" => {
-                    info!("[OpenClaw] Health event: {:?}", payload);
-                    // Forward as notification for future use
-                    let _ = event_sender.send(AgentTurnEvent {
-                        turn_id: "system".to_string(),
-                        event: AgentEvent::Notification {
-                            session_id: "default".to_string(),
+                "health" | "ticket" => {
+                    emit_event(
+                        event_sender,
+                        "system",
+                        AgentEvent::Notification {
+                            session_id,
                             level: crate::message_protocol::NotificationLevel::Info,
-                            message: "health".to_string(),
+                            message: event_name.to_string(),
                             details: payload.cloned(),
                         },
-                    });
-                }
-                // Ticket event from OpenClaw Gateway
-                "ticket" => {
-                    info!("[OpenClaw] Ticket event: {:?}", payload);
-                    // Forward as notification for future use
-                    let _ = event_sender.send(AgentTurnEvent {
-                        turn_id: "system".to_string(),
-                        event: AgentEvent::Notification {
-                            session_id: "default".to_string(),
-                            level: crate::message_protocol::NotificationLevel::Info,
-                            message: "ticket".to_string(),
-                            details: payload.cloned(),
-                        },
-                    });
+                    );
                 }
                 _ => {
-                    // Log unknown events with their full payload for debugging
                     info!(
                         "[OpenClaw] Unknown event '{}', full message: {}",
                         event_name, text
@@ -1357,4 +1595,153 @@ async fn handle_gateway_message(
             );
         }
     }
+}
+
+fn emit_event(event_sender: &broadcast::Sender<AgentTurnEvent>, turn_id: &str, event: AgentEvent) {
+    let _ = event_sender.send(AgentTurnEvent {
+        turn_id: turn_id.to_string(),
+        event,
+    });
+}
+
+async fn set_session_turn(
+    session_states: &Arc<RwLock<HashMap<String, SessionStreamState>>>,
+    session_id: &str,
+    turn_id: &str,
+) {
+    let mut states = session_states.write().await;
+    let state = states.entry(session_id.to_string()).or_default();
+    state.turn_id = Some(turn_id.to_string());
+    state.last_content.clear();
+}
+
+async fn resolve_turn_id(
+    session_states: &Arc<RwLock<HashMap<String, SessionStreamState>>>,
+    session_id: &str,
+) -> String {
+    let states = session_states.read().await;
+    states
+        .get(session_id)
+        .and_then(|s| s.turn_id.clone())
+        .unwrap_or_else(|| format!("stream:{}", session_id))
+}
+
+async fn read_last_content(
+    session_states: &Arc<RwLock<HashMap<String, SessionStreamState>>>,
+    session_id: &str,
+) -> String {
+    let states = session_states.read().await;
+    states
+        .get(session_id)
+        .map(|s| s.last_content.clone())
+        .unwrap_or_default()
+}
+
+async fn write_last_content(
+    session_states: &Arc<RwLock<HashMap<String, SessionStreamState>>>,
+    session_id: &str,
+    content: String,
+    turn_id: &str,
+) {
+    let mut states = session_states.write().await;
+    let state = states.entry(session_id.to_string()).or_default();
+    state.turn_id = Some(turn_id.to_string());
+    state.last_content = content;
+}
+
+async fn clear_session_state(
+    session_states: &Arc<RwLock<HashMap<String, SessionStreamState>>>,
+    session_id: &str,
+) {
+    let mut states = session_states.write().await;
+    states.remove(session_id);
+}
+
+fn compute_incremental_delta(previous: &str, current: &str) -> String {
+    if current.is_empty() {
+        return String::new();
+    }
+    if previous.is_empty() {
+        return current.to_string();
+    }
+    if let Some(stripped) = current.strip_prefix(previous) {
+        stripped.to_string()
+    } else if current != previous {
+        current.to_string()
+    } else {
+        String::new()
+    }
+}
+
+fn extract_session_key(payload: Option<&serde_json::Value>) -> Option<String> {
+    let payload = payload?;
+    payload
+        .get("sessionKey")
+        .and_then(|v| v.as_str())
+        .or_else(|| payload.get("session").and_then(|v| v.as_str()))
+        .or_else(|| {
+            payload
+                .get("message")
+                .and_then(|m| m.get("sessionKey"))
+                .and_then(|v| v.as_str())
+        })
+        .or_else(|| {
+            payload
+                .get("message")
+                .and_then(|m| m.get("session"))
+                .and_then(|v| v.as_str())
+        })
+        .map(ToOwned::to_owned)
+}
+
+fn extract_turn_id(payload: Option<&serde_json::Value>) -> Option<String> {
+    let payload = payload?;
+    payload
+        .get("runId")
+        .and_then(|v| v.as_str())
+        .or_else(|| payload.get("turnId").and_then(|v| v.as_str()))
+        .or_else(|| {
+            payload
+                .get("message")
+                .and_then(|m| m.get("runId"))
+                .and_then(|v| v.as_str())
+        })
+        .map(ToOwned::to_owned)
+}
+
+fn extract_text_from_payload(payload: &serde_json::Value) -> Option<String> {
+    payload
+        .get("content")
+        .and_then(|v| v.as_str())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            payload
+                .get("text")
+                .and_then(|v| v.as_str())
+                .map(ToOwned::to_owned)
+        })
+        .or_else(|| {
+            payload
+                .get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|v| v.as_str())
+                .map(ToOwned::to_owned)
+        })
+        .or_else(|| {
+            payload
+                .get("message")
+                .and_then(|m| m.get("text"))
+                .and_then(|v| v.as_str())
+                .map(ToOwned::to_owned)
+        })
+        .or_else(|| {
+            payload
+                .get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|v| v.as_array())
+                .and_then(|items| items.first())
+                .and_then(|item| item.get("text"))
+                .and_then(|v| v.as_str())
+                .map(ToOwned::to_owned)
+        })
 }

@@ -42,6 +42,7 @@ Prereqs: Rust stable, Node.js 20+, pnpm 10+.
 - Logging: use `tracing` with structured logging (no `println!` in production paths).
 - Async: use `tokio` runtime with `#[tokio::main]` for async functions.
 - Clippy: resolve all warnings with `-D warnings`.
+- Imports: group by external crates → std library → local modules, use `use` statements with leading path.
 
 ### TypeScript/SolidJS
 
@@ -50,6 +51,8 @@ Prereqs: Rust stable, Node.js 20+, pnpm 10+.
 - Strict TypeScript mode enabled (no implicit `any`, define prop interfaces explicitly).
 - Imports: use `~` alias for src directory (`~/components/...`).
 - Type assertions sparingly; prefer proper typing.
+- Import organization order: SolidJS imports → external libraries → local components/stores/utils.
+- Web-specific rules in `web/.cursorrules` (Tailwind best practices, responsive design).
 
 ### Styling (TailwindCSS v4 + DaisyUI)
 
@@ -104,6 +107,14 @@ export const Card: Component<CardProps> = (props) => {
 - Rust: `cargo fmt --all -- --check`, `cargo clippy --workspace -- -D warnings`.
 - TypeScript: `pnpm tsc` for type checking.
 - Prettier (optional): `npx prettier --write "src/**/*.{ts,tsx}"`.
+
+## Verification After Changes
+
+After completing any code changes, ALWAYS run:
+
+- Rust: `cargo fmt --all` and `cargo clippy --workspace -- -D warnings`
+- Frontend: `pnpm tsc`
+- Fix any linting errors or type errors before considering the task complete.
 
 ## Commit & Pull Request Guidelines
 

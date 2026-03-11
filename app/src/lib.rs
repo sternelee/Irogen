@@ -368,10 +368,7 @@ async fn initialize_network_with_relay_internal(
                 std::fs::create_dir_all(&app_data_dir)
                     .map_err(|e| format!("Failed to create app data directory: {}", e))?;
                 let path = app_data_dir.join("clawdchat_app_secret_key");
-                info!(
-                    "🔑 Using persistent secret key for mobile: {:?}",
-                    path
-                );
+                info!("🔑 Using persistent secret key for mobile: {:?}", path);
                 Some(path)
             }
             None => {
@@ -2004,8 +2001,8 @@ async fn send_agent_control(
 
     let action: AgentControlAction = match action_str.as_str() {
         "list_history" => {
-            let params = action_params
-                .ok_or_else(|| "Missing params for list_history".to_string())?;
+            let params =
+                action_params.ok_or_else(|| "Missing params for list_history".to_string())?;
             AgentControlAction::ListHistory {
                 agent_type: params["agentType"]
                     .as_str()
@@ -2018,8 +2015,8 @@ async fn send_agent_control(
             }
         }
         "load_history" => {
-            let params = action_params
-                .ok_or_else(|| "Missing params for load_history".to_string())?;
+            let params =
+                action_params.ok_or_else(|| "Missing params for load_history".to_string())?;
             AgentControlAction::LoadHistory {
                 agent_type: params["agentType"]
                     .as_str()
@@ -2073,13 +2070,15 @@ async fn send_agent_control(
             Ok(serde_json::json!({
                 "success": true,
                 "data": null
-            }).to_string())
+            })
+            .to_string())
         }
     } else {
         Ok(serde_json::json!({
             "success": false,
             "message": response.message
-        }).to_string())
+        })
+        .to_string())
     }
 }
 

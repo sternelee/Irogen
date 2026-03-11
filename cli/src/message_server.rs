@@ -6,12 +6,13 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use shared::{
-    AgentControlAction, AgentHistoryEntry, AgentPermissionMode, AgentSessionAction, AgentSessionMetadata, AgentType,
-    AvailableTools, CommunicationManager, FileBrowserAction, GitAction, Message, MessageBuilder,
-    MessageHandler, MessagePayload, MessageType, NotificationData, NotificationType, OSInfo,
-    PackageManager, QuicMessageServer, QuicMessageServerConfig, RemoteSpawnAction, ResponseMessage,
-    ShellInfo, SystemAction, SystemInfo, SystemInfoAction, TcpDataType, TcpForwardingAction,
-    TcpForwardingType, TcpStreamHandler, Tool, UserInfo,
+    AgentControlAction, AgentHistoryEntry, AgentPermissionMode, AgentSessionAction,
+    AgentSessionMetadata, AgentType, AvailableTools, CommunicationManager, FileBrowserAction,
+    GitAction, Message, MessageBuilder, MessageHandler, MessagePayload, MessageType,
+    NotificationData, NotificationType, OSInfo, PackageManager, QuicMessageServer,
+    QuicMessageServerConfig, RemoteSpawnAction, ResponseMessage, ShellInfo, SystemAction,
+    SystemInfo, SystemInfoAction, TcpDataType, TcpForwardingAction, TcpForwardingType,
+    TcpStreamHandler, Tool, UserInfo,
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -2656,8 +2657,12 @@ impl AgentControlMessageHandler {
                 let permission_mode = match mode {
                     Ok(mode) => match mode {
                         shared::agent::PermissionMode::AlwaysAsk => AgentPermissionMode::AlwaysAsk,
-                        shared::agent::PermissionMode::AcceptEdits => AgentPermissionMode::AcceptEdits,
-                        shared::agent::PermissionMode::AutoApprove => AgentPermissionMode::AutoApprove,
+                        shared::agent::PermissionMode::AcceptEdits => {
+                            AgentPermissionMode::AcceptEdits
+                        }
+                        shared::agent::PermissionMode::AutoApprove => {
+                            AgentPermissionMode::AutoApprove
+                        }
                         shared::agent::PermissionMode::Plan => AgentPermissionMode::Plan,
                     },
                     Err(e) => {
@@ -2695,15 +2700,13 @@ impl AgentControlMessageHandler {
         };
 
         match result {
-            Ok(data) => {
-                Ok(Some(MessageBuilder::response(
-                    "cli".to_string(),
-                    req_id,
-                    true,
-                    Some(data),
-                    None,
-                )))
-            }
+            Ok(data) => Ok(Some(MessageBuilder::response(
+                "cli".to_string(),
+                req_id,
+                true,
+                Some(data),
+                None,
+            ))),
             Err(e) => {
                 tracing::error!("Failed to handle control action: {}", e);
                 Ok(Some(MessageBuilder::error(

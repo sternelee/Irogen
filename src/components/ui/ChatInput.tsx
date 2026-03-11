@@ -18,6 +18,7 @@ import {
 } from "solid-js";
 import { cn } from "~/lib/utils";
 import { open } from "@tauri-apps/plugin-dialog";
+import { isMobile } from "../../stores/deviceStore";
 import {
   FiSend,
   FiPlus,
@@ -68,6 +69,11 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   let textareaRef: HTMLTextAreaElement | undefined;
   const [focused, setFocused] = createSignal(false);
   const [showSettings, setShowSettings] = createSignal(false);
+  const [showMobileTools, setShowMobileTools] = createSignal(false);
+  const [toolbarTouchStartY, setToolbarTouchStartY] = createSignal<
+    number | null
+  >(null);
+  const mobile = () => isMobile();
 
   const permissionOptions: {
     value: PermissionMode;
@@ -126,28 +132,44 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
 
   // Focus textarea on mount
   onMount(() => {
-    if (textareaRef) {
+    if (textareaRef && !isMobile()) {
       textareaRef.focus();
     }
   });
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    // Send on Shift+Enter, keep Enter as newline
-    if (e.key === "Enter" && e.shiftKey) {
+    const shouldSend =
+      e.key === "Enter" && (e.shiftKey || e.metaKey || e.ctrlKey);
+    // Send on Shift/Cmd/Ctrl+Enter, keep Enter as newline
+    if (shouldSend) {
       e.preventDefault();
       if ((e as KeyboardEvent & { isComposing?: boolean }).isComposing) return;
       if (props.isStreaming && props.onInterrupt) {
         props.onInterrupt();
+        if (mobile()) {
+          setShowMobileTools(false);
+          setShowSettings(false);
+        }
       } else if (props.value.trim()) {
         props.onSubmit();
+        if (mobile()) {
+          setShowMobileTools(false);
+          setShowSettings(false);
+        }
       }
     }
   };
 
+  createEffect(() => {
+    if (!mobile()) {
+      setShowMobileTools(true);
+    }
+  });
+
   return (
     <div
       class={cn(
-        "flex flex-col gap-1.5 px-3 sm:px-4 py-2 sm:py-3 mb-10 sm:mb-0 bg-background/80 backdrop-blur-md sticky bottom-0",
+        "flex flex-col gap-1.5 px-2.5 sm:px-4 pt-2 sm:pt-3 pb-[max(env(safe-area-inset-bottom,0px),0.5rem)] sm:pb-3 bg-background/85 backdrop-blur-md sticky bottom-0 z-20",
         focused() && "bg-background",
         props.class,
       )}
@@ -168,6 +190,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             type="button"
             class="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted/80 rounded-xl transition-all duration-200 shrink-0 hidden"
             title="Attach files"
+            aria-label="Attach files"
             disabled={props.disabled}
             onClick={handleAttach}
           >
@@ -183,6 +206,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             placeholder={props.placeholder || "Type your message..."}
+            aria-label="Chat input"
             class="flex-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-transparent border-none outline-none resize-none text-[13px] sm:text-sm max-h-[200px] min-h-[22px] leading-5 sm:leading-relaxed placeholder:text-muted-foreground/40 scrollbar-hide"
             disabled={props.disabled}
             rows={1}
@@ -209,20 +233,54 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
         </Show>
 
         {/* Bottom Toolbar */}
-        <div class="flex items-center px-3 pb-1 gap-2">
-          <div class="flex items-center gap-0.5">
+        <div
+          class="flex items-center px-3 pb-1 gap-2"
+          onTouchStart={(e) => {
+            if (!mobile() || e.touches.length !== 1) return;
+            setToolbarTouchStartY(e.touches[0].clientY);
+          }}
+          onTouchEnd={(e) => {
+            const startY = toolbarTouchStartY();
+            setToolbarTouchStartY(null);
+            if (!mobile() || startY === null) return;
+            const endY = e.changedTouches[0]?.clientY ?? startY;
+            const deltaY = endY - startY;
+            if (deltaY < -35) {
+              setShowMobileTools(true);
+            } else if (deltaY > 35) {
+              setShowMobileTools(false);
+            }
+          }}
+        >
+          <Show when={mobile()}>
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm h-9 min-h-9 w-9 rounded-md hide-on-keyboard"
+              onClick={() => setShowMobileTools((prev) => !prev)}
+              title={showMobileTools() ? "Hide tools" : "Show tools"}
+              aria-label={showMobileTools() ? "Hide tools" : "Show tools"}
+            >
+              <Show when={showMobileTools()} fallback={<FiPlus class="size-4" />}>
+                <FiX class="size-4" />
+              </Show>
+            </button>
+          </Show>
+
+          <Show when={!mobile() || showMobileTools()}>
+            <div class="flex items-center gap-0.5 hide-on-keyboard">
             {/* Settings Button with Permission Dropdown */}
             <div class="relative">
               <button
                 type="button"
                 class={cn(
-                  "btn btn-ghost btn-xs h-6 min-h-0 px-2 gap-1 text-[11px] transition-all rounded-md",
+                  "btn btn-ghost btn-sm h-9 min-h-9 px-2.5 gap-1 text-[11px] transition-all rounded-md",
                   showSettings()
                     ? "bg-primary/15 text-primary"
                     : "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50",
                 )}
                 onClick={() => setShowSettings(!showSettings())}
                 title="Settings"
+                aria-label="Settings"
               >
                 <FiSettings class="size-4 sm:size-4" />
                 <span class="hidden sm:inline">Settings</span>
@@ -271,13 +329,19 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             <button
               type="button"
               class={cn(
-                "btn btn-ghost btn-xs h-6 min-h-0 px-2 gap-1 text-[11px] transition-all rounded-md",
+                "btn btn-ghost btn-sm h-9 min-h-9 px-2.5 gap-1 text-[11px] transition-all rounded-md",
                 props.rightPanelView === "file"
                   ? "bg-primary/15 text-primary hover:bg-primary/20"
                   : "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50",
               )}
-              onClick={props.onToggleFileBrowser}
+              onClick={() => {
+                props.onToggleFileBrowser?.();
+                if (mobile()) {
+                  setShowMobileTools(false);
+                }
+              }}
               title="Toggle file browser"
+              aria-label="Toggle file browser"
               disabled={props.disabled}
             >
               <FiFolder class="size-4 sm:size-4" />
@@ -288,28 +352,39 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             <button
               type="button"
               class={cn(
-                "btn btn-ghost btn-xs h-6 min-h-0 px-2 gap-1 text-[11px] transition-all rounded-md",
+                "btn btn-ghost btn-sm h-9 min-h-9 px-2.5 gap-1 text-[11px] transition-all rounded-md",
                 props.rightPanelView === "git"
                   ? "bg-primary/15 text-primary hover:bg-primary/20"
                   : "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50",
               )}
-              onClick={props.onToggleGitPanel}
+              onClick={() => {
+                props.onToggleGitPanel?.();
+                if (mobile()) {
+                  setShowMobileTools(false);
+                }
+              }}
               title="Toggle git panel"
+              aria-label="Toggle git panel"
               disabled={props.disabled}
             >
               <FiGitBranch class="size-4 sm:size-4" />
               <span class="hidden sm:inline">Git</span>
             </button>
-          </div>
+            </div>
+          </Show>
 
           {/* Right side: Keyboard hints */}
-          <div class="flex items-center gap-2 text-[10px] text-muted-foreground/40">
+          <div class="hidden sm:flex items-center gap-2 text-[10px] text-muted-foreground/40">
             <span class="hidden sm:flex items-center gap-0.5">
               <kbd class="kbd kbd-xs bg-muted/40 border-border/20">↵</kbd>
               <span>line</span>
             </span>
             <span class="hidden sm:flex items-center gap-0.5">
               <kbd class="kbd kbd-xs bg-muted/40 border-border/20">⇧↵</kbd>
+              <span>send</span>
+            </span>
+            <span class="hidden sm:flex items-center gap-0.5">
+              <kbd class="kbd kbd-xs bg-muted/40 border-border/20">⌘↵</kbd>
               <span>send</span>
             </span>
           </div>
@@ -320,18 +395,27 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             onClick={() => {
               if (props.isStreaming && props.onInterrupt) {
                 props.onInterrupt();
+                if (mobile()) {
+                  setShowMobileTools(false);
+                  setShowSettings(false);
+                }
               } else {
                 props.onSubmit();
+                if (mobile()) {
+                  setShowMobileTools(false);
+                  setShowSettings(false);
+                }
               }
             }}
             disabled={
               !props.isStreaming && (!props.value.trim() || props.disabled)
             }
             class={cn(
-              "btn btn-sm shrink-0 ml-auto inline-flex justify-center items-center rounded-xl transition-all duration-300 mb-0.5",
+              "btn btn-sm h-10 min-h-10 shrink-0 ml-auto inline-flex justify-center items-center rounded-xl transition-all duration-300 mb-0.5",
               props.isStreaming ? "p-2" : "disabled:cursor-not-allowed",
             )}
             title={props.isStreaming ? "Stop generation" : "Send message"}
+            aria-label={props.isStreaming ? "Stop generation" : "Send message"}
           >
             <Show
               when={props.isStreaming}

@@ -33,7 +33,10 @@ pub fn event_to_message_content(
             "text": text,
         }),
 
-        AgentEvent::TurnStarted { session_id, turn_id } => serde_json::json!({
+        AgentEvent::TurnStarted {
+            session_id,
+            turn_id,
+        } => serde_json::json!({
             "type": "turn_started",
             "sessionId": session_id,
             "turnId": turn_id,
@@ -56,14 +59,23 @@ pub fn event_to_message_content(
             })
         }
 
-        AgentEvent::TurnError { session_id, error, code } => serde_json::json!({
+        AgentEvent::TurnError {
+            session_id,
+            error,
+            code,
+        } => serde_json::json!({
             "type": "turn_error",
             "sessionId": session_id,
             "error": error,
             "code": code,
         }),
 
-        AgentEvent::ToolStarted { session_id, tool_id, tool_name, input } => serde_json::json!({
+        AgentEvent::ToolStarted {
+            session_id,
+            tool_id,
+            tool_name,
+            input,
+        } => serde_json::json!({
             "type": "tool_started",
             "sessionId": session_id,
             "toolId": tool_id,
@@ -71,7 +83,12 @@ pub fn event_to_message_content(
             "input": input,
         }),
 
-        AgentEvent::ToolInputUpdated { session_id, tool_id, tool_name, input } => serde_json::json!({
+        AgentEvent::ToolInputUpdated {
+            session_id,
+            tool_id,
+            tool_name,
+            input,
+        } => serde_json::json!({
             "type": "tool_input_updated",
             "sessionId": session_id,
             "toolId": tool_id,
@@ -79,7 +96,13 @@ pub fn event_to_message_content(
             "input": input,
         }),
 
-        AgentEvent::ToolCompleted { session_id, tool_id, tool_name, output, error } => serde_json::json!({
+        AgentEvent::ToolCompleted {
+            session_id,
+            tool_id,
+            tool_name,
+            output,
+            error,
+        } => serde_json::json!({
             "type": "tool_completed",
             "sessionId": session_id,
             "toolId": tool_id,
@@ -88,7 +111,13 @@ pub fn event_to_message_content(
             "error": error,
         }),
 
-        AgentEvent::ApprovalRequest { session_id, request_id, tool_name, input, message } => serde_json::json!({
+        AgentEvent::ApprovalRequest {
+            session_id,
+            request_id,
+            tool_name,
+            input,
+            message,
+        } => serde_json::json!({
             "type": "approval_request",
             "sessionId": session_id,
             "requestId": request_id,
@@ -97,7 +126,13 @@ pub fn event_to_message_content(
             "message": message,
         }),
 
-        AgentEvent::UsageUpdate { session_id, input_tokens, output_tokens, cached_tokens, model_context_window } => serde_json::json!({
+        AgentEvent::UsageUpdate {
+            session_id,
+            input_tokens,
+            output_tokens,
+            cached_tokens,
+            model_context_window,
+        } => serde_json::json!({
             "type": "usage_update",
             "sessionId": session_id,
             "inputTokens": input_tokens,
@@ -117,7 +152,12 @@ pub fn event_to_message_content(
             "sessionId": session_id,
         }),
 
-        AgentEvent::ProgressUpdate { session_id, operation, progress, message } => serde_json::json!({
+        AgentEvent::ProgressUpdate {
+            session_id,
+            operation,
+            progress,
+            message,
+        } => serde_json::json!({
             "type": "progress_update",
             "sessionId": session_id,
             "operation": operation,
@@ -125,7 +165,12 @@ pub fn event_to_message_content(
             "message": message,
         }),
 
-        AgentEvent::Notification { session_id, level, message, details } => serde_json::json!({
+        AgentEvent::Notification {
+            session_id,
+            level,
+            message,
+            details,
+        } => serde_json::json!({
             "type": "notification",
             "sessionId": session_id,
             "level": level,
@@ -133,7 +178,12 @@ pub fn event_to_message_content(
             "details": details,
         }),
 
-        AgentEvent::FileOperation { session_id, operation, path, status } => serde_json::json!({
+        AgentEvent::FileOperation {
+            session_id,
+            operation,
+            path,
+            status,
+        } => serde_json::json!({
             "type": "file_operation",
             "sessionId": session_id,
             "operation": operation,
@@ -141,7 +191,12 @@ pub fn event_to_message_content(
             "status": status,
         }),
 
-        AgentEvent::TerminalOutput { session_id, command, output, exit_code } => serde_json::json!({
+        AgentEvent::TerminalOutput {
+            session_id,
+            command,
+            output,
+            exit_code,
+        } => serde_json::json!({
             "type": "terminal_output",
             "sessionId": session_id,
             "command": command,
@@ -149,7 +204,11 @@ pub fn event_to_message_content(
             "exitCode": exit_code,
         }),
 
-        AgentEvent::Raw { session_id, data, agent } => serde_json::json!({
+        AgentEvent::Raw {
+            session_id,
+            data,
+            agent,
+        } => serde_json::json!({
             "type": "raw",
             "sessionId": session_id,
             "agent": agent,

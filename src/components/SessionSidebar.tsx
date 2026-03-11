@@ -118,7 +118,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
     <div
       role="button"
       tabIndex={0}
-      class={`group relative flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 mx-1
+      class={`group relative flex items-center gap-3 px-3 py-3 rounded-lg cursor-pointer transition-all duration-200 mx-1
         ${
           props.isActive
             ? "bg-gradient-to-r from-primary/15 to-primary/5 border border-primary/20 shadow-sm"
@@ -216,7 +216,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
             trigger={
               <button
                 type="button"
-                class="btn btn-ghost btn-xs btn-square"
+                class="btn btn-ghost btn-sm btn-square h-9 w-9"
                 title="Session actions"
               >
                 <FiMoreVertical size={12} />
@@ -250,6 +250,13 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
   const sessions = createMemo(() => sessionStore.getSessions());
   const activeSession = createMemo(() => sessionStore.getActiveSession());
   const activeSessions = createMemo(() => sessionStore.getActiveSessions());
+  const [touchStartX, setTouchStartX] = createSignal<number | null>(null);
+  const [listTouchStartY, setListTouchStartY] = createSignal<number | null>(
+    null,
+  );
+  const [pullDistance, setPullDistance] = createSignal(0);
+  const [isRefreshing, setIsRefreshing] = createSignal(false);
+  let sessionListEl: HTMLDivElement | undefined;
 
   // Track sessions with unread messages
   const [unreadSessions, setUnreadSessions] = createSignal<Set<string>>(
@@ -405,6 +412,19 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
     void handleLoadRemoteSessions();
   });
 
+  const refreshSessions = async () => {
+    if (isRefreshing()) return;
+    setIsRefreshing(true);
+    try {
+      await Promise.all([handleLoadLocalSessions(), handleLoadRemoteSessions()]);
+    } catch (error) {
+      console.error("Failed to refresh sessions:", error);
+    } finally {
+      setIsRefreshing(false);
+      setPullDistance(0);
+    }
+  };
+
   const loadHistoryForSession = async (session: AgentSessionMetadata) => {
     setHistoryLoadingBySession((prev) => ({
       ...prev,
@@ -556,10 +576,24 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
 
       {/* Sidebar */}
       <aside
-        class={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-background to-base-200/50 border-r border-border/60
+        onTouchStart={(e) => {
+          if (!isMobile() || !props.isOpen || e.touches.length !== 1) return;
+          setTouchStartX(e.touches[0].clientX);
+        }}
+        onTouchEnd={(e) => {
+          const startX = touchStartX();
+          setTouchStartX(null);
+          if (!isMobile() || !props.isOpen || startX === null) return;
+          const endX = e.changedTouches[0]?.clientX ?? startX;
+          if (startX - endX > 70) {
+            props.onToggle();
+          }
+        }}
+        class={`fixed lg:static inset-y-0 left-0 z-50 w-[min(86vw,18rem)] lg:w-72 bg-gradient-to-b from-background to-base-200/50 border-r border-border/60
           transform transition-transform duration-300 ease-in-out backdrop-blur-sm
           ${props.isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
           pt-safe lg:pt-0
+          h-[var(--effective-viewport-height,100vh)] flex flex-col
         `}
       >
         {/* Header */}
@@ -589,7 +623,74 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
         </div>
 
         {/* Session List */}
-        <div class="overflow-y-auto flex-1 p-2 space-y-1">
+        <div
+          ref={sessionListEl}
+          class="overflow-y-auto flex-1 p-2 space-y-1"
+          onTouchStart={(e) => {
+            if (!isMobile() || isRefreshing() || !sessionListEl) return;
+            if (sessionListEl.scrollTop > 0) return;
+            if (e.touches.length !== 1) return;
+            setListTouchStartY(e.touches[0].clientY);
+          }}
+          onTouchMove={(e) => {
+            const startY = listTouchStartY();
+            if (
+              !isMobile() ||
+              isRefreshing() ||
+              startY === null ||
+              !sessionListEl
+            ) {
+              return;
+            }
+            if (sessionListEl.scrollTop > 0) {
+              setListTouchStartY(null);
+              setPullDistance(0);
+              return;
+            }
+            const currentY = e.touches[0]?.clientY ?? startY;
+            const delta = currentY - startY;
+            if (delta > 0) {
+              setPullDistance(Math.min(delta * 0.45, 84));
+            } else {
+              setPullDistance(0);
+            }
+          }}
+          onTouchEnd={() => {
+            const shouldRefresh = pullDistance() >= 56;
+            setListTouchStartY(null);
+            if (shouldRefresh) {
+              void refreshSessions();
+            } else {
+              setPullDistance(0);
+            }
+          }}
+          onTouchCancel={() => {
+            setListTouchStartY(null);
+            setPullDistance(0);
+          }}
+        >
+          <Show when={isMobile() && (pullDistance() > 0 || isRefreshing())}>
+            <div
+              class="flex items-center justify-center text-xs text-muted-foreground/70 transition-all"
+              style={{
+                height: `${isRefreshing() ? 42 : Math.max(18, pullDistance())}px`,
+              }}
+            >
+              <Show
+                when={!isRefreshing()}
+                fallback={
+                  <span class="inline-flex items-center gap-1.5">
+                    <span class="loading loading-spinner loading-xs" />
+                    Refreshing sessions...
+                  </span>
+                }
+              >
+                {pullDistance() >= 56
+                  ? "Release to refresh"
+                  : "Pull to refresh"}
+              </Show>
+            </div>
+          </Show>
           <Show when={sessions().length > 0}>
             <div class="px-2 py-2 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
               Active Sessions
@@ -611,9 +712,12 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                         session.sessionId === activeSession()?.sessionId
                       }
                       hasUnread={unreadSessions().has(session.sessionId)}
-                      onClick={() =>
-                        sessionStore.setActiveSession(session.sessionId)
-                      }
+                      onClick={() => {
+                        sessionStore.setActiveSession(session.sessionId);
+                        if (isMobile() && props.isOpen) {
+                          props.onToggle();
+                        }
+                      }}
                       onClose={() => handleCloseSession(session.sessionId)}
                       onSpawnRemoteSession={handleSpawnRemoteSession}
                       onToggleHistory={() => void handleToggleHistory(session)}

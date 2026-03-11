@@ -19,6 +19,7 @@ import { ChatView } from "./ChatView";
 import { FileBrowserView } from "./FileBrowserView";
 import { GitDiffView } from "./GitDiffView";
 import { sessionStore } from "../stores/sessionStore";
+import { isMobile } from "../stores/deviceStore";
 import { notificationStore } from "../stores/notificationStore";
 import { Button } from "./ui/primitives";
 import { KeyboardShortcutsDialog } from "./ui/KeyboardShortcuts";
@@ -58,12 +59,26 @@ export const AppLayout: Component = () => {
   const [rightPanelView, setRightPanelView] = createSignal<
     "none" | "file" | "git"
   >("none");
+  const [rightPanelTouchStartX, setRightPanelTouchStartX] = createSignal<
+    number | null
+  >(null);
 
   // Toggle functions for right panel
   const toggleRightPanel = (view: "file" | "git") => {
     setRightPanelView((prev) => (prev === view ? "none" : view));
   };
   const closeRightPanel = () => setRightPanelView("none");
+  const mobile = createMemo(() => isMobile());
+
+  createEffect(() => {
+    const shouldLockScroll =
+      mobile() && (sidebarOpen() || rightPanelView() !== "none");
+    document.body.style.overflow = shouldLockScroll ? "hidden" : "";
+  });
+
+  onCleanup(() => {
+    document.body.style.overflow = "";
+  });
 
   // Keyboard shortcuts
   onMount(() => {
@@ -135,7 +150,7 @@ export const AppLayout: Component = () => {
   };
 
   return (
-    <div class="flex h-screen min-h-0 bg-muted overflow-hidden max-md:text-sm max-md:leading-5">
+    <div class="flex min-h-0 h-[var(--effective-viewport-height,100vh)] bg-muted overflow-hidden max-md:text-sm max-md:leading-5">
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog
         open={shortcutsDialogOpen()}
@@ -154,10 +169,11 @@ export const AppLayout: Component = () => {
       </Show>
       {/* Mobile Menu Button */}
       <Button
-        class="fixed left-4 top-0 z-50 flex bg-card shadow-md lg:hidden fixed-top-safe"
+        class="fixed left-3 top-2 z-50 flex h-11 w-11 rounded-xl bg-card/95 shadow-md lg:hidden fixed-top-safe"
         size="icon"
         variant="ghost"
         onClick={() => setSidebarOpen(!sidebarOpen())}
+        title="Open sessions"
       >
         <MenuIcon />
       </Button>
@@ -256,9 +272,23 @@ export const AppLayout: Component = () => {
                   />
                 </Show>
                 <aside
+                  onTouchStart={(e) => {
+                    if (!mobile() || e.touches.length !== 1) return;
+                    setRightPanelTouchStartX(e.touches[0].clientX);
+                  }}
+                  onTouchEnd={(e) => {
+                    const startX = rightPanelTouchStartX();
+                    setRightPanelTouchStartX(null);
+                    if (!mobile() || startX === null) return;
+                    const endX = e.changedTouches[0]?.clientX ?? startX;
+                    if (endX - startX > 70) {
+                      closeRightPanel();
+                    }
+                  }}
                   class={`fixed right-0 inset-y-0 z-50 w-screen sm:w-[28rem] md:w-[340px] lg:w-[360px] border-l border-border/60 bg-gradient-to-b from-background to-base-200/50 backdrop-blur-md flex flex-col overflow-hidden shadow-2xl shadow-black/20
                     transform transition-transform duration-300 ease-in-out
                     ${rightPanelView() !== "none" ? "translate-x-0" : "translate-x-full"}
+                    ${mobile() ? "pt-safe pb-safe" : ""}
                   `}
                 >
                   <div class="h-11 px-3 border-b border-border/60 flex items-center justify-between">
@@ -277,7 +307,7 @@ export const AppLayout: Component = () => {
                       type="button"
                       variant="ghost"
                       size="xs"
-                      class="btn btn-ghost btn-xs btn-square"
+                      class="btn btn-ghost btn-xs btn-square h-9 w-9"
                       onClick={closeRightPanel}
                       title="Close panel"
                     >

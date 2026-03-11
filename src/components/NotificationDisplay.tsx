@@ -66,13 +66,13 @@ const getNotificationColor = (
 const getPositionClasses = (position: string): string => {
   switch (position) {
     case "top-right":
-      return "top-4 right-4";
+      return "top-4 right-2 sm:right-4";
     case "top-left":
-      return "top-4 left-4";
+      return "top-4 left-2 sm:left-4";
     case "bottom-right":
-      return "bottom-4 right-4";
+      return "bottom-4 right-2 sm:right-4";
     case "bottom-left":
-      return "bottom-4 left-4";
+      return "bottom-4 left-2 sm:left-4";
     case "top-center":
       return "top-4 left-1/2 -translate-x-1/2";
     case "bottom-center":
@@ -100,7 +100,7 @@ const NotificationItem = (props: { notification: Notification }) => {
   return (
     <Alert
       variant={getNotificationColor(props.notification.type)}
-      class="relative mb-2 w-full max-w-sm shadow-lg"
+      class="relative mb-2 w-full max-w-[min(22rem,calc(100vw-1rem))] sm:max-w-sm shadow-lg"
       classList={{
         "opacity-0 translate-x-full": props.notification.dismissed,
         "opacity-100 translate-x-0": !props.notification.dismissed,
@@ -114,8 +114,10 @@ const NotificationItem = (props: { notification: Notification }) => {
       </div>
 
       <div class="flex-1 min-w-0">
-        <h4 class="font-semibold text-sm">{props.notification.title}</h4>
-        <p class="text-sm opacity-90 break-words">
+        <h4 class="font-semibold text-xs sm:text-sm leading-5">
+          {props.notification.title}
+        </h4>
+        <p class="text-xs sm:text-sm opacity-90 break-words leading-5">
           {props.notification.message}
         </p>
 
@@ -158,10 +160,10 @@ const NotificationItem = (props: { notification: Notification }) => {
       <Button
         size="icon"
         variant="ghost"
-        class="h-8 w-8"
+        class="h-7 w-7 sm:h-8 sm:w-8"
         onClick={handleDismiss}
       >
-        <FiX size={16} />
+        <FiX size={14} />
       </Button>
     </Alert>
   );

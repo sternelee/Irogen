@@ -22,7 +22,10 @@ use tokio::sync::RwLock;
 use tokio::task;
 use tracing::{debug, info, warn};
 
-pub use acp::{load_codex_session_history, load_opencode_session_history, AcpSessionStartMode, AcpStreamingSession};
+pub use acp::{
+    AcpSessionStartMode, AcpStreamingSession, load_codex_session_history,
+    load_opencode_session_history,
+};
 pub use acp_permission::{AcpPermissionHandler, AcpPermissionState};
 pub use events::{AgentEvent, AgentTurnEvent, PendingPermission, PermissionResponse};
 pub use factory::{Agent, AgentAvailability, AgentFactory};
@@ -367,7 +370,10 @@ impl AgentManager {
                         }
                     } else if matches!(
                         agent_type,
-                        AgentType::ClaudeCode | AgentType::Codex | AgentType::Gemini | AgentType::OpenCode
+                        AgentType::ClaudeCode
+                            | AgentType::Codex
+                            | AgentType::Gemini
+                            | AgentType::OpenCode
                     ) {
                         return Err(anyhow!(
                             "Agent auto-install failed. Install the agent CLI or pass an explicit --binary-path."

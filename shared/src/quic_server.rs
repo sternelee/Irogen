@@ -482,12 +482,9 @@ impl QuicMessageServer {
         tcp_stream_handler: Arc<RwLock<Option<TcpStreamHandler>>>,
     ) -> Result<()> {
         // 执行握手（30s超时，防止慢连接或恶意对端长期占用资源）
-        let connection = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            incoming,
-        )
-        .await
-        .map_err(|_| anyhow::anyhow!("Incoming connection handshake timed out after 30s"))??;
+        let connection = tokio::time::timeout(std::time::Duration::from_secs(30), incoming)
+            .await
+            .map_err(|_| anyhow::anyhow!("Incoming connection handshake timed out after 30s"))??;
         let remote_endpoint_id = connection.remote_id();
         let endpoint_addr = format!("{:?}", remote_endpoint_id);
 
@@ -1132,7 +1129,10 @@ impl QuicMessageClient {
         let secret_key = QuicMessageServer::load_or_generate_secret_key(secret_key_path).await?;
 
         if let Some(ref relay) = relay_url {
-            info!("Custom relay URL provided: {} (using default relay discovery)", relay);
+            info!(
+                "Custom relay URL provided: {} (using default relay discovery)",
+                relay
+            );
         }
 
         let endpoint = Endpoint::builder()
@@ -1318,24 +1318,21 @@ impl QuicMessageClient {
             if message.requires_response {
                 debug!("Waiting for response to message: {}", message.id);
                 let mut response_data = Vec::new();
-                let _ = tokio::time::timeout(
-                    std::time::Duration::from_secs(30),
-                    async {
-                        loop {
-                            let mut buffer = vec![0u8; 8192];
-                            match recv_stream.read(&mut buffer).await {
-                                Ok(Some(n)) => {
-                                    response_data.extend_from_slice(&buffer[..n]);
-                                }
-                                Ok(None) => break,
-                                Err(e) => {
-                                    error!("Error reading response: {}", e);
-                                    break;
-                                }
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+                    loop {
+                        let mut buffer = vec![0u8; 8192];
+                        match recv_stream.read(&mut buffer).await {
+                            Ok(Some(n)) => {
+                                response_data.extend_from_slice(&buffer[..n]);
+                            }
+                            Ok(None) => break,
+                            Err(e) => {
+                                error!("Error reading response: {}", e);
+                                break;
                             }
                         }
-                    },
-                )
+                    }
+                })
                 .await;
 
                 if !response_data.is_empty() {
@@ -1654,9 +1651,7 @@ impl QuicMessageClientHandle {
         session_id: &str,
     ) -> Result<(iroh::endpoint::SendStream, iroh::endpoint::RecvStream)> {
         let client = self.client.lock().await;
-        client
-            .open_tcp_stream(remote_endpoint_id, session_id)
-            .await
+        client.open_tcp_stream(remote_endpoint_id, session_id).await
     }
 
     /// 启动连接健康监控：定期心跳探测，检测断连后自动重连
@@ -1785,7 +1780,9 @@ impl QuicMessageClientHandle {
         consecutive_failures: &mut u32,
     ) {
         let params = connection_params.read().await.clone();
-        let Some(params) = params else { return; };
+        let Some(params) = params else {
+            return;
+        };
 
         // 指数退避: 2s, 4s, 8s, 16s, 30s (cap)
         let delay_secs = (2u64 << (*consecutive_failures).min(4)).min(30);
@@ -1793,11 +1790,8 @@ impl QuicMessageClientHandle {
         info!("Reconnecting in {:?}...", delay);
 
         // 广播 reconnecting 状态
-        let reconnecting = MessageBuilder::heartbeat(
-            "system".to_string(),
-            0,
-            "reconnecting".to_string(),
-        );
+        let reconnecting =
+            MessageBuilder::heartbeat("system".to_string(), 0, "reconnecting".to_string());
         let _ = message_tx.send(reconnecting);
 
         tokio::time::sleep(delay).await;
@@ -1821,11 +1815,8 @@ impl QuicMessageClientHandle {
                 }
 
                 // 广播 connected 状态
-                let connected = MessageBuilder::heartbeat(
-                    "system".to_string(),
-                    0,
-                    "connected".to_string(),
-                );
+                let connected =
+                    MessageBuilder::heartbeat("system".to_string(), 0, "connected".to_string());
                 let _ = message_tx.send(connected);
 
                 // 为新连接启动 receiver task

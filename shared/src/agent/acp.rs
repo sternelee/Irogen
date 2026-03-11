@@ -872,13 +872,14 @@ pub struct CodexHistoryMessage {
     pub timestamp: i64,
 }
 
-pub async fn load_codex_session_history(
-    session_id: &str,
-) -> Result<Vec<CodexHistoryMessage>> {
+pub async fn load_codex_session_history(session_id: &str) -> Result<Vec<CodexHistoryMessage>> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
     let sessions_dir = format!("{}/.codex/sessions", home);
 
-    info!("[Codex history] Searching for session {} in {}", session_id, sessions_dir);
+    info!(
+        "[Codex history] Searching for session {} in {}",
+        session_id, sessions_dir
+    );
 
     // Search for the JSONL file matching the session ID
     let session_dir = std::path::Path::new(&sessions_dir);
@@ -963,12 +964,17 @@ pub async fn load_codex_session_history(
                             if let Some(text) = item.get("text").and_then(|v| v.as_str()) {
                                 // Create appropriate message based on role
                                 let msg = CodexHistoryMessage {
-                                    role: if role == "developer" { "assistant".to_string() } else { role.to_string() },
+                                    role: if role == "developer" {
+                                        "assistant".to_string()
+                                    } else {
+                                        role.to_string()
+                                    },
                                     content: text.to_string(),
                                     timestamp: std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .unwrap_or_default()
-                                        .as_secs() as i64,
+                                        .as_secs()
+                                        as i64,
                                 };
                                 messages.push(msg);
                             }
@@ -982,15 +988,20 @@ pub async fn load_codex_session_history(
         }
     }
 
-    info!("[Codex history] Loaded {} messages from session {}", messages.len(), session_id);
+    info!(
+        "[Codex history] Loaded {} messages from session {}",
+        messages.len(),
+        session_id
+    );
     Ok(messages)
 }
 
 /// Load OpenCode session messages using `opencode export` command
-pub async fn load_opencode_session_history(
-    session_id: &str,
-) -> Result<Vec<CodexHistoryMessage>> {
-    info!("[OpenCode history] Loading session {} via opencode export", session_id);
+pub async fn load_opencode_session_history(session_id: &str) -> Result<Vec<CodexHistoryMessage>> {
+    info!(
+        "[OpenCode history] Loading session {} via opencode export",
+        session_id
+    );
 
     // Use tokio::process::Command to run opencode export
     let output = tokio::process::Command::new("opencode")
@@ -1012,47 +1023,66 @@ pub async fn load_opencode_session_history(
         Ok(v) => v,
         Err(e) => {
             // Try to recover by truncating extremely long strings
-            warn!("[OpenCode] Full JSON parse failed: {}, attempting recovery", e);
+            warn!(
+                "[OpenCode] Full JSON parse failed: {}, attempting recovery",
+                e
+            );
             let truncated = truncate_large_strings(&stdout, 50000);
-            serde_json::from_str(&truncated)
-                .map_err(|e2| anyhow::anyhow!("Failed to parse opencode export output: {} (recovery also failed: {})", e, e2))?
+            serde_json::from_str(&truncated).map_err(|e2| {
+                anyhow::anyhow!(
+                    "Failed to parse opencode export output: {} (recovery also failed: {})",
+                    e,
+                    e2
+                )
+            })?
         }
     };
 
-    let messages: Vec<CodexHistoryMessage> = json.get("messages")
+    let messages: Vec<CodexHistoryMessage> = json
+        .get("messages")
         .and_then(|m| m.as_array())
         .map(|arr| {
-            arr.iter().filter_map(|msg| {
-                let role = msg.get("info")?.get("role")?.as_str()?;
-                let content = msg.get("parts")?.as_array()?.iter()
-                    .filter_map(|part| {
-                        if part.get("type")?.as_str() == Some("text") {
-                            part.get("text")?.as_str().map(|s| s.to_string())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
+            arr.iter()
+                .filter_map(|msg| {
+                    let role = msg.get("info")?.get("role")?.as_str()?;
+                    let content = msg
+                        .get("parts")?
+                        .as_array()?
+                        .iter()
+                        .filter_map(|part| {
+                            if part.get("type")?.as_str() == Some("text") {
+                                part.get("text")?.as_str().map(|s| s.to_string())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
 
-                if content.is_empty() {
-                    None
-                } else {
-                    Some(CodexHistoryMessage {
-                        role: role.to_string(),
-                        content,
-                        timestamp: msg.get("info")?
-                            .get("time")?
-                            .get("created")?
-                            .as_i64()
-                            .unwrap_or(0),
-                    })
-                }
-            }).collect()
+                    if content.is_empty() {
+                        None
+                    } else {
+                        Some(CodexHistoryMessage {
+                            role: role.to_string(),
+                            content,
+                            timestamp: msg
+                                .get("info")?
+                                .get("time")?
+                                .get("created")?
+                                .as_i64()
+                                .unwrap_or(0),
+                        })
+                    }
+                })
+                .collect()
         })
         .unwrap_or_default();
 
-    info!("[OpenCode history] Loaded {} messages from session {}", messages.len(), session_id);
+    info!(
+        "[OpenCode history] Loaded {} messages from session {}",
+        messages.len(),
+        session_id
+    );
     Ok(messages)
 }
 
@@ -1079,7 +1109,10 @@ fn truncate_large_strings(input: &str, max_len: usize) -> String {
             '"' if in_string => {
                 // End of string - check if too long
                 if current_string.len() > max_len {
-                    result.push_str(&format!("\"{}... [truncated]\"", &current_string[..max_len.min(current_string.len())]));
+                    result.push_str(&format!(
+                        "\"{}... [truncated]\"",
+                        &current_string[..max_len.min(current_string.len())]
+                    ));
                 } else {
                     result.push('"');
                     result.push_str(&current_string);
@@ -1104,7 +1137,10 @@ fn truncate_large_strings(input: &str, max_len: usize) -> String {
     // Handle any remaining string
     if in_string && !current_string.is_empty() {
         if current_string.len() > max_len {
-            result.push_str(&format!("\"{}... [truncated]\"", &current_string[..max_len.min(current_string.len())]));
+            result.push_str(&format!(
+                "\"{}... [truncated]\"",
+                &current_string[..max_len.min(current_string.len())]
+            ));
         } else {
             result.push('"');
             result.push_str(&current_string);

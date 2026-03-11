@@ -10,9 +10,10 @@
 
 import { type Component, Show, createSignal } from "solid-js";
 import { createClipboard } from "@solid-primitives/clipboard";
-import { FiCopy, FiCheck } from "solid-icons/fi";
+import { FiCopy, FiCheck, FiMoreVertical } from "solid-icons/fi";
 import { SolidMarkdown } from "solid-markdown";
 import type { ChatMessage, ToolCall } from "~/stores/chatStore";
+import { isMobile } from "~/stores/deviceStore";
 import {
   ToolCallList,
   ReasoningBlock,
@@ -66,6 +67,8 @@ const CodeBlockWithCopy: Component<CodeBlockProps> = (props) => {
 export interface MessageBubbleProps {
   message: ChatMessage;
   class?: string;
+  onQuote?: (content: string) => void;
+  onResend?: (content: string) => void;
 }
 
 // ============================================================================
@@ -85,7 +88,7 @@ const UserMessage: Component<{ content: string; timestamp?: number }> = (
       <div class={bubbleClass}>
         <div class="flex items-end gap-2">
           <div class="flex-1 min-w-0">
-            <div class="prose prose-sm wrap-break-words text-[13px] sm:text-sm max-w-none leading-5 sm:leading-6">
+            <div class="prose prose-sm wrap-break-words text-[13px] sm:text-sm max-w-none leading-5 sm:leading-6 selectable">
               <SolidMarkdown children={props.content} />
             </div>
           </div>
@@ -123,7 +126,7 @@ const AssistantMessage: Component<AssistantMessageProps> = (props) => {
         </Show>
 
         {/* Content */}
-        <div class="prose prose-sm wrap-break-words text-[13px] sm:text-sm max-w-none leading-5 sm:leading-6">
+        <div class="prose prose-sm wrap-break-words text-[13px] sm:text-sm max-w-none leading-5 sm:leading-6 selectable">
           <SolidMarkdown
             children={props.thinking ? undefined : props.content}
             components={{
@@ -228,7 +231,7 @@ const SystemMessageContent: Component<{ content: string }> = (props) => {
     <Show
       when={isTerminalOutput()}
       fallback={
-        <div class="prose prose-sm wrap-break-words text-[13px] sm:text-sm max-w-none leading-5 sm:leading-6 text-muted-foreground">
+        <div class="prose prose-sm wrap-break-words text-[13px] sm:text-sm max-w-none leading-5 sm:leading-6 text-muted-foreground selectable">
           <SolidMarkdown children={props.content} />
         </div>
       }
@@ -236,7 +239,7 @@ const SystemMessageContent: Component<{ content: string }> = (props) => {
       <Show
         when={parseTerminalOutput()}
         fallback={
-          <div class="prose prose-sm wrap-break-words text-[13px] sm:text-sm max-w-none leading-5 sm:leading-6 text-muted-foreground">
+          <div class="prose prose-sm wrap-break-words text-[13px] sm:text-sm max-w-none leading-5 sm:leading-6 text-muted-foreground selectable">
             <SolidMarkdown children={props.content} />
           </div>
         }
@@ -282,35 +285,115 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
   const message = () => props.message;
   const isUser = () => message().role === "user";
   const isSystem = () => message().role === "system";
+  const [showActions, setShowActions] = createSignal(false);
+
+  const closeActions = () => setShowActions(false);
+
+  const copyMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(message().content);
+    } catch {
+      // ignore clipboard failures
+    } finally {
+      closeActions();
+    }
+  };
+
+  const quoteMessage = () => {
+    props.onQuote?.(message().content);
+    closeActions();
+  };
+
+  const resendMessage = () => {
+    props.onResend?.(message().content);
+    closeActions();
+  };
 
   return (
-    <Show
-      when={isUser()}
-      fallback={
-        <Show
-          when={isSystem()}
-          fallback={
-            <AssistantMessage
+    <div class={props.class}>
+      <Show
+        when={isUser()}
+        fallback={
+          <Show
+            when={isSystem()}
+            fallback={
+              <AssistantMessage
+                content={message().content}
+                thinking={message().thinking ? "Thinking..." : undefined}
+                toolCalls={message().toolCalls}
+                isStreaming={message().thinking}
+                timestamp={message().timestamp}
+              />
+            }
+          >
+            <SystemMessage
               content={message().content}
-              thinking={message().thinking ? "Thinking..." : undefined}
-              toolCalls={message().toolCalls}
-              isStreaming={message().thinking}
               timestamp={message().timestamp}
             />
-          }
-        >
-          <SystemMessage
-            content={message().content}
-            timestamp={message().timestamp}
+          </Show>
+        }
+      >
+        <UserMessage
+          content={message().content}
+          timestamp={message().timestamp}
+        />
+      </Show>
+
+      <Show when={isMobile()}>
+        <div class={`mt-1 flex ${isUser() ? "justify-end" : "justify-start"}`}>
+          <button
+            type="button"
+            class="btn btn-ghost btn-xs h-8 min-h-8 w-8 rounded-lg opacity-60 hover:opacity-100"
+            onClick={() => setShowActions(true)}
+            title="Message actions"
+            aria-label="Message actions"
+          >
+            <FiMoreVertical size={14} />
+          </button>
+        </div>
+      </Show>
+
+      <Show when={showActions()}>
+        <div class="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            class="absolute inset-0 bg-black/45"
+            aria-label="Close message actions"
+            onClick={closeActions}
           />
-        </Show>
-      }
-    >
-      <UserMessage
-        content={message().content}
-        timestamp={message().timestamp}
-      />
-    </Show>
+          <div class="absolute bottom-0 left-0 right-0 rounded-t-2xl border-t border-border/60 bg-base-100 p-3 pb-[max(env(safe-area-inset-bottom,0px),0.75rem)] shadow-2xl">
+            <div class="mb-2 px-1 text-xs text-muted-foreground/70">
+              Message actions
+            </div>
+            <div class="flex flex-col gap-1">
+              <button
+                type="button"
+                class="btn btn-ghost justify-start h-11 min-h-11"
+                onClick={copyMessage}
+              >
+                Copy
+              </button>
+              <button
+                type="button"
+                class="btn btn-ghost justify-start h-11 min-h-11"
+                onClick={quoteMessage}
+              >
+                Quote to input
+              </button>
+              <Show when={isUser()}>
+                <button
+                  type="button"
+                  class="btn btn-ghost justify-start h-11 min-h-11"
+                  onClick={resendMessage}
+                >
+                  Resend
+                </button>
+              </Show>
+            </div>
+          </div>
+        </div>
+      </Show>
+    </div>
   );
 };
 
