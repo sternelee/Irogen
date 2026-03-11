@@ -14,6 +14,7 @@ import { FiCopy, FiCheck, FiMoreVertical } from "solid-icons/fi";
 import { SolidMarkdown } from "solid-markdown";
 import type { ChatMessage, ToolCall } from "~/stores/chatStore";
 import { isMobile } from "~/stores/deviceStore";
+import { HapticFeedback } from "~/utils/mobile";
 import {
   ToolCallList,
   ReasoningBlock,
@@ -286,10 +287,20 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
   const isUser = () => message().role === "user";
   const isSystem = () => message().role === "system";
   const [showActions, setShowActions] = createSignal(false);
+  const firstCodeBlock = () => {
+    const match = message().content.match(/```(?:\w+)?\n([\s\S]*?)```/);
+    return match?.[1]?.trim() || null;
+  };
 
   const closeActions = () => setShowActions(false);
+  const triggerHaptic = () => {
+    if (isMobile()) {
+      HapticFeedback.selection();
+    }
+  };
 
   const copyMessage = async () => {
+    triggerHaptic();
     try {
       await navigator.clipboard.writeText(message().content);
     } catch {
@@ -299,12 +310,38 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
     }
   };
 
+  const copyAsMarkdown = async () => {
+    triggerHaptic();
+    try {
+      await navigator.clipboard.writeText(message().content);
+    } catch {
+      // ignore clipboard failures
+    } finally {
+      closeActions();
+    }
+  };
+
+  const copyCodeBlock = async () => {
+    const code = firstCodeBlock();
+    if (!code) return;
+    triggerHaptic();
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      // ignore clipboard failures
+    } finally {
+      closeActions();
+    }
+  };
+
   const quoteMessage = () => {
+    triggerHaptic();
     props.onQuote?.(message().content);
     closeActions();
   };
 
   const resendMessage = () => {
+    triggerHaptic();
     props.onResend?.(message().content);
     closeActions();
   };
@@ -344,7 +381,10 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
           <button
             type="button"
             class="btn btn-ghost btn-xs h-8 min-h-8 w-8 rounded-lg opacity-60 hover:opacity-100"
-            onClick={() => setShowActions(true)}
+            onClick={() => {
+              triggerHaptic();
+              setShowActions(true);
+            }}
             title="Message actions"
             aria-label="Message actions"
           >
@@ -361,11 +401,45 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
             aria-label="Close message actions"
             onClick={closeActions}
           />
-          <div class="absolute bottom-0 left-0 right-0 rounded-t-2xl border-t border-border/60 bg-base-100 p-3 pb-[max(env(safe-area-inset-bottom,0px),0.75rem)] shadow-2xl">
+          <div class="absolute bottom-0 left-0 right-0 rounded-t-2xl border-t border-border/60 bg-base-100 p-3 pb-[max(env(safe-area-inset-bottom,0px),0.75rem)] shadow-2xl animate-slide-up">
             <div class="mb-2 px-1 text-xs text-muted-foreground/70">
               Message actions
             </div>
             <div class="flex flex-col gap-1">
+              <Show when={isUser()}>
+                <button
+                  type="button"
+                  class="btn btn-ghost justify-start h-11 min-h-11"
+                  onClick={resendMessage}
+                >
+                  Resend
+                </button>
+              </Show>
+              <button
+                type="button"
+                class="btn btn-ghost justify-start h-11 min-h-11"
+                onClick={quoteMessage}
+              >
+                Quote to input
+              </button>
+              <Show when={!isUser() && firstCodeBlock()}>
+                <button
+                  type="button"
+                  class="btn btn-ghost justify-start h-11 min-h-11"
+                  onClick={copyCodeBlock}
+                >
+                  Copy code block
+                </button>
+              </Show>
+              <Show when={isUser() && firstCodeBlock()}>
+                <button
+                  type="button"
+                  class="btn btn-ghost justify-start h-11 min-h-11"
+                  onClick={copyCodeBlock}
+                >
+                  Copy code block
+                </button>
+              </Show>
               <button
                 type="button"
                 class="btn btn-ghost justify-start h-11 min-h-11"
@@ -376,19 +450,10 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
               <button
                 type="button"
                 class="btn btn-ghost justify-start h-11 min-h-11"
-                onClick={quoteMessage}
+                onClick={copyAsMarkdown}
               >
-                Quote to input
+                Copy as Markdown
               </button>
-              <Show when={isUser()}>
-                <button
-                  type="button"
-                  class="btn btn-ghost justify-start h-11 min-h-11"
-                  onClick={resendMessage}
-                >
-                  Resend
-                </button>
-              </Show>
             </div>
           </div>
         </div>

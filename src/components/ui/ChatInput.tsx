@@ -74,6 +74,8 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
     number | null
   >(null);
   const mobile = () => isMobile();
+  const isStreamingNow = () => !!props.isStreaming;
+  const showAdvancedTools = () => !isStreamingNow();
 
   const permissionOptions: {
     value: PermissionMode;
@@ -326,55 +328,63 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             </div>
 
             {/* File Browser Button */}
-            <button
-              type="button"
-              class={cn(
-                "btn btn-ghost btn-sm h-9 min-h-9 px-2.5 gap-1 text-[11px] transition-all rounded-md",
-                props.rightPanelView === "file"
-                  ? "bg-primary/15 text-primary hover:bg-primary/20"
-                  : "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50",
-              )}
-              onClick={() => {
-                props.onToggleFileBrowser?.();
-                if (mobile()) {
-                  setShowMobileTools(false);
-                }
-              }}
-              title="Toggle file browser"
-              aria-label="Toggle file browser"
-              disabled={props.disabled}
-            >
-              <FiFolder class="size-4 sm:size-4" />
-              <span class="hidden sm:inline">Files</span>
-            </button>
+            <Show when={showAdvancedTools()}>
+              <>
+                {/* File Browser Button */}
+                <button
+                  type="button"
+                  class={cn(
+                    "btn btn-ghost btn-sm h-9 min-h-9 px-2.5 gap-1 text-[11px] transition-all rounded-md",
+                    props.rightPanelView === "file"
+                      ? "bg-primary/15 text-primary hover:bg-primary/20"
+                      : "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50",
+                  )}
+                  onClick={() => {
+                    props.onToggleFileBrowser?.();
+                    if (mobile()) {
+                      setShowMobileTools(false);
+                    }
+                  }}
+                  title="Toggle file browser"
+                  aria-label="Toggle file browser"
+                  disabled={props.disabled}
+                >
+                  <FiFolder class="size-4 sm:size-4" />
+                  <span class="hidden sm:inline">Files</span>
+                </button>
 
-            {/* Git Panel Button */}
-            <button
-              type="button"
-              class={cn(
-                "btn btn-ghost btn-sm h-9 min-h-9 px-2.5 gap-1 text-[11px] transition-all rounded-md",
-                props.rightPanelView === "git"
-                  ? "bg-primary/15 text-primary hover:bg-primary/20"
-                  : "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50",
-              )}
-              onClick={() => {
-                props.onToggleGitPanel?.();
-                if (mobile()) {
-                  setShowMobileTools(false);
-                }
-              }}
-              title="Toggle git panel"
-              aria-label="Toggle git panel"
-              disabled={props.disabled}
-            >
-              <FiGitBranch class="size-4 sm:size-4" />
-              <span class="hidden sm:inline">Git</span>
-            </button>
+                {/* Git Panel Button */}
+                <button
+                  type="button"
+                  class={cn(
+                    "btn btn-ghost btn-sm h-9 min-h-9 px-2.5 gap-1 text-[11px] transition-all rounded-md",
+                    props.rightPanelView === "git"
+                      ? "bg-primary/15 text-primary hover:bg-primary/20"
+                      : "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50",
+                  )}
+                  onClick={() => {
+                    props.onToggleGitPanel?.();
+                    if (mobile()) {
+                      setShowMobileTools(false);
+                    }
+                  }}
+                  title="Toggle git panel"
+                  aria-label="Toggle git panel"
+                  disabled={props.disabled}
+                >
+                  <FiGitBranch class="size-4 sm:size-4" />
+                  <span class="hidden sm:inline">Git</span>
+                </button>
+              </>
+            </Show>
             </div>
           </Show>
 
           {/* Right side: Keyboard hints */}
           <div class="hidden sm:flex items-center gap-2 text-[10px] text-muted-foreground/40">
+            <Show when={isStreamingNow()}>
+              <span class="text-[10px] text-primary/80">Generating...</span>
+            </Show>
             <span class="hidden sm:flex items-center gap-0.5">
               <kbd class="kbd kbd-xs bg-muted/40 border-border/20">↵</kbd>
               <span>line</span>

@@ -417,8 +417,10 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
     setIsRefreshing(true);
     try {
       await Promise.all([handleLoadLocalSessions(), handleLoadRemoteSessions()]);
+      notificationStore.success("Sessions refreshed", "Session List");
     } catch (error) {
       console.error("Failed to refresh sessions:", error);
+      notificationStore.error("Failed to refresh sessions", "Session List");
     } finally {
       setIsRefreshing(false);
       setPullDistance(0);
@@ -674,6 +676,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
               class="flex items-center justify-center text-xs text-muted-foreground/70 transition-all"
               style={{
                 height: `${isRefreshing() ? 42 : Math.max(18, pullDistance())}px`,
+                transform: `translateY(${Math.min(pullDistance() * 0.15, 10)}px)`,
               }}
             >
               <Show
