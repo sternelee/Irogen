@@ -258,6 +258,7 @@ export function ChatView(props: ChatViewProps) {
     const [inputValue, setInputValue] = createSignal("");
     const [listHandle, setListHandle] = createSignal<VirtualizerHandle>();
     const [isScrolledToBottom, setIsScrolledToBottom] = createSignal(true);
+    const [shouldAutoFollow, setShouldAutoFollow] = createSignal(true);
     const [isStreaming, setIsStreaming] = createSignal(false);
     const [unseenMessageCount, setUnseenMessageCount] = createSignal(0);
     const [permissionMode, setPermissionMode] = createSignal<
@@ -270,6 +271,7 @@ export function ChatView(props: ChatViewProps) {
       props.rightPanelView ?? internalRightPanelView();
     const toolMessageIds = new Map<string, string>();
     let scrollRafId: number | undefined;
+    let lastScrollOffset = 0;
     const pendingPermissionsForModal = () =>
       pendingPermissions().map((permission) => ({
         request_id: permission.id,
@@ -285,6 +287,8 @@ export function ChatView(props: ChatViewProps) {
         () => props.sessionId,
         () => {
           setUnseenMessageCount(0);
+          setShouldAutoFollow(true);
+          lastScrollOffset = 0;
         },
         { defer: false },
       ),
@@ -293,12 +297,17 @@ export function ChatView(props: ChatViewProps) {
     const updateScrollState = (offset: number) => {
       const handle = listHandle();
       if (!handle) return;
+      const userMovedViewport = Math.abs(offset - lastScrollOffset) > 1;
+      lastScrollOffset = offset;
       const atBottom = handle.scrollSize - offset - handle.viewportSize < 80;
       if (atBottom !== isScrolledToBottom()) {
         setIsScrolledToBottom(atBottom);
       }
       if (atBottom) {
+        setShouldAutoFollow(true);
         setUnseenMessageCount(0);
+      } else if (userMovedViewport) {
+        setShouldAutoFollow(false);
       }
     };
 
@@ -786,6 +795,7 @@ export function ChatView(props: ChatViewProps) {
 
       setInputValue("");
       setIsStreaming(true);
+      setShouldAutoFollow(true);
 
       // Get attachments before clearing
       const attachments = chatStore.getAttachments(sessionId);
@@ -936,7 +946,7 @@ export function ChatView(props: ChatViewProps) {
           };
         },
         () => {
-          if (isScrolledToBottom()) {
+          if (shouldAutoFollow()) {
             scheduleScrollToBottom("auto");
           }
         },
@@ -1307,6 +1317,7 @@ export function ChatView(props: ChatViewProps) {
               <Button
                 type="button"
                 onClick={() => {
+                  setShouldAutoFollow(true);
                   setIsScrolledToBottom(true);
                   setUnseenMessageCount(0);
                   scrollToBottom("smooth");
