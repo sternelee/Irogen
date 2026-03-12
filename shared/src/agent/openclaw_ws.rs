@@ -1143,14 +1143,26 @@ async fn handle_gateway_message(
                     .and_then(extract_text_from_payload)
                     .unwrap_or_default();
                 if !content.is_empty() {
-                    emit_event(
-                        event_sender,
-                        &turn_id,
-                        AgentEvent::TextDelta {
-                            session_id: session_id.clone(),
-                            text: content,
-                        },
-                    );
+                    let previous =
+                        read_last_content(&runtime_state.session_states, &session_id).await;
+                    let delta = compute_incremental_delta(&previous, &content);
+                    if !delta.is_empty() {
+                        emit_event(
+                            event_sender,
+                            &turn_id,
+                            AgentEvent::TextDelta {
+                                session_id: session_id.clone(),
+                                text: delta,
+                            },
+                        );
+                        write_last_content(
+                            &runtime_state.session_states,
+                            &session_id,
+                            content,
+                            &turn_id,
+                        )
+                        .await;
+                    }
                 }
 
                 if status == "ok" {
@@ -1201,9 +1213,8 @@ async fn handle_gateway_message(
                         code: None,
                     },
                 );
+                clear_session_state(&runtime_state.session_states, &session_id).await;
             }
-
-            clear_session_state(&runtime_state.session_states, &session_id).await;
         }
         "event" => {
             let event_name = msg.get("event").and_then(|v| v.as_str()).unwrap_or("");
@@ -1246,7 +1257,7 @@ async fn handle_gateway_message(
                                 .to_string();
 
                             let delta = if !raw_delta.is_empty() {
-                                raw_delta
+                                raw_delta.clone()
                             } else {
                                 compute_incremental_delta(
                                     &read_last_content(&runtime_state.session_states, &session_id)
@@ -1267,7 +1278,11 @@ async fn handle_gateway_message(
                                 write_last_content(
                                     &runtime_state.session_states,
                                     &session_id,
-                                    cumulative,
+                                    if !cumulative.is_empty() { cumulative } else {
+                                        // If we only have delta, we should ideally accumulate it in last_content
+                                        let prev = read_last_content(&runtime_state.session_states, &session_id).await;
+                                        format!("{}{}", prev, raw_delta)
+                                    },
                                     &turn_id,
                                 )
                                 .await;
@@ -1327,121 +1342,6 @@ async fn handle_gateway_message(
                             }
                         }
                     }
-                }
-                "chat" => {
-                    let state = payload
-                        .and_then(|p| p.get("state"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default();
-                    let content = payload
-                        .and_then(extract_text_from_payload)
-                        .unwrap_or_default();
-
-                    if state == "delta" {
-                        let previous =
-                            read_last_content(&runtime_state.session_states, &session_id).await;
-                        let delta = compute_incremental_delta(&previous, &content);
-                        if !delta.is_empty() {
-                            emit_event(
-                                event_sender,
-                                &turn_id,
-                                AgentEvent::TextDelta {
-                                    session_id: session_id.clone(),
-                                    text: delta,
-                                },
-                            );
-                            write_last_content(
-                                &runtime_state.session_states,
-                                &session_id,
-                                content,
-                                &turn_id,
-                            )
-                            .await;
-                        }
-                    } else if state == "final" {
-                        let previous =
-                            read_last_content(&runtime_state.session_states, &session_id).await;
-                        let delta = compute_incremental_delta(&previous, &content);
-                        if !delta.is_empty() {
-                            emit_event(
-                                event_sender,
-                                &turn_id,
-                                AgentEvent::TextDelta {
-                                    session_id: session_id.clone(),
-                                    text: delta,
-                                },
-                            );
-                        }
-                        emit_event(
-                            event_sender,
-                            &turn_id,
-                            AgentEvent::TurnCompleted {
-                                session_id: session_id.clone(),
-                                result: payload.cloned(),
-                            },
-                        );
-                        clear_session_state(&runtime_state.session_states, &session_id).await;
-                    } else if state == "error" || state == "aborted" {
-                        let error = payload
-                            .and_then(|p| p.get("errorMessage"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("Unknown error")
-                            .to_string();
-                        emit_event(
-                            event_sender,
-                            &turn_id,
-                            AgentEvent::TurnError {
-                                session_id: session_id.clone(),
-                                error,
-                                code: None,
-                            },
-                        );
-                        clear_session_state(&runtime_state.session_states, &session_id).await;
-                    }
-                }
-                "agent.delta" | "text_delta" => {
-                    let text = payload
-                        .and_then(extract_text_from_payload)
-                        .unwrap_or_default();
-                    if !text.is_empty() {
-                        emit_event(
-                            event_sender,
-                            &turn_id,
-                            AgentEvent::TextDelta {
-                                session_id: session_id.clone(),
-                                text: text.clone(),
-                            },
-                        );
-                    }
-                }
-                "agent.final" => {
-                    let text = payload
-                        .and_then(extract_text_from_payload)
-                        .unwrap_or_default();
-                    if !text.is_empty() {
-                        let previous =
-                            read_last_content(&runtime_state.session_states, &session_id).await;
-                        let delta = compute_incremental_delta(&previous, &text);
-                        if !delta.is_empty() {
-                            emit_event(
-                                event_sender,
-                                &turn_id,
-                                AgentEvent::TextDelta {
-                                    session_id: session_id.clone(),
-                                    text: delta,
-                                },
-                            );
-                        }
-                    }
-                    emit_event(
-                        event_sender,
-                        &turn_id,
-                        AgentEvent::TurnCompleted {
-                            session_id: session_id.clone(),
-                            result: payload.cloned(),
-                        },
-                    );
-                    clear_session_state(&runtime_state.session_states, &session_id).await;
                 }
                 "tool_started" => {
                     let tool_name = payload
