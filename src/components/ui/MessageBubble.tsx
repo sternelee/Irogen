@@ -8,7 +8,7 @@
  * - SystemMessage: System notifications and tool outputs
  */
 
-import { type Component, Show, createSignal } from "solid-js";
+import { type Component, Show, createMemo, createSignal } from "solid-js";
 import { createClipboard } from "@solid-primitives/clipboard";
 import { FiCopy, FiCheck, FiMoreVertical } from "solid-icons/fi";
 import { SolidMarkdown } from "solid-markdown";
@@ -118,12 +118,10 @@ const AssistantMessage: Component<AssistantMessageProps> = (props) => {
       <div class="w-full max-w-[min(92vw,54rem)] rounded-xl border border-border/60 bg-muted/50 px-3.5 py-3">
         {/* Thinking/Reasoning */}
         <Show when={props.thinking}>
-          <div class="mb-3 pb-3 border-b border-border/50">
-            <ReasoningBlock
-              thinking={props.content}
-              isStreaming={props.isStreaming}
-            />
-          </div>
+          <ReasoningBlock
+            thinking={props.content}
+            isStreaming={props.isStreaming}
+          />
         </Show>
 
         {/* Content */}
@@ -284,13 +282,13 @@ const SystemMessageContent: Component<{ content: string }> = (props) => {
 
 export const MessageBubble: Component<MessageBubbleProps> = (props) => {
   const message = () => props.message;
-  const isUser = () => message().role === "user";
-  const isSystem = () => message().role === "system";
+  const isUser = createMemo(() => message().role === "user");
+  const isSystem = createMemo(() => message().role === "system");
   const [showActions, setShowActions] = createSignal(false);
-  const firstCodeBlock = () => {
+  const firstCodeBlock = createMemo(() => {
     const match = message().content.match(/```(?:\w+)?\n([\s\S]*?)```/);
     return match?.[1]?.trim() || null;
-  };
+  });
 
   const closeActions = () => setShowActions(false);
   const triggerHaptic = () => {

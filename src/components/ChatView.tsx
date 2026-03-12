@@ -24,6 +24,7 @@ import {
   type SessionEvent,
 } from "../stores/sessionEventRouter";
 import { isMobile } from "../stores/deviceStore";
+import type { ChatMessage } from "../stores/chatStore";
 import type { AgentType } from "../stores/sessionStore";
 import { notificationStore } from "../stores/notificationStore";
 import { PermissionMessage, UserQuestionMessage } from "./ui/PermissionCard";
@@ -221,6 +222,24 @@ interface ChatViewProps {
 
 type RightPanelView = "none" | "file" | "git";
 
+interface VirtualMessageRowProps {
+  key?: string;
+  message: ChatMessage;
+  onQuote?: (content: string) => void;
+  onResend?: (content: string) => void;
+}
+
+const VirtualMessageRow = (props: VirtualMessageRowProps) => {
+  return (
+    <MessageBubble
+      message={props.message}
+      onQuote={props.onQuote}
+      onResend={props.onResend}
+      class="pb-4"
+    />
+  );
+};
+
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -250,6 +269,7 @@ export function ChatView(props: ChatViewProps) {
     const rightPanelView = () =>
       props.rightPanelView ?? internalRightPanelView();
     const toolMessageIds = new Map<string, string>();
+    let scrollRafId: number | undefined;
     const pendingPermissionsForModal = () =>
       pendingPermissions().map((permission) => ({
         request_id: permission.id,
@@ -273,8 +293,7 @@ export function ChatView(props: ChatViewProps) {
     const updateScrollState = (offset: number) => {
       const handle = listHandle();
       if (!handle) return;
-      const atBottom =
-        handle.scrollSize - offset - handle.viewportSize < 80;
+      const atBottom = handle.scrollSize - offset - handle.viewportSize < 80;
       if (atBottom !== isScrolledToBottom()) {
         setIsScrolledToBottom(atBottom);
       }
@@ -631,6 +650,9 @@ export function ChatView(props: ChatViewProps) {
       setIsStreaming(routerState.isStreaming);
 
       onCleanup(() => {
+        if (scrollRafId !== undefined) {
+          cancelAnimationFrame(scrollRafId);
+        }
         unsubscribe();
       });
     });
@@ -717,6 +739,16 @@ export function ChatView(props: ChatViewProps) {
       handle.scrollToIndex(list.length - 1, {
         align: "end",
         smooth: behavior === "smooth",
+      });
+    };
+
+    const scheduleScrollToBottom = (behavior: "auto" | "smooth" = "auto") => {
+      if (scrollRafId !== undefined) {
+        cancelAnimationFrame(scrollRafId);
+      }
+      scrollRafId = requestAnimationFrame(() => {
+        scrollRafId = undefined;
+        scrollToBottom(behavior);
       });
     };
 
@@ -905,7 +937,7 @@ export function ChatView(props: ChatViewProps) {
         },
         () => {
           if (isScrolledToBottom()) {
-            requestAnimationFrame(() => scrollToBottom("auto"));
+            scheduleScrollToBottom("auto");
           }
         },
         { defer: false },
@@ -1197,17 +1229,16 @@ export function ChatView(props: ChatViewProps) {
                     ref={setListHandle}
                     data={messages()}
                     itemSize={112}
-                    bufferSize={600}
+                    bufferSize={320}
                     onScroll={updateScrollState}
                   >
                     {(message: ReturnType<typeof messages>[number]) => (
-                      <div class="pb-4">
-                        <MessageBubble
-                          message={message}
-                          onQuote={handleQuoteMessage}
-                          onResend={handleResendMessage}
-                        />
-                      </div>
+                      <VirtualMessageRow
+                        key={message.id}
+                        message={message}
+                        onQuote={handleQuoteMessage}
+                        onResend={handleResendMessage}
+                      />
                     )}
                   </Virtualizer>
                 </Show>

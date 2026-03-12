@@ -157,7 +157,7 @@ export const AppLayout: Component = () => {
         onClose={() => setShortcutsDialogOpen(false)}
       />
       <Show when={sessionStore.state.isHistoryLoading}>
-        <div class="fixed inset-0 z-[60px] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div class="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-60">
           <div class="rounded-2xl bg-card/90 border border-border/60 px-6 py-5 shadow-2xl">
             <SpinnerWithLabel
               label="Loading history…"
@@ -300,7 +300,9 @@ export const AppLayout: Component = () => {
                         <FiFolder size={14} />
                       </Show>
                       <span>
-                        {rightPanelView() === "file" ? "File Browser" : "Git Changes"}
+                        {rightPanelView() === "file"
+                          ? "File Browser"
+                          : "Git Changes"}
                       </span>
                     </div>
                     <Button
