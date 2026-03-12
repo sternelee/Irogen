@@ -14,9 +14,9 @@ import {
   onMount,
   onCleanup,
 } from "solid-js";
-import { TransitionGroup } from "solid-transition-group";
 import { FiAlertTriangle } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
+import { Virtualizer, type VirtualizerHandle } from "virtua/solid";
 import { chatStore } from "../stores/chatStore";
 import { sessionStore } from "../stores/sessionStore";
 import {
@@ -237,10 +237,10 @@ export function ChatView(props: ChatViewProps) {
       chatStore.getPendingQuestions(props.sessionId);
 
     const [inputValue, setInputValue] = createSignal("");
-    const [scrollEl, setScrollEl] = createSignal<HTMLElement>();
+    const [listHandle, setListHandle] = createSignal<VirtualizerHandle>();
     const [isScrolledToBottom, setIsScrolledToBottom] = createSignal(true);
     const [isStreaming, setIsStreaming] = createSignal(false);
-    const [lastScrollTop, setLastScrollTop] = createSignal(0);
+    const [unseenMessageCount, setUnseenMessageCount] = createSignal(0);
     const [permissionMode, setPermissionMode] = createSignal<
       "AlwaysAsk" | "AcceptEdits" | "Plan" | "AutoApprove"
     >("AlwaysAsk");
@@ -260,25 +260,26 @@ export function ChatView(props: ChatViewProps) {
         created_at: Math.floor(permission.requestedAt / 1000),
       }));
 
-    const isNearBottom = (el: HTMLElement) =>
-      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    createEffect(
+      on(
+        () => props.sessionId,
+        () => {
+          setUnseenMessageCount(0);
+        },
+        { defer: false },
+      ),
+    );
 
-    const handleMessageScroll = () => {
-      const el = scrollEl();
-      if (!el) return;
-      const atBottom = isNearBottom(el);
-      const currentTop = el.scrollTop;
-      const scrollingUp = currentTop < lastScrollTop();
-      setLastScrollTop(currentTop);
-
-      // User is actively scrolling up to read history; disable stick-to-bottom immediately.
-      if (scrollingUp && !atBottom) {
-        if (isScrolledToBottom()) setIsScrolledToBottom(false);
-        return;
-      }
-
+    const updateScrollState = (offset: number) => {
+      const handle = listHandle();
+      if (!handle) return;
+      const atBottom =
+        handle.scrollSize - offset - handle.viewportSize < 80;
       if (atBottom !== isScrolledToBottom()) {
         setIsScrolledToBottom(atBottom);
+      }
+      if (atBottom) {
+        setUnseenMessageCount(0);
       }
     };
 
@@ -709,41 +710,15 @@ export function ChatView(props: ChatViewProps) {
         });
     });
 
-    const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
-      const el = scrollEl();
-      if (!el) return;
-      el.scrollTo({ top: el.scrollHeight, behavior });
-    };
-
-    // Auto-scroll to bottom after message/permission updates, if user is near bottom.
-    createEffect(
-      on(
-        () => {
-          const list = messages();
-          const last = list[list.length - 1];
-          return {
-            messageCount: list.length,
-            lastId: last?.id,
-            lastLen: last?.content?.length ?? 0,
-            pendingCount: pendingPermissions().length,
-          };
-        },
-        () => {
-          if (!isScrolledToBottom()) return;
-          requestAnimationFrame(() => scrollToBottom("auto"));
-        },
-      ),
-    );
-
-    onMount(() => {
-      requestAnimationFrame(() => {
-        scrollToBottom("auto");
-        const el = scrollEl();
-        if (el) {
-          setLastScrollTop(el.scrollTop);
-        }
+    const scrollToBottom = (behavior: "auto" | "smooth" = "auto") => {
+      const list = messages();
+      const handle = listHandle();
+      if (!handle || !list.length) return;
+      handle.scrollToIndex(list.length - 1, {
+        align: "end",
+        smooth: behavior === "smooth",
       });
-    });
+    };
 
     // Handle file attachments from ChatInput
     const handleAttachFiles = (files: File[]) => {
@@ -914,6 +889,39 @@ export function ChatView(props: ChatViewProps) {
         props.onSendMessage?.(content);
       }
     };
+
+    // Auto-scroll to bottom after message/permission updates, if user is near bottom.
+    createEffect(
+      on(
+        () => {
+          const list = messages();
+          const last = list[list.length - 1];
+          return {
+            messageCount: list.length,
+            lastId: last?.id,
+            lastLen: last?.content?.length ?? 0,
+            pendingCount: pendingPermissions().length,
+          };
+        },
+        () => {
+          if (isScrolledToBottom()) {
+            requestAnimationFrame(() => scrollToBottom("auto"));
+          }
+        },
+        { defer: false },
+      ),
+    );
+    createEffect(
+      on(
+        () => messages().length,
+        (count, prev = 0) => {
+          if (count > prev && !isScrolledToBottom()) {
+            setUnseenMessageCount((current) => current + (count - prev));
+          }
+          return count;
+        },
+      ),
+    );
 
     const handleQuoteMessage = (content: string) => {
       const quoted = content
@@ -1134,11 +1142,7 @@ export function ChatView(props: ChatViewProps) {
             </div>
 
             {/* Messages Area */}
-            <div
-              ref={setScrollEl}
-              onScroll={handleMessageScroll}
-              class="flex-1 overflow-y-auto px-4 py-5 sm:py-6 pb-24 sm:pb-8 scroll-smooth overflow-x-hidden scrollbar-hide"
-            >
+            <div class="flex-1 overflow-y-auto px-4 py-5 sm:py-6 pb-24 sm:pb-8 overflow-x-hidden scrollbar-hide">
               <Show
                 when={
                   messages().length === 0 && pendingPermissions().length === 0
@@ -1187,18 +1191,26 @@ export function ChatView(props: ChatViewProps) {
               </Show>
 
               {/* Messages */}
-              <div class="space-y-6 mb-4">
-                <TransitionGroup name="message">
-                  <For each={messages()}>
-                    {(message) => (
-                      <MessageBubble
-                        message={message}
-                        onQuote={handleQuoteMessage}
-                        onResend={handleResendMessage}
-                      />
+              <div class="mb-4">
+                <Show when={messages().length > 0}>
+                  <Virtualizer
+                    ref={setListHandle}
+                    data={messages()}
+                    itemSize={112}
+                    bufferSize={600}
+                    onScroll={updateScrollState}
+                  >
+                    {(message: ReturnType<typeof messages>[number]) => (
+                      <div class="pb-4">
+                        <MessageBubble
+                          message={message}
+                          onQuote={handleQuoteMessage}
+                          onResend={handleResendMessage}
+                        />
+                      </div>
                     )}
-                  </For>
-                </TransitionGroup>
+                  </Virtualizer>
+                </Show>
 
                 {/* Pending Permission Requests (inline) */}
                 <For each={pendingPermissionsForModal()}>
@@ -1259,54 +1271,49 @@ export function ChatView(props: ChatViewProps) {
               </div>
             </div>
 
-            <style>
-              {`
-        .message-enter {
-          opacity: 0;
-          transform: translateY(10px);
-        }
-        .message-enter-active {
-          transition: opacity 300ms ease-out, transform 300ms ease-out;
-        }
-        .message-exit {
-          opacity: 1;
-        }
-        .message-exit-active {
-          opacity: 0;
-          transition: opacity 300ms ease-in;
-          position: absolute;
-        }
-      `}
-            </style>
-
             {/* Scroll to bottom button */}
             <Show when={!isScrolledToBottom() && messages().length > 0}>
               <Button
                 type="button"
                 onClick={() => {
                   setIsScrolledToBottom(true);
+                  setUnseenMessageCount(0);
                   scrollToBottom("smooth");
                 }}
                 class="fixed bottom-[6.25rem] right-4 sm:right-6 z-10 h-9 w-9 bg-background/95 shadow-lg"
                 size="icon"
                 variant="ghost"
                 aria-label="Scroll to bottom"
+                title={
+                  unseenMessageCount() > 0
+                    ? `${unseenMessageCount()} new messages`
+                    : "Scroll to bottom"
+                }
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+                <Show
+                  when={unseenMessageCount() > 0}
+                  fallback={
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <title>Scroll to bottom</title>
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                      />
+                    </svg>
+                  }
                 >
-                  <title>Scroll to bottom</title>
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 14l-7 7m0 0l-7-7m7 7V3"
-                  />
-                </svg>
+                  <span class="text-[10px] font-semibold">
+                    {Math.min(unseenMessageCount(), 99)}
+                  </span>
+                </Show>
               </Button>
             </Show>
 

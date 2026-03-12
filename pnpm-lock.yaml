@@ -71,6 +71,9 @@ importers:
       solid-transition-group:
         specifier: ^0.3.0
         version: 0.3.0(solid-js@1.9.11)
+      virtua:
+        specifier: ^0.48.6
+        version: 0.48.6(solid-js@1.9.11)
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.2.0
@@ -3590,6 +3593,26 @@ packages:
   vfile@6.0.3:
     resolution: {integrity: sha512-KzIbH/9tXat2u30jf+smMwFCsno4wHVdNmzFyL+T/L3UGqqk6JKfVqOFOZEpZSHADH1k40ab6NUIXZq422ov3Q==}
 
+  virtua@0.48.6:
+    resolution: {integrity: sha512-Cl4uMvMV5c9RuOy9zhkFMYwx/V4YLBMYLRSWkO8J46opQZ3P7KMq0CqCVOOAKUckjl/r//D2jWTBGYWzmgtzrQ==}
+    peerDependencies:
+      react: '>=16.14.0'
+      react-dom: '>=16.14.0'
+      solid-js: '>=1.0'
+      svelte: '>=5.0'
+      vue: '>=3.2'
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+      solid-js:
+        optional: true
+      svelte:
+        optional: true
+      vue:
+        optional: true
+
   vite-plugin-solid@2.11.10:
     resolution: {integrity: sha512-Yr1dQybmtDtDAHkii6hXuc1oVH9CPcS/Zb2jN/P36qqcrkNnVPsMTzQ06jyzFPFjj3U1IYKMVt/9ZqcwGCEbjw==}
     peerDependencies:
@@ -7047,6 +7070,10 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
+
+  virtua@0.48.6(solid-js@1.9.11):
+    optionalDependencies:
+      solid-js: 1.9.11
 
   vite-plugin-solid@2.11.10(solid-js@1.9.10)(vite@7.3.1(@types/node@24.10.4)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)):
     dependencies:

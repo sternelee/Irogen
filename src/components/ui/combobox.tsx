@@ -96,25 +96,22 @@ const LegacyCombobox: Component<LegacyComboboxProps> = (props) => {
       )}
     >
       <ComboboxPrimitive.HiddenSelect />
-      <ComboboxPrimitive.Control class="flex h-10 items-center rounded-md border border-input bg-transparent px-3">
+      <ComboboxPrimitive.Control class="flex h-10 items-center rounded-md border border-input bg-transparent">
         <ComboboxPrimitive.Input
           placeholder={local.placeholder}
           onInput={(e) => local.onChange?.(e.currentTarget.value)}
           onFocus={() => {
             setIsFocused(true);
             const input = local.value || "";
-            if (
-              (local.items?.length || 0) > 0 &&
-              !hasExactOptionMatch(input)
-            ) {
+            if ((local.items?.length || 0) > 0 && !hasExactOptionMatch(input)) {
               setIsOpen(true);
             }
           }}
           onBlur={() => setIsFocused(false)}
-          class="flex size-full rounded-md bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex size-full rounded-md bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 ml-3"
           {...rest}
         />
-        <ComboboxPrimitive.Trigger class="size-4 opacity-50">
+        <ComboboxPrimitive.Trigger class="size-3 opacity-50 inline-flex items-center justify-center">
           <ComboboxPrimitive.Icon>
             <svg
               xmlns="http://www.w3.org/2000/svg"
