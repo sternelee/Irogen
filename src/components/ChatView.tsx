@@ -16,7 +16,7 @@ import {
 } from "solid-js";
 import { FiAlertTriangle } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
-import { Virtualizer, type VirtualizerHandle } from "virtua/solid";
+import { Virtualizer } from "virtua/solid";
 import { chatStore } from "../stores/chatStore";
 import { sessionStore } from "../stores/sessionStore";
 import {
@@ -256,7 +256,7 @@ export function ChatView(props: ChatViewProps) {
       chatStore.getPendingQuestions(props.sessionId);
 
     const [inputValue, setInputValue] = createSignal("");
-    const [listHandle, setListHandle] = createSignal<VirtualizerHandle>();
+    const [messageScrollEl, setMessageScrollEl] = createSignal<HTMLDivElement>();
     const [isScrolledToBottom, setIsScrolledToBottom] = createSignal(true);
     const [shouldAutoFollow, setShouldAutoFollow] = createSignal(true);
     const [isStreaming, setIsStreaming] = createSignal(false);
@@ -294,12 +294,14 @@ export function ChatView(props: ChatViewProps) {
       ),
     );
 
-    const updateScrollState = (offset: number) => {
-      const handle = listHandle();
-      if (!handle) return;
+    const updateScrollState = () => {
+      const container = messageScrollEl();
+      if (!container) return;
+      const offset = container.scrollTop;
       const userMovedViewport = Math.abs(offset - lastScrollOffset) > 1;
       lastScrollOffset = offset;
-      const atBottom = handle.scrollSize - offset - handle.viewportSize < 80;
+      const atBottom =
+        container.scrollHeight - offset - container.clientHeight < 80;
       if (atBottom !== isScrolledToBottom()) {
         setIsScrolledToBottom(atBottom);
       }
@@ -742,12 +744,11 @@ export function ChatView(props: ChatViewProps) {
     });
 
     const scrollToBottom = (behavior: "auto" | "smooth" = "auto") => {
-      const list = messages();
-      const handle = listHandle();
-      if (!handle || !list.length) return;
-      handle.scrollToIndex(list.length - 1, {
-        align: "end",
-        smooth: behavior === "smooth",
+      const container = messageScrollEl();
+      if (!container) return;
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior,
       });
     };
 
@@ -756,8 +757,12 @@ export function ChatView(props: ChatViewProps) {
         cancelAnimationFrame(scrollRafId);
       }
       scrollRafId = requestAnimationFrame(() => {
-        scrollRafId = undefined;
         scrollToBottom(behavior);
+        scrollRafId = requestAnimationFrame(() => {
+          scrollRafId = undefined;
+          scrollToBottom("auto");
+          updateScrollState();
+        });
       });
     };
 
@@ -1184,7 +1189,11 @@ export function ChatView(props: ChatViewProps) {
             </div>
 
             {/* Messages Area */}
-            <div class="flex-1 overflow-y-auto px-4 py-5 sm:py-6 pb-24 sm:pb-8 overflow-x-hidden scrollbar-hide">
+            <div
+              ref={setMessageScrollEl}
+              onScroll={updateScrollState}
+              class="flex-1 overflow-y-auto px-4 py-5 sm:py-6 pb-24 sm:pb-8 overflow-x-hidden scrollbar-hide"
+            >
               <Show
                 when={
                   messages().length === 0 && pendingPermissions().length === 0
@@ -1236,11 +1245,10 @@ export function ChatView(props: ChatViewProps) {
               <div class="mb-4">
                 <Show when={messages().length > 0}>
                   <Virtualizer
-                    ref={setListHandle}
+                    scrollRef={messageScrollEl()}
                     data={messages()}
                     itemSize={112}
                     bufferSize={320}
-                    onScroll={updateScrollState}
                   >
                     {(message: ReturnType<typeof messages>[number]) => (
                       <VirtualMessageRow
