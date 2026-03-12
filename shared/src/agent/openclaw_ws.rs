@@ -52,6 +52,8 @@ static GATEWAY_MANAGER: std::sync::LazyLock<RwLock<Option<Arc<OpenClawGatewayMan
 pub struct OpenClawGatewayManager {
     /// Connection state
     connected: Arc<AtomicBool>,
+    /// Handshake completion notification
+    handshake_done: Arc<tokio::sync::Notify>,
     /// Event broadcaster for all sessions (shares with sessions)
     event_sender: broadcast::Sender<AgentTurnEvent>,
     /// Channel to send messages to the gateway
@@ -64,6 +66,8 @@ pub struct OpenClawGatewayManager {
     pending_rpc: PendingRpcMap,
     /// Streaming state per session key
     session_states: Arc<RwLock<HashMap<String, SessionStreamState>>>,
+    /// Run ID to session key mapping
+    run_to_session: Arc<RwLock<HashMap<String, String>>>,
     /// Pending permissions
     pending_permissions: Arc<RwLock<HashMap<String, PendingPermission>>>,
     /// Gateway config
@@ -117,6 +121,7 @@ struct GatewayRuntimeState {
     request_contexts: Arc<RwLock<HashMap<String, RequestContext>>>,
     pending_rpc: PendingRpcMap,
     session_states: Arc<RwLock<HashMap<String, SessionStreamState>>>,
+    run_to_session: Arc<RwLock<HashMap<String, String>>>,
 }
 
 // ============================================================================
@@ -292,9 +297,10 @@ struct AgentRequestParams {
     agent_id: String,
     #[serde(rename = "sessionKey")]
     session_key: String,
-    deliver: bool,
     #[serde(rename = "idempotencyKey")]
     idempotency_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timeout: Option<u64>,
 }
 
 // ============================================================================
@@ -479,17 +485,22 @@ async fn get_or_create_gateway_manager() -> Result<Arc<OpenClawGatewayManager>> 
 
     *guard = Some(manager.clone());
 
-    // Wait for connection
+    // Wait for handshake completion
+    let handshake_done = manager.handshake_done.clone();
+    if manager.is_connected() {
+        return Ok(manager);
+    }
+
     tokio::select! {
-        _ = sleep(Duration::from_secs(10)) => {
-            anyhow::bail!("Timeout waiting for gateway connection");
+        _ = sleep(Duration::from_secs(15)) => {
+            anyhow::bail!("Timeout waiting for gateway handshake");
         }
-        _ = tokio::time::sleep(Duration::from_millis(100)) => {
+        _ = handshake_done.notified() => {
             if manager.is_connected() {
-                info!("[OpenClaw] Gateway manager connected");
+                info!("[OpenClaw] Gateway manager connected and handshaked");
                 Ok(manager)
             } else {
-                anyhow::bail!("Failed to establish gateway connection")
+                anyhow::bail!("Gateway connection failed during handshake")
             }
         }
     }
@@ -502,20 +513,24 @@ impl OpenClawGatewayManager {
         let (send_tx, send_rx) = mpsc::channel(100);
 
         let connected = Arc::new(AtomicBool::new(false));
+        let handshake_done = Arc::new(tokio::sync::Notify::new());
         let request_counter = Arc::new(AtomicU64::new(0));
         let pending_permissions = Arc::new(RwLock::new(HashMap::new()));
         let request_contexts = Arc::new(RwLock::new(HashMap::new()));
         let pending_rpc = Arc::new(RwLock::new(HashMap::new()));
         let session_states = Arc::new(RwLock::new(HashMap::new()));
+        let run_to_session = Arc::new(RwLock::new(HashMap::new()));
         let runtime_state = Arc::new(GatewayRuntimeState {
             pending_permissions: pending_permissions.clone(),
             request_contexts: request_contexts.clone(),
             pending_rpc: pending_rpc.clone(),
             session_states: session_states.clone(),
+            run_to_session: run_to_session.clone(),
         });
 
         // Clone for the connection loop
         let connected_clone = connected.clone();
+        let handshake_done_clone = handshake_done.clone();
         let event_sender_clone = event_sender.clone();
         let runtime_state_clone = runtime_state.clone();
         let config_clone = config.clone();
@@ -525,6 +540,7 @@ impl OpenClawGatewayManager {
             Self::connection_loop(
                 config_clone,
                 connected_clone,
+                handshake_done_clone,
                 event_sender_clone,
                 runtime_state_clone,
                 send_rx,
@@ -534,6 +550,7 @@ impl OpenClawGatewayManager {
 
         Ok(Self {
             connected,
+            handshake_done,
             event_sender,
             send_tx,
             request_counter,
@@ -541,6 +558,7 @@ impl OpenClawGatewayManager {
             request_contexts,
             pending_rpc,
             session_states,
+            run_to_session,
             config,
         })
     }
@@ -581,8 +599,8 @@ impl OpenClawGatewayManager {
                 message: message.to_string(),
                 agent_id: self.config.agent_id.clone(),
                 session_key: session_key.to_string(),
-                deliver: false, // Don't deliver to external webhook - we receive responses directly
                 idempotency_key: turn_id.clone(),
+                timeout: Some(120_000), // 120s timeout
             },
         };
 
@@ -595,6 +613,9 @@ impl OpenClawGatewayManager {
                 emit_events: true,
             },
         );
+
+        // Store run_id to session key mapping
+        self.run_to_session.write().await.insert(turn_id.clone(), session_key.to_string());
 
         {
             let mut states = self.session_states.write().await;
@@ -698,6 +719,7 @@ impl OpenClawGatewayManager {
     async fn connection_loop(
         config: GatewayConfig,
         connected: Arc<AtomicBool>,
+        handshake_done: Arc<tokio::sync::Notify>,
         event_sender: broadcast::Sender<AgentTurnEvent>,
         runtime_state: Arc<GatewayRuntimeState>,
         mut send_rx: mpsc::Receiver<Vec<u8>>,
@@ -709,10 +731,12 @@ impl OpenClawGatewayManager {
             info!("[OpenClaw] Starting connection attempt...");
 
             runtime_state.session_states.write().await.clear();
+            runtime_state.run_to_session.write().await.clear();
 
             let result = Self::connect_and_read(
                 &config,
                 &connected,
+                &handshake_done,
                 &event_sender,
                 &runtime_state,
                 &mut send_rx,
@@ -752,6 +776,7 @@ impl OpenClawGatewayManager {
     async fn connect_and_read(
         config: &GatewayConfig,
         connected: &Arc<AtomicBool>,
+        handshake_done: &Arc<tokio::sync::Notify>,
         event_sender: &broadcast::Sender<AgentTurnEvent>,
         runtime_state: &Arc<GatewayRuntimeState>,
         send_rx: &mut mpsc::Receiver<Vec<u8>>,
@@ -839,8 +864,9 @@ impl OpenClawGatewayManager {
             }
         }
 
-        // Mark as connected
+        // Mark as connected and notify handshake done
         connected.store(true, Ordering::SeqCst);
+        handshake_done.notify_waiters();
         info!("[OpenClaw] Connected to gateway, starting message loop");
 
         // Main message loop
@@ -889,21 +915,10 @@ impl OpenClawGatewayManager {
                 }
                 // Handle outgoing messages
                 Some(data) = send_rx.recv() => {
-                    match String::from_utf8(data) {
-                        Ok(text) => {
-                            debug!("[OpenClaw] Sending text message: {} bytes", text.len());
-                            if let Err(e) = write.send(Message::Text(text.into())).await {
-                                error!("[OpenClaw] Failed to send message: {}", e);
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            error!("[OpenClaw] Invalid UTF-8: {}", e);
-                            if let Err(e) = write.send(Message::Binary(e.into_bytes().into())).await {
-                                error!("[OpenClaw] Failed to send binary: {}", e);
-                                break;
-                            }
-                        }
+                    let msg = Message::Text(String::from_utf8_lossy(&data).to_string().into());
+                    if let Err(e) = write.send(msg).await {
+                        error!("[OpenClaw] Failed to send message: {}", e);
+                        break;
                     }
                 }
             }
@@ -997,12 +1012,13 @@ impl OpenClawGatewayManager {
 
         // Build device auth payload (v3 format):
         // v3|deviceId|clientId|clientMode|role|scopes|signedAtMs|token|nonce|platform|deviceFamily
-        let scopes = "operator.read,operator.write,operator.admin";
-        let platform = normalize_device_metadata("linux");
+        let scopes_list = vec!["operator.read", "operator.write", "operator.admin"];
+        let scopes_str = scopes_list.join(",");
+        let platform = normalize_device_metadata(std::env::consts::OS);
         let device_family = normalize_device_metadata("server");
         let payload = format!(
             "v3|{}|gateway-client|backend|operator|{}|{}|{}|{}|{}|{}",
-            device_identity.device_id, scopes, signed_at, token, nonce, platform, device_family
+            device_identity.device_id, scopes_str, signed_at, token, nonce, platform, device_family
         );
 
         let signature = sign_device_payload(&device_identity.private_key, &payload);
@@ -1016,13 +1032,13 @@ impl OpenClawGatewayManager {
                 "maxProtocol": 3,
                 "client": {
                     "id": "gateway-client",
-                    "version": "0.2.0",
-                    "platform": "linux",
-                    "deviceFamily": "server",
+                    "version": "0.3.0",
+                    "platform": platform,
+                    "deviceFamily": device_family,
                     "mode": "backend"
                 },
                 "role": "operator",
-                "scopes": ["operator.read", "operator.write", "operator.admin"],
+                "scopes": scopes_list,
                 "auth": {
                     "token": token
                 },
@@ -1059,14 +1075,6 @@ async fn handle_gateway_message(
     event_sender: &broadcast::Sender<AgentTurnEvent>,
     runtime_state: &Arc<GatewayRuntimeState>,
 ) {
-    // Always log received messages for debugging (truncate safely at char boundary)
-    let log_text = if text.len() > 500 {
-        text.chars().take(500).collect::<String>()
-    } else {
-        text.to_string()
-    };
-    info!("[OpenClaw] Received message: {}", log_text);
-
     let msg: serde_json::Value = match serde_json::from_str(text) {
         Ok(m) => m,
         Err(e) => {
@@ -1076,7 +1084,6 @@ async fn handle_gateway_message(
     };
 
     let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
-    info!("[OpenClaw] Message type: {}", msg_type);
 
     match msg_type {
         "res" => {
@@ -1125,6 +1132,13 @@ async fn handle_gateway_message(
                 .unwrap_or_else(|| response_id.clone());
 
             if ok {
+                let status = payload
+                    .and_then(|p| p.get("status"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("ok")
+                    .to_string()
+                    .to_lowercase();
+
                 let content = payload
                     .and_then(extract_text_from_payload)
                     .unwrap_or_default();
@@ -1139,14 +1153,38 @@ async fn handle_gateway_message(
                     );
                 }
 
-                emit_event(
-                    event_sender,
-                    &turn_id,
-                    AgentEvent::TurnCompleted {
-                        session_id: session_id.clone(),
-                        result: payload.cloned(),
-                    },
-                );
+                if status == "ok" {
+                    emit_event(
+                        event_sender,
+                        &turn_id,
+                        AgentEvent::TurnCompleted {
+                            session_id: session_id.clone(),
+                            result: payload.cloned(),
+                        },
+                    );
+                    clear_session_state(&runtime_state.session_states, &session_id).await;
+                } else if status == "error" {
+                    let error = payload
+                        .and_then(|p| p.get("message"))
+                        .and_then(|v| v.as_str())
+                        .or_else(|| payload.and_then(|p| p.get("error")).and_then(|v| v.as_str()))
+                        .unwrap_or("OpenClaw request failed")
+                        .to_string();
+                    emit_event(
+                        event_sender,
+                        &turn_id,
+                        AgentEvent::TurnError {
+                            session_id: session_id.clone(),
+                            error,
+                            code: None,
+                        },
+                    );
+                    clear_session_state(&runtime_state.session_states, &session_id).await;
+                } else {
+                    // status is "accepted" or other, wait for events
+                    info!("[OpenClaw] Agent request accepted, waiting for events (turn_id: {})", turn_id);
+                    return; // Don't clear session state yet
+                }
             } else {
                 let error = msg
                     .get("error")
@@ -1171,8 +1209,17 @@ async fn handle_gateway_message(
             let event_name = msg.get("event").and_then(|v| v.as_str()).unwrap_or("");
             let payload = msg.get("payload");
 
-            let session_id = extract_session_key(payload).unwrap_or_else(|| "default".to_string());
             let mut turn_id = extract_turn_id(payload).unwrap_or_default();
+            let session_id_from_payload = extract_session_key(payload);
+            
+            let session_id = if let Some(sid) = session_id_from_payload {
+                sid
+            } else if !turn_id.is_empty() {
+                runtime_state.run_to_session.read().await.get(&turn_id).cloned().unwrap_or_else(|| "default".to_string())
+            } else {
+                "default".to_string()
+            };
+
             if turn_id.is_empty() {
                 turn_id = resolve_turn_id(&runtime_state.session_states, &session_id).await;
             }
@@ -1183,74 +1230,101 @@ async fn handle_gateway_message(
                         .and_then(|p| p.get("stream"))
                         .and_then(|v| v.as_str())
                         .unwrap_or_default();
-                    if stream == "assistant" {
-                        let data = payload.and_then(|p| p.get("data"));
-                        let cumulative = data
-                            .and_then(|d| d.get("text"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string();
-                        let raw_delta = data
-                            .and_then(|d| d.get("delta"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string();
+                    let data = payload.and_then(|p| p.get("data"));
 
-                        let delta = if !raw_delta.is_empty() {
-                            raw_delta
-                        } else {
-                            compute_incremental_delta(
-                                &read_last_content(&runtime_state.session_states, &session_id)
-                                    .await,
-                                &cumulative,
-                            )
-                        };
+                    match stream {
+                        "assistant" => {
+                            let cumulative = data
+                                .and_then(|d| d.get("text"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            let raw_delta = data
+                                .and_then(|d| d.get("delta"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string();
 
-                        if !delta.is_empty() {
-                            emit_event(
-                                event_sender,
-                                &turn_id,
-                                AgentEvent::TextDelta {
-                                    session_id: session_id.clone(),
-                                    text: delta,
-                                },
-                            );
-                            write_last_content(
-                                &runtime_state.session_states,
-                                &session_id,
-                                cumulative,
-                                &turn_id,
-                            )
-                            .await;
-                        }
-                    } else if stream == "lifecycle" {
-                        let phase = payload
-                            .and_then(|p| p.get("data"))
-                            .and_then(|d| d.get("phase"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default();
+                            let delta = if !raw_delta.is_empty() {
+                                raw_delta
+                            } else {
+                                compute_incremental_delta(
+                                    &read_last_content(&runtime_state.session_states, &session_id)
+                                        .await,
+                                    &cumulative,
+                                )
+                            };
 
-                        if phase == "start" {
-                            set_session_turn(&runtime_state.session_states, &session_id, &turn_id)
+                            if !delta.is_empty() {
+                                emit_event(
+                                    event_sender,
+                                    &turn_id,
+                                    AgentEvent::TextDelta {
+                                        session_id: session_id.clone(),
+                                        text: delta,
+                                    },
+                                );
+                                write_last_content(
+                                    &runtime_state.session_states,
+                                    &session_id,
+                                    cumulative,
+                                    &turn_id,
+                                )
                                 .await;
+                            }
+                        }
+                        "lifecycle" => {
+                            let phase = data
+                                .and_then(|d| d.get("phase"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default();
+
+                            if phase == "start" {
+                                set_session_turn(&runtime_state.session_states, &session_id, &turn_id)
+                                    .await;
+                                emit_event(
+                                    event_sender,
+                                    &turn_id,
+                                    AgentEvent::TurnStarted {
+                                        session_id: session_id.clone(),
+                                        turn_id: turn_id.clone(),
+                                    },
+                                );
+                            } else if phase == "end" {
+                                emit_event(
+                                    event_sender,
+                                    &turn_id,
+                                    AgentEvent::TurnCompleted {
+                                        session_id: session_id.clone(),
+                                        result: payload.cloned(),
+                                    },
+                                );
+                                clear_session_state(&runtime_state.session_states, &session_id).await;
+                            }
+                        }
+                        "error" | "failed" | "cancelled" => {
+                            let error = data
+                                .and_then(|d| d.get("message"))
+                                .and_then(|v| v.as_str())
+                                .or_else(|| data.and_then(|d| d.get("error")).and_then(|v| v.as_str()))
+                                .unwrap_or("OpenClaw run failed")
+                                .to_string();
                             emit_event(
                                 event_sender,
                                 &turn_id,
-                                AgentEvent::TurnStarted {
+                                AgentEvent::TurnError {
                                     session_id: session_id.clone(),
-                                    turn_id: turn_id.clone(),
-                                },
-                            );
-                        } else if phase == "end" {
-                            emit_event(
-                                event_sender,
-                                &turn_id,
-                                AgentEvent::TurnCompleted {
-                                    session_id: session_id.clone(),
-                                    result: payload.cloned(),
+                                    error,
+                                    code: None,
                                 },
                             );
                             clear_session_state(&runtime_state.session_states, &session_id).await;
+                        }
+                        _ => {
+                            // Handle usage and cost in metadata if available
+                            if let Some(meta) = data.and_then(|d| d.get("meta")).or_else(|| payload.and_then(|p| p.get("meta"))) {
+                                emit_usage_update(event_sender, &session_id, meta);
+                            }
                         }
                     }
                 }
@@ -1338,13 +1412,6 @@ async fn handle_gateway_message(
                                 text: text.clone(),
                             },
                         );
-                        write_last_content(
-                            &runtime_state.session_states,
-                            &session_id,
-                            text,
-                            &turn_id,
-                        )
-                        .await;
                     }
                 }
                 "agent.final" => {
@@ -1566,7 +1633,7 @@ async fn handle_gateway_message(
                 }
                 "connected" | "progress" | "complete" | "connect.challenge"
                 | "gateway.response" => {
-                    info!("[OpenClaw] Skipping control event: {}", event_name);
+                    // Control events, ignore
                 }
                 "health" | "ticket" => {
                     emit_event(
@@ -1581,16 +1648,16 @@ async fn handle_gateway_message(
                     );
                 }
                 _ => {
-                    info!(
-                        "[OpenClaw] Unknown event '{}', full message: {}",
-                        event_name, text
+                    debug!(
+                        "[OpenClaw] Unknown event '{}', payload: {:?}",
+                        event_name, payload
                     );
                 }
             }
         }
         _ => {
-            info!(
-                "[OpenClaw] Unknown message type '{}', full message: {}",
+            debug!(
+                "[OpenClaw] Unknown message type '{}', body: {}",
                 msg_type, text
             );
         }
@@ -1602,6 +1669,42 @@ fn emit_event(event_sender: &broadcast::Sender<AgentTurnEvent>, turn_id: &str, e
         turn_id: turn_id.to_string(),
         event,
     });
+}
+
+fn emit_usage_update(
+    event_sender: &broadcast::Sender<AgentTurnEvent>,
+    session_id: &str,
+    meta: &serde_json::Value,
+) {
+    let agent_meta = meta.get("agentMeta").unwrap_or(meta);
+    let usage = agent_meta.get("usage").unwrap_or(meta);
+
+    let input_tokens = usage
+        .get("inputTokens")
+        .or_else(|| usage.get("input"))
+        .and_then(|v| v.as_i64());
+    let output_tokens = usage
+        .get("outputTokens")
+        .or_else(|| usage.get("output"))
+        .and_then(|v| v.as_i64());
+    let cached_tokens = usage
+        .get("cachedInputTokens")
+        .or_else(|| usage.get("cacheRead"))
+        .and_then(|v| v.as_i64());
+
+    if input_tokens.is_some() || output_tokens.is_some() {
+        emit_event(
+            event_sender,
+            "usage",
+            AgentEvent::UsageUpdate {
+                session_id: session_id.to_string(),
+                input_tokens,
+                output_tokens,
+                cached_tokens,
+                model_context_window: None,
+            },
+        );
+    }
 }
 
 async fn set_session_turn(
@@ -1745,3 +1848,4 @@ fn extract_text_from_payload(payload: &serde_json::Value) -> Option<String> {
                 .map(ToOwned::to_owned)
         })
 }
+
