@@ -36,6 +36,7 @@ import { Dialog } from "./ui/primitives";
 import { Label } from "./ui/primitives";
 import { Select } from "./ui/primitives";
 import { Textarea } from "./ui/primitives";
+import { cn } from "../lib/utils";
 
 interface DirEntry {
   name: string;
@@ -586,7 +587,10 @@ export const NewSessionModal: Component = () => {
                   <Show when={!isInstallingAcp()}>
                     <FiDownload class="mr-2 size-4" />
                   </Show>
-                  <Show when={isInstallingAcp()} fallback="Install / Upgrade ACP">
+                  <Show
+                    when={isInstallingAcp()}
+                    fallback="Install / Upgrade ACP"
+                  >
                     Installing...
                   </Show>
                 </Button>
@@ -658,7 +662,12 @@ export const NewSessionModal: Component = () => {
               </div>
             </Show>
 
-            <div class="mb-4 space-y-2">
+            <div
+              class={cn(
+                "mb-4 space-y-2",
+                sessionStore.state.newSessionAgent === "openclaw" && "hidden",
+              )}
+            >
               <Label for="mcp-servers">MCP Servers (Optional JSON)</Label>
               <Textarea
                 id="mcp-servers"
