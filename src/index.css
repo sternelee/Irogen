@@ -1285,6 +1285,11 @@ pre[class*="language-"] {
   -moz-osx-font-smoothing: grayscale;
 }
 
+code[class*="language-"],
+pre[class*="language-"] {
+  color: inherit !important;
+}
+
 /* Prism highlighting for SolidMarkdown code blocks */
 .prose pre:has(code.prism-highlighted) {
   background: oklch(0.2 0.02 280);

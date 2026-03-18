@@ -11,7 +11,6 @@ import {
   createEffect,
   createSignal,
   on,
-  onMount,
   onCleanup,
 } from "solid-js";
 import { FiAlertTriangle } from "solid-icons/fi";
@@ -346,13 +345,28 @@ export function ChatView(props: ChatViewProps) {
         created_at: Math.floor(permission.requestedAt / 1000),
       }));
 
+    const setSessionInputValue = (
+      next: string | ((prev: string) => string),
+    ) => {
+      const resolved =
+        typeof next === "function"
+          ? (next as (prev: string) => string)(inputValue())
+          : next;
+      setInputValue(resolved);
+      if (props.sessionId) {
+        chatStore.setInputValue(props.sessionId, resolved);
+      }
+    };
+
     createEffect(
       on(
         () => props.sessionId,
-        () => {
+        (sessionId) => {
+          setInputValue(chatStore.getInputValue(sessionId));
           setUnseenMessageCount(0);
           setShouldAutoFollow(true);
           lastScrollOffset = 0;
+          toolMessageIds.clear();
         },
         { defer: false },
       ),
@@ -412,7 +426,7 @@ export function ChatView(props: ChatViewProps) {
       const active = getActiveMentionToken(current);
       if (!active) return;
       const replacement = `@${path} `;
-      setInputValue(
+      setSessionInputValue(
         `${current.slice(0, active.start)}${replacement}${current.slice(active.start + active.token.length)}`,
       );
       clearMentionSuggestions();
@@ -595,6 +609,7 @@ export function ChatView(props: ChatViewProps) {
       // Handle different event types
       switch (eventType) {
         case "text_delta": {
+          setIsStreaming(true);
           const deltaContent = content || "";
           const currentMessages = messages();
           const lastMessage = currentMessages[currentMessages.length - 1];
@@ -617,6 +632,7 @@ export function ChatView(props: ChatViewProps) {
         }
 
         case "response": {
+          setIsStreaming(true);
           // Full response - replace existing message or create new one
           const responseContent = content || "";
           const responseThinking = thinking;
@@ -648,7 +664,7 @@ export function ChatView(props: ChatViewProps) {
         }
 
         case "turn_started":
-          // Don't set isStreaming here - only user sending message should trigger it
+          setIsStreaming(true);
           break;
 
         case "turn_completed": {
@@ -674,6 +690,7 @@ export function ChatView(props: ChatViewProps) {
         }
 
         case "reasoning_delta": {
+          setIsStreaming(true);
           const reasoningContent = content || "";
           const reasonMessages = messages();
           const lastReasonMsg = reasonMessages[reasonMessages.length - 1];
@@ -862,6 +879,11 @@ export function ChatView(props: ChatViewProps) {
         case "notification": {
           const notifLevel = parsed.level || "Info";
           const notifMessage = parsed.message || "";
+          const isOpenClawHealth =
+            session()?.agentType === "openclaw" &&
+            notifLevel === "Info" &&
+            notifMessage.trim().toLowerCase() === "health";
+          if (isOpenClawHealth) return;
           if (notifLevel === "Info" && (!notifMessage || !notifMessage.trim()))
             return;
           chatStore.addMessage(props.sessionId, {
@@ -921,26 +943,33 @@ export function ChatView(props: ChatViewProps) {
       }
     };
 
-    // Subscribe to session events via centralized router
-    onMount(async () => {
+    // Subscribe to session events via centralized router.
+    // Re-subscribe when sessionId changes so newly opened sessions receive events.
+    createEffect(() => {
+      const sessionId = props.sessionId;
+      if (!sessionId) return;
+
       const unsubscribe = sessionEventRouter.subscribe(
-        props.sessionId,
+        sessionId,
         handleSessionEvent,
       );
 
-      // Sync streaming state from router
-      const routerState = sessionEventRouter.getStreamingState(props.sessionId);
+      // Sync streaming state from router for the current session
+      const routerState = sessionEventRouter.getStreamingState(sessionId);
       setIsStreaming(routerState.isStreaming);
 
       onCleanup(() => {
-        if (mentionDebounceTimer !== undefined) {
-          clearTimeout(mentionDebounceTimer);
-        }
-        if (scrollRafId !== undefined) {
-          cancelAnimationFrame(scrollRafId);
-        }
         unsubscribe();
       });
+    });
+
+    onCleanup(() => {
+      if (mentionDebounceTimer !== undefined) {
+        clearTimeout(mentionDebounceTimer);
+      }
+      if (scrollRafId !== undefined) {
+        cancelAnimationFrame(scrollRafId);
+      }
     });
 
     // Sync streaming state when sessionId changes (handles session switching)
@@ -1092,17 +1121,23 @@ export function ChatView(props: ChatViewProps) {
     // Load permission mode from backend
     createEffect(() => {
       if (!props.sessionId) return;
+      const sessionId = props.sessionId;
+
+      // Avoid showing previous session's mode while loading the current session mode.
+      setPermissionMode("AlwaysAsk");
 
       const controlSessionId =
         props.sessionMode === "remote"
-          ? sessionStore.getSession(props.sessionId)?.controlSessionId
+          ? sessionStore.getSession(sessionId)?.controlSessionId
           : undefined;
 
       invoke<string>("get_permission_mode", {
-        sessionId: props.sessionId,
+        sessionId,
         controlSessionId,
       })
         .then((mode) => {
+          // Ignore stale async responses when user has switched sessions.
+          if (props.sessionId !== sessionId) return;
           if (
             mode === "AlwaysAsk" ||
             mode === "AcceptEdits" ||
@@ -1220,7 +1255,7 @@ export function ChatView(props: ChatViewProps) {
       const normalized = normalizeSlashName(value);
       if (!normalized) return;
       const commandText = `/${normalized} `;
-      setInputValue(commandText);
+      setSessionInputValue(commandText);
       setSlashSuggestions([]);
     };
 
@@ -1277,7 +1312,7 @@ export function ChatView(props: ChatViewProps) {
         return;
       }
 
-      setInputValue("");
+      setSessionInputValue("");
       setSlashSuggestions([]);
       setIsStreaming(true);
       setShouldAutoFollow(true);
@@ -1321,9 +1356,12 @@ export function ChatView(props: ChatViewProps) {
             }
           } else {
             // Remote agent - use send_slash_command
+            const controlSessionId =
+              sessionStore.getSession(sessionId)?.controlSessionId;
             await invoke("send_slash_command", {
               sessionId,
               command: content,
+              controlSessionId,
             });
           }
         } catch (error) {
@@ -1435,7 +1473,7 @@ export function ChatView(props: ChatViewProps) {
         .split("\n")
         .map((line) => `> ${line}`)
         .join("\n");
-      setInputValue((prev) =>
+      setSessionInputValue((prev) =>
         prev.trim() ? `${prev}\n\n${quoted}\n` : `${quoted}\n`,
       );
     };
@@ -1443,7 +1481,7 @@ export function ChatView(props: ChatViewProps) {
     const handleResendMessage = (content: string) => {
       if (!content.trim() || isStreaming()) return;
       chatStore.clearAttachments(props.sessionId);
-      setInputValue(content);
+      setSessionInputValue(content);
       queueMicrotask(() => {
         void handleSend();
       });
@@ -1681,7 +1719,9 @@ export function ChatView(props: ChatViewProps) {
                           props.sessionId,
                         );
                         if (session?.projectPath) {
-                          setInputValue(`List files in ${session.projectPath}`);
+                          setSessionInputValue(
+                            `List files in ${session.projectPath}`,
+                          );
                         }
                       }}
                     >
@@ -1692,7 +1732,7 @@ export function ChatView(props: ChatViewProps) {
                       size="sm"
                       class="text-xs"
                       onClick={() => {
-                        setInputValue("Explain what you can do");
+                        setSessionInputValue("Explain what you can do");
                       }}
                     >
                       What can you do?
@@ -1847,7 +1887,7 @@ export function ChatView(props: ChatViewProps) {
               <ChatInput
                 value={inputValue()}
                 onInput={(value) => {
-                  setInputValue(value);
+                  setSessionInputValue(value);
                   if (!value.includes("@")) {
                     clearMentionSuggestions();
                   }

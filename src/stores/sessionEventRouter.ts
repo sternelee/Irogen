@@ -9,6 +9,11 @@
  */
 
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
 
 // ============================================================================
 // Types
@@ -65,6 +70,11 @@ class SessionEventRouter {
   // Current active session ID (set externally)
   private activeSessionId: string | null = null;
 
+  // Notification state
+  private notificationPermission: "unknown" | "granted" | "denied" = "unknown";
+  private lastNotificationAt = new Map<string, number>();
+  private static readonly NOTIFICATION_COOLDOWN_MS = 4000;
+
   /**
    * Initialize global event listeners (called once)
    */
@@ -105,17 +115,17 @@ class SessionEventRouter {
     const nestedEvent = event.event as Record<string, unknown> | undefined;
     const type = (event.type as string) || (nestedEvent?.type as string) || "";
     const sessionId = (event.sessionId as string) || "";
+    const normalizedType = this.normalizeEventType(type);
 
     // Update streaming state
     this.updateStreamingState(sessionId, type, event);
 
     // Track unread for non-active sessions on message events
-    if (
-      this.activeSessionId &&
-      sessionId !== this.activeSessionId &&
-      MESSAGE_EVENT_TYPES.has(type)
-    ) {
-      this.markUnread(sessionId);
+    if (this.activeSessionId && sessionId !== this.activeSessionId) {
+      if (MESSAGE_EVENT_TYPES.has(type)) {
+        this.markUnread(sessionId);
+      }
+      void this.notifyForInactiveSession(sessionId, normalizedType, event);
     }
 
     // Get handlers for this session
@@ -137,6 +147,121 @@ class SessionEventRouter {
         );
       }
     });
+  }
+
+  private normalizeEventType(type: string): string {
+    switch (type) {
+      case "TurnCompleted":
+        return "turn_completed";
+      case "TurnError":
+        return "turn_error";
+      case "ApprovalRequest":
+        return "approval_request";
+      case "UserQuestion":
+        return "user_question";
+      default:
+        return type.replace(":", "_").toLowerCase();
+    }
+  }
+
+  private async ensureNotificationPermission(): Promise<boolean> {
+    if (this.notificationPermission === "granted") return true;
+    if (this.notificationPermission === "denied") return false;
+
+    try {
+      const granted = await isPermissionGranted();
+      if (granted) {
+        this.notificationPermission = "granted";
+        return true;
+      }
+
+      const permission = await requestPermission();
+      const accepted = permission === "granted";
+      this.notificationPermission = accepted ? "granted" : "denied";
+      return accepted;
+    } catch (error) {
+      console.error(
+        "[SessionEventRouter] Failed to request notification permission:",
+        error,
+      );
+      this.notificationPermission = "denied";
+      return false;
+    }
+  }
+
+  private buildNotificationPayload(
+    sessionId: string,
+    eventType: string,
+    event: SessionEvent,
+  ): { title: string; body: string } | null {
+    const titlePrefix = `Session ${sessionId.slice(0, 8)}`;
+    const maybeToolName =
+      typeof event.toolName === "string" && event.toolName.trim()
+        ? event.toolName.trim()
+        : "tool";
+
+    switch (eventType) {
+      case "approval_request":
+      case "permission_request":
+        return {
+          title: `${titlePrefix}: Permission Required`,
+          body: `${maybeToolName} needs your approval`,
+        };
+      case "user_question":
+        return {
+          title: `${titlePrefix}: Input Required`,
+          body:
+            typeof event.question === "string" && event.question.trim()
+              ? event.question.trim()
+              : "Agent is waiting for your selection",
+        };
+      case "turn_completed":
+        return {
+          title: `${titlePrefix}: Reply Ready`,
+          body: "Background agent finished a response",
+        };
+      case "turn_error":
+        return {
+          title: `${titlePrefix}: Error`,
+          body:
+            typeof event.error === "string" && event.error.trim()
+              ? event.error.trim()
+              : "Background agent reported an error",
+        };
+      default:
+        return null;
+    }
+  }
+
+  private async notifyForInactiveSession(
+    sessionId: string,
+    eventType: string,
+    event: SessionEvent,
+  ): Promise<void> {
+    if (!sessionId || sessionId === this.activeSessionId) return;
+
+    const payload = this.buildNotificationPayload(sessionId, eventType, event);
+    if (!payload) return;
+
+    const now = Date.now();
+    const throttleKey = `${sessionId}:${eventType}`;
+    const lastAt = this.lastNotificationAt.get(throttleKey) || 0;
+    if (now - lastAt < SessionEventRouter.NOTIFICATION_COOLDOWN_MS) {
+      return;
+    }
+
+    const canNotify = await this.ensureNotificationPermission();
+    if (!canNotify) return;
+
+    try {
+      await sendNotification({
+        title: payload.title,
+        body: payload.body,
+      });
+      this.lastNotificationAt.set(throttleKey, now);
+    } catch (error) {
+      console.error("[SessionEventRouter] Failed to send notification:", error);
+    }
   }
 
   /**
@@ -169,6 +294,19 @@ class SessionEventRouter {
         state.isStreaming = true;
         state.turnId = (event.turnId as string) || null;
         state.startedAt = Date.now();
+        break;
+
+      case "text_delta":
+      case "TextDelta":
+      case "reasoning_delta":
+      case "ReasoningDelta":
+      case "response":
+      case "AgentResponse":
+        // Some providers may not emit explicit turn_started; treat response chunks as streaming.
+        state.isStreaming = true;
+        if (!state.startedAt) {
+          state.startedAt = Date.now();
+        }
         break;
 
       case "turn_complete":

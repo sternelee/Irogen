@@ -2023,14 +2023,22 @@ async fn send_tcp_data(
 async fn send_slash_command(
     session_id: String,
     command: String,
+    control_session_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let session = {
+    let connection_id = if let Some(cs_id) = control_session_id {
         let sessions = state.sessions.read().await;
         sessions
-            .get(&session_id)
-            .ok_or_else(|| format!("Session not found: {}", session_id))?
-            .clone()
+            .get(&cs_id)
+            .map(|s| s.connection_id.clone())
+            .ok_or_else(|| format!("Control session not found: {}", cs_id))?
+    } else {
+        let sessions = state.sessions.read().await;
+        if let Some(first_session) = sessions.values().next() {
+            first_session.connection_id.clone()
+        } else {
+            return Err("No active connection available".to_string());
+        }
     };
 
     // Forward slash commands directly to the agent as input
@@ -2051,7 +2059,7 @@ async fn send_slash_command(
 
     send_message_via_client(
         &state,
-        &session.connection_id,
+        &connection_id,
         control_message,
         "agent command",
     )
