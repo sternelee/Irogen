@@ -31,6 +31,12 @@ export interface SlashCommandItem {
   description?: string
 }
 
+export interface CustomPromptItem {
+  name: string
+  description?: string
+  command?: string
+}
+
 export type SystemCard =
   | {
       type: 'following'
@@ -121,6 +127,8 @@ interface ChatState {
   unreadCounts: Record<string, number>
   // Per-session custom slash commands from agent runtime updates
   slashCommands: Record<string, SlashCommandItem[]>
+  // Per-session custom prompts from agent runtime updates
+  customPrompts: Record<string, CustomPromptItem[]>
 }
 
 const initialState: ChatState = {
@@ -133,6 +141,7 @@ const initialState: ChatState = {
   attachments: {},
   unreadCounts: {},
   slashCommands: {},
+  customPrompts: {},
 }
 
 export const createChatStore = () => {
@@ -452,6 +461,26 @@ export const createChatStore = () => {
     )
   }
 
+  const getCustomPrompts = (sessionId: string): CustomPromptItem[] => {
+    return state.customPrompts[sessionId] || []
+  }
+
+  const setCustomPrompts = (sessionId: string, prompts: CustomPromptItem[]) => {
+    setState(
+      produce((s: ChatState) => {
+        s.customPrompts[sessionId] = prompts
+      }),
+    )
+  }
+
+  const clearCustomPrompts = (sessionId: string) => {
+    setState(
+      produce((s: ChatState) => {
+        delete s.customPrompts[sessionId]
+      }),
+    )
+  }
+
   return {
     // State
     state,
@@ -503,6 +532,9 @@ export const createChatStore = () => {
     getSlashCommands,
     setSlashCommands,
     clearSlashCommands,
+    getCustomPrompts,
+    setCustomPrompts,
+    clearCustomPrompts,
   }
 }
 

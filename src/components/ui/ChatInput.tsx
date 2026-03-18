@@ -62,7 +62,7 @@ export interface ChatInputProps {
   mentionSuggestions?: { name: string; path: string }[];
   onSelectMention?: (path: string) => void;
   onDismissMentions?: () => void;
-  slashSuggestions?: { name: string; description?: string }[];
+  slashSuggestions?: { name: string; description?: string; value?: string }[];
   onSelectSlash?: (name: string) => void;
   onDismissSlash?: () => void;
 }
@@ -172,7 +172,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
         e.preventDefault();
         const item = slashSuggestions()[activeSlashIndex()];
         if (item) {
-          props.onSelectSlash?.(item.name);
+          props.onSelectSlash?.(item.value || item.name);
         }
         return;
       }
@@ -297,7 +297,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
                     : "hover:bg-muted/60",
                 )}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => props.onSelectSlash?.(item.name)}
+                onClick={() => props.onSelectSlash?.(item.value || item.name)}
               >
                 <div class="text-xs sm:text-sm font-medium">/{item.name}</div>
                 <Show when={item.description}>

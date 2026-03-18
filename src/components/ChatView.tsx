@@ -229,15 +229,39 @@ interface MentionCandidate {
 }
 
 const DEFAULT_SLASH_COMMANDS: SlashCommandItem[] = [
-  { name: "compact", description: "Clear history but keep a summary in context" },
+  {
+    name: "review",
+    description: "Review code (supports optional instructions)",
+  },
+  { name: "review-branch", description: "Review current branch" },
+  { name: "review-commit", description: "Review specific commit" },
+  { name: "init", description: "Initialize a CLAUDE.md/AGENT.md file" },
+  {
+    name: "compact",
+    description: "Clear history but keep a summary in context",
+  },
+  { name: "logout", description: "Logout current Codex session" },
   { name: "context", description: "Show current context usage" },
-  { name: "init", description: "Initialize a CLAUDE.md file" },
   { name: "debug", description: "Read session debug log" },
-  { name: "review", description: "Review a pull request" },
-  { name: "security-review", description: "Run security review on pending changes" },
-  { name: "pr-comments", description: "Get comments from a GitHub pull request" },
+  {
+    name: "security-review",
+    description: "Run security review on pending changes",
+  },
+  {
+    name: "pr-comments",
+    description: "Get comments from a GitHub pull request",
+  },
   { name: "insights", description: "Generate session insights report" },
 ];
+
+interface SlashSuggestionItem {
+  name: string;
+  description?: string;
+  value: string;
+}
+
+const normalizeSlashName = (value: string): string =>
+  value.trim().replace(/^\/+/, "");
 
 type RightPanelView = "none" | "file" | "git";
 
@@ -288,7 +312,8 @@ export function ChatView(props: ChatViewProps) {
       chatStore.getPendingQuestions(props.sessionId);
 
     const [inputValue, setInputValue] = createSignal("");
-    const [messageScrollEl, setMessageScrollEl] = createSignal<HTMLDivElement>();
+    const [messageScrollEl, setMessageScrollEl] =
+      createSignal<HTMLDivElement>();
     const [isScrolledToBottom, setIsScrolledToBottom] = createSignal(true);
     const [shouldAutoFollow, setShouldAutoFollow] = createSignal(true);
     const [isStreaming, setIsStreaming] = createSignal(false);
@@ -300,7 +325,7 @@ export function ChatView(props: ChatViewProps) {
       MentionCandidate[]
     >([]);
     const [slashSuggestions, setSlashSuggestions] = createSignal<
-      SlashCommandItem[]
+      SlashSuggestionItem[]
     >([]);
     // Use props if provided, otherwise use internal state
     const [internalRightPanelView, setInternalRightPanelView] =
@@ -412,7 +437,9 @@ export function ChatView(props: ChatViewProps) {
       }
 
       if (contentType === "content") {
-        const nested = contentItem.content as Record<string, unknown> | undefined;
+        const nested = contentItem.content as
+          | Record<string, unknown>
+          | undefined;
         if (!nested) return;
         if (nested.type === "image") {
           const mimeType = String(nested.mimeType || "image/png");
@@ -449,8 +476,19 @@ export function ChatView(props: ChatViewProps) {
         return;
       }
 
-      if (updateType === "available_commands_update") {
-        const rawCommands = raw.availableCommands ?? raw.available_commands;
+      if (
+        updateType === "available_commands_update" ||
+        raw.AvailableCommandsUpdate
+      ) {
+        const commandContainer = (raw.AvailableCommandsUpdate ||
+          raw.availableCommandsUpdate ||
+          raw.available_commands_update ||
+          raw) as Record<string, unknown>;
+        const rawCommands =
+          commandContainer.availableCommands ??
+          commandContainer.available_commands ??
+          raw.availableCommands ??
+          raw.available_commands;
         const commands = Array.isArray(rawCommands)
           ? (rawCommands as Array<Record<string, unknown>>)
           : [];
@@ -465,6 +503,36 @@ export function ChatView(props: ChatViewProps) {
         return;
       }
 
+      if (
+        updateType === "available_prompts_update" ||
+        raw.AvailablePromptsUpdate
+      ) {
+        const promptContainer = (raw.AvailablePromptsUpdate ||
+          raw.availablePromptsUpdate ||
+          raw.available_prompts_update ||
+          raw) as Record<string, unknown>;
+        const rawPrompts =
+          promptContainer.availablePrompts ??
+          promptContainer.available_prompts ??
+          promptContainer.prompts ??
+          raw.availablePrompts ??
+          raw.available_prompts ??
+          raw.prompts;
+        const prompts = Array.isArray(rawPrompts)
+          ? (rawPrompts as Array<Record<string, unknown>>)
+          : [];
+        const parsedPrompts = prompts
+          .map((prompt) => ({
+            name: String(prompt.name || "").trim(),
+            description: String(prompt.description || "").trim(),
+            command: String(prompt.command || "").trim(),
+          }))
+          .filter((prompt) => prompt.name.length > 0);
+        chatStore.setCustomPrompts(props.sessionId, parsedPrompts);
+        setSlashSuggestions([]);
+        return;
+      }
+
       if (updateType === "tool_call" || updateType === "tool_call_update") {
         const locations = Array.isArray(raw.locations)
           ? (raw.locations as Array<Record<string, unknown>>)
@@ -475,7 +543,10 @@ export function ChatView(props: ChatViewProps) {
             locations: locations
               .map((loc) => ({
                 path: String(loc.path || ""),
-                line: typeof loc.line === "number" ? (loc.line as number) : undefined,
+                line:
+                  typeof loc.line === "number"
+                    ? (loc.line as number)
+                    : undefined,
               }))
               .filter((loc) => !!loc.path),
           });
@@ -906,12 +977,15 @@ export function ChatView(props: ChatViewProps) {
           const query = mention.token.slice(1);
           const data =
             props.sessionMode === "remote"
-              ? await invoke<MentionCandidate[]>("list_remote_mention_candidates", {
-                  sessionId: activeSession?.controlSessionId || "",
-                  basePath,
-                  query,
-                  limit: 20,
-                })
+              ? await invoke<MentionCandidate[]>(
+                  "list_remote_mention_candidates",
+                  {
+                    sessionId: activeSession?.controlSessionId || "",
+                    basePath,
+                    query,
+                    limit: 20,
+                  },
+                )
               : await invoke<MentionCandidate[]>("list_mention_candidates", {
                   basePath,
                   query,
@@ -933,9 +1007,40 @@ export function ChatView(props: ChatViewProps) {
         return;
       }
       const keyword = match[1].toLowerCase();
-      const sessionCommands = chatStore.getSlashCommands(props.sessionId);
-      const all =
-        sessionCommands.length > 0 ? sessionCommands : DEFAULT_SLASH_COMMANDS;
+      const sessionCommands = chatStore
+        .getSlashCommands(props.sessionId)
+        .map((cmd) => ({
+          name: normalizeSlashName(cmd.name),
+          description: cmd.description,
+          value: normalizeSlashName(cmd.name),
+        }));
+      const sessionPrompts = chatStore
+        .getCustomPrompts(props.sessionId)
+        .map((prompt) => {
+          const normalized = normalizeSlashName(prompt.command || prompt.name);
+          return {
+            name: normalized,
+            description: prompt.description
+              ? `[Prompt] ${prompt.description}`
+              : "[Prompt]",
+            value: normalized,
+          };
+        });
+      const base =
+        sessionCommands.length > 0
+          ? sessionCommands
+          : DEFAULT_SLASH_COMMANDS.map((cmd) => ({
+              name: normalizeSlashName(cmd.name),
+              description: cmd.description,
+              value: normalizeSlashName(cmd.name),
+            }));
+
+      const dedup = new Map<string, SlashSuggestionItem>();
+      for (const item of [...base, ...sessionPrompts]) {
+        if (!item.name) continue;
+        dedup.set(item.name, item);
+      }
+      const all = Array.from(dedup.values());
       if (all.length === 0) {
         setSlashSuggestions([]);
         return;
@@ -1070,7 +1175,8 @@ export function ChatView(props: ChatViewProps) {
           });
         }
       } else {
-        const controlSessionId = sessionStore.getSession(sessionId)?.controlSessionId;
+        const controlSessionId =
+          sessionStore.getSession(sessionId)?.controlSessionId;
         await invoke("send_agent_message", {
           sessionId,
           content,
@@ -1110,9 +1216,10 @@ export function ChatView(props: ChatViewProps) {
       }
     };
 
-    const handleSelectSlash = (name: string) => {
-      if (!name.trim()) return;
-      const commandText = `/${name} `;
+    const handleSelectSlash = (value: string) => {
+      const normalized = normalizeSlashName(value);
+      if (!normalized) return;
+      const commandText = `/${normalized} `;
       setInputValue(commandText);
       setSlashSuggestions([]);
     };

@@ -59,6 +59,27 @@ Target: align ClawdPilot with `@zed-industries/claude-agent-acp` style capabilit
   - supports filter, keyboard navigation, select to fill input
   - does **not** auto-send (fills `/{command} ` and waits user submit)
 - Fallback default slash commands shown before session-provided list arrives.
+- Codex ACP slash baseline aligned:
+  - `/review` (optional instructions)
+  - `/review-branch`
+  - `/review-commit`
+  - `/init`
+  - `/compact`
+  - `/logout`
+- Parser compatibility added for both:
+  - inline update payload (`available_commands_update`)
+  - externally-tagged payload (`AvailableCommandsUpdate`)
+
+### 5.1) Custom Prompts
+
+- Added per-session custom prompt storage in frontend store.
+- Added ACP update parsing for custom prompts:
+  - inline update payload (`available_prompts_update`)
+  - externally-tagged payload (`AvailablePromptsUpdate`)
+- Slash chooser now merges:
+  - slash commands
+  - custom prompts (as slash-invokable entries)
+  with normalization/deduplication.
 
 ### 6) Client MCP servers
 
@@ -101,10 +122,10 @@ Target: align ClawdPilot with `@zed-industries/claude-agent-acp` style capabilit
   - `src/stores/chatStore.ts`
   - `src/stores/fileBrowserStore.ts`
   - `src/stores/sessionStore.ts`
+  - `src/stores/chatStore.ts`
 
 ## Verification Snapshot
 
 - `cargo check --workspace` passed in this integration cycle.
 - `pnpm tsc` passed in this integration cycle.
 - `cargo clippy --workspace -- -D warnings` still has pre-existing repo-wide issues unrelated to this feature set.
-
