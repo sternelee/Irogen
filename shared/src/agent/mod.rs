@@ -4,6 +4,7 @@
 //! All external agents are treated as ACP-compatible processes (Zed-style external agents).
 
 pub mod acp;
+pub mod acp_errors;
 pub mod acp_permission;
 pub mod events;
 pub mod factory;
@@ -23,9 +24,10 @@ use tokio::task;
 use tracing::{debug, info, warn};
 
 pub use acp::{
-    AcpSessionStartMode, AcpStreamingSession, load_codex_session_history,
+    AcpSessionStartMode, AcpStreamingSession, SessionOptions, load_codex_session_history,
     load_opencode_session_history,
 };
+pub use acp_errors::{AcpSessionError, AcpStartupError, AcpTerminalError};
 pub use acp_permission::{AcpPermissionHandler, AcpPermissionState};
 pub use events::{AgentEvent, AgentTurnEvent, PendingPermission, PermissionResponse};
 pub use factory::{Agent, AgentAvailability, AgentFactory};

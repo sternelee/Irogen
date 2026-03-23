@@ -722,8 +722,10 @@ impl QuicMessageServer {
                             Err(e) => {
                                 error!("Failed to process incoming message: {}", e);
                                 // 发送错误响应
-                                let error_response = message
-                                    .create_error_response(format!("Failed to process message: {}", e));
+                                let error_response = message.create_error_response(format!(
+                                    "Failed to process message: {}",
+                                    e
+                                ));
                                 if let Err(e) =
                                     Self::send_message(&mut send_stream, &error_response).await
                                 {
@@ -777,7 +779,8 @@ impl QuicMessageServer {
                         );
 
                         // Try to parse the message with more context
-                        if parsed_type_tag == Some(14) { // RemoteSpawn
+                        if parsed_type_tag == Some(14) {
+                            // RemoteSpawn
                             error!(
                                 "RemoteSpawn deserialization failed. This is likely a bincode schema mismatch. \
                                 Expected fields: id(36), sender_id(3), session_id(45), project_path(12), args(0), mcp_servers(None), request_id(36)"
@@ -1654,9 +1657,7 @@ impl QuicMessageClientHandle {
         if response_data.is_empty() {
             warn!(
                 "send_message_to_server(handle) response stream closed without data: connection_id={}, message_id={}, message_type={:?}",
-                connection_id,
-                message.id,
-                message.message_type
+                connection_id, message.id, message.message_type
             );
             return Ok(None);
         }
@@ -1666,15 +1667,12 @@ impl QuicMessageClientHandle {
                 if let MessagePayload::Response(resp) = &response.payload {
                     info!(
                         "send_message_to_server(handle) received response: connection_id={}, request_id={}, success={}",
-                        connection_id,
-                        resp.request_id,
-                        resp.success
+                        connection_id, resp.request_id, resp.success
                     );
                 } else {
                     info!(
                         "send_message_to_server(handle) received non-response payload: connection_id={}, message_type={:?}",
-                        connection_id,
-                        response.message_type
+                        connection_id, response.message_type
                     );
                 }
 
@@ -1808,7 +1806,8 @@ impl QuicMessageClientHandle {
         connection_id: &str,
         message: Message,
     ) -> Result<Option<Message>> {
-        self.send_message_internal(connection_id, message, false).await
+        self.send_message_internal(connection_id, message, false)
+            .await
     }
 
     /// 获取消息接收器

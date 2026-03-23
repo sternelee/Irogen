@@ -31,6 +31,176 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
+/// Semantic tool kind for improved permission decisions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ToolKind {
+    /// Read operations (file read, search, grep)
+    Read,
+    /// Search operations (find, glob, search in files)
+    Search,
+    /// Edit operations (file write, patch, create)
+    Edit,
+    /// Delete operations (file delete, directory remove)
+    Delete,
+    /// Move/rename operations
+    Move,
+    /// Execute operations (bash, shell commands)
+    Execute,
+    /// Fetch operations (web fetch, API calls)
+    Fetch,
+    /// Think/reasoning operations (no side effects)
+    Think,
+    /// Other operations (uncategorized)
+    Other,
+}
+
+impl Default for ToolKind {
+    fn default() -> Self {
+        Self::Other
+    }
+}
+
+/// Infer tool kind from tool name and title
+///
+/// Uses semantic analysis to categorize tools for better permission decisions.
+/// The title (from ACP tool_call.title) provides more context than the tool name.
+pub fn infer_tool_kind(tool_name: &str, tool_title: Option<&str>) -> ToolKind {
+    let lower_name = tool_name.to_lowercase();
+
+    // Use title if available (more descriptive)
+    if let Some(title) = tool_title {
+        let lower_title = title.to_lowercase();
+
+        // Think/reasoning tools - always auto-approved
+        if lower_title.contains("reasoning")
+            || lower_title.contains("think")
+            || lower_title.contains("planning")
+        {
+            return ToolKind::Think;
+        }
+
+        // Read operations
+        if lower_title.contains("read file")
+            || lower_title.contains("view file")
+            || lower_title.contains("cat")
+            || lower_title.contains("get file")
+        {
+            return ToolKind::Read;
+        }
+
+        // Search operations
+        if lower_title.contains("search")
+            || lower_title.contains("find")
+            || lower_title.contains("grep")
+            || lower_title.contains("glob")
+            || lower_title.contains("list file")
+        {
+            return ToolKind::Search;
+        }
+
+        // Edit operations
+        if lower_title.contains("write file")
+            || lower_title.contains("edit file")
+            || lower_title.contains("patch")
+            || lower_title.contains("create file")
+            || lower_title.contains("modify")
+        {
+            return ToolKind::Edit;
+        }
+
+        // Delete operations
+        if lower_title.contains("delete")
+            || lower_title.contains("remove")
+            || lower_title.contains("unlink")
+        {
+            return ToolKind::Delete;
+        }
+
+        // Move operations
+        if lower_title.contains("move")
+            || lower_title.contains("rename")
+            || lower_title.contains("copy")
+        {
+            return ToolKind::Move;
+        }
+
+        // Execute operations
+        if lower_title.contains("bash")
+            || lower_title.contains("shell")
+            || lower_title.contains("execute")
+            || lower_title.contains("run command")
+        {
+            return ToolKind::Execute;
+        }
+
+        // Fetch operations
+        if lower_title.contains("fetch")
+            || lower_title.contains("http")
+            || lower_title.contains("request")
+            || lower_title.contains("download")
+        {
+            return ToolKind::Fetch;
+        }
+    }
+
+    // Fallback to tool name patterns
+    if lower_name.contains("read")
+        || lower_name.contains("cat")
+        || lower_name.contains("view")
+        || lower_name.contains("get")
+    {
+        return ToolKind::Read;
+    }
+
+    if lower_name.contains("search")
+        || lower_name.contains("find")
+        || lower_name.contains("grep")
+        || lower_name.contains("glob")
+        || lower_name.contains("list")
+    {
+        return ToolKind::Search;
+    }
+
+    if lower_name.contains("write")
+        || lower_name.contains("edit")
+        || lower_name.contains("patch")
+        || lower_name.contains("create")
+    {
+        return ToolKind::Edit;
+    }
+
+    if lower_name.contains("delete") || lower_name.contains("remove") {
+        return ToolKind::Delete;
+    }
+
+    if lower_name.contains("move") || lower_name.contains("rename") {
+        return ToolKind::Move;
+    }
+
+    if lower_name.contains("bash")
+        || lower_name.contains("shell")
+        || lower_name.contains("exec")
+        || lower_name.contains("run")
+    {
+        return ToolKind::Execute;
+    }
+
+    if lower_name.contains("fetch")
+        || lower_name.contains("http")
+        || lower_name.contains("download")
+    {
+        return ToolKind::Fetch;
+    }
+
+    if lower_name.contains("think") || lower_name.contains("reason") || lower_name.contains("plan")
+    {
+        return ToolKind::Think;
+    }
+
+    ToolKind::Other
+}
+
 /// Permission mode for tool approval workflow
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -237,6 +407,18 @@ impl PermissionHandler {
         tool_name: &str,
         tool_call_id: &str,
     ) -> Option<AutoApprovalDecision> {
+        self.should_auto_approve_with_title(tool_name, tool_call_id, None)
+    }
+
+    /// Check if a tool should be auto-approved with additional title context
+    ///
+    /// Returns `Some(AutoApprovalDecision)` if auto-approved, `None` if manual approval needed
+    pub fn should_auto_approve_with_title(
+        &self,
+        tool_name: &str,
+        tool_call_id: &str,
+        tool_title: Option<&str>,
+    ) -> Option<AutoApprovalDecision> {
         let lower_tool = tool_name.to_lowercase();
         let lower_id = tool_call_id.to_lowercase();
 
@@ -258,7 +440,14 @@ impl PermissionHandler {
             });
         }
 
-        // Mode-based auto-approval
+        // Infer tool kind for semantic analysis
+        let tool_kind = infer_tool_kind(tool_name, tool_title);
+        debug!(
+            "Tool '{}' inferred as kind {:?} (title: {:?})",
+            tool_name, tool_kind, tool_title
+        );
+
+        // Mode-based auto-approval with semantic tool kind
         match self.mode {
             PermissionMode::AutoApprove => {
                 debug!("Auto-approve mode: auto-approving '{}'", tool_name);
@@ -277,13 +466,44 @@ impl PermissionHandler {
                         mode: Some(PermissionMode::AcceptEdits),
                     });
                 }
+                // Also auto-approve read/search in AcceptEdits mode
+                if matches!(
+                    tool_kind,
+                    ToolKind::Read | ToolKind::Search | ToolKind::Think
+                ) {
+                    debug!(
+                        "AcceptEdits mode: auto-approving read/search/think tool '{}'",
+                        tool_name
+                    );
+                    return Some(AutoApprovalDecision {
+                        decision: ApprovalDecision::Approved,
+                        mode: Some(PermissionMode::AcceptEdits),
+                    });
+                }
                 None
             }
 
             PermissionMode::Plan => {
-                // In plan mode, only approve read operations
+                // In plan mode, auto-approve read/search/think operations
+                if matches!(
+                    tool_kind,
+                    ToolKind::Read | ToolKind::Search | ToolKind::Think
+                ) {
+                    debug!(
+                        "Plan mode: auto-approving read/search/think tool '{}'",
+                        tool_name
+                    );
+                    return Some(AutoApprovalDecision {
+                        decision: ApprovalDecision::Approved,
+                        mode: Some(PermissionMode::Plan),
+                    });
+                }
+                // Also use legacy check for backwards compatibility
                 if !is_write_tool(&lower_tool) {
-                    debug!("Plan mode: auto-approving read tool '{}'", tool_name);
+                    debug!(
+                        "Plan mode: auto-approving read tool '{}' (legacy)",
+                        tool_name
+                    );
                     return Some(AutoApprovalDecision {
                         decision: ApprovalDecision::Approved,
                         mode: Some(PermissionMode::Plan),
@@ -650,6 +870,106 @@ mod tests {
         assert!(is_write_tool("delete_file"));
         assert!(!is_write_tool("read_file"));
         assert!(!is_write_tool("search"));
+    }
+
+    #[test]
+    fn test_infer_tool_kind_from_name() {
+        assert_eq!(infer_tool_kind("read_file", None), ToolKind::Read);
+        assert_eq!(infer_tool_kind("search_files", None), ToolKind::Search);
+        assert_eq!(infer_tool_kind("write_file", None), ToolKind::Edit);
+        assert_eq!(infer_tool_kind("edit_file", None), ToolKind::Edit);
+        assert_eq!(infer_tool_kind("delete_file", None), ToolKind::Delete);
+        assert_eq!(infer_tool_kind("bash", None), ToolKind::Execute);
+        assert_eq!(infer_tool_kind("fetch_url", None), ToolKind::Fetch);
+        assert_eq!(infer_tool_kind("think", None), ToolKind::Think);
+    }
+
+    #[test]
+    fn test_infer_tool_kind_from_title() {
+        assert_eq!(
+            infer_tool_kind("tool", Some("Read file contents")),
+            ToolKind::Read
+        );
+        assert_eq!(
+            infer_tool_kind("tool", Some("Search for pattern")),
+            ToolKind::Search
+        );
+        assert_eq!(
+            infer_tool_kind("tool", Some("Write file")),
+            ToolKind::Edit
+        );
+        assert_eq!(
+            infer_tool_kind("tool", Some("Edit file content")),
+            ToolKind::Edit
+        );
+        assert_eq!(
+            infer_tool_kind("tool", Some("Execute bash command")),
+            ToolKind::Execute
+        );
+        assert_eq!(
+            infer_tool_kind("tool", Some("Think and reason")),
+            ToolKind::Think
+        );
+    }
+
+    #[test]
+    fn test_plan_mode_with_tool_kind() {
+        let handler = PermissionHandler::new(PermissionMode::Plan);
+
+        // Read/search/think should be auto-approved
+        assert!(
+            handler
+                .should_auto_approve_with_title("read_file", "tool-1", Some("Read file"))
+                .is_some()
+        );
+        assert!(
+            handler
+                .should_auto_approve_with_title("grep", "tool-2", Some("Search pattern"))
+                .is_some()
+        );
+        assert!(
+            handler
+                .should_auto_approve_with_title("think", "tool-3", Some("Reasoning"))
+                .is_some()
+        );
+
+        // Edit/execute should require approval
+        assert!(
+            handler
+                .should_auto_approve_with_title("write_file", "tool-4", Some("Write file"))
+                .is_none()
+        );
+        assert!(
+            handler
+                .should_auto_approve_with_title("bash", "tool-5", Some("Run command"))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_accept_edits_mode_with_tool_kind() {
+        let handler = PermissionHandler::new(PermissionMode::AcceptEdits);
+
+        // Edit/write should be auto-approved
+        assert!(
+            handler
+                .should_auto_approve_with_title("write_file", "tool-1", Some("Write file"))
+                .is_some()
+        );
+
+        // Read/search should also be auto-approved in AcceptEdits
+        assert!(
+            handler
+                .should_auto_approve_with_title("read_file", "tool-2", Some("Read file"))
+                .is_some()
+        );
+
+        // Execute should require approval
+        assert!(
+            handler
+                .should_auto_approve_with_title("bash", "tool-3", Some("Run command"))
+                .is_none()
+        );
     }
 
     #[test]

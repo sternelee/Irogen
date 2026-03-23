@@ -30,9 +30,9 @@ use shared::AgentManager;
 use shared::{
     AgentControlAction, AgentPermissionMode, AgentPermissionResponse, AgentType,
     CommunicationManager, DirEntry, Event, EventListener, EventType, FileBrowserAction,
-    FileBrowserEntry, MentionCandidate, Message as ClawdChatMessage, MessageBuilder,
-    MessagePayload, QuicMessageClientHandle, SystemAction, TcpDataType, TcpForwardingAction,
-    TcpForwardingType, MESSAGE_PROTOCOL_VERSION,
+    FileBrowserEntry, MESSAGE_PROTOCOL_VERSION, MentionCandidate, Message as ClawdChatMessage,
+    MessageBuilder, MessagePayload, QuicMessageClientHandle, SystemAction, TcpDataType,
+    TcpForwardingAction, TcpForwardingType,
 };
 
 use crate::tcp_forwarding::TcpForwardingManager;
@@ -537,10 +537,8 @@ async fn connect_to_peer(
                             existing_session_id,
                             e
                         );
-                        stale_session_to_remove = Some((
-                            existing_session_id.clone(),
-                            session.connection_id.clone(),
-                        ));
+                        stale_session_to_remove =
+                            Some((existing_session_id.clone(), session.connection_id.clone()));
                         break;
                     }
                 }
@@ -555,7 +553,9 @@ async fn connect_to_peer(
         }
         let client_guard = state.quic_client.read().await;
         if let Some(quic_client) = client_guard.as_ref() {
-            let _ = quic_client.disconnect_from_server(&stale_connection_id).await;
+            let _ = quic_client
+                .disconnect_from_server(&stale_connection_id)
+                .await;
         }
     }
 
@@ -2201,13 +2201,7 @@ async fn send_slash_command(
     )
     .requires_response();
 
-    send_message_via_client(
-        &state,
-        &connection_id,
-        control_message,
-        "agent command",
-    )
-    .await?;
+    send_message_via_client(&state, &connection_id, control_message, "agent command").await?;
     Ok("command_sent".to_string())
 }
 
@@ -2399,7 +2393,14 @@ async fn remote_spawn_session(
 
         // Debug: Log the message structure
         if let shared::MessagePayload::RemoteSpawn(ref msg) = spawn_message.payload {
-            if let shared::RemoteSpawnAction::SpawnSession { session_id, agent_type, project_path, args, mcp_servers } = &msg.action {
+            if let shared::RemoteSpawnAction::SpawnSession {
+                session_id,
+                agent_type,
+                project_path,
+                args,
+                mcp_servers,
+            } = &msg.action
+            {
                 tracing::info!(
                     "[remote_spawn_session] SpawnSession: session_id_len={}, agent_type={:?}, project_path_len={}, args_len={}, mcp_servers_len={:?}",
                     session_id.len(),

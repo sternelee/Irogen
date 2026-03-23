@@ -14,9 +14,13 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use super::acp::get_extended_path;
+
+/// Minimum Gemini CLI version that supports `--acp` flag
+/// Versions before this use `--experimental-acp`
+const GEMINI_ACP_FLAG_VERSION: [u32; 3] = [0, 33, 0];
 
 /// Agent 可用性检查结果
 #[derive(Debug, Clone, Serialize)]
@@ -114,6 +118,66 @@ fn command_exists(command: &str, env: &HashMap<String, String>) -> bool {
         Ok(out) => out.status.success() && !out.stdout.is_empty(),
         Err(_) => false,
     }
+}
+
+/// Parse a version string like "0.33.0" into [0, 33, 0]
+fn parse_gemini_version(output: &str) -> Option<[u32; 3]> {
+    // Version string is typically "gemini X.Y.Z" or just "X.Y.Z"
+    let version_str = output.trim();
+
+    // Extract version number from the string
+    let version_part = version_str
+        .split_whitespace()
+        .find(|part| {
+            part.chars()
+                .next()
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false)
+        })
+        .unwrap_or(version_str);
+
+    let parts: Vec<u32> = version_part
+        .split('.')
+        .filter_map(|s| s.trim().parse().ok())
+        .collect();
+
+    if parts.len() >= 3 {
+        Some([parts[0], parts[1], parts[2]])
+    } else if parts.len() == 2 {
+        Some([parts[0], parts[1], 0])
+    } else if parts.len() == 1 {
+        Some([parts[0], 0, 0])
+    } else {
+        None
+    }
+}
+
+/// Compare two version arrays. Returns negative if left < right, 0 if equal, positive if left > right
+fn compare_version_parts(left: &[u32], right: &[u32]) -> i32 {
+    for i in 0..3 {
+        let l = left.get(i).copied().unwrap_or(0);
+        let r = right.get(i).copied().unwrap_or(0);
+        if l != r {
+            return l.cmp(&r) as i32;
+        }
+    }
+    0
+}
+
+/// Detect Gemini CLI version with a timeout
+fn detect_gemini_version(command: &str) -> Option<[u32; 3]> {
+    let output = Command::new(command)
+        .arg("--version")
+        .env("PATH", get_extended_path())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let version_str = String::from_utf8_lossy(&output.stdout);
+    parse_gemini_version(&version_str)
 }
 
 /// 统一的 Agent 接口
@@ -253,6 +317,7 @@ impl Agent for OpenCodeAgent {
 /// Gemini CLI Agent (ACP compatible)
 ///
 /// Gemini CLI is an ACP-compatible agent that communicates via JSON-RPC 2.0.
+/// Version >= 0.33.0 uses `--acp`, earlier versions use `--experimental-acp`.
 pub struct GeminiAgent;
 
 impl Agent for GeminiAgent {
@@ -265,8 +330,30 @@ impl Agent for GeminiAgent {
     }
 
     fn default_args(&self) -> Vec<String> {
-        // Gemini CLI uses --experimental-acp for ACP communication
-        vec!["--experimental-acp".to_string()]
+        // Detect version and choose appropriate flag
+        let acp_flag = match detect_gemini_version(self.command()) {
+            Some(version) => {
+                if compare_version_parts(&version, &GEMINI_ACP_FLAG_VERSION) >= 0 {
+                    debug!(
+                        "Gemini version {}.{}.{} >= 0.33.0, using --acp",
+                        version[0], version[1], version[2]
+                    );
+                    "--acp"
+                } else {
+                    debug!(
+                        "Gemini version {}.{}.{} < 0.33.0, using --experimental-acp",
+                        version[0], version[1], version[2]
+                    );
+                    "--experimental-acp"
+                }
+            }
+            None => {
+                // Fallback to --experimental-acp if version detection fails
+                warn!("Could not detect Gemini version, falling back to --experimental-acp");
+                "--experimental-acp"
+            }
+        };
+        vec![acp_flag.to_string()]
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
@@ -552,5 +639,31 @@ mod tests {
         // 这个测试依赖于系统上是否安装了相应的工具
         let default = AgentFactory::get_default();
         println!("Default agent: {:?}", default);
+    }
+
+    #[test]
+    fn test_parse_gemini_version() {
+        assert_eq!(parse_gemini_version("gemini 0.33.0"), Some([0, 33, 0]));
+        assert_eq!(parse_gemini_version("0.32.5"), Some([0, 32, 5]));
+        assert_eq!(parse_gemini_version("gemini 1.0.0"), Some([1, 0, 0]));
+        assert_eq!(parse_gemini_version("0.33"), Some([0, 33, 0]));
+        assert_eq!(parse_gemini_version("1"), Some([1, 0, 0]));
+        assert_eq!(parse_gemini_version("invalid"), None);
+    }
+
+    #[test]
+    fn test_compare_version_parts() {
+        assert!(compare_version_parts(&[0, 33, 0], &[0, 32, 0]) > 0);
+        assert!(compare_version_parts(&[0, 32, 0], &[0, 33, 0]) < 0);
+        assert_eq!(compare_version_parts(&[0, 33, 0], &[0, 33, 0]), 0);
+        assert!(compare_version_parts(&[1, 0, 0], &[0, 33, 0]) > 0);
+        assert!(compare_version_parts(&[0, 33, 1], &[0, 33, 0]) > 0);
+    }
+
+    #[test]
+    fn test_gemini_acp_flag_threshold() {
+        // Test the threshold version
+        assert!(compare_version_parts(&GEMINI_ACP_FLAG_VERSION, &[0, 33, 0]) == 0);
+        assert!(compare_version_parts(&[0, 33, 0], &GEMINI_ACP_FLAG_VERSION) == 0);
     }
 }

@@ -67,6 +67,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -87,6 +88,85 @@ use uuid::Uuid;
 use super::events::{AgentEvent, AgentTurnEvent, PendingPermission};
 use super::permission_handler::{ApprovalDecision, PermissionHandler, PermissionMode};
 use crate::message_protocol::AgentHistoryEntry;
+
+/// Session options for agent-specific configuration
+#[derive(Debug, Clone, Default)]
+pub struct SessionOptions {
+    /// Model identifier to use (agent-specific)
+    pub model: Option<String>,
+    /// List of allowed tools for this session
+    pub allowed_tools: Option<Vec<String>>,
+    /// Maximum number of turns in the session
+    pub max_turns: Option<u32>,
+    /// Agent-specific options passed via _meta
+    pub agent_specific: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+impl SessionOptions {
+    /// Create new session options
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the model
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
+    }
+
+    /// Set the allowed tools
+    pub fn with_allowed_tools(mut self, tools: Vec<String>) -> Self {
+        self.allowed_tools = Some(tools);
+        self
+    }
+
+    /// Set the maximum turns
+    pub fn with_max_turns(mut self, max_turns: u32) -> Self {
+        self.max_turns = Some(max_turns);
+        self
+    }
+
+    /// Add an agent-specific option
+    pub fn with_agent_option(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
+        self.agent_specific
+            .get_or_insert_with(serde_json::Map::new)
+            .insert(key.into(), value);
+        self
+    }
+
+    /// Convert to _meta JSON map for ACP protocol
+    pub fn to_meta(&self) -> Option<serde_json::Map<String, serde_json::Value>> {
+        if self.model.is_none()
+            && self.allowed_tools.is_none()
+            && self.max_turns.is_none()
+            && self.agent_specific.is_none()
+        {
+            return None;
+        }
+
+        let mut meta = serde_json::Map::new();
+
+        if let Some(ref model) = self.model {
+            meta.insert("model".to_string(), serde_json::json!(model));
+        }
+
+        if let Some(ref tools) = self.allowed_tools {
+            meta.insert("allowedTools".to_string(), serde_json::json!(tools));
+        }
+
+        if let Some(max_turns) = self.max_turns {
+            meta.insert("maxTurns".to_string(), serde_json::json!(max_turns));
+        }
+
+        if let Some(ref specific) = self.agent_specific {
+            for (key, value) in specific {
+                meta.insert(key.clone(), value.clone());
+            }
+        }
+
+        Some(meta)
+    }
+}
 
 struct AcpListClient;
 
@@ -212,6 +292,18 @@ pub enum AcpError {
     /// Permission response failed
     #[error("Permission response failed: {0}")]
     PermissionResponseError(String),
+
+    /// Startup error from acp_errors module
+    #[error("{0}")]
+    StartupError(#[from] super::acp_errors::AcpStartupError),
+
+    /// Session error from acp_errors module
+    #[error("{0}")]
+    SessionError(#[from] super::acp_errors::AcpSessionError),
+
+    /// Terminal error from acp_errors module
+    #[error("{0}")]
+    TerminalError(#[from] super::acp_errors::AcpTerminalError),
 }
 
 impl From<AcpError> for String {
@@ -292,6 +384,12 @@ pub struct AcpStreamingSession {
     retry_config: RetryConfig,
     permission_handler: Arc<RwLock<PermissionHandler>>,
     pending_tool_names: Arc<RwLock<HashMap<String, String>>>,
+    /// Number of session updates observed by the session notification handler
+    session_update_count: Arc<AtomicU64>,
+    /// Number of session updates that have been fully processed
+    processed_update_count: Arc<AtomicU64>,
+    /// Whether to suppress new session update notifications during drain
+    suppress_session_updates: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Clone)]
@@ -314,7 +412,7 @@ impl AcpStreamingSession {
         home_dir: Option<String>,
         mcp_servers: Option<serde_json::Value>,
     ) -> Result<Self> {
-        Self::spawn_with_start_mode(
+        Self::spawn_with_options(
             session_id,
             agent_type,
             command,
@@ -323,15 +421,16 @@ impl AcpStreamingSession {
             working_dir,
             home_dir,
             mcp_servers,
+            None,
             AcpSessionStartMode::New,
             RetryConfig::default(),
         )
         .await
     }
 
-    /// Create a new ACP streaming session with custom retry configuration
+    /// Create a new ACP streaming session with custom retry configuration and options
     #[allow(clippy::too_many_arguments)]
-    pub async fn spawn_with_start_mode(
+    pub async fn spawn_with_options(
         session_id: String,
         agent_type: AgentType,
         command: String,
@@ -340,6 +439,7 @@ impl AcpStreamingSession {
         working_dir: PathBuf,
         home_dir: Option<String>,
         mcp_servers: Option<serde_json::Value>,
+        session_options: Option<SessionOptions>,
         start_mode: AcpSessionStartMode,
         retry_config: RetryConfig,
     ) -> Result<Self> {
@@ -353,6 +453,11 @@ impl AcpStreamingSession {
         )));
         let pending_tool_names = Arc::new(RwLock::new(HashMap::<String, String>::new()));
 
+        // Session update draining state
+        let session_update_count = Arc::new(AtomicU64::new(0));
+        let processed_update_count = Arc::new(AtomicU64::new(0));
+        let suppress_session_updates = Arc::new(AtomicBool::new(false));
+
         let runtime_session_id = session_id.clone();
         let runtime_event_sender = event_sender.clone();
         let runtime_event_buffer = event_buffer.clone();
@@ -361,6 +466,10 @@ impl AcpStreamingSession {
         let runtime_command_tx = command_tx.clone();
         let runtime_permission_handler = permission_handler.clone();
         let runtime_pending_tool_names = pending_tool_names.clone();
+        let runtime_session_update_count = session_update_count.clone();
+        let runtime_processed_update_count = processed_update_count.clone();
+        let runtime_suppress_session_updates = suppress_session_updates.clone();
+        let runtime_session_options = session_options.clone();
 
         let thread_name = format!("clawdpilot-acp-{}", &session_id[..session_id.len().min(8)]);
 
@@ -400,6 +509,10 @@ impl AcpStreamingSession {
                         retry_config: runtime_retry_config,
                         permission_handler: runtime_permission_handler,
                         pending_tool_names: runtime_pending_tool_names,
+                        session_update_count: runtime_session_update_count,
+                        processed_update_count: runtime_processed_update_count,
+                        suppress_session_updates: runtime_suppress_session_updates,
+                        session_options: runtime_session_options,
                     })
                     .await
                     {
@@ -420,12 +533,46 @@ impl AcpStreamingSession {
                 retry_config,
                 permission_handler,
                 pending_tool_names,
+                session_update_count,
+                processed_update_count,
+                suppress_session_updates,
             }),
             Ok(Err(err)) => Err(anyhow!(err)),
             Err(_) => Err(anyhow!(
                 "ACP startup channel closed before session became ready"
             )),
         }
+    }
+
+    /// Create a new ACP streaming session with custom retry configuration
+    /// (backward compatible with previous API)
+    #[allow(clippy::too_many_arguments)]
+    pub async fn spawn_with_start_mode(
+        session_id: String,
+        agent_type: AgentType,
+        command: String,
+        args: Vec<String>,
+        env: HashMap<String, String>,
+        working_dir: PathBuf,
+        home_dir: Option<String>,
+        mcp_servers: Option<serde_json::Value>,
+        start_mode: AcpSessionStartMode,
+        retry_config: RetryConfig,
+    ) -> Result<Self> {
+        Self::spawn_with_options(
+            session_id,
+            agent_type,
+            command,
+            args,
+            env,
+            working_dir,
+            home_dir,
+            mcp_servers,
+            None,
+            start_mode,
+            retry_config,
+        )
+        .await
     }
 
     /// Get session ID
@@ -598,6 +745,69 @@ impl AcpStreamingSession {
 
         Ok(())
     }
+
+    /// Wait for all pending session updates to be processed
+    ///
+    /// This is called after `load_session` to ensure all replay messages are
+    /// fully processed before the session is considered ready.
+    pub async fn wait_for_session_update_drain(&self) -> std::result::Result<(), String> {
+        let start = std::time::Instant::now();
+        let timeout = Duration::from_millis(REPLAY_DRAIN_TIMEOUT_MS);
+        let idle_threshold = Duration::from_millis(REPLAY_IDLE_MS);
+        let poll_interval = Duration::from_millis(DRAIN_POLL_INTERVAL_MS);
+
+        let mut last_update_time = std::time::Instant::now();
+        let mut last_observed = 0u64;
+
+        debug!(
+            "Waiting for session update drain for session {}",
+            self.session_id
+        );
+
+        loop {
+            let observed = self.session_update_count.load(Ordering::SeqCst);
+            let processed = self.processed_update_count.load(Ordering::SeqCst);
+
+            // If observed equals processed, check if we've been idle long enough
+            if observed == processed {
+                let now = std::time::Instant::now();
+                if observed != last_observed {
+                    // New updates came in, reset idle timer
+                    last_update_time = now;
+                    last_observed = observed;
+                }
+
+                let idle_duration = now.duration_since(last_update_time);
+                if idle_duration >= idle_threshold {
+                    debug!(
+                        "Session update drain complete for session {} ({} updates)",
+                        self.session_id, observed
+                    );
+                    return Ok(());
+                }
+            } else {
+                // Updates are being processed, reset idle timer
+                last_update_time = std::time::Instant::now();
+                last_observed = observed;
+            }
+
+            if start.elapsed() >= timeout {
+                let pending = observed.saturating_sub(processed);
+                warn!(
+                    "Session update drain timed out for session {} after {:?} ({} pending)",
+                    self.session_id,
+                    start.elapsed(),
+                    pending
+                );
+                return Err(format!(
+                    "Session update drain timed out after {}ms with {} pending updates",
+                    REPLAY_DRAIN_TIMEOUT_MS, pending
+                ));
+            }
+
+            tokio::time::sleep(poll_interval).await;
+        }
+    }
 }
 
 /// Parameters for the ACP runtime task
@@ -622,6 +832,14 @@ struct AcpRuntimeParams {
     retry_config: RetryConfig,
     permission_handler: Arc<RwLock<PermissionHandler>>,
     pending_tool_names: Arc<RwLock<HashMap<String, String>>>,
+    /// Number of session updates observed
+    session_update_count: Arc<AtomicU64>,
+    /// Number of session updates processed
+    processed_update_count: Arc<AtomicU64>,
+    /// Whether to suppress session updates during drain
+    suppress_session_updates: Arc<AtomicBool>,
+    /// Session options for agent-specific configuration
+    session_options: Option<SessionOptions>,
 }
 
 /// Get an extended PATH that includes common binary directories.
@@ -1288,6 +1506,9 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
         terminals: terminals.clone(),
         permission_handler: params.permission_handler.clone(),
         pending_tool_names: params.pending_tool_names.clone(),
+        session_update_count: params.session_update_count.clone(),
+        processed_update_count: params.processed_update_count.clone(),
+        suppress_session_updates: params.suppress_session_updates.clone(),
     };
 
     let session_id_for_stderr = params.session_id.clone();
@@ -1386,16 +1607,25 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
 
     let acp_session_id = match &params.start_mode {
         AcpSessionStartMode::New => {
+            // Build new session request with optional _meta
+            let mut request = acp::NewSessionRequest::new(params.working_dir.clone())
+                .mcp_servers(mcp_servers.clone());
+
+            // Add _meta if session options are provided
+            if let Some(ref options) = params.session_options {
+                if let Some(meta) = options.to_meta() {
+                    debug!("Adding _meta to new_session request: {:?}", meta);
+                    request = request.meta(meta);
+                }
+            }
+
             let new_session_result = with_retry(
                 params.retry_config.clone(),
                 format!("create ACP session for {}", params.session_id),
-                || async {
-                    connection
-                        .new_session(
-                            acp::NewSessionRequest::new(params.working_dir.clone())
-                                .mcp_servers(mcp_servers.clone()),
-                        )
-                        .await
+                || {
+                    let connection = &connection;
+                    let request = &request;
+                    async move { connection.new_session(request.clone()).await }
                 },
             )
             .await;
@@ -1443,7 +1673,13 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
             .await;
 
             match load_result {
-                Ok(_resp) => acp::SessionId::new(session_id.clone()),
+                Ok(_resp) => {
+                    info!(
+                        "ACP session loaded successfully: {} for session {}",
+                        session_id, params.session_id
+                    );
+                    acp::SessionId::new(session_id.clone())
+                }
                 Err(err) => {
                     let error_msg = format!("ACP load_session failed: {err}");
                     // Kill the child process on failure
@@ -2038,6 +2274,12 @@ struct AcpClientHandler {
     terminals: Arc<Mutex<HashMap<acp::TerminalId, TerminalState>>>,
     permission_handler: Arc<RwLock<PermissionHandler>>,
     pending_tool_names: Arc<RwLock<HashMap<String, String>>>,
+    /// Number of session updates observed
+    session_update_count: Arc<AtomicU64>,
+    /// Number of session updates processed
+    processed_update_count: Arc<AtomicU64>,
+    /// Whether to suppress session updates during drain
+    suppress_session_updates: Arc<AtomicBool>,
 }
 
 impl AcpClientHandler {
@@ -2060,6 +2302,9 @@ impl AcpClientHandler {
             }
         }
         let _ = self.event_sender.send(event);
+
+        // Increment processed counter after event is emitted
+        self.processed_update_count.fetch_add(1, Ordering::SeqCst);
     }
 
     fn content_block_text(block: &acp::ContentBlock) -> String {
@@ -2210,6 +2455,32 @@ impl AcpClientHandler {
 
 const MAX_TERMINAL_OUTPUT_BUFFER_SIZE: usize = 1024 * 1024; // 1MB
 
+/// Constants for session update draining
+/// Time to wait with no updates before considering drain complete
+const REPLAY_IDLE_MS: u64 = 80;
+/// Maximum time to wait for drain before timing out
+const REPLAY_DRAIN_TIMEOUT_MS: u64 = 5000;
+/// Poll interval when checking drain status
+const DRAIN_POLL_INTERVAL_MS: u64 = 20;
+
+/// Trim a byte buffer to a maximum size while respecting UTF-8 character boundaries.
+/// This prevents cutting multi-byte UTF-8 characters in the middle.
+fn trim_to_utf8_boundary(buffer: &[u8], max_size: usize) -> usize {
+    if buffer.len() <= max_size {
+        return buffer.len();
+    }
+
+    let start = buffer.len() - max_size;
+
+    // Skip UTF-8 continuation bytes (0b10xxxxxx) to find the start of a valid character
+    let mut actual_start = start;
+    while actual_start < buffer.len() && (buffer[actual_start] & 0b1100_0000) == 0b1000_0000 {
+        actual_start += 1;
+    }
+
+    buffer.len() - actual_start
+}
+
 #[async_trait::async_trait(?Send)]
 impl acp::Client for AcpClientHandler {
     async fn request_permission(
@@ -2319,6 +2590,15 @@ impl acp::Client for AcpClientHandler {
     }
 
     async fn session_notification(&self, args: acp::SessionNotification) -> acp::Result<()> {
+        // Check if we should suppress updates during drain
+        if self.suppress_session_updates.load(Ordering::SeqCst) {
+            debug!("Suppressing session update for session {}", self.session_id);
+            return Ok(());
+        }
+
+        // Increment observed counter for each session update
+        self.session_update_count.fetch_add(1, Ordering::SeqCst);
+
         match args.update {
             acp::SessionUpdate::UserMessageChunk(_) => {}
             acp::SessionUpdate::AgentMessageChunk(chunk) => {
@@ -2517,10 +2797,15 @@ impl acp::Client for AcpClientHandler {
                 let mut output = output_buffer_clone.blocking_lock();
                 output.extend_from_slice(&buf[..n]);
 
-                // Trim buffer if it exceeds maximum size to prevent memory leaks
+                // Trim buffer if it exceeds maximum size, respecting UTF-8 boundaries
                 if output.len() > MAX_TERMINAL_OUTPUT_BUFFER_SIZE {
-                    let trim_size = output.len() - MAX_TERMINAL_OUTPUT_BUFFER_SIZE;
-                    output.drain(0..trim_size);
+                    let current_len = output.len();
+                    let new_size = trim_to_utf8_boundary(&output, MAX_TERMINAL_OUTPUT_BUFFER_SIZE);
+                    let drain_amount = current_len - new_size;
+                    drop(output); // Release borrow before drain
+
+                    let mut output = output_buffer_clone.blocking_lock();
+                    output.drain(0..drain_amount);
                 }
             }
         });
@@ -2628,5 +2913,71 @@ impl acp::Client for AcpClientHandler {
 
     async fn ext_notification(&self, _args: acp::ExtNotification) -> acp::Result<()> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_session_options_builder() {
+        let options = SessionOptions::new()
+            .with_model("claude-3-opus")
+            .with_allowed_tools(vec!["read_file".to_string(), "write_file".to_string()])
+            .with_max_turns(10);
+
+        assert_eq!(options.model, Some("claude-3-opus".to_string()));
+        assert_eq!(
+            options.allowed_tools,
+            Some(vec!["read_file".to_string(), "write_file".to_string()])
+        );
+        assert_eq!(options.max_turns, Some(10));
+    }
+
+    #[test]
+    fn test_session_options_to_meta() {
+        let options = SessionOptions::new()
+            .with_model("claude-3-opus")
+            .with_max_turns(5);
+
+        let meta = options.to_meta().expect("Should have meta");
+        assert_eq!(meta.get("model").unwrap(), &serde_json::json!("claude-3-opus"));
+        assert_eq!(meta.get("maxTurns").unwrap(), &serde_json::json!(5));
+    }
+
+    #[test]
+    fn test_session_options_to_meta_empty() {
+        let options = SessionOptions::new();
+        assert!(options.to_meta().is_none());
+    }
+
+    #[test]
+    fn test_session_options_agent_specific() {
+        let options =
+            SessionOptions::new().with_agent_option("customOption", serde_json::json!("value"));
+
+        let meta = options.to_meta().expect("Should have meta");
+        assert_eq!(meta.get("customOption").unwrap(), &serde_json::json!("value"));
+    }
+
+    #[test]
+    fn test_trim_to_utf8_boundary() {
+        // Test with ASCII only
+        let ascii: Vec<u8> = b"hello world".to_vec();
+        assert_eq!(trim_to_utf8_boundary(&ascii, 5), 5);
+
+        // Test with UTF-8 multi-byte characters
+        // "hello世界" - "世界" is 6 bytes (3 bytes each)
+        let utf8 = "hello世界".as_bytes().to_vec();
+        // If we cut at position 6 (in the middle of "世"), we should skip to "界"
+        let result = trim_to_utf8_boundary(&utf8, 3);
+        assert!(result <= 3);
+    }
+
+    #[test]
+    fn test_trim_to_utf8_boundary_no_trim_needed() {
+        let data: Vec<u8> = b"short".to_vec();
+        assert_eq!(trim_to_utf8_boundary(&data, 100), data.len());
     }
 }
