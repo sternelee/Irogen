@@ -39,15 +39,16 @@ Each `AgentMessage` and `TcpData` message will be sent on its own independent QU
 
 ### Component Changes
 
-#### New Modules (shared/src/)
-
-- `streaming_sender.rs` - `StreamingMessageSender` for sending messages on independent streams
-- `streaming_receiver.rs` - `StreamingMessageReceiver` for receiving messages from independent streams
-
 #### Modified Components
 
-- `quic_server.rs` - Add `send_streaming_message()` and `accept_streaming_messages()` methods
-- Message routing logic to distinguish streaming vs non-streaming message types
+**shared/src/quic_server.rs:**
+
+- Add `send_streaming_message()` and `accept_streaming_messages()` to `QuicMessageServer`
+- Add `send_streaming_message()` to `QuicMessageClient`
+
+**shared/src/message_protocol.rs:**
+
+- No changes to protocol or Message structure
 
 ## Detailed Design
 
@@ -59,7 +60,9 @@ fn is_streaming_message(msg_type: MessageType) -> bool {
 }
 ```
 
-### Sending Flow
+### Sending Flow (Server and Client)
+
+Both `QuicMessageServer` and `QuicMessageClient` use the same sending pattern:
 
 ```rust
 impl QuicMessageServer {
@@ -76,7 +79,23 @@ impl QuicMessageServer {
         Ok(send_stream.id())
     }
 }
+
+impl QuicMessageClient {
+    /// Client-side streaming message sender
+    pub async fn send_streaming_message(
+        &self,
+        message: &Message,
+    ) -> Result<u64> {
+        let mut send_stream = self.connection.open_uni().await?;
+        let data = MessageSerializer::serialize_for_network(message)?;
+        send_stream.write_all(&data).await?;
+        send_stream.finish()?;
+        Ok(send_stream.id())
+    }
+}
 ```
+
+**Note on QUIC Flow Control:** If the receiver's window is exhausted, `write_all` will block. For streaming messages where blocking is undesirable, use `write_chunk` with proper error handling. The transport layer will buffer internally and apply backpressure.
 
 ### Receiving Flow
 
@@ -125,28 +144,77 @@ impl QuicMessageServer {
 
 ### Error Handling
 
-- Stream failure → log error → notify upper layer via channel/event
-- Upper layer decides recovery strategy (AI output can skip; TCP data can reconnect)
-- No automatic retry at transport layer (simplicity principle)
+**Send Errors:**
+
+- `open_uni` failure → propagate error to caller, caller decides retry
+- `write_all` failure (including flow control exhaustion) → propagate error to caller
+- `finish` failure → log warning, data may still be received
+
+**Receive Errors:**
+
+- `message_tx.send()` failure (channel full/closed) → log error with message ID, drop stream
+- Stream reset by sender → `read_to_end` returns error, log and continue
+- Half-open stream (sender opens but never finishes) → `read_to_end` times out after MAX_MESSAGE_SIZE / bytes_per_second estimation; receiver should call `recv.stop(0)` to abort
+
+**Channel Full Scenario:** If upper layer cannot keep up, messages are dropped. This is intentional for streaming data (tolerance for loss as per design decision). For `TcpData`, upper layer should implement reconnection logic.
+
+**Upper Layer Recovery (by message type):**
+
+- `AgentMessage`: AI output has inherent tolerance for gaps (models can continue from partial output). If a chunk is lost, the stream continues; upper layer may request regeneration or accept partial output.
+- `TcpData`: If a data message is lost, the TCP session should be reopened. The existing TCP forwarding reconnection logic handles this.
+
+### Sequence Diagram
+
+```
+Sender                          Receiver
+   │                               │
+   │──── open_uni() ──────────────►│ accept_uni() returns RecvStream
+   │──── write_all(data) ─────────►│
+   │──── finish() ─────────────────►│ (sends FIN marker)
+   │                               │ read_to_end() completes
+   │                               │ deserialize message
+   │                               │ send to upper layer via channel
+   │                               │
+   │     (stream auto-cleanup)     │
+```
+
+### Concurrency Safety
+
+**iroh QUIC supports simultaneous `accept_uni` and `accept_bi`** on the same connection. Each stream type is independent:
+
+- `accept_bi()` handles the original shared stream (non-streaming messages)
+- `accept_uni()` handles new independent streams (streaming messages)
+- Both can run concurrently in separate tasks without synchronization
+
+### Stream Lifecycle
+
+1. Sender calls `open_uni()` → gets `SendStream`
+2. Sender writes data via `write_all()` → data buffered by QUIC
+3. Sender calls `finish()` → sends FIN marker
+4. Receiver calls `accept_uni()` → gets `RecvStream`
+5. Receiver reads via `read_to_end()` → blocks until FIN received
+6. Stream automatically cleaned up after both sides finish
 
 ## File Structure
 
 ```
 shared/src/
-├── streaming_sender.rs     # NEW: StreamingMessageSender
-├── streaming_receiver.rs   # NEW: StreamingMessageReceiver
-├── quic_server.rs         # MODIFIED: Add streaming methods
-└── message_protocol.rs    # NO CHANGE: Protocol unchanged
+├── quic_server.rs         # MODIFIED: Add send_streaming_message(), accept_streaming_messages()
+└── message_protocol.rs   # NO CHANGE: Protocol unchanged
 ```
+
+**Note:** No new modules needed. Streaming functionality is added directly to existing `QuicMessageServer` and `QuicMessageClient` structs.
 
 ## Implementation Sequence
 
-1. Create `streaming_sender.rs` with `StreamingMessageSender`
-2. Create `streaming_receiver.rs` with `StreamingMessageReceiver`
-3. Integrate into `QuicMessageServer` and `QuicMessageClient`
-4. Add message type routing logic
-5. Add tests for streaming send/receive
-6. Verify existing non-streaming messages still work
+1. Add `send_streaming_message()` to `QuicMessageServer`
+2. Add `send_streaming_message()` to `QuicMessageClient`
+3. Add `accept_streaming_messages()` loop to `QuicMessageServer`
+4. Add `accept_streaming_messages()` loop to `QuicMessageClient`
+5. Add routing logic at call sites: use `send_streaming_message()` for `AgentMessage` and `TcpData`, existing `send_message()` for others
+6. Add timeout for `read_to_end()` in stream handler
+7. Add tests for streaming send/receive
+8. Verify existing non-streaming messages still work
 
 ## Testing Considerations
 
