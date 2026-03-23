@@ -837,6 +837,51 @@ impl QuicMessageServer {
         Ok(())
     }
 
+    /// 判断消息类型是否应该使用独立 stream 发送
+    fn is_streaming_message(msg_type: MessageType) -> bool {
+        matches!(msg_type, MessageType::AgentMessage | MessageType::TcpData)
+    }
+
+    /// 通过独立 uni-stream 发送流式消息（AgentMessage、TcpData）
+    /// 返回 stream ID 用于追踪
+    pub async fn send_streaming_message(
+        &self,
+        node_id: &EndpointId,
+        message: &Message,
+    ) -> Result<u64> {
+        let connection = {
+            let connections = self.connections.read().await;
+            connections
+                .values()
+                .find(|c| c.node_id == *node_id)
+                .map(|c| c.connection.clone())
+                .ok_or_else(|| anyhow::anyhow!("Connection not found for node: {:?}", node_id))?
+        };
+
+        let mut send_stream = connection.open_uni().await?;
+        let data = MessageSerializer::serialize_for_network(message)?;
+        send_stream.write_all(&data).await?;
+        send_stream.finish()?;
+
+        Ok(send_stream.id().into())
+    }
+
+    /// 发送消息到特定节点（自动选择传输方式）
+    /// - AgentMessage/TcpData: 使用独立 uni-stream
+    /// - 其他消息类型: 使用共享 BiDi stream
+    pub async fn send_message_to_node_auto(
+        &self,
+        node_id: &EndpointId,
+        message: &Message,
+    ) -> Result<()> {
+        if Self::is_streaming_message(message.message_type) {
+            self.send_streaming_message(node_id, message).await?;
+        } else {
+            self.send_message_to_node(node_id, message.clone()).await?;
+        }
+        Ok(())
+    }
+
     /// 创建默认响应
     fn create_default_response(message: &Message) -> Message {
         let response_data = serde_json::json!({
