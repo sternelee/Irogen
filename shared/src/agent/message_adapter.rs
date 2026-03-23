@@ -77,7 +77,10 @@ pub fn event_to_message_content(
             tool_name,
             input,
         } => {
-            let input_json = input.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or(serde_json::json!({}));
+            let input_json = input
+                .as_ref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or(serde_json::json!({}));
             serde_json::json!({
                 "type": "tool_started",
                 "sessionId": session_id,
@@ -93,7 +96,10 @@ pub fn event_to_message_content(
             tool_name,
             input,
         } => {
-            let input_json = input.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or(serde_json::json!({}));
+            let input_json = input
+                .as_ref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or(serde_json::json!({}));
             serde_json::json!({
                 "type": "tool_input_updated",
                 "sessionId": session_id,
@@ -110,7 +116,8 @@ pub fn event_to_message_content(
             output,
             error,
         } => {
-            let output_json: Option<serde_json::Value> = output.as_ref().and_then(|s| serde_json::from_str(s).ok());
+            let output_json: Option<serde_json::Value> =
+                output.as_ref().and_then(|s| serde_json::from_str(s).ok());
             serde_json::json!({
                 "type": "tool_completed",
                 "sessionId": session_id,
@@ -128,7 +135,8 @@ pub fn event_to_message_content(
             input,
             message,
         } => {
-            let input_json: Option<serde_json::Value> = input.as_ref().and_then(|s| serde_json::from_str(s).ok());
+            let input_json: Option<serde_json::Value> =
+                input.as_ref().and_then(|s| serde_json::from_str(s).ok());
             serde_json::json!({
                 "type": "approval_request",
                 "sessionId": session_id,
@@ -285,13 +293,11 @@ pub fn event_to_agent_message_content(
 
         AgentEvent::ToolInputUpdated {
             tool_name, input, ..
-        } => {
-            AgentMessageContent::ToolCallUpdate {
-                tool_name: tool_name.clone().unwrap_or_else(|| "unknown".to_string()),
-                status: ToolCallStatus::InProgress,
-                output: input.clone(),
-            }
-        }
+        } => AgentMessageContent::ToolCallUpdate {
+            tool_name: tool_name.clone().unwrap_or_else(|| "unknown".to_string()),
+            status: ToolCallStatus::InProgress,
+            output: input.clone(),
+        },
 
         AgentEvent::ToolCompleted {
             tool_name,
@@ -311,16 +317,18 @@ pub fn event_to_agent_message_content(
             }
         }
 
-        // Approval requests - keep as system notification for now
+        // Approval requests - emit as ApprovalRequest for frontend to show permission UI
         AgentEvent::ApprovalRequest {
-            tool_name, message, ..
-        } => AgentMessageContent::SystemNotification {
-            level: NotificationLevel::Warning,
-            message: format!(
-                "Permission required for {}: {}",
-                tool_name,
-                message.as_deref().unwrap_or("No description")
-            ),
+            session_id: _,
+            request_id,
+            tool_name,
+            input,
+            message,
+        } => AgentMessageContent::ApprovalRequest {
+            request_id: request_id.clone(),
+            tool_name: tool_name.clone(),
+            input: input.clone(),
+            message: message.clone(),
         },
 
         // Session lifecycle - skip these, they're not message content

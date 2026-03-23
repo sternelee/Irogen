@@ -1062,6 +1062,25 @@ async fn connect_to_peer(
                                             "type": event_type,
                                             "data": data,
                                         }),
+                                        shared::message_protocol::AgentMessageContent::ApprovalRequest {
+                                            request_id,
+                                            tool_name,
+                                            input,
+                                            message,
+                                        } => {
+                                            let input_json: serde_json::Value = input
+                                                .as_ref()
+                                                .and_then(|s| serde_json::from_str(s).ok())
+                                                .unwrap_or(serde_json::json!({}));
+                                            serde_json::json!({
+                                                "sessionId": agent_msg.session_id,
+                                                "type": "approval_request",
+                                                "requestId": request_id,
+                                                "toolName": tool_name,
+                                                "input": input_json,
+                                                "message": message,
+                                            })
+                                        }
                                     };
 
                                     // Emit agent message event to frontend

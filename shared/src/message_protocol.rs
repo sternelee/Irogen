@@ -590,6 +590,13 @@ pub enum AgentMessageContent {
         event_type: String,
         data: serde_json::Value,
     },
+    /// 权限请求
+    ApprovalRequest {
+        request_id: String,
+        tool_name: String,
+        input: Option<String>,
+        message: Option<String>,
+    },
 }
 
 /// 工具调用状态
