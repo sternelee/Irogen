@@ -577,6 +577,9 @@ export const createSessionStore = () => {
         "Spawn Session",
       );
 
+      // Capture existing session IDs before refreshing
+      const existingSessionIds = new Set(Object.keys(state.sessions));
+
       // Refresh the session list to include the newly spawned session
       try {
         const remoteSessions = await invoke<BackendSessionMetadata[]>(
@@ -585,13 +588,25 @@ export const createSessionStore = () => {
             controlSessionId,
           },
         );
+        let newSessionId: string | null = null;
         for (const s of remoteSessions) {
           // Only add sessions that don't already exist
           if (!state.sessions[s.session_id]) {
-            addSession(
-              mapBackendSessionMetadata(s, "remote", controlSessionId),
+            const mapped = mapBackendSessionMetadata(
+              s,
+              "remote",
+              controlSessionId,
             );
+            addSession(mapped);
+            // Track the new session if it was just created
+            if (!existingSessionIds.has(s.session_id)) {
+              newSessionId = s.session_id;
+            }
           }
+        }
+        // Auto-select the new session if exactly one was created
+        if (newSessionId) {
+          setActiveSession(newSessionId);
         }
       } catch (listError) {
         console.warn(
