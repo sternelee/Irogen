@@ -10,28 +10,26 @@
 
 ---
 
-## Chunk 1: Add Streaming Sender to QuicMessageServer
+## Chunk 1: Add Streaming Sender to QuicMessageServer (Send Side Only)
+
+**Scope:** This chunk covers only the **send/transmit side** for QuicMessageServer. The receive side is handled in Chunk 2. This separates send and receive changes for cleaner review.
 
 **Files:**
 
 - Modify: `shared/src/quic_server.rs:858-882` (add `send_streaming_message` method after `send_message_to_node`)
 
-- [ ] **Step 1: Write test for streaming send detection**
-
-Find where `send_message_to_node` is tested or add a basic test. Look at existing tests in the file around line 2000+.
-
-- [ ] **Step 2: Add helper function to determine streaming message type**
+- [ ] **Step 1: Add helper function to determine streaming message type**
 
 After line 838 (after `send_message`), add:
 
 ```rust
 /// 判断消息类型是否应该使用独立 stream 发送
-fn is_streaming_message_type(msg_type: MessageType) -> bool {
+fn is_streaming_message(msg_type: MessageType) -> bool {
     matches!(msg_type, MessageType::AgentMessage | MessageType::TcpData)
 }
 ```
 
-- [ ] **Step 3: Add `send_streaming_message` method**
+- [ ] **Step 2: Add `send_streaming_message` method**
 
 After `send_message_to_node` (after line 882), add:
 
@@ -61,7 +59,7 @@ pub async fn send_streaming_message(
 }
 ```
 
-- [ ] **Step 4: Add public routing method**
+- [ ] **Step 3: Add public routing method**
 
 Add after `send_streaming_message`:
 
@@ -74,7 +72,7 @@ pub async fn send_message_to_node_auto(
     node_id: &EndpointId,
     message: &Message,
 ) -> Result<()> {
-    if Self::is_streaming_message_type(message.message_type) {
+    if Self::is_streaming_message(message.message_type) {
         self.send_streaming_message(node_id, message).await?;
     } else {
         self.send_message_to_node(node_id, message.clone()).await?;
@@ -83,15 +81,15 @@ pub async fn send_message_to_node_auto(
 }
 ```
 
-- [ ] **Step 5: Run cargo check to verify compilation**
+- [ ] **Step 4: Run cargo build to verify compilation**
 
 ```bash
-cd /Users/sternelee/www/github/ClawdPilot && cargo check -p shared 2>&1 | head -50
+cargo build -p shared 2>&1 | head -50
 ```
 
-Expected: No errors related to our new methods
+Expected: Successful build, no errors
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add shared/src/quic_server.rs
@@ -293,6 +291,8 @@ git commit -m "feat(quic): add accept_streaming_messages for parallel uni-stream
 
 ## Chunk 3: Add Streaming Methods to QuicMessageClient
 
+**Scope:** Covers both send and receive for QuicMessageClient.
+
 **Files:**
 
 - Modify: `shared/src/quic_server.rs` (client section, around line 1377-1450)
@@ -336,7 +336,7 @@ pub async fn send_message_to_server_auto(
     connection_id: &str,
     message: &Message,
 ) -> Result<()> {
-    if Self::is_streaming_message_type(message.message_type) {
+    if Self::is_streaming_message(message.message_type) {
         self.send_streaming_message_to_server(connection_id, message).await?;
     } else {
         self.send_message_to_server(connection_id, message.clone()).await?;
