@@ -10,3 +10,4 @@ tsc-cache
 .vinxi
 *.xml
 .kotlin
+.worktrees
