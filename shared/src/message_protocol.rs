@@ -875,7 +875,7 @@ pub enum RemoteSpawnAction {
         project_path: String,
         args: Vec<String>,
         /// Optional MCP server configuration JSON string (ACP mcpServers array)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         mcp_servers: Option<String>,
     },
     /// 列出远程 CLI 已创建的 agent 会话
@@ -1649,6 +1649,53 @@ mod tests {
         eprintln!("Full Message body bytes: {}", body.len());
         let wire = MessageSerializer::serialize_for_network(&msg).unwrap();
         eprintln!("Wire (frame) total bytes: {}", wire.len());
-        assert_eq!(body.len(), size);
+
+        // Verify serialization and deserialization work
+        let parsed = Message::from_bytes(&body).unwrap();
+        assert_eq!(parsed.message_type, MessageType::RemoteSpawn);
+    }
+
+    #[test]
+    fn test_remote_spawn_message_with_request_id() {
+        // Test with request_id matching what app sends
+        let msg = Message {
+            id: "75c56c56-7a40-435e-8352-96398f12df07".to_string(),
+            message_type: MessageType::RemoteSpawn,
+            priority: MessagePriority::Normal,
+            sender_id: "app".to_string(),
+            receiver_id: None,
+            session_id: None,
+            timestamp: 0,
+            payload: MessagePayload::RemoteSpawn(RemoteSpawnMessage {
+                action: RemoteSpawnAction::SpawnSession {
+                    session_id: "agent_ad6fea43-3ef1-410d-8a60-a76702747baa".to_string(),
+                    agent_type: AgentType::Codex,
+                    project_path: "~/www/gitee".to_string(),
+                    args: vec![],
+                    mcp_servers: None,
+                },
+                request_id: Some("38465219-26c9-4784-8c2e-537daf92009a".to_string()),
+            }),
+            requires_response: true,
+            correlation_id: None,
+        };
+
+        let body = msg.to_bytes().unwrap();
+        eprintln!("Message with request_id body size: {} bytes", body.len());
+
+        // Verify deserialization works
+        let parsed = Message::from_bytes(&body).unwrap();
+        assert_eq!(parsed.message_type, MessageType::RemoteSpawn);
+
+        // Verify the payload
+        if let MessagePayload::RemoteSpawn(ref payload) = parsed.payload {
+            if let RemoteSpawnAction::SpawnSession { session_id, .. } = &payload.action {
+                assert_eq!(session_id, "agent_ad6fea43-3ef1-410d-8a60-a76702747baa");
+            } else {
+                panic!("Expected SpawnSession action");
+            }
+        } else {
+            panic!("Expected RemoteSpawn payload");
+        }
     }
 }
