@@ -86,8 +86,9 @@ pub enum AgentEvent {
         session_id: String,
         tool_id: String,
         tool_name: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        input: Option<Value>,
+        /// JSON string for bincode compatibility
+        #[serde(default)]
+        input: Option<String>,
     },
 
     /// Tool use completed
@@ -95,11 +96,12 @@ pub enum AgentEvent {
     ToolCompleted {
         session_id: String,
         tool_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         tool_name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        output: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        /// JSON string for bincode compatibility
+        #[serde(default)]
+        output: Option<String>,
+        #[serde(default)]
         error: Option<String>,
     },
 
@@ -108,10 +110,11 @@ pub enum AgentEvent {
     ToolInputUpdated {
         session_id: String,
         tool_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         tool_name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        input: Option<Value>,
+        /// JSON string for bincode compatibility
+        #[serde(default)]
+        input: Option<String>,
     },
 
     /// Approval request from agent
@@ -120,9 +123,10 @@ pub enum AgentEvent {
         session_id: String,
         request_id: String,
         tool_name: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        input: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        /// JSON string for bincode compatibility
+        #[serde(default)]
+        input: Option<String>,
+        #[serde(default)]
         message: Option<String>,
     },
 
@@ -130,8 +134,9 @@ pub enum AgentEvent {
     #[serde(rename = "turn:completed")]
     TurnCompleted {
         session_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        result: Option<Value>,
+        /// JSON string for bincode compatibility
+        #[serde(default)]
+        result: Option<String>,
     },
 
     /// Turn/response error
@@ -139,7 +144,7 @@ pub enum AgentEvent {
     TurnError {
         session_id: String,
         error: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         code: Option<String>,
     },
 
@@ -151,13 +156,13 @@ pub enum AgentEvent {
     #[serde(rename = "usage:update")]
     UsageUpdate {
         session_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         input_tokens: Option<i64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         output_tokens: Option<i64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         cached_tokens: Option<i64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         model_context_window: Option<i64>,
     },
 
@@ -167,7 +172,7 @@ pub enum AgentEvent {
         session_id: String,
         operation: String,
         progress: f32, // 0.0 to 1.0
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         message: Option<String>,
     },
 
@@ -177,8 +182,9 @@ pub enum AgentEvent {
         session_id: String,
         level: NotificationLevel,
         message: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        details: Option<Value>,
+        /// JSON string for bincode compatibility
+        #[serde(default)]
+        details: Option<String>,
     },
 
     /// File operation notification (for ACP file operations)
@@ -187,7 +193,7 @@ pub enum AgentEvent {
         session_id: String,
         operation: FileOperationType,
         path: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         status: Option<String>,
     },
 
@@ -197,7 +203,7 @@ pub enum AgentEvent {
         session_id: String,
         command: String,
         output: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         exit_code: Option<i32>,
     },
 
@@ -206,7 +212,8 @@ pub enum AgentEvent {
     Raw {
         session_id: String,
         agent: AgentType,
-        data: Value,
+        /// Data as JSON string for bincode compatibility
+        data: String,
     },
 }
 
@@ -352,11 +359,10 @@ impl AgentEvent {
             AgentEvent::ToolInputUpdated {
                 tool_name, input, ..
             } => {
-                let output = input.as_ref().and_then(|v| serde_json::to_string(v).ok());
                 AgentMessageContent::ToolCallUpdate {
                     tool_name: tool_name.clone().unwrap_or_else(|| "unknown".to_string()),
                     status: ToolCallStatus::InProgress,
-                    output,
+                    output: input.clone(),
                 }
             }
 
@@ -371,14 +377,10 @@ impl AgentEvent {
                 } else {
                     ToolCallStatus::Completed
                 };
-                let output_str = output
-                    .as_ref()
-                    .and_then(|v| serde_json::to_string(v).ok())
-                    .or_else(|| error.clone());
                 AgentMessageContent::ToolCallUpdate {
                     tool_name: tool_name.clone().unwrap_or_else(|| "unknown".to_string()),
                     status,
-                    output: output_str,
+                    output: output.clone().or(error.clone()),
                 }
             }
 

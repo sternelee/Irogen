@@ -100,7 +100,7 @@ pub enum TcpForwardingAction {
         remote_port: Option<u16>,
         forwarding_type: TcpForwardingType,
         /// Optional session_id provided by client. If set, CLI will use this instead of generating a new one.
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         session_id: Option<String>,
     },
     /// 列出TCP转发会话
@@ -625,8 +625,8 @@ pub struct AgentPermissionRequest {
     pub session_id: String,
     /// 工具名称
     pub tool_name: String,
-    /// 工具参数
-    pub tool_params: serde_json::Value,
+    /// 工具参数 (JSON string for bincode compatibility)
+    pub tool_params: String,
     /// 请求时间戳
     pub requested_at: u64,
     /// 权限模式

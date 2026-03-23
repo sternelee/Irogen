@@ -1174,7 +1174,7 @@ async fn handle_gateway_message(
                         &turn_id,
                         AgentEvent::TurnCompleted {
                             session_id: session_id.clone(),
-                            result: payload.cloned(),
+                            result: payload.and_then(|v| serde_json::to_string(&v).ok()),
                         },
                     );
                     clear_session_state(&runtime_state.session_states, &session_id).await;
@@ -1337,7 +1337,7 @@ async fn handle_gateway_message(
                                     &turn_id,
                                     AgentEvent::TurnCompleted {
                                         session_id: session_id.clone(),
-                                        result: payload.cloned(),
+                                        result: payload.and_then(|v| serde_json::to_string(&v).ok()),
                                     },
                                 );
                                 clear_session_state(&runtime_state.session_states, &session_id)
@@ -1381,7 +1381,7 @@ async fn handle_gateway_message(
                         .and_then(|v| v.as_str())
                         .unwrap_or("unknown")
                         .to_string();
-                    let input = payload.and_then(|p| p.get("input")).cloned();
+                    let input = payload.and_then(|p| p.get("input")).and_then(|v| serde_json::to_string(v).ok());
                     let tool_id = payload
                         .and_then(|p| p.get("tool_id"))
                         .and_then(|v| v.as_str())
@@ -1404,7 +1404,7 @@ async fn handle_gateway_message(
                         .and_then(|p| p.get("name"))
                         .and_then(|v| v.as_str())
                         .map(ToOwned::to_owned);
-                    let output = payload.and_then(|p| p.get("output")).cloned();
+                    let output = payload.and_then(|p| p.get("output")).and_then(|v| serde_json::to_string(v).ok());
                     let error = payload
                         .and_then(|p| p.get("error"))
                         .and_then(|v| v.as_str())
@@ -1470,7 +1470,7 @@ async fn handle_gateway_message(
                             session_id: session_id.clone(),
                             request_id,
                             tool_name,
-                            input: Some(tool_params),
+                            input: Some(serde_json::to_string(&tool_params).unwrap_or_else(|_| "{}".to_string())),
                             message,
                         },
                     );
@@ -1517,7 +1517,7 @@ async fn handle_gateway_message(
                             session_id: approval_session_id,
                             request_id: approval_id,
                             tool_name: "exec".to_string(),
-                            input: Some(tool_params),
+                            input: Some(serde_json::to_string(&tool_params).unwrap_or_else(|_| "{}".to_string())),
                             message,
                         },
                     );
@@ -1575,7 +1575,7 @@ async fn handle_gateway_message(
                             session_id,
                             level: crate::message_protocol::NotificationLevel::Info,
                             message: event_name.to_string(),
-                            details: payload.cloned(),
+                            details: payload.and_then(|v| serde_json::to_string(&v).ok()),
                         },
                     );
                 }

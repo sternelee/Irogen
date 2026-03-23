@@ -43,7 +43,8 @@ pub fn event_to_message_content(
         }),
 
         AgentEvent::TurnCompleted { session_id, result } => {
-            let content = result.as_ref().and_then(|v| {
+            let content = result.as_ref().and_then(|s| {
+                let v: serde_json::Value = serde_json::from_str(s).ok()?;
                 if let Some(obj) = v.as_object() {
                     obj.get("content")
                         .and_then(|c| c.as_str())
@@ -75,26 +76,32 @@ pub fn event_to_message_content(
             tool_id,
             tool_name,
             input,
-        } => serde_json::json!({
-            "type": "tool_started",
-            "sessionId": session_id,
-            "toolId": tool_id,
-            "toolName": tool_name,
-            "input": input,
-        }),
+        } => {
+            let input_json = input.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or(serde_json::json!({}));
+            serde_json::json!({
+                "type": "tool_started",
+                "sessionId": session_id,
+                "toolId": tool_id,
+                "toolName": tool_name,
+                "input": input_json,
+            })
+        }
 
         AgentEvent::ToolInputUpdated {
             session_id,
             tool_id,
             tool_name,
             input,
-        } => serde_json::json!({
-            "type": "tool_input_updated",
-            "sessionId": session_id,
-            "toolId": tool_id,
-            "toolName": tool_name,
-            "input": input,
-        }),
+        } => {
+            let input_json = input.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or(serde_json::json!({}));
+            serde_json::json!({
+                "type": "tool_input_updated",
+                "sessionId": session_id,
+                "toolId": tool_id,
+                "toolName": tool_name,
+                "input": input_json,
+            })
+        }
 
         AgentEvent::ToolCompleted {
             session_id,
@@ -102,14 +109,17 @@ pub fn event_to_message_content(
             tool_name,
             output,
             error,
-        } => serde_json::json!({
-            "type": "tool_completed",
-            "sessionId": session_id,
-            "toolId": tool_id,
-            "toolName": tool_name,
-            "output": output,
-            "error": error,
-        }),
+        } => {
+            let output_json: Option<serde_json::Value> = output.as_ref().and_then(|s| serde_json::from_str(s).ok());
+            serde_json::json!({
+                "type": "tool_completed",
+                "sessionId": session_id,
+                "toolId": tool_id,
+                "toolName": tool_name,
+                "output": output_json,
+                "error": error,
+            })
+        }
 
         AgentEvent::ApprovalRequest {
             session_id,
@@ -117,14 +127,17 @@ pub fn event_to_message_content(
             tool_name,
             input,
             message,
-        } => serde_json::json!({
-            "type": "approval_request",
-            "sessionId": session_id,
-            "requestId": request_id,
-            "toolName": tool_name,
-            "input": input,
-            "message": message,
-        }),
+        } => {
+            let input_json: Option<serde_json::Value> = input.as_ref().and_then(|s| serde_json::from_str(s).ok());
+            serde_json::json!({
+                "type": "approval_request",
+                "sessionId": session_id,
+                "requestId": request_id,
+                "toolName": tool_name,
+                "input": input_json,
+                "message": message,
+            })
+        }
 
         AgentEvent::UsageUpdate {
             session_id,
@@ -246,7 +259,8 @@ pub fn event_to_agent_message_content(
         },
 
         AgentEvent::TurnCompleted { result, .. } => {
-            let content = result.as_ref().and_then(|v| {
+            let content = result.as_ref().and_then(|s| {
+                let v: serde_json::Value = serde_json::from_str(s).ok()?;
                 if let Some(obj) = v.as_object() {
                     obj.get("content")
                         .and_then(|c| c.as_str())
@@ -272,11 +286,10 @@ pub fn event_to_agent_message_content(
         AgentEvent::ToolInputUpdated {
             tool_name, input, ..
         } => {
-            let output = input.as_ref().and_then(|v| serde_json::to_string(v).ok());
             AgentMessageContent::ToolCallUpdate {
                 tool_name: tool_name.clone().unwrap_or_else(|| "unknown".to_string()),
                 status: ToolCallStatus::InProgress,
-                output,
+                output: input.clone(),
             }
         }
 
@@ -291,14 +304,10 @@ pub fn event_to_agent_message_content(
             } else {
                 ToolCallStatus::Completed
             };
-            let output_str = output
-                .as_ref()
-                .and_then(|v| serde_json::to_string(v).ok())
-                .or_else(|| error.clone());
             AgentMessageContent::ToolCallUpdate {
                 tool_name: tool_name.clone().unwrap_or_else(|| "unknown".to_string()),
                 status,
-                output: output_str,
+                output: output.clone().or(error.clone()),
             }
         }
 
@@ -334,7 +343,8 @@ pub fn event_to_agent_message_content(
         // Raw events - pass through as system notification
         AgentEvent::Raw { data, .. } => AgentMessageContent::RawEvent {
             event_type: "raw".to_string(),
-            data: data.clone(),
+            // Parse JSON string back to Value for AgentMessageContent
+            data: serde_json::from_str(data).unwrap_or(serde_json::json!({})),
         },
 
         // Progress updates
@@ -513,11 +523,14 @@ pub fn build_permission_request(
     tool_params: serde_json::Value,
     description: Option<String>,
 ) -> Message {
+    // Serialize tool_params to JSON string for bincode compatibility
+    let tool_params_str = serde_json::to_string(&tool_params).unwrap_or_else(|_| "{}".to_string());
+
     let request = AgentPermissionRequest {
         request_id,
         session_id,
         tool_name,
-        tool_params,
+        tool_params: tool_params_str,
         requested_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -598,7 +611,7 @@ mod tests {
             session_id: "session-1".to_string(),
             tool_id: "tool-1".to_string(),
             tool_name: "bash".to_string(),
-            input: Some(serde_json::json!({"command": "ls"})),
+            input: Some(serde_json::to_string(&serde_json::json!({"command": "ls"})).unwrap()),
         };
 
         let content = event_to_agent_message_content(&event, None);

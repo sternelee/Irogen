@@ -1570,10 +1570,13 @@ impl QuicMessageClient {
                             .map(|b| format!("{:02x}", b))
                             .collect::<Vec<_>>()
                             .join(" ");
+                        // First byte should be message_type tag
+                        let msg_type_tag = data.first().map(|b| format!("{:02x}", b)).unwrap_or_else(|| "empty".to_string());
                         error!(
-                            "Failed to deserialize message for connection {}: data_len={}, data_hex=[{}], error={}",
+                            "Failed to deserialize message for connection {}: data_len={}, msg_type_tag={}, data_hex=[{}], error={}",
                             connection_id,
                             data.len(),
+                            msg_type_tag,
                             preview,
                             e
                         );

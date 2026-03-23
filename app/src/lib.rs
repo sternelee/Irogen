@@ -1093,6 +1093,10 @@ async fn connect_to_peer(
                                             .body(format!("{}: {}", request.tool_name, request.description.as_deref().unwrap_or("Needs your approval")))
                                             .show();
 
+                                        // Parse tool_params JSON string for frontend
+                                        let tool_params_json: serde_json::Value = serde_json::from_str(&request.tool_params)
+                                            .unwrap_or(serde_json::json!({}));
+
                                         // Emit permission request event to frontend
                                         let _ = app_handle_clone.emit(
                                             "agent-message",
@@ -1101,7 +1105,7 @@ async fn connect_to_peer(
                                                 "type": "permission_request",
                                                 "requestId": request.request_id,
                                                 "toolName": request.tool_name,
-                                                "toolParams": request.tool_params,
+                                                "toolParams": tool_params_json,
                                                 "description": request.description,
                                                 "requestedAt": request.requested_at,
                                             })

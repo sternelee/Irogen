@@ -256,13 +256,17 @@ export const createSessionStore = () => {
 
   const openNewSessionModal = (
     mode: SessionMode = "remote",
-    controlSessionId: string | null = null,
+    controlSessionId?: string | null,
   ) => {
     setState(
       produce((s: SessionState) => {
         s.isNewSessionModalOpen = true;
         s.newSessionMode = mode;
-        s.targetControlSessionId = controlSessionId;
+        // Only update targetControlSessionId if explicitly provided
+        // This preserves the existing connection when reopening the modal
+        if (controlSessionId !== undefined) {
+          s.targetControlSessionId = controlSessionId;
+        }
       }),
     );
   };
@@ -572,6 +576,30 @@ export const createSessionStore = () => {
         `Spawn request sent for ${state.newSessionAgent} on remote host`,
         "Spawn Session",
       );
+
+      // Refresh the session list to include the newly spawned session
+      try {
+        const remoteSessions = await invoke<BackendSessionMetadata[]>(
+          "remote_list_agents",
+          {
+            controlSessionId,
+          },
+        );
+        for (const s of remoteSessions) {
+          // Only add sessions that don't already exist
+          if (!state.sessions[s.session_id]) {
+            addSession(
+              mapBackendSessionMetadata(s, "remote", controlSessionId),
+            );
+          }
+        }
+      } catch (listError) {
+        console.warn(
+          "[handleRemoteSpawn] Failed to refresh session list:",
+          listError,
+        );
+      }
+
       closeNewSessionModal();
       setNewSessionPath("");
       setNewSessionArgs("");

@@ -2055,13 +2055,14 @@ async fn run_command_loop(
 
                     match result {
                         Ok(response) => {
+                            let result_json = serde_json::json!({
+                                "stopReason": stop_reason_to_string(response.stop_reason),
+                            });
                             let _ = event_sender.send(AgentTurnEvent {
                                 turn_id: turn_id.clone(),
                                 event: AgentEvent::TurnCompleted {
                                     session_id: session_id.clone(),
-                                    result: Some(serde_json::json!({
-                                        "stopReason": stop_reason_to_string(response.stop_reason),
-                                    })),
+                                    result: Some(serde_json::to_string(&result_json).unwrap_or_else(|_| "{}".to_string())),
                                 },
                             });
                             let _ = response_tx.send(Ok(()));
@@ -2370,7 +2371,7 @@ impl AcpClientHandler {
                 session_id: self.session_id.clone(),
                 tool_id: tool_id.clone(),
                 tool_name: Some(tool_name.clone()),
-                input: Some(raw_input),
+                input: Some(serde_json::to_string(&raw_input).unwrap_or_else(|_| "{}".to_string())),
             })
             .await;
         }
@@ -2389,17 +2390,18 @@ impl AcpClientHandler {
             .unwrap_or(false);
 
         if has_following || has_content {
+            let data = serde_json::json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": tool_id.clone(),
+                "title": tool_name.clone(),
+                "status": update.fields.status,
+                "locations": update.fields.locations,
+                "content": update.fields.content,
+            });
             self.emit_event(AgentEvent::Raw {
                 session_id: self.session_id.clone(),
                 agent: self.agent_type,
-                data: serde_json::json!({
-                    "sessionUpdate": "tool_call_update",
-                    "toolCallId": tool_id.clone(),
-                    "title": tool_name.clone(),
-                    "status": update.fields.status,
-                    "locations": update.fields.locations,
-                    "content": update.fields.content,
-                }),
+                data: serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_string()),
             })
             .await;
         }
@@ -2411,7 +2413,7 @@ impl AcpClientHandler {
                         session_id: self.session_id.clone(),
                         tool_id,
                         tool_name: Some(tool_name),
-                        input: update.fields.raw_input.clone(),
+                        input: update.fields.raw_input.as_ref().map(|v| serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string())),
                     })
                     .await;
                 }
@@ -2420,7 +2422,7 @@ impl AcpClientHandler {
                         session_id: self.session_id.clone(),
                         tool_id,
                         tool_name: Some(tool_name),
-                        output: update.fields.raw_output.clone(),
+                        output: update.fields.raw_output.as_ref().map(|v| serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string())),
                         error: None,
                     })
                     .await;
@@ -2442,7 +2444,7 @@ impl AcpClientHandler {
                         session_id: self.session_id.clone(),
                         tool_id,
                         tool_name: Some(tool_name),
-                        output: update.fields.raw_output.clone(),
+                        output: update.fields.raw_output.as_ref().map(|v| serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string())),
                         error: Some(error_message),
                     })
                     .await;
@@ -2545,7 +2547,7 @@ impl acp::Client for AcpClientHandler {
             session_id: self.session_id.clone(),
             request_id: request_id.clone(),
             tool_name: tool_name.clone(),
-            input: input.clone(),
+            input: input.as_ref().map(|v| serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string())),
             message: Some("Agent requested permission".to_string()),
         })
         .await;
@@ -2626,22 +2628,23 @@ impl acp::Client for AcpClientHandler {
                     session_id: self.session_id.clone(),
                     tool_id: tool_id.clone(),
                     tool_name: tool_call.title.clone(),
-                    input: tool_call.raw_input.clone(),
+                    input: tool_call.raw_input.as_ref().map(|v| serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string())),
                 })
                 .await;
 
                 if !tool_call.locations.is_empty() || !tool_call.content.is_empty() {
+                    let data = serde_json::json!({
+                        "sessionUpdate": "tool_call",
+                        "toolCallId": tool_id,
+                        "title": tool_call.title.clone(),
+                        "status": tool_call.status,
+                        "locations": tool_call.locations.clone(),
+                        "content": tool_call.content.clone(),
+                    });
                     self.emit_event(AgentEvent::Raw {
                         session_id: self.session_id.clone(),
                         agent: self.agent_type,
-                        data: serde_json::json!({
-                            "sessionUpdate": "tool_call",
-                            "toolCallId": tool_id,
-                            "title": tool_call.title.clone(),
-                            "status": tool_call.status,
-                            "locations": tool_call.locations.clone(),
-                            "content": tool_call.content.clone(),
-                        }),
+                        data: serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_string()),
                     })
                     .await;
                 }
@@ -2653,7 +2656,7 @@ impl acp::Client for AcpClientHandler {
                                 session_id: self.session_id.clone(),
                                 tool_id,
                                 tool_name: Some(tool_call.title),
-                                input: Some(raw_input),
+                                input: Some(serde_json::to_string(&raw_input).unwrap_or_else(|_| "{}".to_string())),
                             })
                             .await;
                         }
@@ -2663,7 +2666,7 @@ impl acp::Client for AcpClientHandler {
                             session_id: self.session_id.clone(),
                             tool_id,
                             tool_name: Some(tool_call.title),
-                            output: tool_call.raw_output,
+                            output: tool_call.raw_output.as_ref().map(|v| serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string())),
                             error: None,
                         })
                         .await;
@@ -2684,7 +2687,7 @@ impl acp::Client for AcpClientHandler {
                             session_id: self.session_id.clone(),
                             tool_id,
                             tool_name: Some(tool_call.title),
-                            output: tool_call.raw_output,
+                            output: tool_call.raw_output.as_ref().map(|v| serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string())),
                             error: Some(error_message),
                         })
                         .await;
@@ -2699,7 +2702,7 @@ impl acp::Client for AcpClientHandler {
                 self.emit_event(AgentEvent::Raw {
                     session_id: self.session_id.clone(),
                     agent: self.agent_type,
-                    data: serde_json::to_value(update).unwrap_or_else(|_| serde_json::json!({})),
+                    data: serde_json::to_string(&update).unwrap_or_else(|_| "{}".to_string()),
                 })
                 .await;
             }
