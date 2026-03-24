@@ -395,7 +395,6 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
-            dist/app/**/*
             dist/android/**/*.apk
             dist/android/**/*.aab
           draft: false
@@ -422,7 +421,6 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
-            dist/app/**/*
             dist/android/**/*.apk
             dist/android/**/*.aab
           draft: false
