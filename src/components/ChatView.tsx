@@ -6,7 +6,7 @@
  */
 
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
-import { FiAlertTriangle, FiRefreshCw } from "solid-icons/fi";
+import { FiAlertTriangle, FiRefreshCw, FiSun, FiMoon } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { Virtualizer } from "virtua/solid";
 import { chatStore } from "../stores/chatStore";
@@ -1822,6 +1822,40 @@ export function ChatView(props: ChatViewProps) {
                   </div>
                 </div>
               </div>
+              {/* Theme Toggle */}
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm btn-square text-base-content/70 hover:text-primary"
+                onClick={() => {
+                  const html = document.documentElement;
+                  const currentTheme = html.getAttribute("data-theme");
+                  const isDark =
+                    currentTheme === "dark" ||
+                    currentTheme === "dracula" ||
+                    currentTheme === "night" ||
+                    currentTheme === "business" ||
+                    currentTheme === "synthwave";
+                  const newTheme = isDark ? "sunset" : "dark";
+                  html.setAttribute("data-theme", newTheme);
+                  localStorage.setItem("theme", newTheme);
+                }}
+                title="Toggle theme"
+              >
+                <Show
+                  when={[
+                    "dark",
+                    "dracula",
+                    "night",
+                    "business",
+                    "synthwave",
+                  ].includes(
+                    document.documentElement.getAttribute("data-theme") || "",
+                  )}
+                  fallback={<FiSun size={18} />}
+                >
+                  <FiMoon size={18} />
+                </Show>
+              </button>
             </div>
 
             {/* Messages Area */}
