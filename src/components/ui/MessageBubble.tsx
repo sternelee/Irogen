@@ -88,20 +88,11 @@ export interface MessageBubbleProps {
 const UserMessage: Component<{ content: string; timestamp?: number }> = (
   props,
 ) => {
-  // hapi-style: user bubble aligned right with dark background
-  const bubbleClass =
-    "w-fit max-w-[92%] ml-auto rounded-xl bg-primary text-primary-content px-3.5 py-2.5 shadow-sm";
-
   return (
-    <div class="flex flex-col gap-1.5 items-end group/bubble">
-      {/* Message bubble - hapi style */}
-      <div class={bubbleClass}>
-        <div class="flex items-end gap-2">
-          <div class="flex-1 min-w-0">
-            <div class="prose prose-sm wrap-break-words text-[15px] sm:text-sm max-w-none leading-relaxed sm:leading-6 selectable prose-invert">
-              <SolidMarkdown children={props.content} />
-            </div>
-          </div>
+    <div class="chat chat-end">
+      <div class="chat-bubble chat-bubble-primary">
+        <div class="prose prose-sm max-w-none text-[15px] sm:text-sm selectable prose-invert">
+          <SolidMarkdown children={props.content} />
         </div>
       </div>
     </div>
@@ -122,9 +113,8 @@ interface AssistantMessageProps {
 
 const AssistantMessage: Component<AssistantMessageProps> = (props) => {
   return (
-    <div class="flex flex-col gap-1.5 items-start group/bubble">
-      {/* Message bubble */}
-      <div class="w-full max-w-[min(94vw,54rem)] rounded-xl border border-base-content/10 bg-base-200/50 px-4 py-3.5 shadow-sm">
+    <div class="chat chat-start">
+      <div class="chat-bubble">
         {/* Thinking/Reasoning */}
         <Show when={props.thinking}>
           <ReasoningBlock
@@ -134,7 +124,7 @@ const AssistantMessage: Component<AssistantMessageProps> = (props) => {
         </Show>
 
         {/* Content */}
-        <div class="prose prose-sm wrap-break-words text-[15px] sm:text-sm max-w-none leading-relaxed sm:leading-6 selectable">
+        <div class="prose prose-sm max-w-none text-[15px] sm:text-sm selectable">
           <SolidMarkdown
             children={props.thinking ? undefined : props.content}
             components={{
@@ -148,7 +138,6 @@ const AssistantMessage: Component<AssistantMessageProps> = (props) => {
                     </code>
                   );
                 }
-                // Use CodeBlock with copy button
                 return (
                   <CodeBlockWithCopy code={codeString} language={match[1]} />
                 );
@@ -189,9 +178,8 @@ interface SystemMessageProps {
 
 const SystemMessage: Component<SystemMessageProps> = (props) => {
   return (
-    <div class="flex flex-col gap-1.5 items-start opacity-90">
-      {/* Message content */}
-      <div class="w-full max-w-[min(94vw,54rem)] rounded-xl border border-base-content/10 bg-base-300/30 px-4 py-3">
+    <div class="chat chat-start">
+      <div class="chat-bubble chat-bubble-neutral">
         <SystemMessageContent
           content={props.content}
           systemCard={props.systemCard}
@@ -697,22 +685,17 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
 
       {/* Action menu overlay */}
       <Show when={showActions()}>
-        <div class="fixed inset-0 z-50 lg:hidden">
-          <button
-            type="button"
-            class="absolute inset-0 bg-black/45"
-            aria-label="Close message actions"
-            onClick={closeActions}
-          />
-          <div class="absolute bottom-0 left-0 right-0 rounded-t-2xl border-t border-border/60 bg-base-100 p-3 pb-[max(env(safe-area-inset-bottom,0px),0.75rem)] shadow-2xl animate-slide-up">
-            <div class="mb-2 px-1 text-xs text-muted-foreground/70">
-              Message actions
-            </div>
+        <div
+          class="modal modal-bottom sm:modal-middle"
+          classList={{ "modal-open": showActions() }}
+        >
+          <div class="modal-box p-4 pb-[max(env(safe-area-inset-bottom,0px),1rem)]">
+            <h3 class="text-sm font-bold mb-3">Message actions</h3>
             <div class="flex flex-col gap-1">
               <Show when={isUser()}>
                 <button
                   type="button"
-                  class="btn btn-ghost justify-start h-11 min-h-11"
+                  class="btn btn-ghost justify-start"
                   onClick={resendMessage}
                 >
                   Resend
@@ -720,7 +703,7 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
               </Show>
               <button
                 type="button"
-                class="btn btn-ghost justify-start h-11 min-h-11"
+                class="btn btn-ghost justify-start"
                 onClick={quoteMessage}
               >
                 Quote to input
@@ -728,7 +711,7 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
               <Show when={!isUser() && firstCodeBlock()}>
                 <button
                   type="button"
-                  class="btn btn-ghost justify-start h-11 min-h-11"
+                  class="btn btn-ghost justify-start"
                   onClick={copyCodeBlock}
                 >
                   Copy code block
@@ -737,7 +720,7 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
               <Show when={isUser() && firstCodeBlock()}>
                 <button
                   type="button"
-                  class="btn btn-ghost justify-start h-11 min-h-11"
+                  class="btn btn-ghost justify-start"
                   onClick={copyCodeBlock}
                 >
                   Copy code block
@@ -745,20 +728,26 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
               </Show>
               <button
                 type="button"
-                class="btn btn-ghost justify-start h-11 min-h-11"
+                class="btn btn-ghost justify-start"
                 onClick={copyMessage}
               >
                 Copy
               </button>
               <button
                 type="button"
-                class="btn btn-ghost justify-start h-11 min-h-11"
+                class="btn btn-ghost justify-start"
                 onClick={copyAsMarkdown}
               >
                 Copy as Markdown
               </button>
             </div>
+            <div class="modal-action">
+              <button type="button" class="btn btn-sm" onClick={closeActions}>
+                Close
+              </button>
+            </div>
           </div>
+          <button type="button" class="modal-backdrop" onClick={closeActions} />
         </div>
       </Show>
     </div>

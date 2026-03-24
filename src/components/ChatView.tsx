@@ -2019,16 +2019,14 @@ export function ChatView(props: ChatViewProps) {
             <Show
               when={isActive()}
               fallback={
-                <div class="m-4 flex flex-col items-center justify-center gap-4 p-6 bg-base-200/50 rounded-[1.5rem] border border-dashed border-base-content/20 shadow-inner">
-                  <div class="flex items-center gap-3 font-medium">
-                    <FiAlertTriangle size={20} class="text-warning shrink-0" />
-                    <span class="text-sm opacity-70">
-                      Session inactive. Connection might be lost.
-                    </span>
-                  </div>
+                <div class="alert alert-warning m-4">
+                  <FiAlertTriangle size={20} />
+                  <span class="text-sm">
+                    Session inactive. Connection might be lost.
+                  </span>
                   <button
                     type="button"
-                    class="btn btn-primary btn-sm gap-2"
+                    class="btn btn-sm"
                     onClick={handleReconnect}
                     disabled={isReconnecting()}
                   >
@@ -2042,7 +2040,6 @@ export function ChatView(props: ChatViewProps) {
                       }
                     >
                       <span class="loading loading-spinner loading-sm" />
-                      Reconnecting...
                     </Show>
                   </button>
                 </div>

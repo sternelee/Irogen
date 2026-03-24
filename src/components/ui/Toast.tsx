@@ -52,17 +52,10 @@ const toastIcons = {
 };
 
 const toastStyles = {
-  success: "bg-success/10 border-success/20 text-success",
-  error: "bg-error/10 border-error/20 text-error",
-  warning: "bg-warning/10 border-warning/20 text-warning",
-  info: "bg-info/10 border-info/20 text-info",
-};
-
-const toastIconStyles = {
-  success: "text-success",
-  error: "text-error",
-  warning: "text-warning",
-  info: "text-info",
+  success: "alert-success",
+  error: "alert-error",
+  warning: "alert-warning",
+  info: "alert-info",
 };
 
 // ============================================================================
@@ -91,37 +84,20 @@ const ToastItem: Component<ToastItemProps> = (props) => {
   const Icon = toastIcons[props.toast.type];
 
   return (
-    <div
-      class={cn(
-        "flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl border shadow-lg backdrop-blur-sm",
-        "animate-slide-up",
-        toastStyles[props.toast.type],
-      )}
-    >
-      {/* Icon */}
-      <div class={cn("shrink-0 mt-0.5", toastIconStyles[props.toast.type])}>
-        <Icon size={18} />
-      </div>
-
-      {/* Content */}
+    <div role="alert" class={cn("alert", toastStyles[props.toast.type])}>
+      <Icon size={20} />
       <div class="flex-1 min-w-0">
-        <div class="font-medium text-[13px] sm:text-sm">
-          {props.toast.title}
-        </div>
+        <div class="text-sm font-medium">{props.toast.title}</div>
         <Show when={props.toast.description}>
-          <div class="text-[11px] sm:text-xs opacity-80 mt-0.5">
-            {props.toast.description}
-          </div>
+          <div class="text-xs opacity-80 mt-0.5">{props.toast.description}</div>
         </Show>
       </div>
-
-      {/* Dismiss Button */}
       <button
         type="button"
         onClick={() => props.onDismiss(props.toast.id)}
-        class="shrink-0 p-1 hover:bg-muted rounded-lg transition-colors"
+        class="btn btn-ghost btn-sm btn-square"
       >
-        <FiX size={14} />
+        <FiX size={16} />
       </button>
     </div>
   );
