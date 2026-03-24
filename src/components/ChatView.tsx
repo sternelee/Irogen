@@ -6,11 +6,14 @@
  */
 
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
-import { FiAlertTriangle } from "solid-icons/fi";
+import { FiAlertTriangle, FiRefreshCw } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { Virtualizer } from "virtua/solid";
 import { chatStore } from "../stores/chatStore";
-import { sessionStore } from "../stores/sessionStore";
+import {
+  sessionStore,
+  type BackendSessionMetadata,
+} from "../stores/sessionStore";
 import {
   sessionEventRouter,
   type SessionEvent,
@@ -337,6 +340,80 @@ export function ChatView(props: ChatViewProps) {
         message: permission.description,
         created_at: Math.floor(permission.requestedAt / 1000),
       }));
+
+    // Reconnection state
+    const [isReconnecting, setIsReconnecting] = createSignal(false);
+
+    // Handle reconnection for inactive sessions
+    const handleReconnect = async () => {
+      const currentSession = session();
+      if (!currentSession || isReconnecting()) return;
+
+      setIsReconnecting(true);
+      try {
+        if (props.sessionMode === "local" || currentSession.mode === "local") {
+          // For local sessions, restart the agent
+          const sessionId = await invoke<string>("local_start_agent", {
+            agentTypeStr: currentSession.agentType,
+            projectPath: currentSession.projectPath,
+            sessionId: undefined,
+          });
+
+          // Update session state to active
+          sessionStore.updateSession(props.sessionId, {
+            active: true,
+            sessionId: sessionId,
+          });
+
+          notificationStore.success("Session reconnected", "Local Agent");
+        } else {
+          // For remote sessions, refresh session status from CLI
+          const controlSessionId = currentSession.controlSessionId;
+          if (controlSessionId) {
+            try {
+              const remoteSessions = await invoke<BackendSessionMetadata[]>(
+                "remote_list_agents",
+                { controlSessionId },
+              );
+
+              // Find our session in the list
+              const remoteSession = remoteSessions.find(
+                (s) => s.session_id === props.sessionId,
+              );
+              if (remoteSession && remoteSession.active) {
+                sessionStore.updateSession(props.sessionId, {
+                  active: true,
+                });
+                notificationStore.success(
+                  "Session reconnected",
+                  "Remote Agent",
+                );
+              } else {
+                notificationStore.error(
+                  "Session not available on remote host",
+                  "Reconnect Failed",
+                );
+              }
+            } catch (err) {
+              notificationStore.error(
+                "Failed to refresh remote session status",
+                "Reconnect Failed",
+              );
+            }
+          } else {
+            notificationStore.error(
+              "No connection to remote host",
+              "Reconnect Failed",
+            );
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Reconnect failed";
+        notificationStore.error(msg, "Reconnect Failed");
+      } finally {
+        setIsReconnecting(false);
+      }
+    };
 
     const setSessionInputValue = (
       next: string | ((prev: string) => string),
@@ -1907,11 +1984,32 @@ export function ChatView(props: ChatViewProps) {
             <Show
               when={isActive()}
               fallback={
-                <div class="m-4 flex items-center justify-center p-6 bg-base-200/50 rounded-[1.5rem] border border-dashed border-base-content/20 shadow-inner">
-                  <span class="text-sm opacity-50 flex items-center gap-3 font-medium">
-                    <FiAlertTriangle size={20} class="text-warning" />
-                    This session is inactive. Connection might be lost.
-                  </span>
+                <div class="m-4 flex flex-col items-center justify-center gap-4 p-6 bg-base-200/50 rounded-[1.5rem] border border-dashed border-base-content/20 shadow-inner">
+                  <div class="flex items-center gap-3 font-medium">
+                    <FiAlertTriangle size={20} class="text-warning shrink-0" />
+                    <span class="text-sm opacity-70">
+                      Session inactive. Connection might be lost.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm gap-2"
+                    onClick={handleReconnect}
+                    disabled={isReconnecting()}
+                  >
+                    <Show
+                      when={isReconnecting()}
+                      fallback={
+                        <>
+                          <FiRefreshCw size={16} />
+                          Reconnect
+                        </>
+                      }
+                    >
+                      <span class="loading loading-spinner loading-sm" />
+                      Reconnecting...
+                    </Show>
+                  </button>
                 </div>
               }
             >
