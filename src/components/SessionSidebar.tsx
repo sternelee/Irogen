@@ -78,6 +78,8 @@ interface SessionItemProps {
   session: ReturnType<typeof sessionStore.getSession>;
   isActive: boolean;
   hasUnread?: boolean;
+  isStreaming?: boolean;
+  gitStatusText?: string | null;
   onClick: () => void;
   onClose: () => void;
   onSpawnRemoteSession?: () => void;
@@ -166,6 +168,48 @@ const SessionItem: Component<SessionItemProps> = (props) => {
           class={`text-[11px] truncate mt-0.5 font-mono opacity-60 ${props.isActive ? "text-primary-content/80" : ""}`}
         >
           {props.session?.projectPath?.split("/").pop() || "No project"}
+        </div>
+        <div class="flex items-center gap-2 mt-1">
+          <Show when={props.isStreaming}>
+            <span class="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-info/15 text-info">
+              <span class="w-1.5 h-1.5 rounded-full bg-info animate-pulse" />
+              Thinking
+            </span>
+          </Show>
+          <Show when={props.session?.gitBranch}>
+            <span
+              class={`inline-flex items-center gap-1 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md ${
+                props.isActive
+                  ? "bg-white/15 text-white/80"
+                  : "bg-base-content/10 text-base-content/60"
+              }`}
+            >
+              <svg
+                class="w-3 h-3"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+              >
+                <line x1="6" y1="3" x2="6" y2="15" />
+                <circle cx="18" cy="6" r="3" />
+                <circle cx="6" cy="18" r="3" />
+                <path d="M18 9a9 9 0 0 1-9 9" />
+              </svg>
+              {props.session?.gitBranch}
+            </span>
+          </Show>
+          <Show when={props.gitStatusText}>
+            <span
+              class={`text-[9px] font-mono font-bold px-1 py-0.5 rounded ${
+                props.isActive
+                  ? "bg-white/10 text-white/70"
+                  : "bg-base-content/5 text-base-content/50"
+              }`}
+            >
+              {props.gitStatusText}
+            </span>
+          </Show>
         </div>
       </div>
 
@@ -262,6 +306,69 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
     new Set(),
   );
 
+  const isSessionStreaming = (sessionId: string) => {
+    return sessionEventRouter.getStreamingState(sessionId).isStreaming;
+  };
+
+  interface GitStatusCount {
+    added: number;
+    modified: number;
+    deleted: number;
+    untracked: number;
+  }
+
+  const [gitStatusBySession, setGitStatusBySession] = createSignal<
+    Record<string, GitStatusCount>
+  >({});
+
+  const fetchGitStatus = async (sessionId: string, projectPath: string) => {
+    try {
+      const response = await invoke<{ success: boolean; status?: string }>(
+        "git_status",
+        { path: projectPath || "." },
+      );
+      if (response?.success && response.status) {
+        const lines = response.status.split("\n").filter(Boolean);
+        let added = 0,
+          modified = 0,
+          deleted = 0,
+          untracked = 0;
+        for (const line of lines) {
+          if (line.length < 3) continue;
+          const [x, y] = [line[0], line[1]];
+          if (x === "?" && y === "?") untracked++;
+          else if (x === "A" || x === "a") added++;
+          else if (x === "D" || x === "d") deleted++;
+          else if (x === "M" || x === "m") modified++;
+          else if (x === "R" || x === "r") modified++;
+          if (y === "A" || y === "a") added++;
+          else if (y === "D" || y === "d") deleted++;
+          else if (y === "M" || y === "m") modified++;
+        }
+        setGitStatusBySession((prev) => ({
+          ...prev,
+          [sessionId]: { added, modified, deleted, untracked },
+        }));
+      }
+    } catch (err) {
+      console.error(
+        `Failed to fetch git status for session ${sessionId}:`,
+        err,
+      );
+    }
+  };
+
+  const getGitStatusDisplay = (sessionId: string) => {
+    const status = gitStatusBySession()[sessionId];
+    if (!status) return null;
+    const parts: string[] = [];
+    if (status.added > 0) parts.push(`+${status.added}`);
+    if (status.modified > 0) parts.push(`~${status.modified}`);
+    if (status.deleted > 0) parts.push(`-${status.deleted}`);
+    if (status.untracked > 0) parts.push(`?${status.untracked}`);
+    return parts.length > 0 ? parts.join(" ") : null;
+  };
+
   // Set up unread change listener
   onMount(() => {
     sessionEventRouter.setOnUnreadChange((sessionId, hasUnread) => {
@@ -288,6 +395,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
         next.delete(active.sessionId);
         return next;
       });
+      void fetchGitStatus(active.sessionId, active.projectPath);
     }
   });
 
@@ -727,6 +835,8 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                         session.sessionId === activeSession()?.sessionId
                       }
                       hasUnread={unreadSessions().has(session.sessionId)}
+                      isStreaming={isSessionStreaming(session.sessionId)}
+                      gitStatusText={getGitStatusDisplay(session.sessionId)}
                       onClick={() => {
                         sessionStore.setActiveSession(session.sessionId);
                         if (isMobile() && props.isOpen) {
