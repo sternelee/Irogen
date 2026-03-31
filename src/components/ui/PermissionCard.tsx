@@ -230,15 +230,25 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
   };
 
   const showAllowForSession = createMemo(() => {
-    const hideForTools = ["Edit", "MultiEdit", "Write", "NotebookEdit", "exit_plan_mode", "ExitPlanMode"];
-    return !hideForTools.includes(props.toolName) && props.permissionMode !== "AutoApprove";
+    const hideForTools = [
+      "Edit",
+      "MultiEdit",
+      "Write",
+      "NotebookEdit",
+      "exit_plan_mode",
+      "ExitPlanMode",
+    ];
+    return (
+      !hideForTools.includes(props.toolName) &&
+      props.permissionMode !== "AutoApprove"
+    );
   });
 
   return (
-    <div class="rounded-xl border border-amber-500/50 bg-amber-500/10 px-4 py-3">
+    <div class="rounded-xl border border-warning bg-warning/10 px-4 py-3">
       {/* Header */}
       <div class="flex items-center gap-2 mb-3">
-        <div class="p-1.5 rounded-lg bg-amber-500/20 text-amber-600">
+        <div class="p-1.5 rounded-lg bg-warning/20 text-warning-content">
           <FiShield size={16} />
         </div>
         <div class="flex-1">
@@ -257,7 +267,9 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
       {/* Tool Parameters */}
       <Show when={props.toolParams}>
         <div class="mb-3">
-          <div class="text-xs font-medium text-muted-foreground mb-1">Parameters</div>
+          <div class="text-xs font-medium text-muted-foreground mb-1">
+            Parameters
+          </div>
           <pre class="overflow-x-auto rounded bg-base-300 p-2 text-xs font-mono max-h-32">
             {formatToolInput(props.toolParams)}
           </pre>
@@ -322,7 +334,9 @@ export interface UserQuestionMessageProps {
   onSelect: (option: string) => void;
 }
 
-export const UserQuestionMessage: Component<UserQuestionMessageProps> = (props) => {
+export const UserQuestionMessage: Component<UserQuestionMessageProps> = (
+  props,
+) => {
   return (
     <div class="rounded-xl border border-info/50 bg-info/10 px-4 py-3">
       {/* Header */}
@@ -348,7 +362,9 @@ export const UserQuestionMessage: Component<UserQuestionMessageProps> = (props) 
               class="w-full justify-start text-left"
               onClick={() => props.onSelect(option)}
             >
-              <span class="mr-2 text-muted-foreground">{String.fromCharCode(65 + index)}.</span>
+              <span class="mr-2 text-muted-foreground">
+                {String.fromCharCode(65 + index)}.
+              </span>
               {option}
             </Button>
           ))}

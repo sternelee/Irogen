@@ -119,8 +119,8 @@ function BetterAuthDemo() {
                 </div>
 
                 <Show when={error()}>
-                  <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
-                    <p class="text-sm text-red-600 dark:text-red-400">
+                  <div class="bg-error/10 dark:bg-error/20 border border-error/20 dark:border-error/80 p-3">
+                    <p class="text-sm text-error dark:text-error-content">
                       {error()}
                     </p>
                   </div>

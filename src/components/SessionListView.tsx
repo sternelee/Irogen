@@ -103,7 +103,7 @@ function SessionCard(props: {
               {getProjectName()}
             </h3>
             <Show when={props.session.active}>
-              <span class="flex-shrink-0 w-2 h-2 rounded-full bg-green-500" />
+              <span class="flex-shrink-0 w-2 h-2 rounded-full bg-success" />
             </Show>
           </div>
           <p class="text-xs text-muted-foreground truncate mb-2">

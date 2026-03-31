@@ -12,10 +12,10 @@ export default function Header() {
 
   return (
     <>
-      <header class="p-4 flex items-center bg-gray-800 text-white shadow-lg">
+      <header class="p-4 flex items-center bg-base-200 text-white shadow-lg">
         <button
           onClick={() => setIsOpen(true)}
-          class="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+          class="p-2 hover:bg-base-300 rounded-lg transition-colors"
           aria-label="Open menu"
         >
           <Menu size={24} />
@@ -28,11 +28,11 @@ export default function Header() {
       </header>
 
       <aside
-        class={`fixed top-0 left-0 h-full w-80 bg-gray-900 text-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col ${
+        class={`fixed top-0 left-0 h-full w-80 bg-base-100 text-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col ${
           isOpen() ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div class="flex items-center justify-between p-4 border-b border-gray-700">
+        <div class="flex items-center justify-between p-4 border-b border-base-300">
           <h2 class="text-xl font-bold">Navigation</h2>
           <button
             onClick={() => setIsOpen(false)}
@@ -47,10 +47,10 @@ export default function Header() {
           <Link
             to="/"
             onClick={() => setIsOpen(false)}
-            class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
+            class="flex items-center gap-3 p-3 rounded-lg hover:bg-base-300 transition-colors mb-2"
             activeProps={{
               class:
-                'flex items-center gap-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors mb-2',
+                'flex items-center gap-3 p-3 rounded-lg bg-primary hover:bg-primary/90 transition-colors mb-2',
             }}
           >
             <Home size={20} />
@@ -62,10 +62,10 @@ export default function Header() {
           <Link
             to="/demo/better-auth"
             onClick={() => setIsOpen(false)}
-            class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
+            class="flex items-center gap-3 p-3 rounded-lg hover:bg-base-300 transition-colors mb-2"
             activeProps={{
               class:
-                'flex items-center gap-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors mb-2',
+                'flex items-center gap-3 p-3 rounded-lg bg-primary hover:bg-primary/90 transition-colors mb-2',
             }}
           >
             <Globe size={20} />
@@ -75,10 +75,10 @@ export default function Header() {
           <Link
             to="/demo/store"
             onClick={() => setIsOpen(false)}
-            class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
+            class="flex items-center gap-3 p-3 rounded-lg hover:bg-base-300 transition-colors mb-2"
             activeProps={{
               class:
-                'flex items-center gap-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors mb-2',
+                'flex items-center gap-3 p-3 rounded-lg bg-primary hover:bg-primary/90 transition-colors mb-2',
             }}
           >
             <Globe size={20} />
@@ -88,10 +88,10 @@ export default function Header() {
           <Link
             to="/demo/tanstack-query"
             onClick={() => setIsOpen(false)}
-            class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
+            class="flex items-center gap-3 p-3 rounded-lg hover:bg-base-300 transition-colors mb-2"
             activeProps={{
               class:
-                'flex items-center gap-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors mb-2',
+                'flex items-center gap-3 p-3 rounded-lg bg-primary hover:bg-primary/90 transition-colors mb-2',
             }}
           >
             <Globe size={20} />
@@ -101,10 +101,10 @@ export default function Header() {
           <Link
             to="/demo/form"
             onClick={() => setIsOpen(false)}
-            class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
+            class="flex items-center gap-3 p-3 rounded-lg hover:bg-base-300 transition-colors mb-2"
             activeProps={{
               class:
-                'flex items-center gap-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors mb-2',
+                'flex items-center gap-3 p-3 rounded-lg bg-primary hover:bg-primary/90 transition-colors mb-2',
             }}
           >
             <Globe size={20} />
@@ -114,10 +114,10 @@ export default function Header() {
           <Link
             to="/example/chat"
             onClick={() => setIsOpen(false)}
-            class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
+            class="flex items-center gap-3 p-3 rounded-lg hover:bg-base-300 transition-colors mb-2"
             activeProps={{
               class:
-                'flex items-center gap-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors mb-2',
+                'flex items-center gap-3 p-3 rounded-lg bg-primary hover:bg-primary/90 transition-colors mb-2',
             }}
           >
             <Globe size={20} />
@@ -127,7 +127,7 @@ export default function Header() {
           {/* Demo Links End */}
         </nav>
 
-        <div class="p-4 border-t border-gray-700 bg-gray-800 flex flex-col gap-2">
+        <div class="p-4 border-t border-base-300 bg-base-200 flex flex-col gap-2">
           <BetterAuthHeader />
 
           <TanStackQueryHeaderUser />

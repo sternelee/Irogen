@@ -185,7 +185,7 @@ function Home() {
   }
 
   return (
-    <div class="relative flex h-[calc(100vh-32px)] bg-gray-900">
+    <div class="relative flex h-[calc(100vh-32px)] bg-base-100">
       {/* Settings Button */}
       <div class="absolute top-5 right-5 z-50">
         <button
@@ -197,8 +197,8 @@ function Home() {
       </div>
 
       {/* Sidebar */}
-      <div class="flex flex-col w-64 bg-gray-800 border-r border-gray-700">
-        <div class="p-4 border-b border-gray-700">
+      <div class="flex flex-col w-64 bg-base-200 border-r border-base-300">
+        <div class="p-4 border-b border-base-300">
           <button
             onClick={handleNewChat}
             class="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-gradient-to-r from-orange-500 to-red-600 rounded-lg hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-orange-500 w-full justify-center"
@@ -212,14 +212,14 @@ function Home() {
         <div class="flex-1 overflow-y-auto">
           {state().conversations.map((chat) => (
             <div
-              class={`group flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-700/50 ${
+              class={`group flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-base-300/50 ${
                 chat.id === state().currentConversationId
-                  ? 'bg-gray-700/50'
+                  ? 'bg-base-300/50'
                   : ''
               }`}
               onClick={() => actions.setCurrentConversationId(chat.id)}
             >
-              <MessageCircle class="w-4 h-4 text-gray-400" />
+              <MessageCircle class="w-4 h-4 text-neutral" />
               {editingChatId() === chat.id ? (
                 <input
                   type="text"
@@ -237,7 +237,7 @@ function Home() {
                   autofocus
                 />
               ) : (
-                <span class="flex-1 text-sm text-gray-300 truncate">
+                <span class="flex-1 text-sm text-base-content truncate">
                   {chat.title}
                 </span>
               )}
@@ -247,7 +247,7 @@ function Home() {
                     e.stopPropagation()
                     setEditingChatId(chat.id)
                   }}
-                  class="p-1 text-gray-400 hover:text-white"
+                  class="p-1 text-neutral hover:text-white"
                 >
                   <Edit2 class="w-3 h-3" />
                 </button>
@@ -256,7 +256,7 @@ function Home() {
                     e.stopPropagation()
                     handleDeleteChat(chat.id)
                   }}
-                  class="p-1 text-gray-400 hover:text-red-500"
+                  class="p-1 text-neutral hover:text-error"
                 >
                   <Trash2 class="w-3 h-3" />
                 </button>
@@ -292,7 +292,7 @@ function Home() {
                             AI
                           </div>
                         ) : (
-                          <div class="w-8 h-8 rounded-lg bg-gray-700 flex items-center justify-center text-sm font-medium text-white flex-shrink-0">
+                          <div class="w-8 h-8 rounded-lg bg-base-300 flex items-center justify-center text-sm font-medium text-white flex-shrink-0">
                             Y
                           </div>
                         )}
@@ -318,7 +318,7 @@ function Home() {
                         </div>
                       </div>
                       <div class="flex items-center gap-3">
-                        <div class="text-gray-400 font-medium text-lg">
+                        <div class="text-neutral font-medium text-lg">
                           Thinking
                         </div>
                         <div class="flex gap-2">
@@ -343,7 +343,7 @@ function Home() {
             </div>
 
             {/* Input */}
-            <div class="absolute bottom-0 right-0 left-64 bg-gray-900/80 backdrop-blur-sm border-t border-orange-500/10">
+            <div class="absolute bottom-0 right-0 left-64 bg-base-100/80 backdrop-blur-sm border-t border-accent/10">
               <div class="max-w-3xl mx-auto w-full px-4 py-3">
                 <form onSubmit={handleSubmit}>
                   <div class="relative">
@@ -356,7 +356,7 @@ function Home() {
                         }
                       }}
                       placeholder="Type something clever..."
-                      class="w-full rounded-lg border border-orange-500/20 bg-gray-800/50 pl-4 pr-12 py-3 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-transparent resize-none overflow-hidden shadow-lg"
+                      class="w-full rounded-lg border border-accent/20 bg-base-200/50 pl-4 pr-12 py-3 text-sm text-white placeholder-base-content/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-transparent resize-none overflow-hidden shadow-lg"
                       rows={1}
                       style={{ 'min-height': '44px', 'max-height': '200px' }}
                       onInput={(e) => {
@@ -370,7 +370,7 @@ function Home() {
                     <button
                       type="submit"
                       disabled={!input().trim() || state().isLoading}
-                      class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-orange-500 hover:text-orange-400 disabled:text-gray-500 transition-colors focus:outline-none"
+                      class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-accent hover:text-accent/80 disabled:text-neutral transition-colors focus:outline-none"
                     >
                       <Send class="w-4 h-4" />
                     </button>
@@ -385,7 +385,7 @@ function Home() {
               <h1 class="text-6xl font-bold mb-4 bg-gradient-to-r from-orange-500 to-red-600 text-transparent bg-clip-text uppercase">
                 <span class="text-white">TanStack</span> Chat
               </h1>
-              <p class="text-gray-400 mb-6 w-2/3 mx-auto text-lg">
+              <p class="text-neutral mb-6 w-2/3 mx-auto text-lg">
                 You can ask me about anything, I might or might not have a good
                 answer, but you can still ask.
               </p>
@@ -401,14 +401,14 @@ function Home() {
                       }
                     }}
                     placeholder="Type something clever..."
-                    class="w-full rounded-lg border border-orange-500/20 bg-gray-800/50 pl-4 pr-12 py-3 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-transparent resize-none overflow-hidden"
+                    class="w-full rounded-lg border border-accent/20 bg-base-200/50 pl-4 pr-12 py-3 text-sm text-white placeholder-base-content/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-transparent resize-none overflow-hidden"
                     rows={1}
                     style={{ 'min-height': '88px' }}
                   />
                   <button
                     type="submit"
                     disabled={!input().trim() || state().isLoading}
-                    class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-orange-500 hover:text-orange-400 disabled:text-gray-500 transition-colors focus:outline-none"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-accent hover:text-accent/80 disabled:text-neutral transition-colors focus:outline-none"
                   >
                     <Send class="w-4 h-4" />
                   </button>

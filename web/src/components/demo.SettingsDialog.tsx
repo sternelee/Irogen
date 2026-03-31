@@ -36,7 +36,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       }}
     >
       <div
-        class="bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+        class="bg-base-200 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div class="p-6">
@@ -44,7 +44,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             <h2 class="text-2xl font-semibold text-white">Settings</h2>
             <button
               onClick={handleClose}
-              class="text-gray-400 hover:text-white focus:outline-none"
+              class="text-neutral hover:text-white focus:outline-none"
             >
               <svg
                 class="w-6 h-6"
@@ -79,7 +79,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               </div>
 
               {isAddingPrompt() && (
-                <div class="space-y-3 mb-4 p-3 bg-gray-700/50 rounded-lg">
+                <div class="space-y-3 mb-4 p-3 bg-base-300/50 rounded-lg">
                   <input
                     type="text"
                     value={promptForm().name}
@@ -90,7 +90,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       }))
                     }
                     placeholder="Prompt name..."
-                    class="w-full px-3 py-2 text-sm text-white bg-gray-700 rounded-lg border border-gray-600 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                    class="w-full px-3 py-2 text-sm text-white bg-base-300 rounded-lg border border-base-300 focus:border-primary focus:ring-1 focus:ring-primary"
                   />
                   <textarea
                     value={promptForm().content}
@@ -101,12 +101,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       }))
                     }
                     placeholder="Enter prompt content..."
-                    class="w-full h-32 px-3 py-2 text-sm text-white bg-gray-700 rounded-lg border border-gray-600 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                    class="w-full h-32 px-3 py-2 text-sm text-white bg-base-300 rounded-lg border border-base-300 focus:border-primary focus:ring-1 focus:ring-primary"
                   />
                   <div class="flex justify-end gap-2">
                     <button
                       onClick={() => setIsAddingPrompt(false)}
-                      class="px-3 py-1.5 text-sm font-medium text-gray-300 hover:text-white focus:outline-none"
+                      class="px-3 py-1.5 text-sm font-medium text-base-content hover:text-white focus:outline-none"
                     >
                       Cancel
                     </button>
@@ -122,12 +122,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
               <div class="space-y-2">
                 {state().prompts.map((prompt) => (
-                  <div class="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
+                  <div class="flex items-center justify-between p-3 bg-base-300/50 rounded-lg">
                     <div class="flex-1 min-w-0 mr-4">
                       <h4 class="text-sm font-medium text-white truncate">
                         {prompt.name}
                       </h4>
-                      <p class="text-xs text-gray-400 truncate">
+                      <p class="text-xs text-neutral truncate">
                         {prompt.content}
                       </p>
                     </div>
@@ -144,11 +144,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
                             )
                           }
                         />
-                        <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                        <div class="w-11 h-6 bg-base-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                       </label>
                       <button
                         onClick={() => actions.deletePrompt(prompt.id)}
-                        class="p-1 text-gray-400 hover:text-red-500"
+                        class="p-1 text-neutral hover:text-error"
                       >
                         <Trash2 class="w-4 h-4" />
                       </button>
@@ -156,7 +156,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   </div>
                 ))}
               </div>
-              <p class="text-xs text-gray-400">
+              <p class="text-xs text-neutral">
                 Create and manage custom system prompts. Only one prompt can be
                 active at a time.
               </p>
@@ -166,7 +166,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
           <div class="mt-6 flex justify-end gap-3">
             <button
               onClick={handleClose}
-              class="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white focus:outline-none"
+              class="px-4 py-2 text-sm font-medium text-base-content hover:text-white focus:outline-none"
             >
               Cancel
             </button>

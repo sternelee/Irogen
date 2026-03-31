@@ -51,20 +51,20 @@ export function ChatInput(props: ChatInputProps) {
 
   return (
     <div class="relative">
-      <div class="flex items-end gap-2 bg-slate-900 border border-slate-600 rounded-xl p-2 focus-within:ring-2 focus-within:ring-cyan-500 focus-within:border-transparent">
+      <div class="flex items-end gap-2 bg-base-100 border border-base-300 rounded-xl p-2 focus-within:ring-2 focus-within:ring-primary focus-within:border-transparent">
         {/* Tool Buttons */}
         <div class="flex items-center gap-1 pb-1">
           <button
             type="button"
             title="Attach file"
-            class="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+            class="p-2 text-neutral hover:text-white hover:bg-base-300 rounded-lg transition-colors"
           >
             <Paperclip class="w-4 h-4" />
           </button>
           <button
             type="button"
             title="Add image"
-            class="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+            class="p-2 text-neutral hover:text-white hover:bg-base-300 rounded-lg transition-colors"
           >
             <Image class="w-4 h-4" />
           </button>
@@ -88,7 +88,7 @@ export function ChatInput(props: ChatInputProps) {
             <button
               type="button"
               onClick={() => props.onInterrupt()}
-              class="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+              class="p-2 text-error-content hover:text-error hover:bg-error/10 rounded-lg transition-colors"
               title="Stop"
             >
               <Square class="w-4 h-4" />
@@ -100,7 +100,7 @@ export function ChatInput(props: ChatInputProps) {
               type="button"
               onClick={() => handleSubmit()}
               disabled={!input().trim() || props.disabled || isSubmitting()}
-              class="p-2 text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 disabled:text-slate-500 disabled:cursor-not-allowed rounded-lg transition-colors"
+              class="p-2 text-primary hover:text-primary/90 hover:bg-primary/10 disabled:text-neutral disabled:cursor-not-allowed rounded-lg transition-colors"
               title="Send"
             >
               <Send class="w-4 h-4" />
@@ -111,11 +111,11 @@ export function ChatInput(props: ChatInputProps) {
 
       {/* Help Text */}
       <div class="flex items-center justify-between mt-2 px-2">
-        <span class="text-xs text-slate-500">
+        <span class="text-xs text-neutral">
           Press Enter to send, Shift+Enter for new line
         </span>
         <Show when={props.isStreaming}>
-          <span class="text-xs text-cyan-400 animate-pulse">
+          <span class="text-xs text-primary animate-pulse">
             Agent is responding...
           </span>
         </Show>

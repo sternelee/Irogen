@@ -28,14 +28,14 @@ export function ToolCallDisplay(props: ToolCallDisplayProps) {
     switch (props.toolCall.status) {
       case 'started':
       case 'in_progress':
-        return <Loader class="w-4 h-4 text-yellow-400 animate-spin" />
+        return <Loader class="w-4 h-4 text-warning-content animate-spin" />
       case 'completed':
-        return <CheckCircle class="w-4 h-4 text-green-400" />
+        return <CheckCircle class="w-4 h-4 text-success-content" />
       case 'failed':
       case 'cancelled':
-        return <XCircle class="w-4 h-4 text-red-400" />
+        return <XCircle class="w-4 h-4 text-error-content" />
       default:
-        return <Wrench class="w-4 h-4 text-slate-400" />
+        return <Wrench class="w-4 h-4 text-neutral" />
     }
   }
 
@@ -43,24 +43,19 @@ export function ToolCallDisplay(props: ToolCallDisplayProps) {
     switch (props.toolCall.status) {
       case 'started':
       case 'in_progress':
-        return 'border-yellow-500/30 bg-yellow-500/5'
+        return 'border-warning/30 bg-warning/5'
       case 'completed':
-        return 'border-green-500/30 bg-green-500/5'
+        return 'border-success/30 bg-success/5'
       case 'failed':
       case 'cancelled':
-        return 'border-red-500/30 bg-red-500/5'
+        return 'border-error/30 bg-error/5'
       default:
-        return 'border-slate-600 bg-slate-800'
+        return 'border-base-300 bg-base-200'
     }
   }
 
   return (
-    <div
-      class={cn(
-        'border rounded-lg overflow-hidden',
-        getStatusColor()
-      )}
-    >
+    <div class={cn('border rounded-lg overflow-hidden', getStatusColor())}>
       {/* Header */}
       <div
         class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-white/5"
@@ -70,25 +65,25 @@ export function ToolCallDisplay(props: ToolCallDisplayProps) {
         <span class="flex-1 text-sm font-medium text-white">
           {props.toolCall.toolName}
         </span>
-        <span class="text-xs text-slate-400 uppercase">
+        <span class="text-xs text-neutral uppercase">
           {props.toolCall.status}
         </span>
         <ChevronDown
           class={cn(
             'w-4 h-4 text-slate-400 transition-transform',
-            props.expanded && 'rotate-180'
+            props.expanded && 'rotate-180',
           )}
         />
       </div>
 
       {/* Expanded Content */}
       <Show when={props.expanded}>
-        <div class="border-t border-slate-700">
+        <div class="border-t border-base-300">
           {/* Input */}
           <Show when={props.toolCall.input}>
-            <div class="p-3 border-b border-slate-700">
-              <div class="text-xs text-slate-400 mb-1">Input</div>
-              <pre class="text-xs text-slate-300 overflow-x-auto">
+            <div class="p-3 border-b border-base-300">
+              <div class="text-xs text-neutral mb-1">Input</div>
+              <pre class="text-xs text-base-content overflow-x-auto">
                 {JSON.stringify(props.toolCall.input, null, 2)}
               </pre>
             </div>
@@ -97,8 +92,8 @@ export function ToolCallDisplay(props: ToolCallDisplayProps) {
           {/* Output */}
           <Show when={props.toolCall.output}>
             <div class="p-3">
-              <div class="text-xs text-slate-400 mb-1">Output</div>
-              <pre class="text-xs text-slate-300 overflow-x-auto whitespace-pre-wrap">
+              <div class="text-xs text-neutral mb-1">Output</div>
+              <pre class="text-xs text-base-content overflow-x-auto whitespace-pre-wrap">
                 {props.toolCall.output}
               </pre>
             </div>

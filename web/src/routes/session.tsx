@@ -44,8 +44,7 @@ function SessionPage() {
     sessionSelectors.getActiveSessionId(sessionStore.state)
   const activeSession = () =>
     sessionSelectors.getActiveSession(sessionStore.state)
-  const sessions = () =>
-    sessionSelectors.getSessions(sessionStore.state)
+  const sessions = () => sessionSelectors.getSessions(sessionStore.state)
 
   // Initialize client
   onMount(async () => {
@@ -55,9 +54,7 @@ function SessionPage() {
       console.log('Agent client initialized:', nodeId)
     } catch (e) {
       console.error('Failed to initialize agent client:', e)
-      connectionActions.setConnectionError(
-        'Failed to initialize: ' + String(e)
-      )
+      connectionActions.setConnectionError('Failed to initialize: ' + String(e))
     }
   })
 
@@ -91,9 +88,7 @@ function SessionPage() {
       // Subscribe to events
       agentClient.subscribe(sessionId, handleAgentEvent)
     } catch (e) {
-      connectionActions.setConnectionError(
-        'Connection failed: ' + String(e)
-      )
+      connectionActions.setConnectionError('Connection failed: ' + String(e))
     } finally {
       connectionActions.setConnecting(false)
     }
@@ -203,7 +198,7 @@ function SessionPage() {
   const handlePermissionResponse = async (
     requestId: string,
     approved: boolean,
-    reason?: string
+    reason?: string,
   ) => {
     const sid = activeSessionId()
     if (!sid) return
@@ -212,7 +207,7 @@ function SessionPage() {
     chatActions.respondToPermission(
       sid,
       requestId,
-      approved ? 'approved' : 'denied'
+      approved ? 'approved' : 'denied',
     )
   }
 
@@ -222,9 +217,9 @@ function SessionPage() {
   }
 
   return (
-    <div class="flex h-screen bg-slate-900 text-white">
+    <div class="flex h-screen bg-base-100 text-white">
       {/* Sidebar */}
-      <div class="w-64 flex-shrink-0 border-r border-slate-700">
+      <div class="w-64 flex-shrink-0 border-r border-base-300">
         <SessionSidebar
           sessions={sessions()}
           activeSessionId={activeSessionId()}
@@ -236,27 +231,30 @@ function SessionPage() {
       {/* Main Content */}
       <div class="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header class="flex items-center justify-between px-4 py-3 border-b border-slate-700 bg-slate-800/50">
+        <header class="flex items-center justify-between px-4 py-3 border-b border-base-300 bg-base-200/50">
           <div class="flex items-center gap-3">
-            <Terminal class="w-5 h-5 text-cyan-400" />
+            <Terminal class="w-5 h-5 text-primary" />
             <h1 class="text-lg font-semibold">ClawdPilot Session</h1>
           </div>
 
           <div class="flex items-center gap-2">
-            <Show when={isConnected()} fallback={
-              <div class="flex items-center gap-1 text-red-400">
-                <WifiOff class="w-4 h-4" />
-                <span class="text-sm">Disconnected</span>
-              </div>
-            }>
-              <div class="flex items-center gap-1 text-green-400">
+            <Show
+              when={isConnected()}
+              fallback={
+                <div class="flex items-center gap-1 text-error-content">
+                  <WifiOff class="w-4 h-4" />
+                  <span class="text-sm">Disconnected</span>
+                </div>
+              }
+            >
+              <div class="flex items-center gap-1 text-success-content">
                 <Wifi class="w-4 h-4" />
                 <span class="text-sm">Connected</span>
               </div>
             </Show>
 
             <Show when={isConnecting()}>
-              <Loader2 class="w-4 h-4 animate-spin text-cyan-400" />
+              <Loader2 class="w-4 h-4 animate-spin text-primary" />
             </Show>
           </div>
         </header>
@@ -274,10 +272,18 @@ function SessionPage() {
           <Show when={activeSessionId()}>
             <ChatView
               sessionId={activeSessionId()!}
-              messages={chatSelectors.getMessages(activeSessionId()!)(chatStore.state)}
-              streamingContent={chatSelectors.getStreamingContent(activeSessionId()!)(chatStore.state)}
-              isStreaming={chatSelectors.isStreaming(activeSessionId()!)(chatStore.state)}
-              pendingPermissions={chatSelectors.getPendingPermissions(activeSessionId()!)(chatStore.state)}
+              messages={chatSelectors.getMessages(activeSessionId()!)(
+                chatStore.state,
+              )}
+              streamingContent={chatSelectors.getStreamingContent(
+                activeSessionId()!,
+              )(chatStore.state)}
+              isStreaming={chatSelectors.isStreaming(activeSessionId()!)(
+                chatStore.state,
+              )}
+              pendingPermissions={chatSelectors.getPendingPermissions(
+                activeSessionId()!,
+              )(chatStore.state)}
               thinking={activeSession()?.thinking ?? false}
               onSendMessage={handleSendMessage}
               onPermissionResponse={handlePermissionResponse}

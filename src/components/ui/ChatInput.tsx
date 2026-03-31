@@ -393,7 +393,9 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
               type="button"
               class={cn(
                 "btn btn-ghost btn-sm h-10 w-10 min-h-[40px] rounded-xl transition-all",
-                showMobileTools() ? "bg-primary/20 text-primary" : "bg-base-300/70"
+                showMobileTools()
+                  ? "bg-primary/20 text-primary-content"
+                  : "bg-base-300/70",
               )}
               onClick={() => setShowMobileTools((prev) => !prev)}
               title={showMobileTools() ? "Hide tools" : "Show tools"}
@@ -417,7 +419,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
                   class={cn(
                     "btn btn-ghost btn-sm h-10 min-h-[40px] px-3 gap-2 text-[12px] transition-all rounded-xl",
                     showSettings()
-                      ? "bg-primary/15 text-primary"
+                      ? "bg-primary/15 text-primary-content"
                       : "text-base-content/70 hover:text-primary hover:bg-primary/10",
                   )}
                   onClick={() => setShowSettings(!showSettings())}
@@ -430,7 +432,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
 
                 {/* Settings Backdrop (Mobile only) */}
                 <Show when={showSettings() && mobile()}>
-                  <div 
+                  <div
                     class="fixed inset-0 bg-black/40 z-[100] backdrop-blur-[2px] animate-fade-in"
                     onClick={() => setShowSettings(false)}
                   />
@@ -438,12 +440,14 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
 
                 {/* Settings Dropdown / Bottom Sheet */}
                 <Show when={showSettings()}>
-                  <div class={cn(
-                    "z-[101] bg-base-300 border border-base-content/10 shadow-2xl overflow-hidden transition-all duration-300",
-                    mobile() 
-                      ? "fixed bottom-0 left-0 right-0 rounded-t-3xl animate-slide-up" 
-                      : "absolute bottom-full left-0 mb-2 w-60 rounded-xl"
-                  )}>
+                  <div
+                    class={cn(
+                      "z-[101] bg-base-300 border border-base-content/10 shadow-2xl overflow-hidden transition-all duration-300",
+                      mobile()
+                        ? "fixed bottom-0 left-0 right-0 rounded-t-3xl animate-slide-up"
+                        : "absolute bottom-full left-0 mb-2 w-60 rounded-xl",
+                    )}
+                  >
                     {/* Handle for mobile bottom sheet */}
                     <Show when={mobile()}>
                       <div class="flex justify-center py-3">
@@ -456,8 +460,8 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
                         Permission Mode
                       </div>
                       <Show when={mobile()}>
-                        <button 
-                          type="button" 
+                        <button
+                          type="button"
                           class="btn btn-ghost btn-xs btn-circle"
                           onClick={() => setShowSettings(false)}
                         >
@@ -515,7 +519,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
                     class={cn(
                       "btn btn-ghost btn-sm h-10 min-h-[40px] px-3 gap-2 text-[12px] transition-all rounded-xl",
                       props.rightPanelView === "file"
-                        ? "bg-primary/15 text-primary"
+                        ? "bg-primary/15 text-primary-content"
                         : "text-base-content/70 hover:text-primary hover:bg-primary/10",
                     )}
                     onClick={() => {
@@ -537,7 +541,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
                     class={cn(
                       "btn btn-ghost btn-sm h-10 min-h-[40px] px-3 gap-2 text-[12px] transition-all rounded-xl",
                       props.rightPanelView === "git"
-                        ? "bg-primary/15 text-primary"
+                        ? "bg-primary/15 text-primary-content"
                         : "text-base-content/70 hover:text-primary hover:bg-primary/10",
                     )}
                     onClick={() => {

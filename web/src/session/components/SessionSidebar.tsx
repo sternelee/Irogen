@@ -5,13 +5,7 @@
  */
 
 import { For, Show } from 'solid-js'
-import {
-  Plus,
-  MessageSquare,
-  Terminal,
-  Trash2,
-  Bot,
-} from 'lucide-solid'
+import { Plus, MessageSquare, Terminal, Trash2, Bot } from 'lucide-solid'
 import { cn } from '~/lib/utils'
 import type { AgentSessionMetadata } from '../types'
 
@@ -54,12 +48,12 @@ export function SessionSidebar(props: SessionSidebarProps) {
   }
 
   return (
-    <div class="flex flex-col h-full bg-slate-800">
+    <div class="flex flex-col h-full bg-base-200">
       {/* Header */}
-      <div class="p-3 border-b border-slate-700">
+      <div class="p-3 border-b border-base-300">
         <button
           onClick={props.onNewSession}
-          class="flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-colors"
+          class="flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors"
         >
           <Plus class="w-4 h-4" />
           New Session
@@ -69,7 +63,7 @@ export function SessionSidebar(props: SessionSidebarProps) {
       {/* Session List */}
       <div class="flex-1 overflow-y-auto">
         <Show when={props.sessions.length === 0}>
-          <div class="flex flex-col items-center justify-center h-full text-slate-400 p-4">
+          <div class="flex flex-col items-center justify-center h-full text-neutral p-4">
             <MessageSquare class="w-8 h-8 mb-2 opacity-50" />
             <p class="text-sm text-center">No sessions yet</p>
             <p class="text-xs text-center mt-1">
@@ -82,13 +76,13 @@ export function SessionSidebar(props: SessionSidebarProps) {
           {(session) => (
             <div
               class={cn(
-                'group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-700/50 transition-colors',
+                'group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-base-300/50 transition-colors',
                 session.sessionId === props.activeSessionId &&
-                  'bg-slate-700/50 border-l-2 border-cyan-500'
+                  'bg-base-300/50 border-l-2 border-primary',
               )}
               onClick={() => props.onSelectSession(session.sessionId)}
             >
-              <div class="flex-shrink-0 text-slate-400">
+              <div class="flex-shrink-0 text-neutral">
                 {getSessionIcon(session.agentType)}
               </div>
 
@@ -98,13 +92,13 @@ export function SessionSidebar(props: SessionSidebarProps) {
                     {getAgentLabel(session.agentType)}
                   </span>
                   <Show when={session.thinking}>
-                    <span class="flex items-center gap-1 text-xs text-cyan-400">
+                    <span class="flex items-center gap-1 text-xs text-primary">
                       <span class="animate-pulse">●</span>
                       thinking
                     </span>
                   </Show>
                 </div>
-                <span class="text-xs text-slate-400 truncate block">
+                <span class="text-xs text-neutral truncate block">
                   {session.projectPath}
                 </span>
               </div>
@@ -117,7 +111,7 @@ export function SessionSidebar(props: SessionSidebarProps) {
                   session.sessionId !== props.activeSessionId
                 }
               >
-                <span class="flex-shrink-0 w-5 h-5 flex items-center justify-center text-xs font-medium bg-cyan-500 text-white rounded-full">
+                <span class="flex-shrink-0 w-5 h-5 flex items-center justify-center text-xs font-medium bg-primary text-white rounded-full">
                   {props.unreadCounts![session.sessionId]}
                 </span>
               </Show>
@@ -125,7 +119,7 @@ export function SessionSidebar(props: SessionSidebarProps) {
               {/* Delete button */}
               <Show when={props.onDeleteSession}>
                 <button
-                  class="flex-shrink-0 p-1 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                  class="flex-shrink-0 p-1 text-neutral hover:text-error-content opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={(e) => {
                     e.stopPropagation()
                     props.onDeleteSession?.(session.sessionId)
@@ -140,8 +134,8 @@ export function SessionSidebar(props: SessionSidebarProps) {
       </div>
 
       {/* Footer */}
-      <div class="p-3 border-t border-slate-700">
-        <div class="text-xs text-slate-500 text-center">
+      <div class="p-3 border-t border-base-300">
+        <div class="text-xs text-neutral text-center">
           ClawdPilot Web Terminal
         </div>
       </div>

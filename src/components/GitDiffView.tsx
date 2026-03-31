@@ -415,7 +415,7 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
 
             {/* Diff Content */}
             <Show when={!state.isLoadingDiff && state.currentDiff?.hunks}>
-              <div class="bg-muted rounded-lg overflow-hidden text-xs">
+              <div class="bg-muted rounded-lg overflow-y-hidden overflow-x-auto text-xs">
                 <For each={state.currentDiff?.hunks}>
                   {(hunk) => (
                     <div class="border-b border-border last:border-0">

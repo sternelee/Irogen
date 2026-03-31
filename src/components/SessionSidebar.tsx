@@ -122,7 +122,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
       class={`group relative flex items-center gap-3 px-4 py-4 rounded-2xl cursor-pointer transition-all duration-200 mx-2 mb-1
         ${
           props.isActive
-            ? "bg-primary text-primary-content shadow-lg shadow-primary/20 scale-[1.01] z-10"
+            ? "bg-base-content/10 text-primary-content shadow-lg shadow-primary/20 scale-[1.01] z-10"
             : "hover:bg-base-content/5 border border-transparent active:scale-[0.98] active:bg-base-content/10"
         }`}
       onClick={props.onClick}
@@ -144,7 +144,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2">
           <span
-            class={`font-bold text-[15px] tracking-tight truncate ${props.isActive ? "text-primary-content" : "text-base-content"}`}
+            class={`font-bold text-[15px] tracking-tight truncate text-base-content`}
           >
             {props.session?.agentType === "claude" && "Claude"}
             {props.session?.agentType === "gemini" && "Gemini"}
@@ -157,7 +157,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
               props.isActive
                 ? "bg-white/25 text-white"
                 : props.session?.mode === "local"
-                  ? "bg-primary/15 text-primary"
+                  ? "bg-primary/15 text-primary-content"
                   : "bg-base-content/10 text-base-content/60"
             }`}
           >
@@ -165,7 +165,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
           </span>
         </div>
         <div
-          class={`text-[11px] truncate mt-0.5 font-mono opacity-60 ${props.isActive ? "text-primary-content/80" : ""}`}
+          class={`text-[11px] truncate mt-0.5 font-mono opacity-60 ${props.isActive ? "text-base-content/90" : ""}`}
         >
           {props.session?.projectPath?.split("/").pop() || "No project"}
         </div>
@@ -180,7 +180,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
             <span
               class={`inline-flex items-center gap-1 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md ${
                 props.isActive
-                  ? "bg-white/15 text-white/80"
+                  ? "bg-primary/20 text-primary-content"
                   : "bg-base-content/10 text-base-content/60"
               }`}
             >
@@ -203,7 +203,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
             <span
               class={`text-[9px] font-mono font-bold px-1 py-0.5 rounded ${
                 props.isActive
-                  ? "bg-white/10 text-white/70"
+                  ? "bg-primary/10 text-base-content/70"
                   : "bg-base-content/5 text-base-content/50"
               }`}
             >

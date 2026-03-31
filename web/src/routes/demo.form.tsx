@@ -20,7 +20,7 @@ function FieldWrapper(props: {
       </label>
       {props.children}
       {props.errors.length ? (
-        <div class="text-red-500 mt-1 font-bold">{props.errors.join(', ')}</div>
+        <div class="text-error mt-1 font-bold">{props.errors.join(', ')}</div>
       ) : null}
     </div>
   )
@@ -90,7 +90,7 @@ function FormExample() {
                     value={field().state.value}
                     onBlur={field().handleBlur}
                     onChange={(e) => field().handleChange(e.target.value)}
-                    class="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    class="w-full px-4 py-2 rounded-md border border-base-300 focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </FieldWrapper>
               )}
@@ -124,7 +124,7 @@ function FormExample() {
                     value={field().state.value}
                     onBlur={field().handleBlur}
                     onChange={(e) => field().handleChange(e.target.value)}
-                    class="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    class="w-full px-4 py-2 rounded-md border border-base-300 focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </FieldWrapper>
               )}
@@ -154,7 +154,7 @@ function FormExample() {
                     value={field().state.value}
                     onBlur={field().handleBlur}
                     onChange={(e) => field().handleChange(e.target.value)}
-                    class="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    class="w-full px-4 py-2 rounded-md border border-base-300 focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </FieldWrapper>
               )}
@@ -182,7 +182,7 @@ function FormExample() {
                     value={field().state.value}
                     onBlur={field().handleBlur}
                     onChange={(e) => field().handleChange(e.target.value)}
-                    class="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    class="w-full px-4 py-2 rounded-md border border-base-300 focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </FieldWrapper>
               )}
@@ -207,7 +207,7 @@ function FormExample() {
                     value={field().state.value}
                     onBlur={field().handleBlur}
                     onChange={(e) => field().handleChange(e.target.value)}
-                    class="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    class="w-full px-4 py-2 rounded-md border border-base-300 focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </FieldWrapper>
               )}
@@ -238,7 +238,7 @@ function FormExample() {
                     value={field().state.value}
                     onBlur={field().handleBlur}
                     onChange={(e) => field().handleChange(e.target.value)}
-                    class="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    class="w-full px-4 py-2 rounded-md border border-base-300 focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </FieldWrapper>
               )}
@@ -268,7 +268,7 @@ function FormExample() {
                     value={field().state.value}
                     onBlur={field().handleBlur}
                     onChange={(e) => field().handleChange(e.target.value)}
-                    class="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    class="w-full px-4 py-2 rounded-md border border-base-300 focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="">Select a country</option>
                     <option value="US">United States</option>
@@ -315,7 +315,7 @@ function FormExample() {
                     value={field().state.value}
                     onBlur={field().handleBlur}
                     onChange={(e) => field().handleChange(e.target.value)}
-                    class="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    class="w-full px-4 py-2 rounded-md border border-base-300 focus:outline-none focus:ring-2 focus:ring-primary"
                     placeholder="(123) 456-7890"
                   />
                 </FieldWrapper>
@@ -328,7 +328,7 @@ function FormExample() {
             <button
               type="submit"
               disabled={form.state.isSubmitting}
-              class="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors disabled:opacity-50"
+              class="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors disabled:opacity-50"
             >
               {form.state.isSubmitting ? 'Submitting...' : 'Submit'}
             </button>

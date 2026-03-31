@@ -16,37 +16,37 @@ export const Route = createFileRoute('/')({ component: Home })
 function Home() {
   const features = [
     {
-      icon: <Terminal class="w-10 h-10 text-cyan-400" />,
+      icon: <Terminal class="w-10 h-10 text-primary" />,
       title: 'Multi-Agent Support',
       description:
         'Run Claude, Codex, Gemini, OpenCode and more from a unified interface.',
     },
     {
-      icon: <Wifi class="w-10 h-10 text-cyan-400" />,
+      icon: <Wifi class="w-10 h-10 text-primary" />,
       title: 'Remote P2P Connection',
       description:
         'Connect to remote agents securely via iroh P2P with NAT traversal.',
     },
     {
-      icon: <Shield class="w-10 h-10 text-cyan-400" />,
+      icon: <Shield class="w-10 h-10 text-primary" />,
       title: 'Permission Control',
       description:
         'Review and approve tool executions before they run on your machine.',
     },
     {
-      icon: <Zap class="w-10 h-10 text-cyan-400" />,
+      icon: <Zap class="w-10 h-10 text-primary" />,
       title: 'Streaming Responses',
       description:
         'Real-time streaming of AI responses with tool call visualization.',
     },
     {
-      icon: <Globe class="w-10 h-10 text-cyan-400" />,
+      icon: <Globe class="w-10 h-10 text-primary" />,
       title: 'Browser Access',
       description:
         'Access your remote agents from any browser with the WASM client.',
     },
     {
-      icon: <Cpu class="w-10 h-10 text-cyan-400" />,
+      icon: <Cpu class="w-10 h-10 text-primary" />,
       title: 'Cross-Platform',
       description:
         'Desktop, mobile, and web clients powered by Tauri 2 and SolidJS.',
@@ -82,12 +82,13 @@ function Home() {
           </div>
 
           {/* Subtitle */}
-          <p class="text-2xl md:text-3xl text-gray-300 mb-4 font-light">
+          <p class="text-2xl md:text-3xl text-base-content mb-4 font-light">
             Multi-Agent Remote Management Platform
           </p>
-          <p class="text-lg text-gray-400 max-w-2xl mx-auto mb-8">
-            Control multiple AI agents (Claude, Codex, Gemini, OpenCode, OpenClaw)
-            from anywhere. Secure P2P connections with end-to-end encryption.
+          <p class="text-lg text-neutral max-w-2xl mx-auto mb-8">
+            Control multiple AI agents (Claude, Codex, Gemini, OpenCode,
+            OpenClaw) from anywhere. Secure P2P connections with end-to-end
+            encryption.
           </p>
 
           {/* CTA Buttons */}
@@ -104,7 +105,7 @@ function Home() {
               href="https://github.com/sternelee/riterm"
               target="_blank"
               rel="noopener noreferrer"
-              class="px-8 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-xl transition-colors border border-slate-600"
+              class="px-8 py-3 bg-base-300 hover:bg-base-200 text-white font-semibold rounded-xl transition-colors border border-base-300"
             >
               View on GitHub
             </a>
@@ -112,7 +113,7 @@ function Home() {
 
           {/* Supported Agents */}
           <div class="flex flex-wrap items-center justify-center gap-3">
-            <span class="text-sm text-gray-500 mr-2">Supported Agents:</span>
+            <span class="text-sm text-neutral mr-2">Supported Agents:</span>
             <For each={agents}>
               {(agent) => (
                 <span
@@ -134,14 +135,14 @@ function Home() {
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <For each={features}>
             {(feature) => (
-              <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 hover:border-cyan-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-cyan-500/10 group">
+              <div class="bg-base-200 backdrop-blur-sm border border-base-300 rounded-xl p-6 hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10 group">
                 <div class="mb-4 group-hover:scale-110 transition-transform">
                   {feature.icon}
                 </div>
                 <h3 class="text-xl font-semibold text-white mb-3">
                   {feature.title}
                 </h3>
-                <p class="text-gray-400 leading-relaxed">
+                <p class="text-neutral leading-relaxed">
                   {feature.description}
                 </p>
               </div>
@@ -151,7 +152,7 @@ function Home() {
       </section>
 
       {/* How It Works Section */}
-      <section class="py-16 px-6 bg-slate-800/30">
+      <section class="py-16 px-6 bg-base-200/30">
         <div class="max-w-4xl mx-auto">
           <h2 class="text-3xl font-bold text-white text-center mb-12">
             How It Works
@@ -159,16 +160,16 @@ function Home() {
 
           <div class="space-y-8">
             <div class="flex items-start gap-4">
-              <div class="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center flex-shrink-0 text-cyan-400 font-bold">
+              <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 text-primary font-bold">
                 1
               </div>
               <div>
                 <h3 class="text-lg font-semibold text-white mb-1">
                   Run CLI Host
                 </h3>
-                <p class="text-gray-400">
+                <p class="text-neutral">
                   Start the ClawdPilot CLI host on your machine with{' '}
-                  <code class="px-2 py-0.5 bg-slate-700 rounded text-cyan-400">
+                  <code class="px-2 py-0.5 bg-base-300 rounded text-primary">
                     clawdpilot host
                   </code>
                   . It generates a session ticket for secure connections.
@@ -177,29 +178,30 @@ function Home() {
             </div>
 
             <div class="flex items-start gap-4">
-              <div class="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center flex-shrink-0 text-cyan-400 font-bold">
+              <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 text-primary font-bold">
                 2
               </div>
               <div>
                 <h3 class="text-lg font-semibold text-white mb-1">
                   Connect from Browser
                 </h3>
-                <p class="text-gray-400">
-                  Open this web app and enter the session ticket (or scan the QR code).
-                  The WASM client establishes a secure P2P connection via iroh.
+                <p class="text-neutral">
+                  Open this web app and enter the session ticket (or scan the QR
+                  code). The WASM client establishes a secure P2P connection via
+                  iroh.
                 </p>
               </div>
             </div>
 
             <div class="flex items-start gap-4">
-              <div class="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center flex-shrink-0 text-cyan-400 font-bold">
+              <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 text-primary font-bold">
                 3
               </div>
               <div>
                 <h3 class="text-lg font-semibold text-white mb-1">
                   Start Your Agent
                 </h3>
-                <p class="text-gray-400">
+                <p class="text-neutral">
                   Choose your AI agent (Claude, Codex, etc.) and project path.
                   Interact with the agent in real-time with streaming responses.
                 </p>
@@ -210,14 +212,10 @@ function Home() {
       </section>
 
       {/* Footer */}
-      <footer class="py-8 px-6 border-t border-slate-800">
-        <div class="max-w-7xl mx-auto text-center text-gray-500 text-sm">
-          <p>
-            ClawdPilot - Multi-Agent Remote Management Platform
-          </p>
-          <p class="mt-2">
-            Built with Tauri 2, SolidJS, and iroh P2P
-          </p>
+      <footer class="py-8 px-6 border-t border-base-300">
+        <div class="max-w-7xl mx-auto text-center text-neutral text-sm">
+          <p>ClawdPilot - Multi-Agent Remote Management Platform</p>
+          <p class="mt-2">Built with Tauri 2, SolidJS, and iroh P2P</p>
         </div>
       </footer>
     </div>
