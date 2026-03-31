@@ -709,7 +709,10 @@ impl QuicMessageServer {
                                 if let Err(e) =
                                     Self::send_message(&mut send_stream, &response).await
                                 {
-                                    warn!("Failed to send response (peer may have closed stream): {}", e);
+                                    warn!(
+                                        "Failed to send response (peer may have closed stream): {}",
+                                        e
+                                    );
                                 }
                             }
                             Ok(None) => {
@@ -720,7 +723,10 @@ impl QuicMessageServer {
                                     if let Err(e) =
                                         Self::send_message(&mut send_stream, &response).await
                                     {
-                                        warn!("Failed to send default response (peer may have closed stream): {}", e);
+                                        warn!(
+                                            "Failed to send default response (peer may have closed stream): {}",
+                                            e
+                                        );
                                     }
                                 }
                             }
@@ -734,7 +740,10 @@ impl QuicMessageServer {
                                 if let Err(e) =
                                     Self::send_message(&mut send_stream, &error_response).await
                                 {
-                                    warn!("Failed to send error response (peer may have closed stream): {}", e);
+                                    warn!(
+                                        "Failed to send error response (peer may have closed stream): {}",
+                                        e
+                                    );
                                 }
                             }
                         }

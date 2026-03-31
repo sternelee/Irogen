@@ -2532,7 +2532,7 @@ impl RemoteSpawnMessageHandler {
         request_id: Option<String>,
     ) -> Result<Option<Message>> {
         info!("Received stop session request for: {}", session_id);
-        
+
         match self.agent_manager.stop_session(&session_id).await {
             Ok(()) => {
                 let response = MessageBuilder::response(

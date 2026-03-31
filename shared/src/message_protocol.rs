@@ -587,10 +587,7 @@ pub enum AgentMessageContent {
     },
     /// 原始事件（用于透传 ACP 扩展能力）
     /// data 存储为 JSON 字符串以兼容 bincode 序列化
-    RawEvent {
-        event_type: String,
-        data: String,
-    },
+    RawEvent { event_type: String, data: String },
     /// 权限请求
     ApprovalRequest {
         request_id: String,
