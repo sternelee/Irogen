@@ -915,6 +915,8 @@ textarea:focus {
     left: 0.5rem !important;
     right: 0.5rem !important;
     width: auto !important;
+    top: calc(env(safe-area-inset-top, 0px) + 0.5rem) !important;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem) !important;
   }
 
   [data-sonner-toaster] [data-sonner-toast] {
