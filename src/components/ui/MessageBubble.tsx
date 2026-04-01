@@ -90,8 +90,8 @@ const UserMessage: Component<{ content: string; timestamp?: number }> = (
 ) => {
   return (
     <div class="chat chat-end">
-      <div class="chat-bubble chat-bubble-primary">
-        <div class="prose prose-sm max-w-none text-[15px] sm:text-sm selectable prose-invert">
+      <div class="chat-bubble chat-bubble-primary overflow-x-hidden">
+        <div class="prose prose-sm max-w-none text-[15px] sm:text-sm selectable prose-invert break-words [overflow-wrap:anywhere]">
           <SolidMarkdown children={props.content} />
         </div>
       </div>
@@ -114,7 +114,7 @@ interface AssistantMessageProps {
 const AssistantMessage: Component<AssistantMessageProps> = (props) => {
   return (
     <div class="chat chat-start">
-      <div class="chat-bubble">
+      <div class="chat-bubble overflow-x-hidden">
         {/* Thinking/Reasoning */}
         <Show when={props.thinking}>
           <ReasoningBlock
@@ -124,7 +124,7 @@ const AssistantMessage: Component<AssistantMessageProps> = (props) => {
         </Show>
 
         {/* Content */}
-        <div class="prose prose-sm max-w-none text-[15px] sm:text-sm selectable">
+        <div class="prose prose-sm max-w-none text-[15px] sm:text-sm selectable break-words [overflow-wrap:anywhere]">
           <SolidMarkdown
             children={props.thinking ? undefined : props.content}
             components={{
@@ -179,7 +179,7 @@ interface SystemMessageProps {
 const SystemMessage: Component<SystemMessageProps> = (props) => {
   return (
     <div class="chat chat-start">
-      <div class="chat-bubble chat-bubble-neutral">
+      <div class="chat-bubble chat-bubble-neutral overflow-x-hidden">
         <SystemMessageContent
           content={props.content}
           systemCard={props.systemCard}
@@ -198,6 +198,9 @@ const SystemMessage: Component<SystemMessageProps> = (props) => {
 // ============================================================================
 // System Message Content Parser
 // ============================================================================
+
+const normalizeEscapedLineBreaks = (value: string) =>
+  value.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
 
 const SystemMessageContent: Component<{
   content: string;
@@ -511,16 +514,20 @@ const SystemMessageContent: Component<{
         <Show
           when={isTerminalOutput()}
           fallback={
-            <div class="prose prose-sm wrap-break-words text-[15px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
-              <SolidMarkdown children={props.content} />
+            <div class="prose prose-sm break-words [overflow-wrap:anywhere] text-[15px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
+              <SolidMarkdown
+                children={normalizeEscapedLineBreaks(props.content)}
+              />
             </div>
           }
         >
           <Show
             when={parseTerminalOutput()}
             fallback={
-              <div class="prose prose-sm wrap-break-words text-[15px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
-                <SolidMarkdown children={props.content} />
+              <div class="prose prose-sm break-words [overflow-wrap:anywhere] text-[15px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
+                <SolidMarkdown
+                  children={normalizeEscapedLineBreaks(props.content)}
+                />
               </div>
             }
           >
@@ -546,7 +553,7 @@ const SystemMessageContent: Component<{
                   </span>
                   <Show when={parsed().output}>
                     <pre class="mt-2 text-xs opacity-60 whitespace-pre-wrap break-all">
-                      {parsed().output}
+                      {normalizeEscapedLineBreaks(parsed().output || "")}
                     </pre>
                   </Show>
                 </div>

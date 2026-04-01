@@ -51,6 +51,7 @@ interface ParsedEvent {
   code?: string;
   // Tool events
   toolId?: string;
+  toolCallId?: string;
   toolName?: string;
   input?: unknown;
   output?: unknown;
@@ -184,6 +185,10 @@ function parseEvent(eventObj: Record<string, unknown>): ParsedEvent {
         if ("turn_id" in obj) parsed.turnId = obj.turn_id as string;
         if ("result" in obj) parsed.result = obj.result;
         if ("error" in obj) parsed.error = obj.error as string;
+        if ("tool_id" in obj) parsed.toolId = obj.tool_id as string;
+        if ("toolId" in obj) parsed.toolId = obj.toolId as string;
+        if ("tool_call_id" in obj) parsed.toolCallId = obj.tool_call_id as string;
+        if ("toolCallId" in obj) parsed.toolCallId = obj.toolCallId as string;
         if ("tool_name" in obj || "toolName" in obj) {
           parsed.toolName = (obj.tool_name || obj.toolName) as string;
         }
@@ -330,6 +335,7 @@ export function ChatView(props: ChatViewProps) {
     const rightPanelView = () =>
       props.rightPanelView ?? internalRightPanelView();
     const toolMessageIds = new Map<string, string>();
+    const toolNameMessageIds = new Map<string, string>();
     let scrollRafId: number | undefined;
     let mentionDebounceTimer: number | undefined;
     let lastScrollOffset = 0;
@@ -471,6 +477,7 @@ export function ChatView(props: ChatViewProps) {
           setShouldAutoFollow(true);
           lastScrollOffset = 0;
           toolMessageIds.clear();
+          toolNameMessageIds.clear();
         },
         { defer: false },
       ),
@@ -699,6 +706,22 @@ export function ChatView(props: ChatViewProps) {
       }
     };
 
+    const normalizeToolNameKey = (toolName: string) =>
+      `name-${toolName}`.replace(/\s+/g, "-").toLowerCase();
+
+    const resolveToolMessageKey = (toolName: string, explicitToolId?: string) => {
+      const toolNameKey = normalizeToolNameKey(toolName);
+      const toolMessageKey =
+        explicitToolId || toolNameMessageIds.get(toolNameKey) || toolNameKey;
+      return { toolNameKey, toolMessageKey };
+    };
+
+    const isTerminalToolStatus = (status: string) =>
+      status === "Completed" ||
+      status === "Failed" ||
+      status === "Error" ||
+      status === "Cancelled";
+
     // ========================================================================
     // Session Event Handler (using centralized router)
     // ========================================================================
@@ -817,13 +840,18 @@ export function ChatView(props: ChatViewProps) {
         }
 
         case "tool_started": {
-          const toolId = parsed.toolId;
+          const explicitToolId = parsed.toolId || parsed.toolCallId;
           const toolName = parsed.toolName || "unknown";
           const toolInput = parsed.input;
           const inputStr = toolInput ? JSON.stringify(toolInput) : "";
           const toolContent = `[Tool: ${toolName} started]${inputStr ? `\nInput: ${inputStr}` : ""}`;
-          if (toolId) {
-            upsertToolMessage(toolId, toolContent);
+          if (explicitToolId) {
+            const { toolNameKey, toolMessageKey } = resolveToolMessageKey(
+              toolName,
+              explicitToolId,
+            );
+            upsertToolMessage(toolMessageKey, toolContent);
+            toolNameMessageIds.set(toolNameKey, toolMessageKey);
           } else {
             chatStore.addMessage(props.sessionId, {
               role: "system",
@@ -834,13 +862,18 @@ export function ChatView(props: ChatViewProps) {
         }
 
         case "tool_inputUpdated": {
-          const toolId = parsed.toolId;
+          const explicitToolId = parsed.toolId || parsed.toolCallId;
           const updateToolName = parsed.toolName || "unknown";
           const updatedInput = parsed.input;
           const updateStr = updatedInput ? JSON.stringify(updatedInput) : "";
           const toolContent = `[Tool: ${updateToolName} input updated]${updateStr ? `\n${updateStr}` : ""}`;
-          if (toolId) {
-            upsertToolMessage(toolId, toolContent);
+          if (explicitToolId) {
+            const { toolNameKey, toolMessageKey } = resolveToolMessageKey(
+              updateToolName,
+              explicitToolId,
+            );
+            upsertToolMessage(toolMessageKey, toolContent);
+            toolNameMessageIds.set(toolNameKey, toolMessageKey);
           } else {
             chatStore.addMessage(props.sessionId, {
               role: "system",
@@ -851,7 +884,7 @@ export function ChatView(props: ChatViewProps) {
         }
 
         case "tool_completed": {
-          const toolId = parsed.toolId;
+          const explicitToolId = parsed.toolId || parsed.toolCallId;
           const compToolName = parsed.toolName || "unknown";
           const compOutput = parsed.output;
           const compError = parsed.error;
@@ -862,9 +895,14 @@ export function ChatView(props: ChatViewProps) {
             : "";
           if (compError) {
             const toolContent = `[Tool: ${compToolName} failed]\nError: ${compError}`;
-            if (toolId) {
-              upsertToolMessage(toolId, toolContent);
-              toolMessageIds.delete(toolId);
+            if (explicitToolId) {
+              const { toolNameKey, toolMessageKey } = resolveToolMessageKey(
+                compToolName,
+                explicitToolId,
+              );
+              upsertToolMessage(toolMessageKey, toolContent);
+              toolMessageIds.delete(toolMessageKey);
+              toolNameMessageIds.delete(toolNameKey);
             } else {
               chatStore.addMessage(props.sessionId, {
                 role: "system",
@@ -873,9 +911,14 @@ export function ChatView(props: ChatViewProps) {
             }
           } else {
             const toolContent = `[Tool: ${compToolName} completed]${outputStr ? `\n${outputStr}` : ""}`;
-            if (toolId) {
-              upsertToolMessage(toolId, toolContent);
-              toolMessageIds.delete(toolId);
+            if (explicitToolId) {
+              const { toolNameKey, toolMessageKey } = resolveToolMessageKey(
+                compToolName,
+                explicitToolId,
+              );
+              upsertToolMessage(toolMessageKey, toolContent);
+              toolMessageIds.delete(toolMessageKey);
+              toolNameMessageIds.delete(toolNameKey);
             } else {
               chatStore.addMessage(props.sessionId, {
                 role: "system",
@@ -890,9 +933,28 @@ export function ChatView(props: ChatViewProps) {
           const toolName = parsed.toolName || "unknown";
           const status = parsed.status || "";
           const output = parsed.output;
-          const toolId = `tool-${toolName}-${status}`
-            .replace(/\s+/g, "-")
-            .toLowerCase();
+          const stableToolId =
+            parsed.toolId ||
+            parsed.toolCallId ||
+            (typeof parsed.data === "string"
+              ? (() => {
+                  try {
+                    const rawData = JSON.parse(parsed.data) as Record<
+                      string,
+                      unknown
+                    >;
+                    return typeof rawData.toolCallId === "string"
+                      ? rawData.toolCallId
+                      : undefined;
+                  } catch {
+                    return undefined;
+                  }
+                })()
+              : undefined);
+          const { toolNameKey, toolMessageKey } = resolveToolMessageKey(
+            toolName,
+            stableToolId,
+          );
           let toolContent = "";
           let parsedOutput: Record<string, unknown> | null = null;
           if (typeof output === "string") {
@@ -915,9 +977,11 @@ export function ChatView(props: ChatViewProps) {
           } else {
             toolContent = `[Tool: ${toolName}] Status: ${status}${output ? `\n${output}` : ""}`;
           }
-          upsertToolMessage(toolId, toolContent);
-          if (status === "Completed" || status === "Error") {
-            toolMessageIds.delete(toolId);
+          upsertToolMessage(toolMessageKey, toolContent);
+          toolNameMessageIds.set(toolNameKey, toolMessageKey);
+          if (isTerminalToolStatus(status)) {
+            toolMessageIds.delete(toolMessageKey);
+            toolNameMessageIds.delete(toolNameKey);
           }
           break;
         }
@@ -965,10 +1029,16 @@ export function ChatView(props: ChatViewProps) {
           const legacyToolName = parsed.toolName || "unknown";
           const legacyStatus = parsed.status || "started";
           const legacyToolOutput = parsed.output as string | undefined;
-          chatStore.addMessage(props.sessionId, {
-            role: "system",
-            content: `[Tool: ${legacyToolName}] Status: ${legacyStatus}${legacyToolOutput ? `\n${legacyToolOutput}` : ""}`,
-          });
+          const { toolNameKey, toolMessageKey } = resolveToolMessageKey(
+            legacyToolName,
+          );
+          const toolContent = `[Tool: ${legacyToolName}] Status: ${legacyStatus}${legacyToolOutput ? `\n${legacyToolOutput}` : ""}`;
+          upsertToolMessage(toolMessageKey, toolContent);
+          toolNameMessageIds.set(toolNameKey, toolMessageKey);
+          if (isTerminalToolStatus(legacyStatus)) {
+            toolMessageIds.delete(toolMessageKey);
+            toolNameMessageIds.delete(toolNameKey);
+          }
           break;
         }
 
@@ -1794,7 +1864,7 @@ export function ChatView(props: ChatViewProps) {
         <div class="drawer-content flex h-full bg-base-100 relative pb-safe lg:pb-0 overflow-hidden">
           <div class="flex flex-col h-full min-w-0 flex-1">
             {/* Header */}
-            <div class="z-20 flex items-center h-14 sm:h-16 box-border justify-between border-b border-base-content/10 bg-base-100/80 backdrop-blur-md px-4 sm:px-6 py-2 shadow-sm sticky top-0 fixed-top-safe">
+            <div class="z-20 flex items-center h-14 sm:h-16 box-border justify-between border-b border-base-content/10 bg-base-100/80 backdrop-blur-md px-4 sm:px-6 py-2 shadow-sm sticky top-0">
               <div class="flex items-center gap-3 overflow-hidden">
                 {/* Mobile Sidebar Toggle */}
                 <button

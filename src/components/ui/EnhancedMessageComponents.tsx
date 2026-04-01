@@ -273,8 +273,10 @@ export const TerminalOutput: Component<TerminalOutputProps> = (props) => {
   const [isExpanded, setIsExpanded] = createSignal(true);
   const [copied, setCopied] = createSignal(false);
 
+  const normalizeOutput = () => normalizeMultiline(props.output || "");
+
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(props.output);
+    await navigator.clipboard.writeText(normalizeOutput());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -335,7 +337,7 @@ export const TerminalOutput: Component<TerminalOutputProps> = (props) => {
             </div>
           </Show>
           <pre class="px-3 py-2 text-xs font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap max-h-80">
-            {props.output}
+            {normalizeOutput()}
           </pre>
         </div>
       </Show>
