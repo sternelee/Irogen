@@ -15,7 +15,6 @@ import { AppLayout } from "./components/AppLayout";
 import { SettingsModal } from "./components/SettingsModal";
 import { NewSessionModal } from "./components/NewSessionModal";
 import { NotificationDisplay } from "./components/NotificationDisplay";
-import { ZeroclawConfigModal } from "./components/ZeroclawConfigModal";
 
 // Stores
 import { sessionStore } from "./stores/sessionStore";
@@ -210,17 +209,11 @@ export default function App() {
       {/* New Session Modal */}
       <NewSessionModal />
 
-      {/* ClawdAI Config Modal */}
-      <ZeroclawConfigModal
-        isOpen={sessionStore.state.isZeroClawConfigOpen}
-        onClose={() => sessionStore.setZeroClawConfigOpen(false)}
-      />
-
       {/* Notification Display */}
       <NotificationDisplay position="top-right" />
 
       {/* Toaster for solid-sonner */}
-      <Toaster richColors position="top-right" />
+      <Toaster richColors position="top-right" closeButton />
     </>
   );
 }

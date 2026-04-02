@@ -123,16 +123,6 @@ interface SessionState {
   sessionTicket: string;
   targetControlSessionId: string | null;
 
-  // ZeroClaw provider config
-  zeroClawProvider: string;
-  zeroClawModel: string;
-  zeroClawApiKey: string;
-  zeroClawTemperature: string;
-  zeroClawMaxIterations: number;
-  zeroClawSystemPrompt: string;
-  zeroClawEnabledTools: string[];
-  isZeroClawConfigOpen: boolean;
-
   // Network and Loading States
   isNetworkInitialized: boolean;
   isStartingAgent: boolean;
@@ -156,29 +146,6 @@ const initialState: SessionState = {
   newSessionMcpServers: "",
   sessionTicket: getLastTicket() || "",
   targetControlSessionId: null,
-
-  zeroClawProvider: "ollama",
-  zeroClawModel: "qwen3:8b",
-  zeroClawApiKey: "",
-  zeroClawTemperature: "0.7",
-  zeroClawMaxIterations: 20,
-  zeroClawSystemPrompt: "",
-  zeroClawEnabledTools: [
-    "shell",
-    "file_read",
-    "file_write",
-    "enhanced_screenshot",
-    "git_operations",
-    "http_request",
-    "image_info",
-    "memory_store",
-    "memory_recall",
-    "memory_forget",
-    "browser",
-    "browser_open",
-    "composio",
-  ],
-  isZeroClawConfigOpen: false,
 
   isNetworkInitialized: false,
   isStartingAgent: false,
@@ -312,52 +279,6 @@ export const createSessionStore = () => {
 
   const setConnecting = (connecting: boolean) => {
     setState("isConnecting", connecting);
-  };
-
-  // ZeroClaw Config
-  const setZeroClawProvider = (provider: string) => {
-    setState("zeroClawProvider", provider);
-  };
-
-  const setZeroClawModel = (model: string) => {
-    setState("zeroClawModel", model);
-  };
-
-  const setZeroClawApiKey = (apiKey: string) => {
-    setState("zeroClawApiKey", apiKey);
-  };
-
-  const setZeroClawTemperature = (temp: string) => {
-    setState("zeroClawTemperature", temp);
-  };
-
-  const setZeroClawMaxIterations = (iterations: number) => {
-    setState("zeroClawMaxIterations", iterations);
-  };
-
-  const setZeroClawSystemPrompt = (prompt: string) => {
-    setState("zeroClawSystemPrompt", prompt);
-  };
-
-  const setZeroClawEnabledTools = (tools: string[]) => {
-    setState("zeroClawEnabledTools", tools);
-  };
-
-  const toggleZeroClawTool = (tool: string) => {
-    setState(
-      produce((s: SessionState) => {
-        const idx = s.zeroClawEnabledTools.indexOf(tool);
-        if (idx >= 0) {
-          s.zeroClawEnabledTools.splice(idx, 1);
-        } else {
-          s.zeroClawEnabledTools.push(tool);
-        }
-      }),
-    );
-  };
-
-  const setZeroClawConfigOpen = (open: boolean) => {
-    setState("isZeroClawConfigOpen", open);
   };
 
   // ========================================================================
@@ -747,15 +668,6 @@ export const createSessionStore = () => {
     setSessionTicket,
     setConnectionError,
     setConnecting,
-    setZeroClawProvider,
-    setZeroClawModel,
-    setZeroClawApiKey,
-    setZeroClawTemperature,
-    setZeroClawMaxIterations,
-    setZeroClawSystemPrompt,
-    setZeroClawEnabledTools,
-    toggleZeroClawTool,
-    setZeroClawConfigOpen,
 
     // Connection and Network
     setConnectionState,
