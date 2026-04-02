@@ -18,7 +18,13 @@ import { getLastTicket, saveTicket } from "../utils/localStorage";
 // Types
 // ============================================================================
 
-export type AgentType = "claude" | "opencode" | "codex" | "gemini" | "openclaw";
+export type AgentType =
+  | "claude"
+  | "opencode"
+  | "codex"
+  | "cursor"
+  | "gemini"
+  | "openclaw";
 
 export type SessionMode = "remote" | "local";
 
@@ -61,6 +67,7 @@ export const normalizeAgentType = (type: string): AgentType => {
   const lower = type.toLowerCase();
   if (lower === "claudecode" || lower === "claude-code") return "claude";
   if (lower === "opencode") return "opencode";
+  if (lower === "cursor-agent") return "cursor";
   if (lower === "gemini-cli") return "gemini";
   if (lower === "open-claw") return "openclaw";
   return lower as AgentType;

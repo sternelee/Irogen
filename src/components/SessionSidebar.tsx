@@ -43,6 +43,7 @@ const getAgentIcon = (agentType: AgentType) => {
     claudecode: "/claude-ai.svg",
     "claude-code": "/claude-ai.svg",
     codex: "/openai-light.svg",
+    cursor: "/clawdpilot-icon.svg",
     opencode: "/opencode-wordmark-dark.svg",
     open: "/openai-light.svg",
     openai: "/openai-light.svg",
@@ -150,6 +151,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
             {props.session?.agentType === "gemini" && "Gemini"}
             {props.session?.agentType === "opencode" && "OpenCode"}
             {props.session?.agentType === "codex" && "Codex"}
+            {props.session?.agentType === "cursor" && "Cursor"}
             {props.session?.agentType === "openclaw" && "OpenClaw"}
           </span>
           <span

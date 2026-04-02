@@ -1900,6 +1900,7 @@ export function ChatView(props: ChatViewProps) {
                     <h2 class="text-[14px] sm:text-[15px] font-bold tracking-tight truncate leading-tight">
                       {props.agentType === "claude" && "Claude Code"}
                       {props.agentType === "codex" && "Codex"}
+                      {props.agentType === "cursor" && "Cursor"}
                       {props.agentType === "opencode" && "OpenCode"}
                       {props.agentType === "gemini" && "Gemini CLI"}
                       {props.agentType === "openclaw" && "OpenClaw"}

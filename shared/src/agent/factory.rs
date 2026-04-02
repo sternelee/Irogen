@@ -77,6 +77,7 @@ fn agent_key(agent_type: AgentType) -> &'static str {
         AgentType::ClaudeCode => "claude",
         AgentType::OpenCode => "opencode",
         AgentType::Codex => "codex",
+        AgentType::Cursor => "cursor",
         AgentType::Gemini => "gemini",
         AgentType::OpenClaw => "openclaw",
     }
@@ -444,6 +445,60 @@ impl Agent for CodexAgent {
     }
 }
 
+/// Cursor CLI Agent (ACP compatible)
+///
+/// Cursor exposes ACP through the native `cursor-agent acp` command.
+pub struct CursorAgent;
+
+impl Agent for CursorAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::Cursor
+    }
+
+    fn command(&self) -> &str {
+        "cursor-agent"
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        vec!["acp".to_string()]
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        let available = output.status.success();
+        let version = if available {
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            None
+        };
+
+        Ok(AgentAvailability {
+            available,
+            version,
+            executable: self.command().to_string(),
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!(
+                "Failed to get Cursor CLI version. Ensure 'cursor-agent' is installed."
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
 /// OpenClaw Agent — WebSocket Gateway mode
 ///
 /// OpenClaw uses WebSocket Gateway mode to communicate.
@@ -511,6 +566,7 @@ impl AgentFactory {
             AgentType::ClaudeCode => Box::new(ClaudeCodeAgent),
             AgentType::OpenCode => Box::new(OpenCodeAgent),
             AgentType::Codex => Box::new(CodexAgent),
+            AgentType::Cursor => Box::new(CursorAgent),
             AgentType::Gemini => Box::new(GeminiAgent),
             AgentType::OpenClaw => Box::new(OpenClawAgent),
         }
@@ -524,6 +580,7 @@ impl AgentFactory {
             AgentType::ClaudeCode,
             AgentType::OpenCode,
             AgentType::Codex,
+            AgentType::Cursor,
             AgentType::Gemini,
             AgentType::OpenClaw,
         ];
@@ -558,12 +615,15 @@ impl AgentFactory {
     pub fn get_default() -> Option<AgentType> {
         let available = Self::check_all_available().ok()?;
 
-        // 优先级: ClaudeCode > Codex > OpenCode > OpenClaw > Gemini
+        // 优先级: ClaudeCode > Codex > Cursor > OpenCode > OpenClaw > Gemini
         if available.contains_key(&AgentType::ClaudeCode) {
             return Some(AgentType::ClaudeCode);
         }
         if available.contains_key(&AgentType::Codex) {
             return Some(AgentType::Codex);
+        }
+        if available.contains_key(&AgentType::Cursor) {
+            return Some(AgentType::Cursor);
         }
         if available.contains_key(&AgentType::OpenCode) {
             return Some(AgentType::OpenCode);

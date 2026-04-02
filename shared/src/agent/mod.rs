@@ -296,6 +296,10 @@ impl AgentManager {
                                     return Err(anyhow!(error_msg));
                                 }
                             }
+                            AgentType::Cursor => {
+                                error_msg += " Install Cursor CLI so 'cursor-agent acp' is available, or pass an explicit --binary-path.";
+                                return Err(anyhow!(error_msg));
+                            }
                             AgentType::Gemini => {
                                 let installed = task::spawn_blocking(|| try_install_gemini_cli())
                                     .await
@@ -355,6 +359,7 @@ impl AgentManager {
                         AgentType::Codex => task::spawn_blocking(|| try_install_codex_acp())
                             .await
                             .unwrap_or_else(|_| Ok(false))?,
+                        AgentType::Cursor => false,
                         AgentType::Gemini => task::spawn_blocking(|| try_install_gemini_cli())
                             .await
                             .unwrap_or_else(|_| Ok(false))?,
@@ -379,6 +384,7 @@ impl AgentManager {
                         agent_type,
                         AgentType::ClaudeCode
                             | AgentType::Codex
+                            | AgentType::Cursor
                             | AgentType::Gemini
                             | AgentType::OpenCode
                     ) {
@@ -532,6 +538,9 @@ impl AgentManager {
                             }
                             AgentType::Codex => {
                                 error_msg += " Install a Codex ACP adapter (e.g. codex-acp) or pass an explicit --binary-path.";
+                            }
+                            AgentType::Cursor => {
+                                error_msg += " Install Cursor CLI so 'cursor-agent acp' is available, or pass an explicit --binary-path.";
                             }
                             AgentType::Gemini => {
                                 error_msg += " Install the Gemini CLI (e.g. npm install -g @google/gemini-cli) or pass an explicit --binary-path.";

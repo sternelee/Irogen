@@ -278,6 +278,13 @@ export const NewSessionModal: Component = () => {
             'e.g. --model gemini-2.5-pro --yolo or ["--model","gemini-2.5-pro"]',
           hint: "Passed to Gemini CLI process. Supports JSON array or space-separated args.",
         };
+      case "cursor":
+        return {
+          supported: true,
+          placeholder:
+            'e.g. --sandbox danger-full-access or ["--sandbox","danger-full-access"]',
+          hint: "Passed to Cursor ACP process (`cursor-agent acp`). Supports JSON array or space-separated args.",
+        };
       case "opencode":
         return {
           supported: true,
@@ -526,6 +533,7 @@ export const NewSessionModal: Component = () => {
                       <>
                         <option value="claude">Claude Code</option>
                         <option value="codex">Codex</option>
+                        <option value="cursor">Cursor</option>
                         <option value="openclaw">OpenClaw</option>
                         <option value="opencode">OpenCode</option>
                         <option value="gemini">Gemini CLI</option>

@@ -541,6 +541,21 @@ impl MessageHandler for SystemControlMessageHandler {
                             "opencode" => "opencode-ai",
                             "claude" => "@zed-industries/claude-agent-acp",
                             "gemini" => "@google/gemini-cli",
+                            "cursor" => {
+                                return Ok(Some(
+                                    message.create_response(MessagePayload::Response(
+                                        ResponseMessage {
+                                            request_id: response_request_id.clone(),
+                                            success: false,
+                                            data: None,
+                                            message: Some(
+                                                "Cursor does not support ACP auto-install in ClawdPilot"
+                                                    .to_string(),
+                                            ),
+                                        },
+                                    )),
+                                ));
+                            }
                             "openclaw" => {
                                 return Ok(Some(
                                     message.create_response(MessagePayload::Response(
@@ -3187,6 +3202,7 @@ fn parse_agent_type(agent_type_str: &str) -> Result<AgentType> {
         "claude" | "claudecode" | "claude-code" => Ok(AgentType::ClaudeCode),
         "opencode" | "open" | "openai" => Ok(AgentType::OpenCode),
         "codex" => Ok(AgentType::Codex),
+        "cursor" | "cursor-agent" => Ok(AgentType::Cursor),
         "gemini" | "gemini-cli" => Ok(AgentType::Gemini),
         "openclaw" | "open-claw" => Ok(AgentType::OpenClaw),
         _ => Err(anyhow::anyhow!("Unknown agent type: {}", agent_type_str)),

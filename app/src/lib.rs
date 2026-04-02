@@ -2361,6 +2361,7 @@ async fn remote_spawn_session(
         "claude" | "claudecode" | "claude-code" => AgentType::ClaudeCode,
         "opencode" | "open" | "openai" => AgentType::OpenCode,
         "codex" => AgentType::Codex,
+        "cursor" | "cursor-agent" => AgentType::Cursor,
         "gemini" | "gemini-cli" => AgentType::Gemini,
         "openclaw" | "open-claw" => AgentType::OpenClaw,
         _ => return Err(format!("Unknown agent type: {}", agent_type)),
@@ -2831,6 +2832,9 @@ async fn install_acp_package_local(agent_type: String) -> Result<String, String>
         "opencode" => "opencode-ai",
         "claude" => "@zed-industries/claude-agent-acp",
         "gemini" => "@google/gemini-cli",
+        "cursor" => {
+            return Err("Cursor does not support ACP auto-install in ClawdPilot".to_string());
+        }
         "openclaw" => return Err("OpenClaw does not require ACP installation".to_string()),
         _ => return Err(format!("Unsupported agent type for ACP: {}", agent_type)),
     };
@@ -2937,6 +2941,7 @@ async fn local_start_agent(
         "claude" | "claudecode" | "claude-code" => AgentType::ClaudeCode,
         "opencode" | "open" | "openai" => AgentType::OpenCode,
         "codex" => AgentType::Codex,
+        "cursor" | "cursor-agent" => AgentType::Cursor,
         "gemini" | "gemini-cli" => AgentType::Gemini,
         "openclaw" | "open-claw" => AgentType::OpenClaw,
         _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
@@ -3183,6 +3188,7 @@ async fn local_list_agent_history(
         "claude" | "claudecode" | "claude-code" => AgentType::ClaudeCode,
         "opencode" | "open" | "openai" => AgentType::OpenCode,
         "codex" => AgentType::Codex,
+        "cursor" | "cursor-agent" => AgentType::Cursor,
         "gemini" | "gemini-cli" => AgentType::Gemini,
         "openclaw" | "open-claw" => AgentType::OpenClaw,
         _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
@@ -3242,6 +3248,7 @@ async fn local_load_agent_history(
         "claude" | "claudecode" | "claude-code" => AgentType::ClaudeCode,
         "opencode" | "open" | "openai" => AgentType::OpenCode,
         "codex" => AgentType::Codex,
+        "cursor" | "cursor-agent" => AgentType::Cursor,
         "gemini" | "gemini-cli" => AgentType::Gemini,
         "openclaw" | "open-claw" => AgentType::OpenClaw,
         _ => return Err(format!("Unknown agent type: {}", agent_type_str)),

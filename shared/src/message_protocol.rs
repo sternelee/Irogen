@@ -481,6 +481,8 @@ pub enum AgentType {
     OpenCode,
     /// OpenAI Codex (OpenAI)
     Codex,
+    /// Cursor CLI (Cursor)
+    Cursor,
     /// Gemini CLI (Google)
     Gemini,
     /// OpenClaw (OpenClaw) — uses WebSocket Gateway
