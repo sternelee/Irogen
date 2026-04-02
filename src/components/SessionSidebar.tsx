@@ -1041,35 +1041,6 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
               </span>
             </button>
           </div>
-          <div class="mt-3 flex items-center justify-between rounded-xl border border-base-content/10 bg-base-200/70 p-1">
-            <span class="px-2 text-[10px] font-bold uppercase tracking-widest opacity-45">
-              {t("common.language")}
-            </span>
-            <div class="flex items-center gap-1">
-              <button
-                type="button"
-                class={`h-8 rounded-lg px-3 text-xs font-bold transition-colors ${
-                  i18nStore.locale() === "en"
-                    ? "bg-primary text-primary-content"
-                    : "text-base-content/60 hover:bg-base-content/5"
-                }`}
-                onClick={() => i18nStore.setLocale("en")}
-              >
-                {t("common.english")}
-              </button>
-              <button
-                type="button"
-                class={`h-8 rounded-lg px-3 text-xs font-bold transition-colors ${
-                  i18nStore.locale() === "zh-CN"
-                    ? "bg-primary text-primary-content"
-                    : "text-base-content/60 hover:bg-base-content/5"
-                }`}
-                onClick={() => i18nStore.setLocale("zh-CN")}
-              >
-                {t("common.chinese")}
-              </button>
-            </div>
-          </div>
         </div>
       </aside>
     </>

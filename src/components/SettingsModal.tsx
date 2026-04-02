@@ -24,8 +24,8 @@ export function SettingsModal(props: SettingsModalProps) {
     { value: "corporate", label: t("theme.corporate") },
     { value: "business", label: t("theme.business") },
     { value: "night", label: t("theme.night") },
-    { value: "forest", label: t("theme.forest") },
-    { value: "dracula", label: t("theme.dracula") },
+    { value: "black", label: t("theme.black") },
+    { value: "abyss", label: t("theme.abyss") },
     { value: "luxury", label: t("theme.luxury") },
     { value: "synthwave", label: t("theme.synthwave") },
   ];

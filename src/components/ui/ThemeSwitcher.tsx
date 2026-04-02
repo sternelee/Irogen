@@ -1,8 +1,13 @@
 import { createSignal, createEffect, onMount, For, Show } from "solid-js";
 import { cn } from "~/lib/utils";
 import { FiSun, FiMoon, FiMonitor, FiChevronDown } from "solid-icons/fi";
+import { i18nStore } from "../../stores/i18nStore";
 
 interface ThemeSwitcherProps {
+  class?: string;
+}
+
+interface LanguageSwitcherProps {
   class?: string;
 }
 
@@ -10,11 +15,17 @@ interface ThemeSwitcherProps {
 const themes = [
   { id: "light", name: "Light", icon: FiSun, color: "#fbbf24" },
   { id: "sunset", name: "Sunset", icon: FiSun, color: "#fb923c" },
-  { id: "dracula", name: "Dracula", icon: FiMoon, color: "#7b2cbf" },
+  { id: "black", name: "Black", icon: FiMoon, color: "#0f0f0f" },
   { id: "synthwave", name: "Synthwave", icon: FiMonitor, color: "#d946ef" },
-  { id: "forest", name: "Forest", icon: FiSun, color: "#22c55e" },
+  { id: "abyss", name: "Abyss", icon: FiMoon, color: "#0f172a" },
   { id: "luxury", name: "Luxury", icon: FiMoon, color: "#78716c" },
 ];
+
+const normalizeTheme = (theme: string) => {
+  if (theme === "forest") return "abyss";
+  if (theme === "dracula") return "black";
+  return theme;
+};
 
 export function ThemeSwitcher(props: ThemeSwitcherProps) {
   const [currentTheme, setCurrentTheme] = createSignal("sunset");
@@ -27,14 +38,14 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
 
   // Load theme from localStorage on mount
   onMount(() => {
-    const savedTheme = localStorage.getItem("theme") || "sunset";
+    const savedTheme = normalizeTheme(localStorage.getItem("theme") || "sunset");
     setCurrentTheme(savedTheme);
     document.documentElement.setAttribute("data-theme", savedTheme);
   });
 
   // Save theme to localStorage and update DOM when theme changes
   createEffect(() => {
-    const theme = currentTheme();
+    const theme = normalizeTheme(currentTheme());
     localStorage.setItem("theme", theme);
     document.documentElement.setAttribute("data-theme", theme);
   });
@@ -132,6 +143,46 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
           </div>
         </div>
       </Show>
+    </div>
+  );
+}
+
+export function LanguageSwitcher(props: LanguageSwitcherProps) {
+  const t = i18nStore.t;
+
+  return (
+    <div
+      class={cn(
+        "inline-flex items-center gap-1 rounded-lg border border-base-content/10 bg-base-100/85 p-1 shadow-sm backdrop-blur",
+        props.class,
+      )}
+    >
+      <button
+        type="button"
+        class={cn(
+          "rounded-md px-2.5 py-1.5 text-xs font-bold transition-colors",
+          i18nStore.locale() === "en"
+            ? "bg-primary text-primary-content"
+            : "text-base-content/60 hover:bg-base-content/5",
+        )}
+        onClick={() => i18nStore.setLocale("en")}
+        title={t("common.english")}
+      >
+        EN
+      </button>
+      <button
+        type="button"
+        class={cn(
+          "rounded-md px-2.5 py-1.5 text-xs font-bold transition-colors",
+          i18nStore.locale() === "zh-CN"
+            ? "bg-primary text-primary-content"
+            : "text-base-content/60 hover:bg-base-content/5",
+        )}
+        onClick={() => i18nStore.setLocale("zh-CN")}
+        title={t("common.chinese")}
+      >
+        中
+      </button>
     </div>
   );
 }

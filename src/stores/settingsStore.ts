@@ -7,8 +7,8 @@ export type ThemeType =
   | "corporate"
   | "business"
   | "night"
-  | "forest"
-  | "dracula"
+  | "black"
+  | "abyss"
   | "luxury"
   | "synthwave";
 export type LanguageType = "en" | "zh-CN" | "zh-TW" | "ja" | "ko";
@@ -51,13 +51,39 @@ const defaultSettings: UserSettings = {
 // Local storage key
 const SETTINGS_KEY = "clawdpilot-settings";
 
+const normalizeTheme = (theme: unknown): ThemeType => {
+  switch (theme) {
+    case "forest":
+      return "abyss";
+    case "dracula":
+      return "black";
+    case "sunset":
+    case "dark":
+    case "light":
+    case "corporate":
+    case "business":
+    case "night":
+    case "black":
+    case "abyss":
+    case "luxury":
+    case "synthwave":
+      return theme;
+    default:
+      return defaultSettings.theme;
+  }
+};
+
 // Load settings from localStorage
 const loadSettings = (): UserSettings => {
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      return { ...defaultSettings, ...parsed };
+      return {
+        ...defaultSettings,
+        ...parsed,
+        theme: normalizeTheme(parsed.theme),
+      };
     }
   } catch (error) {
     console.error("Failed to load settings from localStorage:", error);
@@ -211,8 +237,8 @@ export const translations = {
     "theme.corporate": "Corporate",
     "theme.business": "Business",
     "theme.night": "Night",
-    "theme.forest": "Forest",
-    "theme.dracula": "Dracula",
+    "theme.black": "Black",
+    "theme.abyss": "Abyss",
     "theme.luxury": "Luxury",
     "theme.synthwave": "Synthwave",
 
@@ -273,8 +299,8 @@ export const translations = {
     "theme.corporate": "企业",
     "theme.business": "商务",
     "theme.night": "夜晚",
-    "theme.forest": "森林",
-    "theme.dracula": "德古拉",
+    "theme.black": "黑曜",
+    "theme.abyss": "深渊",
     "theme.luxury": "奢华",
     "theme.synthwave": "合成波",
 

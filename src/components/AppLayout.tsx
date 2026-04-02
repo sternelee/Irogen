@@ -26,7 +26,7 @@ import { notificationStore } from "../stores/notificationStore";
 import { Button } from "./ui/primitives";
 import { KeyboardShortcutsDialog } from "./ui/KeyboardShortcuts";
 import { SpinnerWithLabel } from "./ui/Spinner";
-import { ThemeSwitcher } from "./ui/ThemeSwitcher";
+import { LanguageSwitcher, ThemeSwitcher } from "./ui/ThemeSwitcher";
 import { FiPlus, FiFolder, FiGitBranch, FiX } from "solid-icons/fi";
 import { HelpCircle } from "lucide-solid";
 
@@ -207,6 +207,7 @@ export const AppLayout: Component = () => {
 
               {/* Theme Switcher - Top Right */}
               <div class="fixed top-4 right-4 fixed-top-safe flex items-center gap-2">
+                <LanguageSwitcher />
                 <ThemeSwitcher />
               </div>
 

@@ -28,7 +28,7 @@ import { fileBrowserStore } from "../stores/fileBrowserStore";
 import { PermissionMessage, UserQuestionMessage } from "./ui/PermissionCard";
 import { MessageBubble } from "./ui/MessageBubble";
 import { ChatInput } from "./ui/ChatInput";
-import { ThemeSwitcher } from "./ui/ThemeSwitcher";
+import { LanguageSwitcher, ThemeSwitcher } from "./ui/ThemeSwitcher";
 
 // ============================================================================
 // Helper Functions
@@ -1927,6 +1927,7 @@ export function ChatView(props: ChatViewProps) {
               </div>
 
               <div class="flex items-center gap-1 shrink-0">
+                <LanguageSwitcher />
                 <ThemeSwitcher />
               </div>
             </div>
