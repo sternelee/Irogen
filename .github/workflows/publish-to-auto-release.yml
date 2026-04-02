@@ -336,8 +336,8 @@ jobs:
         continue-on-error: true
         with:
           pattern: clawdpilot_cli-*
-          merge-multiple: false
-          path: dist
+          merge-multiple: true
+          path: dist/cli
 
       - name: Download Android artifacts
         uses: actions/download-artifact@v4
@@ -361,16 +361,17 @@ jobs:
       - name: Create archives for CLI artifacts
         shell: bash
         run: |
-          shopt -s nullglob
-          cd dist
+          set -euo pipefail
+          shopt -s nullglob globstar
 
-          # CLI artifacts are individual files - archive them
-          for file in clawdpilot_cli-*; do
+          files=( dist/cli/**/clawdpilot_cli-* )
+          for file in "${files[@]}"; do
             if [[ -f "$file" && "$file" != *.tar.gz && "$file" != *.zip ]]; then
+              base="$(basename "$file")"
               if [[ "$file" == *.exe ]]; then
-                zip -j "${file}.zip" "$file"
+                zip -j "dist/${base}.zip" "$file"
               else
-                tar -czf "${file}.tar.gz" "$file"
+                tar -czf "dist/${base}.tar.gz" -C "$(dirname "$file")" "$base"
               fi
             fi
           done
@@ -378,13 +379,13 @@ jobs:
       - name: Generate checksums
         shell: bash
         run: |
+          set -euo pipefail
           shopt -s nullglob
-          cd dist
-          files=( *.tar.gz *.zip )
+          files=( dist/*.tar.gz dist/*.zip )
           if [ ${#files[@]} -gt 0 ]; then
-            sha256sum "${files[@]}" > checksums.txt
+            sha256sum "${files[@]}" > dist/checksums.txt
           else
-            : > checksums.txt
+            rm -f dist/checksums.txt
           fi
 
       - name: Upload CLI archives to release
