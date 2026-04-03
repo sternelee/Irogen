@@ -250,7 +250,9 @@ export const AppLayout: Component = () => {
                   {/* Features */}
                   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-12 text-left px-4 w-full">
                     <div class="flex items-center gap-3 sm:block p-4 rounded-2xl bg-base-200 border border-base-content/5 shadow-sm">
-                      <div class="text-xl shrink-0 sm:mb-1.5 text-center">🤖</div>
+                      <div class="text-xl shrink-0 sm:mb-1.5 text-center">
+                        🤖
+                      </div>
                       <div class="min-w-0">
                         <div class="text-xs font-bold text-left sm:text-center">
                           {i18nStore.t("home.features.aiAgentsTitle")}
@@ -261,7 +263,9 @@ export const AppLayout: Component = () => {
                       </div>
                     </div>
                     <div class="flex items-center gap-3 sm:block p-4 rounded-2xl bg-base-200 border border-base-content/5 shadow-sm">
-                      <div class="text-xl shrink-0 sm:mb-1.5 text-center">🔒</div>
+                      <div class="text-xl shrink-0 sm:mb-1.5 text-center">
+                        🔒
+                      </div>
                       <div class="min-w-0">
                         <div class="text-xs font-bold text-left sm:text-center">
                           {i18nStore.t("home.features.secureTitle")}
@@ -272,7 +276,9 @@ export const AppLayout: Component = () => {
                       </div>
                     </div>
                     <div class="flex items-center gap-3 sm:block p-4 rounded-2xl bg-base-200 border border-base-content/5 shadow-sm">
-                      <div class="text-xl shrink-0 sm:mb-1.5 text-center">💬</div>
+                      <div class="text-xl shrink-0 sm:mb-1.5 text-center">
+                        💬
+                      </div>
                       <div class="min-w-0">
                         <div class="text-xs font-bold text-left sm:text-center">
                           {i18nStore.t("home.features.agentTitle")}
@@ -326,7 +332,7 @@ export const AppLayout: Component = () => {
                       closeRightPanel();
                     }
                   }}
-                  class={`fixed bottom-0 left-0 right-0 z-[50] max-h-[min(78dvh,42rem)] rounded-t-3xl border-t border-base-content/10 bg-base-100 flex flex-col overflow-hidden shadow-2xl
+                  class={`fixed bottom-0 left-0 right-0 z-[50] max-h-[min(86dvh,42rem)] rounded-t-3xl border-t border-base-content/10 bg-base-100 flex flex-col overflow-hidden shadow-2xl
                     pt-safe pb-safe sm:top-0 sm:bottom-0 sm:left-auto sm:right-0 sm:max-h-none sm:w-[28rem] sm:rounded-none sm:border-l sm:border-t-0 sm:pt-0 sm:pb-0 md:w-[340px] lg:w-[360px]
                     transform transition-transform duration-300 ease-in-out
                     ${rightPanelView() !== "none" ? "translate-y-0 sm:translate-x-0" : "translate-y-full sm:translate-y-0 sm:translate-x-full"}
@@ -335,15 +341,18 @@ export const AppLayout: Component = () => {
                   <div class="flex justify-center py-3 sm:hidden">
                     <div class="h-1 w-10 rounded-full bg-base-content/20" />
                   </div>
-                  <div class="h-14 px-4 border-b border-base-content/10 flex items-center justify-between bg-base-200/50">
-                    <div class="text-sm font-bold flex items-center gap-2">
+                  <div class="compact-mobile-controls h-12 px-3 sm:h-14 sm:px-4 border-b border-base-content/10 flex items-center justify-between bg-base-200/50">
+                    <div class="text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2">
                       <Show
                         when={rightPanelView() === "file"}
                         fallback={
-                          <FiGitBranch size={16} class="text-primary" />
+                          <FiGitBranch
+                            size={14}
+                            class="text-primary sm:size-4"
+                          />
                         }
                       >
-                        <FiFolder size={16} class="text-primary" />
+                        <FiFolder size={14} class="text-primary sm:size-4" />
                       </Show>
                       <span class="tracking-tight">
                         {rightPanelView() === "file"
@@ -353,11 +362,11 @@ export const AppLayout: Component = () => {
                     </div>
                     <button
                       type="button"
-                      class="btn btn-ghost btn-sm btn-square h-10 w-10 rounded-xl"
+                      class="btn btn-ghost btn-xs sm:btn-sm btn-square h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl"
                       onClick={closeRightPanel}
                       title="Close panel"
                     >
-                      <FiX size={18} />
+                      <FiX size={16} class="sm:size-[18px]" />
                     </button>
                   </div>
                   <div class="flex-1 overflow-auto">

@@ -44,7 +44,7 @@ The CLI runs on your computer to host remote sessions. Install via:
 
 ```bash
 # Quick install (macOS/Linux)
-curl -fsSL https://raw.githubusercontent.com/sternelee/riterm/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sternelee/ClawdPilot/main/install.sh | sh
 
 # Or manually download from GitHub Releases
 ```

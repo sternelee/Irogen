@@ -881,6 +881,18 @@ textarea:focus {
       -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
     }
 
+    .language-switcher-compact .language-switcher-compact__button {
+      min-height: 32px;
+      min-width: 32px;
+    }
+
+    .compact-mobile-controls .btn,
+    .compact-mobile-controls button,
+    .compact-mobile-controls [role="button"] {
+      min-height: 32px;
+      min-width: 32px;
+    }
+
     /* Mobile-optimized scrolling */
     .mobile-scroll {
       -webkit-overflow-scrolling: touch;

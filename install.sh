@@ -1,11 +1,11 @@
 #!/bin/sh
 # ClawdPilot CLI Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/sternelee/riterm/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/sternelee/ClawdPilot/main/install.sh | sh
 
 set -e
 
 # Configuration
-REPO="sternelee/riterm"
+REPO="sternelee/ClawdPilot"
 BINARY_NAME="clawdpilot_cli"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 CONFIG_DIR="${HOME}/.config/clawdpilot"

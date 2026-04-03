@@ -91,7 +91,7 @@ const UserMessage: Component<{ content: string; timestamp?: number }> = (
 ) => {
   return (
     <div class="chat chat-end overflow-x-hidden">
-      <div class="prose prose-sm max-w-none text-[15px] sm:text-sm selectable prose-invert break-words [overflow-wrap:anywhere]">
+      <div class="prose prose-sm max-w-none text-[14px] sm:text-sm leading-relaxed sm:leading-6 selectable prose-invert break-words [overflow-wrap:anywhere]">
         <SolidMarkdown children={props.content} />
       </div>
     </div>
@@ -122,7 +122,7 @@ const AssistantMessage: Component<AssistantMessageProps> = (props) => {
       </Show>
 
       {/* Content */}
-      <div class="prose prose-sm max-w-none text-[15px] sm:text-sm selectable break-words [overflow-wrap:anywhere]">
+      <div class="prose prose-sm max-w-none text-[14px] sm:text-sm leading-relaxed sm:leading-6 selectable break-words [overflow-wrap:anywhere]">
         <SolidMarkdown
           children={props.thinking ? undefined : props.content}
           components={{
@@ -146,7 +146,7 @@ const AssistantMessage: Component<AssistantMessageProps> = (props) => {
 
       {/* Tool Calls */}
       <Show when={props.toolCalls && props.toolCalls.length > 0}>
-        <div class="mt-3.5 pt-3.5 border-t border-base-content/10">
+        <div class="mt-2.5 pt-2.5 sm:mt-3.5 sm:pt-3.5 border-t border-base-content/10">
           <ToolCallList toolCalls={props.toolCalls!} />
         </div>
       </Show>
@@ -509,7 +509,7 @@ const SystemMessageContent: Component<{
         <Show
           when={isTerminalOutput()}
           fallback={
-            <div class="prose prose-sm break-words [overflow-wrap:anywhere] text-[15px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
+            <div class="prose prose-sm break-words [overflow-wrap:anywhere] text-[14px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
               <SolidMarkdown
                 children={normalizeEscapedLineBreaks(props.content)}
               />
@@ -519,7 +519,7 @@ const SystemMessageContent: Component<{
           <Show
             when={parseTerminalOutput()}
             fallback={
-              <div class="prose prose-sm break-words [overflow-wrap:anywhere] text-[15px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
+              <div class="prose prose-sm break-words [overflow-wrap:anywhere] text-[14px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
                 <SolidMarkdown
                   children={normalizeEscapedLineBreaks(props.content)}
                 />
@@ -542,12 +542,12 @@ const SystemMessageContent: Component<{
                   />
                 }
               >
-                <div class="text-sm">
+                <div class="text-xs sm:text-sm">
                   <span class="inline-flex items-center rounded-md bg-info/12 px-2 py-1 font-mono text-xs text-info ring-1 ring-info/15">
                     [{parsed().toolName}]
                   </span>
                   <Show when={parsed().output}>
-                    <pre class="mt-2 text-xs opacity-60 whitespace-pre-wrap break-all">
+                    <pre class="mt-1.5 sm:mt-2 text-[11px] sm:text-xs opacity-60 whitespace-pre-wrap break-all">
                       {normalizeEscapedLineBreaks(parsed().output || "")}
                     </pre>
                   </Show>
@@ -670,7 +670,7 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
 
       <button
         type="button"
-        class="pointer-events-none absolute top-2 right-2 btn btn-ghost btn-xs h-8 min-h-8 w-8 rounded-xl border border-base-content/15 bg-base-100 text-base-content shadow-md shadow-black/10 backdrop-blur-md opacity-0 transition-opacity group-hover/bubble:pointer-events-auto group-hover/bubble:opacity-75 hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 sm:hidden"
+        class="pointer-events-none absolute top-1.5 right-1.5 btn btn-ghost btn-xs h-7 min-h-7 w-7 rounded-lg border border-base-content/15 bg-base-100 text-base-content shadow-md shadow-black/10 backdrop-blur-md opacity-0 transition-opacity group-hover/bubble:pointer-events-auto group-hover/bubble:opacity-75 hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 sm:hidden"
         onClick={(e) => {
           e.stopPropagation();
           triggerHaptic();
@@ -689,7 +689,7 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
             class="modal modal-bottom sm:modal-middle"
             classList={{ "modal-open": showActions() }}
           >
-            <div class="modal-box p-4 pb-[max(env(safe-area-inset-bottom,0px),1rem)]">
+            <div class="modal-box p-3 sm:p-4 pb-[max(env(safe-area-inset-bottom,0px),1rem)]">
               <h3 class="text-sm font-bold mb-3">Message actions</h3>
               <div class="flex flex-col gap-1">
                 <Show when={isUser()}>

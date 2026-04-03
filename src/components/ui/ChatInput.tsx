@@ -238,7 +238,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   return (
     <div
       class={cn(
-        "flex flex-col gap-1.5 px-2 sm:px-4 pt-2 sm:pt-3 pb-[max(env(safe-area-inset-bottom,0.75rem),0.75rem)] sm:pb-3 bg-base-100/95 backdrop-blur-md sticky bottom-0 z-20",
+        "flex flex-col gap-1 sm:gap-1.5 px-1.5 sm:px-4 pt-1.5 sm:pt-3 pb-[max(env(safe-area-inset-bottom,0.65rem),0.65rem)] sm:pb-3 bg-base-100/95 backdrop-blur-md sticky bottom-2 sm:bottom-0 z-20",
         focused() && "bg-base-100",
         props.class,
       )}
@@ -302,7 +302,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
         </Show>
 
         {/* Top Row: Textarea + Send Button */}
-        <div class="flex items-end gap-1 sm:gap-2 p-1.5 sm:p-2 pb-1">
+        <div class="flex items-end gap-1 sm:gap-2 p-1 sm:p-2 pb-0.5 sm:pb-1">
           {/* Attach Button (Hidden but kept structure) */}
           <button
             type="button"
@@ -327,7 +327,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             onBlur={() => setFocused(false)}
             placeholder={props.placeholder || "Type your message..."}
             aria-label="Chat input"
-            class="flex-1 px-3 py-2 bg-transparent border-none outline-none resize-none text-[16px] sm:text-sm max-h-[200px] min-h-[44px] leading-relaxed placeholder:opacity-40"
+            class="flex-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-transparent border-none outline-none resize-none text-[14px] sm:text-sm max-h-[200px] min-h-[36px] sm:min-h-[44px] leading-snug sm:leading-relaxed placeholder:opacity-40"
             disabled={props.disabled}
             rows={1}
           />
@@ -355,14 +355,14 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
         </Show>
 
         {/* Bottom Toolbar */}
-        <div class="flex items-center px-2 pb-2 gap-1.5 sm:gap-2">
+        <div class="flex items-center px-1.5 sm:px-2 pb-1.5 sm:pb-2 gap-1 sm:gap-2">
           <div class="flex items-center gap-1.5">
             {/* Settings Button with Permission Dropdown */}
             <div class="relative">
               <button
                 type="button"
                 class={cn(
-                  "btn btn-ghost btn-sm h-10 min-h-[40px] px-3 gap-2 text-[12px] transition-all rounded-xl",
+                  "btn btn-ghost btn-sm h-8 min-h-[32px] sm:h-10 sm:min-h-[40px] px-2 sm:px-3 gap-1 sm:gap-2 text-[11px] sm:text-[12px] transition-all rounded-lg sm:rounded-xl",
                   showSettings()
                     ? "bg-primary/10 text-primary ring-1 ring-primary/15"
                     : "text-base-content/70 hover:text-primary hover:bg-primary/10",
@@ -371,7 +371,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
                 title="Settings"
                 aria-label="Settings"
               >
-                <FiSettings class="size-4.5" />
+                <FiSettings class="size-4 sm:size-4.5" />
                 <span class="hidden sm:inline">Settings</span>
               </button>
 
@@ -448,7 +448,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
               <button
                 type="button"
                 class={cn(
-                  "btn btn-ghost btn-sm h-10 min-h-[40px] px-3 gap-2 text-[12px] transition-all rounded-xl",
+                  "btn btn-ghost btn-sm h-8 min-h-[32px] sm:h-10 sm:min-h-[40px] px-2 sm:px-3 gap-1 sm:gap-2 text-[11px] sm:text-[12px] transition-all rounded-lg sm:rounded-xl",
                   props.rightPanelView === "file"
                     ? "bg-primary/10 text-primary ring-1 ring-primary/15"
                     : "text-base-content/70 hover:text-primary hover:bg-primary/10",
@@ -460,14 +460,14 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
                 aria-label="Toggle file browser"
                 disabled={props.disabled}
               >
-                <FiFolder class="size-4.5" />
+                <FiFolder class="size-4 sm:size-4.5" />
                 <span class="hidden sm:inline">Files</span>
               </button>
 
               <button
                 type="button"
                 class={cn(
-                  "btn btn-ghost btn-sm h-10 min-h-[40px] px-3 gap-2 text-[12px] transition-all rounded-xl",
+                  "btn btn-ghost btn-sm h-8 min-h-[32px] sm:h-10 sm:min-h-[40px] px-2 sm:px-3 gap-1 sm:gap-2 text-[11px] sm:text-[12px] transition-all rounded-lg sm:rounded-xl",
                   props.rightPanelView === "git"
                     ? "bg-primary/10 text-primary ring-1 ring-primary/15"
                     : "text-base-content/70 hover:text-primary hover:bg-primary/10",
@@ -479,7 +479,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
                 aria-label="Toggle git panel"
                 disabled={props.disabled}
               >
-                <FiGitBranch class="size-4.5" />
+                <FiGitBranch class="size-4 sm:size-4.5" />
                 <span class="hidden sm:inline">Git</span>
               </button>
             </div>
@@ -522,7 +522,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
               !props.isStreaming && (!props.value.trim() || props.disabled)
             }
             class={cn(
-              "btn btn-primary btn-sm h-11 w-11 sm:h-10 sm:w-auto sm:px-4 rounded-xl shadow-lg shadow-primary/20 transition-all duration-300 ml-auto shrink-0 active:scale-90",
+              "btn btn-primary btn-sm h-9 w-9 sm:h-10 sm:w-auto sm:px-4 rounded-lg sm:rounded-xl shadow-lg shadow-primary/20 transition-all duration-300 ml-auto shrink-0 active:scale-90",
               props.isStreaming && "btn-error shadow-error/20",
             )}
             title={props.isStreaming ? "Stop generation" : "Send message"}
@@ -532,7 +532,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
               when={props.isStreaming}
               fallback={
                 <div class="flex items-center gap-2">
-                  <FiSend class="size-5 sm:size-4" />
+                  <FiSend class="size-4.5 sm:size-4" />
                   <span class="text-sm font-bold hidden sm:inline">Send</span>
                 </div>
               }

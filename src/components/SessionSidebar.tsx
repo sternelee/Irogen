@@ -813,7 +813,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
         `}
       >
         {/* Header */}
-        <div class="flex items-center justify-between px-5 py-5 border-b border-base-content/10 bg-base-100/50 backdrop-blur">
+        <div class="flex items-center justify-between px-5 py-1 border-b border-base-content/10 bg-base-100/50 backdrop-blur">
           <div class="flex items-center gap-3">
             {/* App Logo */}
             <div class="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
@@ -1021,7 +1021,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
         </div>
 
         {/* Footer */}
-        <div class="p-4 border-t border-base-content/10 bg-base-100/50 backdrop-blur">
+        <div class="px-4 py-2 border-t border-base-content/10 bg-base-100/50 backdrop-blur">
           <div class="flex items-center justify-between gap-3">
             <div class="flex items-center gap-2">
               <span class="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-tighter opacity-40">

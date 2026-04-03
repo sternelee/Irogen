@@ -153,14 +153,14 @@ export function LanguageSwitcher(props: LanguageSwitcherProps) {
   return (
     <div
       class={cn(
-        "inline-flex items-center gap-1 rounded-lg border border-base-content/10 bg-base-100/85 p-1 shadow-sm backdrop-blur",
+        "language-switcher-compact inline-flex items-center gap-0.5 rounded-lg border border-base-content/10 bg-base-100/85 p-0.5 shadow-sm backdrop-blur sm:gap-1 sm:p-1",
         props.class,
       )}
     >
       <button
         type="button"
         class={cn(
-          "rounded-md px-2.5 py-1.5 text-xs font-bold transition-colors",
+          "language-switcher-compact__button rounded-md px-1.5 py-1 text-[11px] font-bold transition-colors sm:px-2.5 sm:py-1.5 sm:text-xs",
           i18nStore.locale() === "en"
             ? "bg-primary text-primary-content"
             : "text-base-content/60 hover:bg-base-content/5",
@@ -173,7 +173,7 @@ export function LanguageSwitcher(props: LanguageSwitcherProps) {
       <button
         type="button"
         class={cn(
-          "rounded-md px-2.5 py-1.5 text-xs font-bold transition-colors",
+          "language-switcher-compact__button rounded-md px-1.5 py-1 text-[11px] font-bold transition-colors sm:px-2.5 sm:py-1.5 sm:text-xs",
           i18nStore.locale() === "zh-CN"
             ? "bg-primary text-primary-content"
             : "text-base-content/60 hover:bg-base-content/5",

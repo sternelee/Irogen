@@ -1869,18 +1869,18 @@ export function ChatView(props: ChatViewProps) {
         <div class="drawer-content flex h-full bg-base-100 relative pb-safe lg:pb-0 overflow-hidden">
           <div class="flex flex-col h-full min-w-0 flex-1">
             {/* Header */}
-            <div class="z-20 flex items-center h-14 sm:h-16 box-border justify-between border-b border-base-content/10 bg-base-100/80 backdrop-blur-md px-4 sm:px-6 py-2 shadow-sm sticky top-0">
-              <div class="flex items-center gap-3 overflow-hidden">
+            <div class="compact-mobile-controls z-20 flex items-center h-12 sm:h-16 box-border justify-between border-b border-base-content/10 bg-base-100/80 backdrop-blur-md px-3 sm:px-6 py-1.5 sm:py-2 shadow-sm sticky top-0">
+              <div class="flex items-center gap-1 sm:gap-3 overflow-hidden">
                 {/* Mobile Sidebar Toggle */}
                 <Show when={!props.sidebarOpen}>
                   <button
                     type="button"
-                    class="btn btn-ghost btn-sm h-10 w-10 min-h-[40px] rounded-xl lg:hidden active:scale-95 transition-transform"
+                    class="btn btn-ghost btn-xs sm:btn-sm h-8 w-8 sm:h-10 sm:w-10 min-h-[32px] sm:min-h-[40px] rounded-lg sm:rounded-xl lg:hidden active:scale-95 transition-transform"
                     onClick={() => props.onToggleSidebar?.()}
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
-                      class="w-5 h-5"
+                      class="w-4 h-4 sm:w-5 sm:h-5"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -1896,12 +1896,12 @@ export function ChatView(props: ChatViewProps) {
                   </button>
                 </Show>
 
-                <div class="flex items-center gap-2.5 min-w-0">
+                <div class="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
                   <div class="hidden rounded-xl bg-primary/10 p-2 text-primary shadow-inner ring-1 ring-primary/10 xs:flex shrink-0">
                     {getAgentIcon()}
                   </div>
                   <div class="min-w-0">
-                    <h2 class="text-[14px] sm:text-[15px] font-bold tracking-tight truncate leading-tight">
+                    <h2 class="text-[13px] sm:text-[15px] font-bold tracking-tight truncate leading-tight">
                       {props.agentType === "claude" && "Claude Code"}
                       {props.agentType === "codex" && "Codex"}
                       {props.agentType === "cursor" && "Cursor"}
@@ -1926,7 +1926,7 @@ export function ChatView(props: ChatViewProps) {
                 </div>
               </div>
 
-              <div class="flex items-center gap-1 shrink-0">
+              <div class="flex items-center gap-0.5 sm:gap-1 shrink-0">
                 <LanguageSwitcher />
                 <ThemeSwitcher />
               </div>
@@ -1943,24 +1943,24 @@ export function ChatView(props: ChatViewProps) {
                   messages().length === 0 && pendingPermissions().length === 0
                 }
               >
-                <div class="flex flex-col items-center text-center justify-center h-full max-w-sm mx-auto">
-                  <div class="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-6 shadow-xl shadow-primary/10 border border-primary/10">
-                    <div class="text-3xl scale-150 filter drop-shadow-sm">
+                <div class="flex flex-col items-center text-center justify-center h-full max-w-sm mx-auto px-2 sm:px-0">
+                  <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-[1.5rem] sm:rounded-[2rem] bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-4 sm:mb-6 shadow-xl shadow-primary/10 border border-primary/10">
+                    <div class="text-[28px] sm:text-3xl scale-[1.35] sm:scale-150 filter drop-shadow-sm">
                       {getAgentIcon()}
                     </div>
                   </div>
-                  <h3 class="text-2xl font-bold mb-3 tracking-tight">
+                  <h3 class="text-xl sm:text-2xl font-bold mb-2 sm:mb-3 tracking-tight">
                     Ready to assist
                   </h3>
-                  <p class="text-sm opacity-60 leading-relaxed px-4">
+                  <p class="text-[13px] sm:text-sm opacity-60 leading-relaxed px-2 sm:px-4">
                     I can help you write code, explain concepts, or debug
                     issues. How can I help you today?
                   </p>
                   {/* Quick actions */}
-                  <div class="flex flex-wrap items-center justify-center gap-2.5 mt-8 px-2">
+                  <div class="flex flex-wrap items-center justify-center gap-2 mt-5 sm:mt-8 px-1 sm:px-2">
                     <button
                       type="button"
-                      class="btn btn-outline btn-sm rounded-xl px-4 font-bold border-base-content/20"
+                      class="btn btn-outline btn-xs sm:btn-sm rounded-lg sm:rounded-xl px-3 sm:px-4 font-bold border-base-content/20"
                       onClick={() => {
                         const session = sessionStore.getSession(
                           props.sessionId,
@@ -1976,7 +1976,7 @@ export function ChatView(props: ChatViewProps) {
                     </button>
                     <button
                       type="button"
-                      class="btn btn-outline btn-sm rounded-xl px-4 font-bold border-base-content/20"
+                      class="btn btn-outline btn-xs sm:btn-sm rounded-lg sm:rounded-xl px-3 sm:px-4 font-bold border-base-content/20"
                       onClick={() => {
                         setSessionInputValue("Explain what you can do");
                       }}

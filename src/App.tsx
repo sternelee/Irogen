@@ -213,7 +213,12 @@ export default function App() {
       <NotificationDisplay position="top-right" />
 
       {/* Toaster for solid-sonner */}
-      <Toaster richColors position="top-right" closeButton />
+      <Toaster
+        richColors
+        position="top-right"
+        closeButton
+        class="top-2 sm:top-1"
+      />
     </>
   );
 }

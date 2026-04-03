@@ -83,7 +83,7 @@ const FileIcon = () => (
 const GitBranchIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
-    class="h-5 w-5"
+    class="h-4 w-4 sm:h-5 sm:w-5"
     viewBox="0 0 20 20"
     fill="currentColor"
   >
@@ -275,18 +275,19 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
   return (
     <div class={`git-diff-view ${props.class || ""}`}>
       {/* Header */}
-      <div class="git-diff-header p-3 border-b border-border">
+      <div class="git-diff-header compact-mobile-controls p-2 sm:p-3 border-b border-border">
         <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5 sm:gap-2">
             <GitBranchIcon />
-            <h2 class="text-base font-semibold">Git Status</h2>
+            <h2 class="text-sm sm:text-base font-semibold">Git Status</h2>
             <Show when={state.currentBranch}>
               <Badge>{state.currentBranch}</Badge>
             </Show>
           </div>
           <Button
             variant="ghost"
-            size="sm"
+            size="xs"
+            class="sm:text-sm"
             onClick={refresh}
             disabled={state.isLoadingStatus}
           >
@@ -296,7 +297,7 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
             <Show when={!state.isLoadingStatus}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
+                class="h-3.5 w-3.5 sm:h-4 sm:w-4"
                 viewBox="0 0 20 20"
                 fill="currentColor"
               >
@@ -313,14 +314,14 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
 
         {/* Summary */}
         <Show when={hasChanges()}>
-          <div class="flex gap-3 mt-2 text-xs">
-            <span class="inline-flex items-center rounded-md bg-success/12 px-2 py-1 font-medium text-success ring-1 ring-success/15">
+          <div class="flex gap-2 sm:gap-3 mt-2 text-[11px] sm:text-xs">
+            <span class="inline-flex items-center rounded-md bg-success/12 px-1.5 py-0.5 sm:px-2 sm:py-1 font-medium text-success ring-1 ring-success/15">
               Staged: {summary().staged}
             </span>
-            <span class="inline-flex items-center rounded-md bg-warning/12 px-2 py-1 font-medium text-warning ring-1 ring-warning/15">
+            <span class="inline-flex items-center rounded-md bg-warning/12 px-1.5 py-0.5 sm:px-2 sm:py-1 font-medium text-warning ring-1 ring-warning/15">
               Modified: {summary().modified}
             </span>
-            <span class="inline-flex items-center rounded-md bg-base-content/6 px-2 py-1 font-medium text-base-content/60 ring-1 ring-base-content/10">
+            <span class="inline-flex items-center rounded-md bg-base-content/6 px-1.5 py-0.5 sm:px-2 sm:py-1 font-medium text-base-content/60 ring-1 ring-base-content/10">
               Untracked: {summary().untracked}
             </span>
           </div>
@@ -333,23 +334,29 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
 
       {/* Content */}
       <div class="git-diff-content">
+        <Show when={state.isLoadingStatus && !state.statusEntries.length}>
+          <div class="flex items-center justify-center h-32">
+            <Spinner size="lg" class="text-primary" />
+          </div>
+        </Show>
+
         {/* Status View */}
         <Show when={state.viewMode === "status"}>
           <div class="divide-y divide-border">
             {/* Staged Files */}
             <Show when={getStagedFiles().length > 0}>
-              <div class="p-2.5">
-                <h3 class="mb-1.5 inline-flex items-center rounded-md bg-success/12 px-2 py-1 text-xs font-semibold text-success ring-1 ring-success/15">
+              <div class="p-2 sm:p-2.5">
+                <h3 class="mb-1 inline-flex items-center rounded-md bg-success/12 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[11px] sm:text-xs font-semibold text-success ring-1 ring-success/15">
                   Staged Changes
                 </h3>
                 <For each={getStagedFiles()}>
                   {(entry) => (
                     <div
-                      class="flex items-center gap-2 p-1.5 rounded hover:bg-muted cursor-pointer text-sm"
+                      class="flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded hover:bg-muted cursor-pointer text-xs sm:text-sm"
                       onClick={() => loadDiff(entry.from)}
                     >
                       <span
-                        class={`inline-flex h-6 w-6 items-center justify-center rounded-md bg-base-content/6 text-sm font-bold ring-1 ring-base-content/10 ${getStatusColor(entry.x as GitStatusChar)}`}
+                        class={`inline-flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-md bg-base-content/6 text-xs sm:text-sm font-bold ring-1 ring-base-content/10 ${getStatusColor(entry.x as GitStatusChar)}`}
                       >
                         {entry.x}
                       </span>
@@ -366,18 +373,18 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
 
             {/* Modified Files */}
             <Show when={getModifiedFiles().length > 0}>
-              <div class="p-2.5">
-                <h3 class="mb-1.5 inline-flex items-center rounded-md bg-warning/12 px-2 py-1 text-xs font-semibold text-warning ring-1 ring-warning/15">
+              <div class="p-2 sm:p-2.5">
+                <h3 class="mb-1 inline-flex items-center rounded-md bg-warning/12 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[11px] sm:text-xs font-semibold text-warning ring-1 ring-warning/15">
                   Modified
                 </h3>
                 <For each={getModifiedFiles()}>
                   {(entry) => (
                     <div
-                      class="flex items-center gap-2 p-1.5 rounded hover:bg-muted cursor-pointer text-sm"
+                      class="flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded hover:bg-muted cursor-pointer text-xs sm:text-sm"
                       onClick={() => loadDiff(entry.from)}
                     >
                       <span
-                        class={`inline-flex h-6 w-6 items-center justify-center rounded-md bg-base-content/6 text-sm font-bold ring-1 ring-base-content/10 ${getStatusColor(entry.y as GitStatusChar)}`}
+                        class={`inline-flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-md bg-base-content/6 text-xs sm:text-sm font-bold ring-1 ring-base-content/10 ${getStatusColor(entry.y as GitStatusChar)}`}
                       >
                         {entry.y}
                       </span>
@@ -397,17 +404,17 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
 
             {/* Untracked Files */}
             <Show when={getUntrackedFiles().length > 0}>
-              <div class="p-2.5">
-                <h3 class="mb-1.5 inline-flex items-center rounded-md bg-base-content/6 px-2 py-1 text-xs font-semibold text-base-content/60 ring-1 ring-base-content/10">
+              <div class="p-2 sm:p-2.5">
+                <h3 class="mb-1 inline-flex items-center rounded-md bg-base-content/6 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[11px] sm:text-xs font-semibold text-base-content/60 ring-1 ring-base-content/10">
                   Untracked
                 </h3>
                 <For each={getUntrackedFiles()}>
                   {(entry) => (
                     <div
-                      class="flex items-center gap-2 p-1.5 rounded hover:bg-muted cursor-pointer text-sm"
+                      class="flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded hover:bg-muted cursor-pointer text-xs sm:text-sm"
                       onClick={() => loadDiff(entry.from)}
                     >
-                      <span class="inline-flex h-6 w-6 items-center justify-center rounded-md bg-base-content/6 text-sm font-bold text-base-content/45 ring-1 ring-base-content/10">
+                      <span class="inline-flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-md bg-base-content/6 text-xs sm:text-sm font-bold text-base-content/45 ring-1 ring-base-content/10">
                         ?
                       </span>
                       <FileIcon />

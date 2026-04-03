@@ -8,59 +8,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Structure
 
-```
-cli/      # CLI binary (clawdpilot host) - P2P server for remote connections
-app/      # Tauri 2 backend - exposes commands to frontend, manages QUIC client
-shared/   # Core library - P2P networking (iroh), message protocol, agent management
-browser/  # WebAssembly client (Edition 2021)
-src/      # SolidJS frontend - Vite + Tailwind CSS v4 + DaisyUI + Kobalte
-web/      # Cloudflare Workers SSR app (TanStack Start) - separate pnpm workspace
-```
+- `cli/`: `clawdpilot` host CLI, ticket/QR output, daemon mode
+- `shared/`: core QUIC transport, protocol, event bus, and agent runtime abstraction
+- `app/`: Tauri command layer and session orchestration between frontend and `shared`
+- `src/`: SolidJS desktop/mobile UI stores and chat/session components
+- `web/`: separate TanStack Start + Cloudflare Workers app (own pnpm workspace)
+- `browser/`: wasm client crate
 
 ## Architecture
 
-### P2P Networking (iroh QUIC)
+### Transport and control plane
 
-Remote agent management uses `iroh` for P2P QUIC connections with NAT traversal:
-- **Server**: `cli host` (`shared/src/quic_server.rs`)
-- **Client**: Tauri app (`shared/src/quic_client.rs`)
-- Connections use tickets (base64: node ID + relay URL + ALPN)
-- Auto-reconnect with exponential backoff for mobile stability
+- CLI host runs `QuicMessageServer` (`shared/src/quic_server.rs`) and prints connection ticket/QR (`cli/src/main.rs`).
+- App initializes `QuicMessageClientHandle` via Tauri commands (`app/src/lib.rs`) and connects using ticket-derived `EndpointAddr` (relay + direct addresses).
+- `QuicMessageClientHandle` includes health monitoring and reconnect signaling; app emits `connection-state-changed` and `peer-disconnected` events.
 
-### Message Protocol
+### Unified wire protocol
 
-Unified bincode-serialized protocol in `shared/src/message_protocol.rs`. Key types:
-- `AgentSession`: Start/stop sessions
-- `AgentMessage`: Text and tool messages
-- `AgentPermission`: Tool execution requests/responses
-- `AgentControl`: Interrupt or modify agent behavior
-- `TcpForwarding`/`TcpData`: Port forwarding
+- All cross-node messages are in `shared/src/message_protocol.rs` (`MessagePayload`).
+- Main payload families: `AgentSession`, `AgentMessage`, `AgentPermission`, `AgentControl`, `RemoteSpawn`, `TcpForwarding`/`TcpData`, `FileBrowser`, `GitStatus`, `SystemControl`, `Notification`, `SlashCommand`.
+- Serialization is bincode-based; several nested payload fields use JSON strings for compatibility.
 
-### Event Manager
+### Event routing
 
-`EventManager` (`shared/src/event_manager.rs`) provides a unified event bus. Components implement `EventListener` for async event handling.
+- `EventManager` (`shared/src/event_manager.rs`) converts incoming protocol messages into typed events and dispatches to listeners.
+- In app layer, `AppEventListener` bridges backend events to frontend Tauri events.
+- In frontend, `sessionEventRouter` (`src/stores/sessionEventRouter.ts`) keeps one global listener per event type and routes by `sessionId`.
 
-### Agent Management
+### Agent runtime model
 
-`AgentManager` (`shared/src/agent/mod.rs`) wraps AI subprocesses via `SessionKind`:
-- **ACP** (`acp.rs`): Agent Client Protocol (Claude, Codex, Gemini, OpenCode)
-- **OpenClaw** (`openclaw_ws.rs`): WebSocket Gateway connection
+- `AgentManager` (`shared/src/agent/mod.rs`) manages sessions keyed by session ID.
+- `SessionKind` has two backends: ACP subprocesses (`AcpStreamingSession`) and OpenClaw WebSocket gateway (`OpenClawWsSession`).
+- Permission handling is centralized in shared agent modules and exposed to UI through protocol events + approve/deny commands.
 
-## Frontend Architecture (SolidJS)
+### Frontend state model
 
-Uses SolidJS reactivity (`createSignal`, `createStore`) - avoid React patterns like `useEffect`.
+- `sessionStore` (`src/stores/sessionStore.ts`): session metadata, active session, connection lifecycle, new-session modal state.
+- `chatStore` (`src/stores/chatStore.ts`): per-session messages, tool-call state, pending permissions/questions, attachments.
+- `App.tsx` wires Tauri events (session created, connection state, disconnect) into stores.
 
-### Key Stores
-- `sessionStore.ts`: Agent sessions, connection state, tickets
-- `chatStore.ts`: Message history, tool calls, permission requests per session
-- `sessionEventRouter.ts`: Centralizes Tauri event listeners (`"agent-message"`, `"local-agent-event"`), routes to session components, prevents memory leaks in multi-session environment
+### Desktop/mobile split
 
-### Styling
-- Tailwind CSS v4 via `@tailwindcss/vite`
-- `@kobalte/core` for headless accessible UI components
-- DaisyUI themes: `light`, `dark` (via `[data-theme]` attribute)
-- HSL CSS variables in `tailwind.config.js` (`--primary`, `--background`, etc.)
-- Use `cn()` from `~/lib/utils` for conditional class merging
+- `app/Cargo.toml` uses cfg-gated dependencies: desktop builds include full local-agent stack; mobile builds keep a lighter dependency set and mobile plugins.
+- `shared/src/lib.rs` gates agent module exports behind `std` feature.
 
 ## Development Commands
 
@@ -85,10 +75,11 @@ cargo run -p cli -- host --daemon  # Background mode (Unix only)
 cargo build -p cli --release
 
 # Testing
-cargo test --workspace                 # All Rust tests
-cargo test -p shared acp               # Specific module tests
-cargo test -- --nocapture              # Show stdout/stderr
-./test_ticket_output.sh                # CLI ticket verification
+cargo test --workspace                           # All Rust tests
+cargo test -p shared message_protocol            # Run tests matching a module/name
+cargo test -p shared test_agent_manager_creation # Run a single Rust test by name
+cargo test -- --nocapture                        # Show stdout/stderr
+./test_ticket_output.sh                          # CLI ticket verification
 
 # Linting & Formatting
 cargo fmt --all
@@ -103,6 +94,8 @@ pnpm exec prettier --write "src/**/*.{ts,tsx}"
 ```bash
 cd web && pnpm install
 cd web && pnpm dev         # Dev server on port 3000
+cd web && pnpm test        # Run web Vitest suite
+cd web && pnpm lint        # Run web ESLint
 cd web && pnpm build       # Production build
 cd web && pnpm deploy      # Deploy to Cloudflare
 ```
@@ -122,6 +115,12 @@ Detailed frontend conventions are in `AGENTS.md`.
 - Define explicit interfaces for component props
 - Use `~` alias for src imports (e.g., `~/components/ui/Button`)
 - Three-section component structure: `// Types`, `// Variant Classes`, `// Component`
+
+### Web workspace notes (`web/.cursorrules`)
+- Prefer functional components
+- Use TanStack Router for routing and type-safe `createContext` patterns
+- Keep strict TypeScript checks and proper event handler typing
+- Use Tailwind utility classes with `@apply`/`@layer` only for shared styles
 
 ### Mobile vs Desktop (Tauri)
 

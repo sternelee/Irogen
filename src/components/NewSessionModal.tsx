@@ -153,7 +153,8 @@ export const NewSessionModal: Component = () => {
 
     if (isRemote) {
       // Use P2P to list remote directory
-      const controlSessionId = remoteSession?.controlSessionId || targetSessionId;
+      const controlSessionId =
+        remoteSession?.controlSessionId || targetSessionId;
       try {
         const requestId = await invoke<string>("list_remote_directory", {
           sessionId: controlSessionId,
@@ -209,7 +210,11 @@ export const NewSessionModal: Component = () => {
     const connections: RemoteConnectionOption[] = [];
 
     for (const session of sessionStore.getSessions()) {
-      if (session.mode !== "remote" || !session.active || !session.controlSessionId) {
+      if (
+        session.mode !== "remote" ||
+        !session.active ||
+        !session.controlSessionId
+      ) {
         continue;
       }
       if (seen.has(session.controlSessionId)) {
@@ -349,7 +354,7 @@ export const NewSessionModal: Component = () => {
           </h3>
 
           {/* Mode Toggle */}
-          <div class="flex gap-2 mb-4">
+          <div class="hidden sm:flex gap-2 mb-4">
             <Button
               type="button"
               size="sm"
@@ -512,7 +517,9 @@ export const NewSessionModal: Component = () => {
           <Show when={showAgentConfig()}>
             <div class="space-y-3">
               <div class="space-y-1">
-                <Label for="agent-type" class="text-xs">Agent</Label>
+                <Label for="agent-type" class="text-xs">
+                  Agent
+                </Label>
                 <Select
                   id="agent-type"
                   class="select-sm"
@@ -527,7 +534,8 @@ export const NewSessionModal: Component = () => {
                 >
                   <Show
                     when={
-                      sessionStore.state.newSessionMode === "local" && isMobile()
+                      sessionStore.state.newSessionMode === "local" &&
+                      isMobile()
                     }
                     fallback={
                       <>
@@ -593,10 +601,7 @@ export const NewSessionModal: Component = () => {
                       const msg =
                         error instanceof Error ? error.message : String(error);
                       console.error("Failed to install ACP:", error);
-                      notificationStore.error(
-                        `Failed: ${msg}`,
-                        "Error",
-                      );
+                      notificationStore.error(`Failed: ${msg}`, "Error");
                     } finally {
                       setIsInstallingAcp(false);
                     }
@@ -616,7 +621,9 @@ export const NewSessionModal: Component = () => {
             </div>
 
             <div class="space-y-1.5">
-              <Label for="project-path" class="text-xs">Path</Label>
+              <Label for="project-path" class="text-xs">
+                Path
+              </Label>
               <Combobox
                 value={sessionStore.state.newSessionPath}
                 onChange={(value) => {
@@ -651,7 +658,10 @@ export const NewSessionModal: Component = () => {
             </div>
 
             <Show
-              when={agentArgsConfig().supported || sessionStore.state.newSessionAgent !== "openclaw"}
+              when={
+                agentArgsConfig().supported ||
+                sessionStore.state.newSessionAgent !== "openclaw"
+              }
               fallback={<div class="h-4" />}
             >
               <div class="space-y-3">
@@ -660,7 +670,9 @@ export const NewSessionModal: Component = () => {
                   class="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                   onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded())}
                 >
-                  <span class={`text-xs transition-transform ${isAdvancedExpanded() ? "rotate-90" : ""}`}>
+                  <span
+                    class={`text-xs transition-transform ${isAdvancedExpanded() ? "rotate-90" : ""}`}
+                  >
                     ▶
                   </span>
                   <span class="font-medium">Advanced Options</span>
@@ -668,7 +680,9 @@ export const NewSessionModal: Component = () => {
                 <Show when={isAdvancedExpanded()}>
                   <Show when={agentArgsConfig().supported}>
                     <div class="space-y-1.5">
-                      <Label for="agent-args" class="text-xs">Agent Args</Label>
+                      <Label for="agent-args" class="text-xs">
+                        Agent Args
+                      </Label>
                       <Textarea
                         id="agent-args"
                         class="h-16 text-sm"
@@ -683,16 +697,22 @@ export const NewSessionModal: Component = () => {
                       </p>
                     </div>
                   </Show>
-                  <Show when={sessionStore.state.newSessionAgent !== "openclaw"}>
+                  <Show
+                    when={sessionStore.state.newSessionAgent !== "openclaw"}
+                  >
                     <div class="space-y-1.5">
-                      <Label for="mcp-servers" class="text-xs">MCP Servers</Label>
+                      <Label for="mcp-servers" class="text-xs">
+                        MCP Servers
+                      </Label>
                       <Textarea
                         id="mcp-servers"
                         class="h-16 text-xs"
                         placeholder='[{"type":"stdio","name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}]'
                         value={sessionStore.state.newSessionMcpServers}
                         onInput={(e) => {
-                          sessionStore.setNewSessionMcpServers(e.currentTarget.value);
+                          sessionStore.setNewSessionMcpServers(
+                            e.currentTarget.value,
+                          );
                         }}
                       />
                       <p class="text-xs text-muted-foreground">
