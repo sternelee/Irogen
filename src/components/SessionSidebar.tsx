@@ -934,7 +934,8 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                       gitStatusText={getGitStatusDisplay(session.sessionId)}
                       onClick={() => {
                         sessionStore.setActiveSession(session.sessionId);
-                        if (isMobile() && props.isOpen) {
+                        setHistoryExpanded({});
+                        if (props.isOpen) {
                           props.onToggle();
                         }
                       }}
@@ -974,9 +975,13 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                                   <button
                                     type="button"
                                     class="group w-full text-left p-2.5 rounded-lg hover:bg-primary/10 hover:text-primary transition-all duration-200 border border-transparent hover:border-primary/10"
-                                    onClick={() =>
-                                      handleLoadHistorySession(session, entry)
-                                    }
+                                    onClick={async () => {
+                                      await handleLoadHistorySession(session, entry);
+                                      setHistoryExpanded({});
+                                      if (props.isOpen) {
+                                        props.onToggle();
+                                      }
+                                    }}
                                   >
                                     <span class="block text-xs font-bold truncate">
                                       {entry.title ||
