@@ -1,6 +1,6 @@
 {
   "name": "clawdpilot",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "dependencies": {
     "@kobalte/core": "^0.13.11",
