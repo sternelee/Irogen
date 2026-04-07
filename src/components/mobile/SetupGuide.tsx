@@ -117,10 +117,11 @@ export const SetupGuide: Component<SetupGuideProps> = (props) => {
               </button>
             </div>
             <pre data-prefix="$" class="pr-10">
-              <code>curl -fsSL https://raw.github...</code>
-            </pre>
-            <pre data-prefix=" " class="pr-10">
-              <code>...main/install.sh | sh</code>
+              <code>
+                curl -fsSL
+                https://raw.githubusercontent.com/sternelee/ClawdPilot/main/install.sh
+                | sh
+              </code>
             </pre>
           </div>
           <p class="text-[10px] mt-4 text-base-content/30 text-center italic font-medium">
@@ -277,7 +278,7 @@ export const SetupGuide: Component<SetupGuideProps> = (props) => {
 
         <Button
           variant="primary"
-          class="h-auto w-full rounded-xl py-3 text-base font-bold text-primary-content shadow-lg shadow-base-content/10"
+          class="h-auto w-full rounded-xl py-2 mb-4 text-base font-bold text-primary-content shadow-lg shadow-base-content/10"
           onClick={() => {
             if (currentPage() === pages().length - 1) props.onClose();
             else scrollToPage(currentPage() + 1);

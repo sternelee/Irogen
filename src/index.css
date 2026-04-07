@@ -198,20 +198,13 @@ textarea:focus {
   }
 
   /* Enhanced mobile optimizations */
-  .mobile button:not(.btn-xs):not(.btn-sm):not(.btn-md),
-  .mobile a:not(.btn-xs):not(.btn-sm):not(.btn-md),
-  .mobile [role="button"]:not(.btn-xs):not(.btn-sm):not(.btn-md) {
-    min-height: 44px;
-    min-width: 44px;
+  .mobile button,
+  .mobile a,
+  .mobile [role="button"] {
     /* Improve touch responsiveness */
     touch-action: manipulation;
     -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
   }
-
-  /* Specific exceptions for small buttons */
-  .mobile .btn-xs { min-height: 1.5rem; min-width: 1.5rem; }
-  .mobile .btn-sm { min-height: 2rem; min-width: 2rem; }
-  .mobile .btn-md { min-height: 3rem; min-width: 3rem; }
 
   /* Hardware acceleration for animations */
   .animate-slide-up,
@@ -732,8 +725,7 @@ textarea:focus {
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
   }
 
-  .mobile-optimized .btn:not(.btn-xs):not(.btn-sm):not(.btn-md) {
-    min-height: 44px;
+  .mobile-optimized .btn {
     border-radius: 0.75rem;
   }
 
@@ -877,11 +869,9 @@ textarea:focus {
     }
 
     /* Enhanced button touch targets */
-    .btn:not(.btn-xs):not(.btn-sm):not(.btn-md),
-    button:not(.btn-xs):not(.btn-sm):not(.btn-md),
-    [role="button"]:not(.btn-xs):not(.btn-sm):not(.btn-md) {
-      min-height: 44px;
-      min-width: 44px;
+    .btn,
+    button,
+    [role="button"] {
       touch-action: manipulation;
       -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
     }
