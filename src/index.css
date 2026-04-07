@@ -144,7 +144,7 @@ textarea:focus {
   .platform-android.keyboard-visible #root,
   .platform-ios.keyboard-visible #app,
   .platform-ios.keyboard-visible #root {
-    height: var(--effective-viewport-height, 100vh);
+    height: 100dvh;
   }
 
   /* Enhanced dynamic viewport support */
@@ -782,7 +782,7 @@ textarea:focus {
   /* Enhanced keyboard-aware viewport and layout utilities */
   .keyboard-aware-layout {
     height: 100vh;
-    height: var(--effective-viewport-height, 100vh);
+    height: 100dvh;
     transition: height 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
   }
@@ -991,28 +991,84 @@ textarea:focus {
   margin: 0 !important;
   padding-left: 0 !important;
   z-index: 2147483647 !important;
-}
-
-[data-sonner-toaster] {
-  list-style: none !important;
-  margin: 0 !important;
-  padding-left: 0 !important;
-  z-index: 2147483647 !important;
+  --sonner-group-gap: 8px;
+  --sonner-toast-width: 356px;
+  --sonner-toast-bg: oklch(var(--b1));
+  --sonner-toast-border: oklch(var(--bc) / 0.1);
+  --sonner-toast-color: oklch(var(--bc));
+  --sonner-primary: oklch(var(--p));
+  --sonner-primary-foreground: oklch(var(--pc));
+  --sonner-success: oklch(var(--su));
+  --sonner-success-foreground: oklch(var(--suc));
+  --sonner-error: oklch(var(--er));
+  --sonner-error-foreground: oklch(var(--erc));
+  --sonner-warning: oklch(var(--wa));
+  --sonner-warning-foreground: oklch(var(--wac));
+  --sonner-info: oklch(var(--in));
+  --sonner-info-foreground: oklch(var(--inc));
 }
 
 [data-sonner-toaster] [data-sonner-toast] {
   font-family: inherit !important;
+  border-radius: 1rem !important;
+  border: 1px solid var(--sonner-toast-border) !important;
+  background: var(--sonner-toast-bg) !important;
+  color: var(--sonner-toast-color) !important;
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1) !important;
+  padding: 1rem !important;
 }
 
-/* Enhanced custom animations */
-@keyframes slideUpKeyboard {
-  from {
-    transform: translateY(100%);
-    opacity: 0;
+[data-sonner-toaster] [data-title] {
+  font-weight: 700 !important;
+  font-size: 0.875rem !important;
+}
+
+[data-sonner-toaster] [data-description] {
+  font-size: 0.8125rem !important;
+  opacity: 0.7 !important;
+}
+
+[data-sonner-toaster] [data-close-button] {
+  background: oklch(var(--b3)) !important;
+  border: 1px solid oklch(var(--bc) / 0.1) !important;
+  color: oklch(var(--bc)) !important;
+}
+
+/* Specific toast types using DaisyUI colors */
+[data-sonner-toast][data-type="success"] {
+  border-left: 4px solid var(--sonner-success) !important;
+}
+
+[data-sonner-toast][data-type="error"] {
+  border-left: 4px solid var(--sonner-error) !important;
+}
+
+[data-sonner-toast][data-type="info"] {
+  border-left: 4px solid var(--sonner-info) !important;
+}
+
+[data-sonner-toast][data-type="warning"] {
+  border-left: 4px solid var(--sonner-warning) !important;
+}
+
+@media (max-width: 640px) {
+  [data-sonner-toaster] {
+    --sonner-safe-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+    left: 0.5rem !important;
+    right: 0.5rem !important;
+    width: auto !important;
+    top: var(--sonner-safe-top) !important;
+    bottom: auto !important;
+    height: auto !important;
+    max-height: none !important;
   }
-  to {
-    transform: translateY(0);
-    opacity: 1;
+
+  [data-sonner-toaster] [data-sonner-toast] {
+    width: 100% !important;
+    max-width: none !important;
+    border-radius: 0.75rem !important;
   }
 }
 
@@ -1065,7 +1121,7 @@ textarea:focus {
     height: var(--viewport-height, 100vh);
   }
   to {
-    height: var(--effective-viewport-height, 100vh);
+    height: 100dvh;
   }
 }
 

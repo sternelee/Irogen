@@ -76,7 +76,7 @@ export const AppLayout: Component = () => {
 
   createEffect(() => {
     const shouldLockScroll =
-      mobile() && (sidebarOpen() || rightPanelView() !== "none");
+      sidebarOpen() || rightPanelView() !== "none";
     document.body.style.overflow = shouldLockScroll ? "hidden" : "";
   });
 
@@ -154,7 +154,7 @@ export const AppLayout: Component = () => {
   };
 
   return (
-    <div class="flex min-h-0 h-[var(--effective-viewport-height,100vh)] bg-base-200 overflow-hidden max-md:text-sm max-md:leading-5">
+    <div class="app-root flex h-full bg-base-200 overflow-hidden max-md:text-sm max-md:leading-5">
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog
         open={shortcutsDialogOpen()}

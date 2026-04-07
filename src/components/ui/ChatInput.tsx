@@ -238,7 +238,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   return (
     <div
       class={cn(
-        "flex flex-col gap-1 sm:gap-1.5 px-1.5 sm:px-4 pt-1.5 sm:pt-3 pb-[max(env(safe-area-inset-bottom,0.65rem),0.65rem)] sm:pb-3 bg-base-100/95 backdrop-blur-md sticky bottom-2 sm:bottom-0 z-20",
+        "flex flex-col gap-1 sm:gap-1.5 px-1.5 sm:px-4 pt-1.5 sm:pt-3 pb-[max(env(safe-area-inset-bottom,0.65rem),0.65rem)] sm:pb-3 bg-base-100/95 backdrop-blur-md sticky bottom-0 z-20 transition-all duration-300",
         focused() && "bg-base-100",
         props.class,
       )}
@@ -323,11 +323,19 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             onKeyDown={handleKeyDown}
             onFocus={() => {
               setFocused(true);
+              if (mobile()) {
+                setTimeout(() => {
+                  textareaRef?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                  });
+                }, 300);
+              }
             }}
             onBlur={() => setFocused(false)}
             placeholder={props.placeholder || "Type your message..."}
             aria-label="Chat input"
-            class="flex-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-transparent border-none outline-none resize-none text-[14px] sm:text-sm max-h-[200px] min-h-[36px] sm:min-h-[44px] leading-snug sm:leading-relaxed placeholder:opacity-40"
+            class="flex-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-transparent border-none outline-none resize-none text-[16px] sm:text-sm max-h-[200px] min-h-[36px] sm:min-h-[44px] leading-snug sm:leading-relaxed placeholder:opacity-40"
             disabled={props.disabled}
             rows={1}
           />

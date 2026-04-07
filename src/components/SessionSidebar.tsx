@@ -813,7 +813,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
           transform transition-transform duration-300 ease-in-out backdrop-blur-md
           ${props.isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
           pt-safe lg:pt-0
-          h-[var(--effective-viewport-height,100vh)] flex flex-col shadow-2xl lg:shadow-none
+          h-[100dvh] flex flex-col shadow-2xl lg:shadow-none
         `}
       >
         {/* Header */}

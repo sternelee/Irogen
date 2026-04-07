@@ -42,9 +42,7 @@ export function KeyboardAwareContainer(props: KeyboardAwareContainerProps) {
         setKeyboardVisible(visible);
         if (visible && keyboardInfo) {
           setKeyboardHeight(keyboardInfo.height);
-          setEffectiveHeight(
-            keyboardInfo.viewportHeight - (keyboardInfo.viewportOffsetTop || 0),
-          );
+          setEffectiveHeight(keyboardInfo.viewportHeight);
           props.onKeyboardShow?.(keyboardInfo);
         } else {
           setKeyboardHeight(0);

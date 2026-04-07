@@ -194,8 +194,12 @@ export default function App() {
 
   return (
     <>
-      {/* Main Layout - add paddingTop for mobile status bar */}
-      <div class={mobilePadding() ? "pt-safe" : ""}>
+      <div
+        class={cn(
+          "h-full flex flex-col overflow-hidden",
+          mobilePadding() ? "pt-safe" : "",
+        )}
+      >
         <AppLayout />
       </div>
 

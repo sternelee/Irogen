@@ -500,19 +500,18 @@ export class MobileKeyboard {
   }
 
   private static handleVisualViewportChange(): void {
-    const currentViewportHeight =
-      window.visualViewport?.height || window.innerHeight;
-    const viewportOffsetTop = window.visualViewport?.offsetTop || 0;
+    const v = window.visualViewport;
+    if (!v) return;
 
-    // Calculate keyboard height using multiple metrics for accuracy
-    const heightDiffFromInitial =
-      this.initialVisualViewportHeight - currentViewportHeight;
-    const windowDiff = this.initialWindowHeight - window.innerHeight;
-    this.keyboardHeight = Math.max(heightDiffFromInitial, windowDiff, 0);
+    const currentViewportHeight = v.height;
+    const viewportOffsetTop = v.offsetTop;
 
-    // Determine if keyboard is visible with device-specific thresholds
+    // Calculate keyboard height for other UI elements
+    const heightDiff = window.innerHeight - currentViewportHeight;
+    this.keyboardHeight = Math.max(heightDiff, 0);
+
     const capabilities = getDeviceCapabilities();
-    const threshold = capabilities.isMobile ? 120 : 150; // Lower threshold for mobile
+    const threshold = capabilities.isMobile ? 120 : 150;
     const isKeyboardVisible = this.keyboardHeight > threshold;
 
     this.updateKeyboardState(isKeyboardVisible, {
@@ -961,38 +960,38 @@ export function initializeMobileUtils(
         --safe-area-inset-right: env(safe-area-inset-right, 0px);
         --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
         --safe-area-inset-left: env(safe-area-inset-left, 0px);
-        --viewport-height: 100vh;
-        --dynamic-viewport-height: 100dvh;
         --keyboard-height: 0px;
-        --effective-viewport-height: 100vh;
-      }
-
-      /* Enhanced viewport height variables */
-      @supports (height: 100dvh) {
-        :root {
-          --viewport-height: 100dvh;
-        }
       }
 
       /* iOS Safari specialized viewport handling */
       @supports (-webkit-touch-callout: none) {
-        :root {
-          --viewport-height: -webkit-fill-available;
-        }
-
-        /* Prevent zoom on input focus */
         input[type="text"],
         input[type="email"],
         input[type="password"],
         textarea {
           font-size: 16px !important; /* Prevent zoom */
-          transform: translateZ(0);
         }
       }
 
-      /* Dynamic keyboard state classes */
-      .keyboard-visible {
-        --effective-viewport-height: calc(var(--dynamic-viewport-height) - var(--keyboard-height));
+      /* Aggressive layout stability for mobile - Pure CSS Approach */
+      html, body {
+        height: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        background-color: oklch(var(--b2));
+      }
+
+      #app, .app-root {
+        width: 100% !important;
+        height: 100% !important;
+        height: 100dvh !important;
+        display: flex !important;
+        flex-grow: 1 !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        background-color: oklch(var(--b1));
       }
 
       /* Smooth transitions for viewport changes */
@@ -1017,39 +1016,22 @@ export function initializeMobileUtils(
     document.head.appendChild(viewport);
   }
 
-  // Enhanced keyboard state management with CSS custom properties
-  MobileKeyboard.onVisibilityChange((visible, keyboardInfo) => {
-    document.documentElement.classList.toggle("keyboard-visible", visible);
-    document.body.classList.toggle("keyboard-visible", visible);
-
-    // Update CSS custom properties for precise control
-    if (visible && keyboardInfo) {
-      const keyboardHeight = keyboardInfo.height;
-      const effectiveHeight =
-        keyboardInfo.viewportHeight - (keyboardInfo.viewportOffsetTop || 0);
-
-      document.documentElement.style.setProperty(
-        "--keyboard-height",
-        `${keyboardHeight}px`,
-      );
-      document.documentElement.style.setProperty(
-        "--dynamic-viewport-height",
-        `${keyboardInfo.viewportHeight}px`,
-      );
-      document.documentElement.style.setProperty(
-        "--effective-viewport-height",
-        `${effectiveHeight}px`,
-      );
-    } else {
-      // Clean up when keyboard hides
-      document.documentElement.style.removeProperty("--keyboard-height");
-      document.documentElement.style.removeProperty(
-        "--dynamic-viewport-height",
-      );
-      document.documentElement.style.removeProperty(
-        "--effective-viewport-height",
-      );
+  // Fight iOS auto-scroll by resetting window scroll on any scroll event
+  window.addEventListener("scroll", () => {
+    if (document.documentElement.classList.contains("keyboard-visible")) {
+      if (window.scrollY !== 0 || window.scrollX !== 0) {
+        window.scrollTo(0, 0);
+      }
     }
+  }, { passive: true });
+
+  // Simplified keyboard state management
+  MobileKeyboard.onVisibilityChange((visible, _keyboardInfo) => {
+    document.documentElement.classList.toggle("keyboard-visible", visible);
+    
+    // Always reset scroll to 0 to prevent OS-level jumping
+    window.scrollTo(0, 0);
+    document.body.scrollTop = 0;
   });
 
   // Auto-register common input elements for focus management
