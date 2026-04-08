@@ -287,7 +287,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => props.onSelectSlash?.(item.value || item.name)}
               >
-                <div class="text-sm font-bold flex items-center gap-2">
+                <div class="text-sm font-bold flex items-center">
                   <span class="opacity-50">/</span>
                   {item.name}
                 </div>
