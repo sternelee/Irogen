@@ -70,7 +70,7 @@ detect_platform() {
 
 # Get latest release version
 get_latest_version() {
-    VERSION=$(curl -sL https://api.github.com/repos/${REPO}/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | cut -c2-)
+    VERSION=$(curl -sL https://api.github.com/repos/${REPO}/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
     if [ -z "$VERSION" ]; then
         log_error "Failed to get latest version"
         exit 1
