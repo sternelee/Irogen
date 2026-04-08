@@ -2422,8 +2422,25 @@ async fn send_tcp_data(
 // AI Agent Commands - Slash Command Support
 // ============================================================================
 
+/// Parse and handle slash commands
+/// Returns (is_builtin, processed_prompt) where is_builtin indicates if this was recognized as a builtin
+fn process_slash_command(command: &str) -> (bool, String) {
+    use shared::agent::slash_commands::parse_slash_command;
+
+    // Try to parse as builtin command
+    if let Some(builtin) = parse_slash_command(command) {
+        // Get the working directory - for remote sessions this would need to be passed
+        let working_dir = std::path::PathBuf::from(".");
+        let result = shared::agent::slash_commands::process_builtin_command(&builtin, &working_dir);
+        return (true, result.prompt);
+    }
+
+    // Not a builtin, pass through as-is
+    (false, command.to_string())
+}
+
 /// Send a slash command to an AI agent session
-/// Commands are forwarded directly to the agent (ACP) for processing
+/// Commands are parsed and either handled as builtin commands or forwarded to the agent
 #[tauri::command(rename_all = "camelCase")]
 async fn send_slash_command(
     session_id: String,
@@ -2446,15 +2463,17 @@ async fn send_slash_command(
         }
     };
 
-    // Forward slash commands directly to the agent as input
-    // The agent (ACP) will handle command parsing
+    // Parse and process the command
+    let (_is_builtin, processed_command) = process_slash_command(&command);
+
+    // Send the processed command (either converted builtin or passthrough)
     let control_message = ClawdChatMessage::new(
         shared::MessageType::AgentControl,
         "app".to_string(),
         shared::MessagePayload::AgentControl(shared::AgentControlMessage {
             session_id: session_id.clone(),
             action: AgentControlAction::SendInput {
-                content: command,
+                content: processed_command,
                 attachments: vec![],
             },
             request_id: None,

@@ -654,6 +654,27 @@ impl AcpStreamingSession {
         })?
     }
 
+    /// Send a builtin slash command to the agent
+    /// This converts builtin commands to appropriate prompts
+    pub async fn send_builtin_command(
+        &self,
+        command: crate::message_protocol::BuiltinCommand,
+        working_dir: &std::path::Path,
+        turn_id: &str,
+    ) -> std::result::Result<(), String> {
+        use crate::agent::slash_commands::process_builtin_command;
+
+        let result = process_builtin_command(&command, working_dir);
+
+        // If there's a system prompt, we could potentially set it here
+        // For now, we just send the main prompt
+        if result.prompt.is_empty() {
+            return Err("Unknown builtin command".to_string());
+        }
+
+        self.send_message(result.prompt, turn_id, vec![]).await
+    }
+
     /// Interrupt current operation
     pub async fn interrupt(&self) -> std::result::Result<(), String> {
         debug!(

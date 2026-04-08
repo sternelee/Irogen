@@ -20,6 +20,7 @@ import { sessionStore } from "./stores/sessionStore";
 import { notificationStore } from "./stores/notificationStore";
 import { initializeDeviceDetection } from "./stores/deviceStore";
 import { initializeMobileUtils } from "./utils/mobile";
+import { cn } from "./lib/utils";
 
 // Types
 import type { AgentType } from "./stores/sessionStore";
