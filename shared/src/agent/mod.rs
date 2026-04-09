@@ -11,6 +11,7 @@ pub mod factory;
 pub mod message_adapter;
 pub mod openclaw_ws;
 pub mod permission_handler;
+pub mod slash_commands;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -37,6 +38,7 @@ pub use permission_handler::{
     ApprovalDecision, AutoApprovalDecision, CompletedPermissionEntry, PendingPermissionEntry,
     PermissionHandler, PermissionHandlerState, PermissionMode, PermissionStatus,
 };
+pub use slash_commands::{parse_slash_command, process_builtin_command, BuiltinCommandResult};
 
 /// Session kind enum for unified agent management.
 ///

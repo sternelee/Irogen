@@ -991,6 +991,28 @@ pub enum BuiltinCommand {
     ListCommands,
     /// 获取 Agent 信息
     GetAgentInfo,
+    /// 初始化项目 - 分析项目结构并创建开发计划
+    Init { description: Option<String> },
+    /// 代码审查 - 审查指定文件或当前更改
+    Review { target: Option<String> },
+    /// 提交更改 - 生成提交信息并创建 git commit
+    Commit { message: Option<String> },
+    /// 循环执行 - 重复执行某个任务
+    Loop { task: String, iterations: Option<u32> },
+    /// 添加目录到上下文 - 将目录内容纳入对话上下文
+    AddDir { path: String },
+    /// 分支操作 - 创建或切换分支
+    Branch { name: Option<String> },
+    /// 顺便说一下 - 记录临时想法或上下文切换
+    Btw { message: String },
+    /// 清空上下文 - 清除对话历史但保持会话
+    Clear,
+    /// 压缩上下文 - 总结并压缩对话历史
+    Compact,
+    /// 创建计划 - 创建结构化的任务计划
+    Plan { description: String },
+    /// 重命名会话
+    Rename { new_name: String },
 }
 
 /// 斜杠命令响应

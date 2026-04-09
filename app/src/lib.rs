@@ -37,6 +37,90 @@ use shared::{
 
 use crate::tcp_forwarding::TcpForwardingManager;
 
+#[cfg(target_os = "android")]
+mod android_foreground {
+    use serde_json::json;
+    use tauri::AppHandle;
+
+    /// Update the Android foreground service notification with agent status
+    pub fn update_agent_status(
+        app: &AppHandle,
+        session_id: &str,
+        agent_type: &str,
+        state: &str,
+        details: &str,
+        tool_name: &str,
+        message: &str,
+    ) {
+        use jni::signature::JavaType;
+        use jni::objects::JString;
+        use jni::signature::JavaType::Object;
+
+        let payload = json!({
+            "sessionId": session_id,
+            "agentType": agent_type,
+            "state": state,
+            "details": details,
+            "toolName": tool_name,
+            "message": message,
+        });
+
+        app.run_on_android_context(move |env, activity, _webview| {
+            let class = env.find_class("com/clawdpilot/dev/AgentForegroundService");
+            if let Err(e) = class {
+                tracing::warn!("Failed to find AgentForegroundService class: {}", e);
+                return;
+            }
+            let class = class.unwrap();
+
+            let payload_jstring = env.new_string(payload.to_string());
+            if let Err(e) = payload_jstring {
+                tracing::warn!("Failed to create payload string: {}", e);
+                return;
+            }
+            let payload_jstring = JString::from(payload_jstring.unwrap());
+
+            // Call AgentForegroundService.upsert(context, payloadJson)
+            let result = env.call_static_method(
+                &class,
+                "upsert",
+                "(Landroid/content/Context;Ljava/lang/String;)V",
+                &[
+                    (&activity).into(),
+                    (&payload_jstring).into(),
+                ],
+            );
+
+            if let Err(e) = result {
+                tracing::warn!("Failed to call AgentForegroundService.upsert: {}", e);
+            }
+        });
+    }
+
+    /// Stop the Android foreground service
+    pub fn stop_service(app: &AppHandle) {
+        app.run_on_android_context(move |env, activity, _webview| {
+            let class = env.find_class("com/clawdpilot/dev/AgentForegroundService");
+            if let Err(e) = class {
+                tracing::warn!("Failed to find AgentForegroundService class: {}", e);
+                return;
+            }
+            let class = class.unwrap();
+
+            let result = env.call_static_method(
+                &class,
+                "stop",
+                "(Landroid/content/Context;)V",
+                &[(&activity).into()],
+            );
+
+            if let Err(e) = result {
+                tracing::warn!("Failed to call AgentForegroundService.stop: {}", e);
+            }
+        });
+    }
+}
+
 /// Maximum number of concurrent sessions to prevent memory exhaustion
 const MAX_CONCURRENT_SESSIONS: usize = 50;
 /// Maximum events per session buffer
@@ -359,7 +443,7 @@ async fn initialize_network_with_relay_internal(
 
     // Handle secret key storage differently for mobile platforms
     let secret_key_path = if cfg!(mobile) {
-        // 移动端使用持久化密钥以支持重连和会话恢复
+        // Mobile uses persistent keys to support reconnection and session recovery
         match app_handle {
             Some(handle) => {
                 let app_data_dir = handle
@@ -971,6 +1055,48 @@ async fn connect_to_peer(
                                         agent_msg.content
                                     );
 
+                                    // Update Android foreground service notification
+                                    #[cfg(target_os = "android")]
+                                    {
+                                        let (state, details, tool_name, message) = match &agent_msg.content {
+                                            shared::message_protocol::AgentMessageContent::AgentResponse { content, .. } => {
+                                                ("responding", content.chars().take(30).collect::<String>(), "", "")
+                                            }
+                                            shared::message_protocol::AgentMessageContent::ToolCallUpdate { tool_name, status, .. } => {
+                                                ("tool_call", format!("{:?}", status), tool_name, "")
+                                            }
+                                            shared::message_protocol::AgentMessageContent::TextDelta { thinking, .. } if *thinking => {
+                                                ("thinking", "Thinking...".to_string(), "", "")
+                                            }
+                                            shared::message_protocol::AgentMessageContent::TextDelta { .. } => {
+                                                ("responding", "Receiving...".to_string(), "", "")
+                                            }
+                                            shared::message_protocol::AgentMessageContent::TurnStarted { .. } => {
+                                                ("thinking", "Starting...".to_string(), "", "")
+                                            }
+                                            shared::message_protocol::AgentMessageContent::TurnCompleted { .. } => {
+                                                ("idle", "Complete".to_string(), "", "")
+                                            }
+                                            shared::message_protocol::AgentMessageContent::TurnError { error } => {
+                                                ("error", error.chars().take(40).collect::<String>(), "", "")
+                                            }
+                                            shared::message_protocol::AgentMessageContent::ApprovalRequest { tool_name, .. } => {
+                                                ("permission_requested", "Needs approval".to_string(), tool_name, "")
+                                            }
+                                            _ => ("idle", "".to_string(), "", "")
+                                        };
+
+                                        android_foreground::update_agent_status(
+                                            &app_handle_clone,
+                                            &agent_msg.session_id,
+                                            &agent_msg.agent_type.as_deref().unwrap_or("Agent"),
+                                            state,
+                                            &details,
+                                            tool_name,
+                                            message,
+                                        );
+                                    }
+
                                     // Transform AgentMessageContent to frontend-expected format
                                     let event_payload = match &agent_msg.content {
                                         shared::message_protocol::AgentMessageContent::AgentResponse {
@@ -1115,6 +1241,20 @@ async fn connect_to_peer(
                                             .title("Permission Required")
                                             .body(format!("{}: {}", request.tool_name, request.description.as_deref().unwrap_or("Needs your approval")))
                                             .show();
+
+                                        // Update Android foreground service for permission request
+                                        #[cfg(target_os = "android")]
+                                        {
+                                            android_foreground::update_agent_status(
+                                                &app_handle_clone,
+                                                &request.session_id,
+                                                "Agent",
+                                                "permission_requested",
+                                                "Needs your approval",
+                                                &request.tool_name,
+                                                request.description.as_deref().unwrap_or(""),
+                                            );
+                                        }
 
                                         // Parse tool_params JSON string for frontend
                                         let tool_params_json: serde_json::Value = serde_json::from_str(&request.tool_params)
@@ -1599,7 +1739,11 @@ async fn send_directed_message(
 }
 
 #[tauri::command]
-async fn disconnect_session(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
+async fn disconnect_session(
+    session_id: String,
+    state: State<'_, AppState>,
+    _app_handle: tauri::AppHandle,
+) -> Result<(), String> {
     #[cfg(any(debug_assertions, not(feature = "release-logging")))]
     tracing::info!("Disconnecting session: {}", session_id);
 
@@ -1636,6 +1780,18 @@ async fn disconnect_session(session_id: String, state: State<'_, AppState>) -> R
 
         #[cfg(any(debug_assertions, not(feature = "release-logging")))]
         tracing::info!("Session {} disconnected successfully", session_id);
+
+        // Stop foreground service if no more sessions
+        let remaining_sessions = {
+            let sessions = state.sessions.read().await;
+            sessions.len()
+        };
+        if remaining_sessions == 0 {
+            #[cfg(target_os = "android")]
+            {
+                android_foreground::stop_service(&_app_handle);
+            }
+        }
     } else {
         #[cfg(any(debug_assertions, not(feature = "release-logging")))]
         tracing::info!("Session {} not found during disconnect", session_id);
@@ -2443,8 +2599,25 @@ async fn send_tcp_data(
 // AI Agent Commands - Slash Command Support
 // ============================================================================
 
+/// Parse and handle slash commands
+/// Returns (is_builtin, processed_prompt) where is_builtin indicates if this was recognized as a builtin
+fn process_slash_command(command: &str) -> (bool, String) {
+    use shared::agent::slash_commands::parse_slash_command;
+
+    // Try to parse as builtin command
+    if let Some(builtin) = parse_slash_command(command) {
+        // Get the working directory - for remote sessions this would need to be passed
+        let working_dir = std::path::PathBuf::from(".");
+        let result = shared::agent::slash_commands::process_builtin_command(&builtin, &working_dir);
+        return (true, result.prompt);
+    }
+
+    // Not a builtin, pass through as-is
+    (false, command.to_string())
+}
+
 /// Send a slash command to an AI agent session
-/// Commands are forwarded directly to the agent (ACP) for processing
+/// Commands are parsed and either handled as builtin commands or forwarded to the agent
 #[tauri::command(rename_all = "camelCase")]
 async fn send_slash_command(
     session_id: String,
@@ -2467,15 +2640,17 @@ async fn send_slash_command(
         }
     };
 
-    // Forward slash commands directly to the agent as input
-    // The agent (ACP) will handle command parsing
+    // Parse and process the command
+    let (_is_builtin, processed_command) = process_slash_command(&command);
+
+    // Send the processed command (either converted builtin or passthrough)
     let control_message = ClawdChatMessage::new(
         shared::MessageType::AgentControl,
         "app".to_string(),
         shared::MessagePayload::AgentControl(shared::AgentControlMessage {
             session_id: session_id.clone(),
             action: AgentControlAction::SendInput {
-                content: command,
+                content: processed_command,
                 attachments: vec![],
             },
             request_id: None,

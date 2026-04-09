@@ -1,6 +1,6 @@
 import { createSignal, createEffect, onMount, For, Show } from "solid-js";
 import { cn } from "~/lib/utils";
-import { FiSun, FiMoon, FiMonitor, FiChevronDown } from "solid-icons/fi";
+import { FiChevronDown } from "solid-icons/fi";
 import { i18nStore } from "../../stores/i18nStore";
 
 interface ThemeSwitcherProps {
@@ -13,12 +13,12 @@ interface LanguageSwitcherProps {
 
 // Theme definitions with icons
 const themes = [
-  { id: "light", name: "Light", icon: FiSun, color: "#fbbf24" },
-  { id: "sunset", name: "Sunset", icon: FiSun, color: "#fb923c" },
-  { id: "black", name: "Black", icon: FiMoon, color: "#0f0f0f" },
-  { id: "synthwave", name: "Synthwave", icon: FiMonitor, color: "#d946ef" },
-  { id: "abyss", name: "Abyss", icon: FiMoon, color: "#0f172a" },
-  { id: "luxury", name: "Luxury", icon: FiMoon, color: "#78716c" },
+  { id: "light", name: "Light" },
+  { id: "sunset", name: "Sunset" },
+  { id: "black", name: "Black" },
+  { id: "synthwave", name: "Synthwave" },
+  { id: "abyss", name: "Abyss" },
+  { id: "luxury", name: "Luxury" },
 ];
 
 const normalizeTheme = (theme: string) => {
@@ -34,11 +34,12 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
   // Get current theme info
   const currentThemeInfo = () =>
     themes.find((t) => t.id === currentTheme()) || themes[0];
-  const CurrentIcon = currentThemeInfo().icon;
 
   // Load theme from localStorage on mount
   onMount(() => {
-    const savedTheme = normalizeTheme(localStorage.getItem("theme") || "sunset");
+    const savedTheme = normalizeTheme(
+      localStorage.getItem("theme") || "sunset",
+    );
     setCurrentTheme(savedTheme);
     document.documentElement.setAttribute("data-theme", savedTheme);
   });
@@ -77,7 +78,12 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
           "hover:bg-muted text-sm font-medium",
         )}
       >
-        <CurrentIcon size={16} />
+        <div class="bg-base-100 group-hover:border-base-content/20 border-base-content/10 grid shrink-0 grid-cols-2 gap-0.5 rounded-md border p-1 transition-colors">
+          <div class="bg-base-content size-1 rounded-full"></div>{" "}
+          <div class="bg-primary size-1 rounded-full"></div>{" "}
+          <div class="bg-secondary size-1 rounded-full"></div>{" "}
+          <div class="bg-accent size-1 rounded-full"></div>
+        </div>
         <span class="hidden sm:inline">{currentThemeInfo().name}</span>
         <FiChevronDown
           size={14}
@@ -106,6 +112,7 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
                   <button
                     type="button"
                     onClick={() => handleThemeChange(theme.id)}
+                    data-theme={theme.id}
                     class={cn(
                       "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
                       currentTheme() === theme.id
@@ -113,13 +120,13 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
                         : "hover:bg-muted",
                     )}
                   >
-                    <div
-                      class="w-5 h-5 rounded-full flex items-center justify-center"
-                      style={`background-color: ${theme.color}`}
-                    >
-                      <Show when={currentTheme() === theme.id}>
-                        <FiSun size={10} class="text-white" />
-                      </Show>
+                    <div class="w-5 h-5 rounded-full flex items-center justify-center">
+                      <div class="bg-base-100 group-hover:border-base-content/20 border-base-content/10 grid shrink-0 grid-cols-2 gap-0.5 rounded-md border p-1 transition-colors">
+                        <div class="bg-base-content size-1 rounded-full"></div>{" "}
+                        <div class="bg-primary size-1 rounded-full"></div>{" "}
+                        <div class="bg-secondary size-1 rounded-full"></div>{" "}
+                        <div class="bg-accent size-1 rounded-full"></div>
+                      </div>
                     </div>
                     <span class="text-sm">{theme.name}</span>
                     <Show when={currentTheme() === theme.id}>

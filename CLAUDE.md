@@ -13,7 +13,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `app/`: Tauri command layer and session orchestration between frontend and `shared`
 - `src/`: SolidJS desktop/mobile UI stores and chat/session components
 - `web/`: separate TanStack Start + Cloudflare Workers app (own pnpm workspace)
-- `browser/`: wasm client crate
+- `browser/`: WebAssembly client crate for browser-based connections
+- `plugins/`: Vite/Tauri build helpers
 
 ## Architecture
 
@@ -57,7 +58,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Prerequisites:** Rust stable, Node.js 20+, pnpm 10+.
 
 ```bash
-# Frontend
+# Frontend (SolidJS/Tauri)
 pnpm install               # Install dependencies
 pnpm dev                   # Vite dev server (localhost:1420)
 pnpm build                 # Production build
@@ -67,7 +68,9 @@ pnpm tsc                   # TypeScript check
 pnpm tauri:dev             # Desktop app with hot reload
 pnpm tauri:build           # Build desktop app
 pnpm tauri:android:dev     # Android dev build (macOS)
+pnpm tauri:android:build   # Android release build
 pnpm tauri:ios:dev         # iOS dev build (macOS only)
+pnpm tauri:ios:build       # iOS release build (macOS only)
 
 # CLI
 cargo run -p cli -- host   # Run CLI host (prints QR code/ticket)
@@ -76,8 +79,7 @@ cargo build -p cli --release
 
 # Testing
 cargo test --workspace                           # All Rust tests
-cargo test -p shared message_protocol            # Run tests matching a module/name
-cargo test -p shared test_agent_manager_creation # Run a single Rust test by name
+cargo test -p <crate> <test_name>                # Run specific test (e.g., cargo test -p shared message_protocol)
 cargo test -- --nocapture                        # Show stdout/stderr
 ./test_ticket_output.sh                          # CLI ticket verification
 
@@ -105,16 +107,89 @@ cd web && pnpm deploy      # Deploy to Cloudflare
 Detailed frontend conventions are in `AGENTS.md`.
 
 ### Rust (Edition 2024)
+
+**Naming:**
+- `snake_case` for variables and functions
+- `PascalCase` for types and enums
+- `SCREAMING_SNAKE_CASE` for constants
+
+**Imports (in order):**
+1. External crates (`use anyhow::Result;`)
+2. Standard library (`use std::collections::HashMap;`)
+3. Local modules (`use crate::shared::foo;`)
+
+**Error Handling:**
 - Use `anyhow::Result<T>` with `.with_context(|| "...")?` for error context
 - Avoid `.unwrap()`/`.expect()` in non-test code
-- Use `tokio` with `Arc<RwLock<T>>` or `Arc<Mutex<T>>`; prefer `std::sync::Mutex` for hot-path fields
+- Use `thiserror` for library error types
+
+**Logging:**
 - Use `tracing` macros (`info!`, `debug!`, `error!`, `warn!`) - no `println!` in production
+- Use structured logging with fields: `info!(session_id = %id, "message")`
+
+**Async:**
+- Use `tokio` with `Arc<RwLock<T>>` or `Arc<Mutex<T>>`; prefer `std::sync::Mutex` for hot-path fields
+- Prefer async traits from `async_trait`
+
+**Other:**
+- Resolve clippy warnings with `-D warnings`
+- Run `cargo fmt` before committing
 
 ### TypeScript / SolidJS
+
+**Naming:**
+- `camelCase` for variables and functions
+- `PascalCase` for components and types
+- Use descriptive names, avoid abbreviations
+
+**Imports:**
+- Use `~` alias for src imports (e.g., `~/components/ui/Button`)
+- Order: SolidJS imports → external libraries → local
+
+**Types:**
 - Strict mode; no implicit/explicit `any`
 - Define explicit interfaces for component props
-- Use `~` alias for src imports (e.g., `~/components/ui/Button`)
-- Three-section component structure: `// Types`, `// Variant Classes`, `// Component`
+- Use `Component<T>` type for functional components
+- Avoid type assertions; prefer proper typing
+
+**Components:**
+- Functional components with `createSignal()` for reactive state
+- Use `.tsx` extension for JSX files
+- Proper typing for event handlers (`KeyboardEvent`, `MouseEvent`, etc.)
+- Use `onCleanup()` for cleanup
+- Use `createContext` for type-safe context
+
+**File Structure:**
+```tsx
+// ============================================================================
+// Types
+// ============================================================================
+export interface CardProps {
+  /* ... */
+}
+
+// ============================================================================
+// Variant Classes
+// ============================================================================
+const variantClasses = {
+  /* ... */
+};
+
+// ============================================================================
+// Component
+// ============================================================================
+export const Card: Component<CardProps> = (props) => {
+  /* ... */
+};
+```
+
+**Styling (TailwindCSS v4 + DaisyUI):**
+- Utility-first CSS; use Tailwind classes directly in components
+- Use `@apply` in CSS files (`/src/index.css`) with `@layer` directives
+- Use `cn()` utility from `~/lib/utils` for conditional class merging
+- Responsive design with mobile-first approach
+- Dark mode via DaisyUI themes with `[data-theme]` attribute
+- Default themes: `sunset` (light), `dark` (prefers-color-scheme)
 
 ### Web workspace notes (`web/.cursorrules`)
 - Prefer functional components
@@ -135,14 +210,22 @@ The `app/Cargo.toml` configures different dependencies:
 
 Frontend uses Tauri commands `approve_permission`/`deny_permission`, updates via `chatStore` and `PermissionCard`.
 
+## Commit Guidelines
+
+- Follow Conventional Commits: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:` with optional scope
+- Examples: `feat(ui): add new button component`, `fix(agent): handle codex exit code`
+- Include scope for cross-platform changes: `(ios)`, `(android)`, `(desktop)`, `(cli)`, `(shared)`
+
 ## Adding a New Agent
 
 1. Add to `AgentType` enum in `shared/src/message_protocol.rs`
-2. Configure launch in `shared/src/agent/factory.rs`
+2. Configure launch in `shared/src/agent/factory.rs` (add binary detection and command building)
 3. Add session handling in `shared/src/agent/mod.rs` (`start_session_with_id`)
-4. For ACP agents: create parser in `shared/src/agent/` (e.g., `gemini.rs`)
+4. For ACP agents: create parser in `shared/src/agent/` (e.g., `claude.rs`, `codex.rs`, `gemini.rs`)
+   - Implement output parsing for agent-specific streaming formats
+   - Handle tool calls, permissions, and thinking blocks
 5. Expose commands in `app/src/lib.rs`
-6. Update `sessionStore.ts` and UI
+6. Update `sessionStore.ts` and UI components
 
 ## Release Process
 
@@ -157,4 +240,19 @@ Workflow (`.github/workflows/publish-to-auto-release.yml`):
 - Tauri app packaging via `tauri-apps/tauri-action`
 - CLI artifacts published as `clawdpilot_cli-*`
 
-Android release builds require GitHub secrets: `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_BASE64`.
+### Android Release
+
+Requires GitHub secrets: `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_BASE64`.
+
+Generate `ANDROID_KEY_BASE64` locally:
+```bash
+keytool -list -v -keystore your.jks
+base64 -i upload-keystore.jks | tr -d '\n'
+```
+
+### iOS Release (macOS only)
+
+iOS builds require Xcode and valid Apple Developer credentials. Configure signing in Xcode after running:
+```bash
+pnpm tauri:ios:build
+```
