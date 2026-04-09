@@ -7,13 +7,13 @@
 
 import { createSignal, onMount, onCleanup } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
-import { Toaster } from "solid-sonner";
 import { type as osType } from "@tauri-apps/plugin-os";
 
 // Components
 import { AppLayout } from "./components/AppLayout";
 import { SettingsModal } from "./components/SettingsModal";
 import { NewSessionModal } from "./components/NewSessionModal";
+import { ToastContainer } from "./components/ToastContainer";
 
 // Stores
 import { sessionStore } from "./stores/sessionStore";
@@ -213,8 +213,8 @@ export default function App() {
       {/* New Session Modal */}
       <NewSessionModal />
 
-      {/* Toaster for solid-sonner */}
-      <Toaster position="top-right" closeButton class="top-2 sm:top-1" />
+      {/* DaisyUI Toast Container */}
+      <ToastContainer />
     </>
   );
 }

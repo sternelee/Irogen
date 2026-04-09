@@ -813,7 +813,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
           transform transition-transform duration-300 ease-in-out backdrop-blur-md
           ${props.isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
           pt-safe lg:pt-0
-          h-[100dvh] flex flex-col shadow-2xl lg:shadow-none
+          h-dvh flex flex-col shadow-2xl lg:shadow-none
         `}
       >
         {/* Header */}
@@ -980,7 +980,10 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                                     type="button"
                                     class="group w-full text-left p-2.5 rounded-lg hover:bg-primary/10 hover:text-primary transition-all duration-200 border border-transparent hover:border-primary/10"
                                     onClick={async () => {
-                                      await handleLoadHistorySession(session, entry);
+                                      await handleLoadHistorySession(
+                                        session,
+                                        entry,
+                                      );
                                       setHistoryExpanded({});
                                       if (props.isOpen) {
                                         props.onToggle();
@@ -1016,13 +1019,13 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
           </Show>
           <Show when={sessions().length === 0}>
             <div class="flex flex-col items-center justify-center py-16 text-center px-6">
-              <div class="w-16 h-16 rounded-[2rem] bg-base-300 flex items-center justify-center mb-4 border border-base-content/5 shadow-inner">
+              <div class="w-16 h-16 rounded-4xl bg-base-300 flex items-center justify-center mb-4 border border-base-content/5 shadow-inner">
                 <FiPlus size={28} class="opacity-20" />
               </div>
               <p class="text-sm font-bold opacity-40">
                 {t("sidebar.activeSessionsEmpty")}
               </p>
-              <p class="text-[11px] opacity-30 mt-2 max-w-[140px] leading-relaxed">
+              <p class="text-[11px] opacity-30 mt-2 max-w-35 leading-relaxed">
                 {t("sidebar.activeSessionsHint")}
               </p>
             </div>
@@ -1040,7 +1043,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
             </div>
             <button
               type="button"
-              class="btn btn-primary btn-sm rounded-xl px-4 font-black shadow-lg shadow-primary/20 h-10 min-h-[40px]"
+              class="btn btn-primary btn-sm rounded-xl px-4 font-black shadow-lg shadow-primary/20 h-10 min-h-10"
               onClick={() => sessionStore.openNewSessionModal("local")}
               title={t("home.createSession")}
             >

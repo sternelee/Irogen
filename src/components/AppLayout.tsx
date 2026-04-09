@@ -75,8 +75,7 @@ export const AppLayout: Component = () => {
   const mobile = createMemo(() => isMobile());
 
   createEffect(() => {
-    const shouldLockScroll =
-      sidebarOpen() || rightPanelView() !== "none";
+    const shouldLockScroll = sidebarOpen() || rightPanelView() !== "none";
     document.body.style.overflow = shouldLockScroll ? "hidden" : "";
   });
 
@@ -163,7 +162,7 @@ export const AppLayout: Component = () => {
 
       {/* Setup Guide - Full Screen Overlay */}
       <Show when={showSetupGuide()}>
-        <div class="fixed inset-0 z-[70] bg-base-100">
+        <div class="fixed inset-0 z-70 bg-base-100">
           <SetupGuide
             onClose={() => setShowSetupGuide(false)}
             onSkip={() => setShowSetupGuide(false)}
@@ -172,7 +171,7 @@ export const AppLayout: Component = () => {
       </Show>
 
       <Show when={sessionStore.state.isHistoryLoading}>
-        <div class="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-[60]">
+        <div class="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-60">
           <div class="rounded-2xl bg-base-100/90 border border-base-content/10 px-6 py-5 shadow-2xl">
             <SpinnerWithLabel
               label={i18nStore.t("common.loadingHistory")}
@@ -221,7 +220,7 @@ export const AppLayout: Component = () => {
                       class="h-20 w-20 rounded-2xl object-cover"
                     />
                   </div>
-                  <h2 class="text-3xl font-bold mb-3 bg-gradient-to-r from-base-content to-base-content/70 bg-clip-text text-transparent">
+                  <h2 class="text-3xl font-bold mb-3 bg-linear-to-r from-base-content to-base-content/70 bg-clip-text text-transparent">
                     {i18nStore.t("home.welcomeTitle")}
                   </h2>
                   <p class="text-base-content/60 mb-8 max-w-xs mx-auto leading-relaxed">
@@ -313,7 +312,7 @@ export const AppLayout: Component = () => {
                 <Show when={rightPanelView() !== "none"}>
                   <button
                     type="button"
-                    class="fixed inset-0 bg-black/60 z-[40] lg:hidden w-full h-full border-none cursor-default backdrop-blur-sm"
+                    class="fixed inset-0 bg-black/60 z-40 lg:hidden w-full h-full border-none cursor-default backdrop-blur-sm"
                     onClick={closeRightPanel}
                     aria-label="Close tools panel"
                   />
@@ -332,8 +331,8 @@ export const AppLayout: Component = () => {
                       closeRightPanel();
                     }
                   }}
-                  class={`fixed bottom-0 left-0 right-0 z-[50] h-[min(86dvh,42rem)] sm:h-full rounded-t-3xl border-t border-base-content/10 bg-base-100 flex flex-col overflow-hidden shadow-2xl
-                    pt-safe pb-safe sm:top-0 sm:bottom-0 sm:left-auto sm:right-0 sm:max-h-none sm:w-[28rem] sm:rounded-none sm:border-l sm:border-t-0 sm:pt-0 sm:pb-0 md:w-[340px] lg:w-[360px]
+                  class={`fixed bottom-0 left-0 right-0 z-50 h-[min(86dvh,42rem)] sm:h-full rounded-t-3xl border-t border-base-content/10 bg-base-100 flex flex-col overflow-hidden shadow-2xl
+                    pb-safe sm:top-0 sm:bottom-0 sm:left-auto sm:right-0 sm:max-h-none sm:w-md sm:rounded-none sm:border-l sm:border-t-0 sm:pt-0 sm:pb-0 md:w-85 lg:w-90
                     transform transition-transform duration-300 ease-in-out
                     ${rightPanelView() !== "none" ? "translate-y-0 sm:translate-x-0" : "translate-y-full sm:translate-y-0 sm:translate-x-full"}
                   `}
@@ -366,7 +365,7 @@ export const AppLayout: Component = () => {
                       onClick={closeRightPanel}
                       title="Close panel"
                     >
-                      <FiX size={16} class="sm:size-[18px]" />
+                      <FiX size={16} class="sm:size-4.5" />
                     </button>
                   </div>
                   <div class="flex-1 overflow-auto">

@@ -274,7 +274,7 @@ impl AgentManager {
                                         }
                                     }
                                 } else {
-                                    error_msg += " Auto-install failed. Install @zed-industries/claude-agent-acp or pass an explicit --binary-path.";
+                                    error_msg += " Auto-install failed. Install @agentclientprotocol/claude-agent-acp or pass an explicit --binary-path.";
                                     return Err(anyhow!(error_msg));
                                 }
                             }
@@ -947,7 +947,7 @@ fn command_exists(command: &str) -> bool {
 }
 
 fn try_install_claude_acp() -> Result<bool> {
-    try_install_package("@zed-industries/claude-agent-acp", "Claude Agent ACP")
+    try_install_package("@agentclientprotocol/claude-agent-acp", "Claude Agent ACP")
 }
 
 fn try_install_codex_acp() -> Result<bool> {

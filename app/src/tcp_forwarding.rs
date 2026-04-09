@@ -2,6 +2,7 @@
 //!
 //! 此模块实现了从本地 TCP 客户端到远程 CLI 的 TCP 数据转发。
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -15,7 +16,7 @@ use shared::{TcpDataType, quic_server::QuicMessageClientHandle};
 use std::sync::Arc as StdArc;
 
 /// TCP 转发会话信息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TcpForwardingSession {
     #[allow(dead_code)]
     pub id: String,

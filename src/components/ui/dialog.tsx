@@ -25,8 +25,16 @@ export function Dialog(props: DialogProps) {
         class={`modal modal-bottom sm:modal-middle ${props.open ? "modal-open" : ""} ${props.class || ""}`}
       >
         {/* Backdrop - clicks outside to close */}
-        <div class="modal-backdrop bg-black/40 backdrop-blur-[2px]" onClick={props.onClose}>
-          <button type="button" class="cursor-default w-full h-full border-none">close</button>
+        <div
+          class="modal-backdrop bg-black/40 backdrop-blur-[2px]"
+          onClick={props.onClose}
+        >
+          <button
+            type="button"
+            class="cursor-default w-full h-full border-none"
+          >
+            close
+          </button>
         </div>
 
         {/* Modal Box */}
@@ -44,7 +52,7 @@ export function Dialog(props: DialogProps) {
           {/* Close button (top right) */}
           <button
             type="button"
-            class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+            class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2 hidden"
             onClick={props.onClose}
             aria-label="Close"
           >

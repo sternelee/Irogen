@@ -1,13 +1,13 @@
 import { Component, createSignal, For, Show } from "solid-js";
-import { 
-  Terminal, 
-  Settings, 
-  RefreshCw, 
-  Plus, 
-  Scan, 
+import {
+  Terminal,
+  Settings,
+  RefreshCw,
+  Plus,
+  Scan,
   Lightbulb,
   Trash2,
-  ChevronRight
+  ChevronRight,
 } from "lucide-solid";
 import { getTicketHistory, clearStoredTickets } from "../../utils/localStorage";
 import { getTicketDisplayId } from "../../utils/ticketParser";
@@ -49,26 +49,46 @@ export const ConnectView: Component<ConnectViewProps> = (props) => {
       {/* Header */}
       <header class="navbar bg-base-100 px-4 pt-safe shrink-0">
         <div class="flex-none">
-          <span class="tooltip tooltip-bottom before:text-xs before:content-[attr(data-tip)]" data-tip="Menu">
-            <button 
-              aria-label="Open menu" 
-              class="btn btn-square btn-ghost" 
+          <span
+            class="tooltip tooltip-bottom before:text-xs before:content-[attr(data-tip)]"
+            data-tip="Menu"
+          >
+            <button
+              aria-label="Open menu"
+              class="btn btn-square btn-ghost"
               onClick={() => props.onToggleSidebar()}
             >
-              <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block h-5 w-5 stroke-current md:h-6 md:w-6">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+              <svg
+                width="20"
+                height="20"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                class="inline-block h-5 w-5 stroke-current md:h-6 md:w-6"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 6h16M4 12h16M4 18h16"
+                ></path>
               </svg>
             </button>
           </span>
         </div>
         <div class="flex-1">
-          <h1 class="text-xl font-black tracking-tighter text-primary px-2">Irogen</h1>
+          <h1 class="text-xl font-black tracking-tighter text-primary px-2">
+            Irogen
+          </h1>
         </div>
         <div class="flex-none">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             size="icon"
-            onClick={() => { HapticFeedback.light(); props.onOpenSettings(); }}
+            onClick={() => {
+              HapticFeedback.light();
+              props.onOpenSettings();
+            }}
             class="rounded-full"
           >
             <Settings size={22} />
@@ -85,7 +105,9 @@ export const ConnectView: Component<ConnectViewProps> = (props) => {
             </div>
           </div>
         </div>
-        <h2 class="text-2xl font-bold text-center tracking-tight">P2P 安全连接</h2>
+        <h2 class="text-2xl font-bold text-center tracking-tight">
+          P2P 安全连接
+        </h2>
       </div>
 
       {/* Machines Section */}
@@ -93,13 +115,28 @@ export const ConnectView: Component<ConnectViewProps> = (props) => {
         <div class="flex items-center justify-between mb-4 px-1 shrink-0">
           <div class="flex items-center gap-2 text-primary">
             <Terminal size={14} stroke-width={3} />
-            <span class="font-black text-[10px] tracking-widest uppercase text-base-content/50">Machines</span>
+            <span class="font-black text-[10px] tracking-widest uppercase text-base-content/50">
+              Machines
+            </span>
           </div>
           <div class="flex items-center gap-1">
-            <Button variant="ghost" size="sm" class="btn-square btn-xs text-base-content/40 hover:text-primary" onClick={handleRefresh}>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="btn-square btn-xs text-base-content/40 hover:text-primary"
+              onClick={handleRefresh}
+            >
               <RefreshCw size={14} />
             </Button>
-            <Button variant="ghost" size="sm" class="btn-square btn-xs text-base-content/40 hover:text-primary" onClick={() => { HapticFeedback.light(); props.onConnect(""); }}>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="btn-square btn-xs text-base-content/40 hover:text-primary"
+              onClick={() => {
+                HapticFeedback.light();
+                props.onConnect("");
+              }}
+            >
               <Plus size={16} />
             </Button>
           </div>
@@ -107,20 +144,25 @@ export const ConnectView: Component<ConnectViewProps> = (props) => {
 
         {/* Machine List Card */}
         <div class="bg-base-200/40 rounded-3xl border border-base-content/5 shadow-inner p-4 overflow-y-auto flex-1 mb-6">
-          <Show 
-            when={history().length > 0} 
+          <Show
+            when={history().length > 0}
             fallback={
               <div class="flex flex-col items-center justify-center py-12 text-center h-full">
                 <div class="w-16 h-16 rounded-full bg-base-300 flex items-center justify-center mb-4 text-base-content/20">
                   <Plus size={24} />
                 </div>
-                <p class="text-sm text-base-content/40 mb-8 max-w-[200px] font-medium leading-relaxed">
-                  暂无保存的设备信息。<br />请添加一个新设备以快速连接。
+                <p class="text-sm text-base-content/40 mb-8 max-w-50 font-medium leading-relaxed">
+                  暂无保存的设备信息。
+                  <br />
+                  请添加一个新设备以快速连接。
                 </p>
-                <Button 
+                <Button
                   variant="primary"
                   class="rounded-xl px-8 font-bold shadow-lg shadow-base-content/10"
-                  onClick={() => { HapticFeedback.medium(); props.onConnect(""); }}
+                  onClick={() => {
+                    HapticFeedback.medium();
+                    props.onConnect("");
+                  }}
                 >
                   <Plus size={18} class="mr-1" stroke-width={3} />
                   添加设备
@@ -140,18 +182,23 @@ export const ConnectView: Component<ConnectViewProps> = (props) => {
                         <Terminal size={18} />
                       </div>
                       <div class="text-left">
-                        <div class="font-bold text-sm">Machine {getTicketDisplayId(ticket)}</div>
-                        <div class="text-[10px] text-base-content/40 font-mono truncate max-w-[140px]">
+                        <div class="font-bold text-sm">
+                          Machine {getTicketDisplayId(ticket)}
+                        </div>
+                        <div class="text-[10px] text-base-content/40 font-mono truncate max-w-35">
                           {ticket}
                         </div>
                       </div>
                     </div>
-                    <ChevronRight size={18} class="text-base-content/20 group-hover:text-primary transition-colors" />
+                    <ChevronRight
+                      size={18}
+                      class="text-base-content/20 group-hover:text-primary transition-colors"
+                    />
                   </div>
                 )}
               </For>
-              
-              <button 
+
+              <button
                 onClick={() => setShowDeleteConfirm(true)}
                 class="btn btn-ghost btn-xs w-full mt-4 text-error/40 hover:text-error hover:bg-error/5 border-none font-bold"
               >
@@ -164,20 +211,26 @@ export const ConnectView: Component<ConnectViewProps> = (props) => {
 
         {/* Action Buttons */}
         <div class="flex flex-col gap-2 mb-8 shrink-0">
-          <Button 
+          <Button
             variant="outline"
             class="h-auto rounded-xl border-2 border-primary/10 py-3 font-bold text-primary shadow-sm hover:bg-primary/10 hover:text-primary"
-            onClick={() => { HapticFeedback.medium(); props.onScanQR(); }}
+            onClick={() => {
+              HapticFeedback.medium();
+              props.onScanQR();
+            }}
           >
             <Scan size={18} class="mr-2" stroke-width={2.5} />
             扫描二维码
           </Button>
-          
-          <Button 
+
+          <Button
             variant="ghost"
             size="sm"
             class="rounded-xl text-primary/60 hover:text-primary font-bold"
-            onClick={() => { HapticFeedback.light(); props.onOpenGuide(); }}
+            onClick={() => {
+              HapticFeedback.light();
+              props.onOpenGuide();
+            }}
           >
             <Lightbulb size={14} class="mr-1" />
             设置指南
@@ -187,21 +240,21 @@ export const ConnectView: Component<ConnectViewProps> = (props) => {
 
       {/* Delete Confirmation Modal Overlay */}
       <Show when={showDeleteConfirm()}>
-        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center p-4">
+        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-100 flex items-end sm:items-center justify-center p-4">
           <div class="bg-base-100 rounded-3xl p-8 w-full max-w-sm shadow-2xl animate-content-show border border-base-content/10">
             <h3 class="text-xl font-bold mb-3">清除历史记录？</h3>
             <p class="text-sm text-base-content/60 mb-8 leading-relaxed font-medium">
               这将从您的设备中移除所有已保存的 P2P 连接票据。此操作无法撤销。
             </p>
             <div class="flex flex-col gap-2">
-              <Button 
+              <Button
                 variant="error"
                 class="rounded-xl py-3 h-auto font-bold text-error-content"
                 onClick={handleClearHistory}
               >
                 全部清除
               </Button>
-              <Button 
+              <Button
                 variant="ghost"
                 class="h-auto rounded-xl py-3 font-bold text-base-content/55"
                 onClick={() => setShowDeleteConfirm(false)}
@@ -212,12 +265,14 @@ export const ConnectView: Component<ConnectViewProps> = (props) => {
           </div>
         </div>
       </Show>
-      
+
       {/* Loading Overlay */}
       <Show when={props.isConnecting}>
-        <div class="fixed inset-0 bg-base-100/90 backdrop-blur-md z-[110] flex flex-col items-center justify-center">
+        <div class="fixed inset-0 bg-base-100/90 backdrop-blur-md z-110 flex flex-col items-center justify-center">
           <span class="loading loading-ring loading-lg text-primary mb-4 scale-150"></span>
-          <p class="font-black text-primary text-xs tracking-[0.2em] animate-pulse">CONNECTING</p>
+          <p class="font-black text-primary text-xs tracking-[0.2em] animate-pulse">
+            CONNECTING
+          </p>
         </div>
       </Show>
     </div>

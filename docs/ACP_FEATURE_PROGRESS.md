@@ -79,7 +79,7 @@ Target: align Irogen with `@zed-industries/claude-agent-acp` style capabilities 
 - Slash chooser now merges:
   - slash commands
   - custom prompts (as slash-invokable entries)
-  with normalization/deduplication.
+    with normalization/deduplication.
 
 ### 6) Client MCP servers
 

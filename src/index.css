@@ -201,8 +201,6 @@ textarea:focus {
   .mobile button,
   .mobile a,
   .mobile [role="button"] {
-    min-height: 44px;
-    min-width: 44px;
     /* Improve touch responsiveness */
     touch-action: manipulation;
     -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
@@ -728,7 +726,6 @@ textarea:focus {
   }
 
   .mobile-optimized .btn {
-    min-height: 44px;
     border-radius: 0.75rem;
   }
 
@@ -875,8 +872,6 @@ textarea:focus {
     .btn,
     button,
     [role="button"] {
-      min-height: 44px;
-      min-width: 44px;
       touch-action: manipulation;
       -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
     }

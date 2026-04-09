@@ -6,7 +6,7 @@
  */
 
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
-import { FiAlertTriangle, FiRefreshCw } from "solid-icons/fi";
+import { FiAlertTriangle, FiRefreshCw, FiGlobe } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { Virtualizer } from "virtua/solid";
 import { chatStore } from "../stores/chatStore";
@@ -29,6 +29,7 @@ import { PermissionMessage, UserQuestionMessage } from "./ui/PermissionCard";
 import { MessageBubble } from "./ui/MessageBubble";
 import { ChatInput } from "./ui/ChatInput";
 import { LanguageSwitcher, ThemeSwitcher } from "./ui/ThemeSwitcher";
+import { TcpForwardingModal } from "./TcpForwardingModal";
 
 // ============================================================================
 // Helper Functions
@@ -334,6 +335,7 @@ export function ChatView(props: ChatViewProps) {
     // Use props if provided, otherwise use internal state
     const [internalRightPanelView, setInternalRightPanelView] =
       createSignal<RightPanelView>("none");
+    const [tcpModalOpen, setTcpModalOpen] = createSignal(false);
     const rightPanelView = () =>
       props.rightPanelView ?? internalRightPanelView();
     const toolMessageIds = new Map<string, string>();
@@ -1155,7 +1157,6 @@ export function ChatView(props: ChatViewProps) {
         default:
           console.log("[ChatView] Unknown event type:", eventType, parsed);
       }
-
     };
 
     // Subscribe to session events via centralized router.
@@ -1885,7 +1886,7 @@ export function ChatView(props: ChatViewProps) {
                 <Show when={!props.sidebarOpen}>
                   <button
                     type="button"
-                    class="btn btn-ghost btn-xs sm:btn-sm h-8 w-8 sm:h-10 sm:w-10 min-h-[32px] sm:min-h-[40px] rounded-lg sm:rounded-xl lg:hidden active:scale-95 transition-transform"
+                    class="btn btn-ghost btn-xs sm:btn-sm h-8 w-8 sm:h-10 sm:w-10 min-h-8 sm:min-h-10 rounded-lg sm:rounded-xl lg:hidden active:scale-95 transition-transform"
                     onClick={() => props.onToggleSidebar?.()}
                   >
                     <svg
@@ -1920,7 +1921,7 @@ export function ChatView(props: ChatViewProps) {
                       {props.agentType === "openclaw" && "OpenClaw"}
                     </h2>
                     <div
-                      class="text-[10px] sm:text-[11px] opacity-50 truncate max-w-[12rem] sm:max-w-[18rem] flex items-center gap-1.5 mt-0.5"
+                      class="text-[10px] sm:text-[11px] opacity-50 truncate max-w-48 sm:max-w-[18rem] flex items-center gap-1.5 mt-0.5"
                       title={props.projectPath}
                     >
                       <span class="inline-flex items-center gap-1">
@@ -1937,6 +1938,16 @@ export function ChatView(props: ChatViewProps) {
               </div>
 
               <div class="flex items-center gap-0.5 sm:gap-1 shrink-0">
+                <Show when={props.sessionMode === "remote"}>
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-xs sm:btn-sm h-8 w-8 sm:h-10 sm:w-10 min-h-8 sm:min-h-10 rounded-lg sm:rounded-xl text-base-content/60 hover:text-primary active:scale-95 transition-all"
+                    onClick={() => setTcpModalOpen(true)}
+                    title="TCP Forwarding"
+                  >
+                    <FiGlobe class="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                </Show>
                 <LanguageSwitcher />
                 <ThemeSwitcher />
               </div>
@@ -1954,7 +1965,7 @@ export function ChatView(props: ChatViewProps) {
                 }
               >
                 <div class="flex flex-col items-center text-center justify-center h-full max-w-sm mx-auto px-2 sm:px-0">
-                  <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-[1.5rem] sm:rounded-[2rem] bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-4 sm:mb-6 shadow-xl shadow-primary/10 border border-primary/10">
+                  <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl sm:rounded-4xl bg-linear-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-4 sm:mb-6 shadow-xl shadow-primary/10 border border-primary/10">
                     <div class="text-[28px] sm:text-3xl scale-[1.35] sm:scale-150 filter drop-shadow-sm">
                       {getAgentIcon()}
                     </div>
@@ -1998,7 +2009,7 @@ export function ChatView(props: ChatViewProps) {
               </Show>
 
               {/* Messages */}
-              <div class="max-w-[56rem] mx-auto w-full space-y-6">
+              <div class="max-w-4xl mx-auto w-full space-y-6">
                 <Show when={messages().length > 0}>
                   <Virtualizer
                     scrollRef={messageScrollEl()}
@@ -2095,7 +2106,7 @@ export function ChatView(props: ChatViewProps) {
                   setUnseenMessageCount(0);
                   scrollToBottom("smooth");
                 }}
-                class="fixed bottom-[7.5rem] right-4 sm:right-8 z-30 btn btn-circle btn-sm h-10 w-10 bg-base-100/90 shadow-2xl border-base-content/10 backdrop-blur-sm"
+                class="fixed bottom-30 right-4 sm:right-8 z-30 btn btn-circle btn-sm h-10 w-10 bg-base-100/90 shadow-2xl border-base-content/10 backdrop-blur-sm"
                 aria-label="Scroll to bottom"
                 title={
                   unseenMessageCount() > 0
@@ -2199,6 +2210,13 @@ export function ChatView(props: ChatViewProps) {
               />
             </Show>
           </div>
+          <Show when={tcpModalOpen()}>
+            <TcpForwardingModal
+              sessionId={session()?.controlSessionId || props.sessionId}
+              isOpen={tcpModalOpen()}
+              onClose={() => setTcpModalOpen(false)}
+            />
+          </Show>
         </div>
       </div>
     );

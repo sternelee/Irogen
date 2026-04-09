@@ -91,7 +91,7 @@ function SessionCard(props: {
   return (
     <div class="bg-card rounded-xl p-4 hover:bg-card/80 transition-colors cursor-pointer border border-border">
       <div class="flex items-start gap-3">
-        <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+        <div class="shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
           <AgentIcon
             agentType={props.session.agentType}
             class="w-5 h-5 text-primary"
@@ -103,7 +103,7 @@ function SessionCard(props: {
               {getProjectName()}
             </h3>
             <Show when={props.session.active}>
-              <span class="flex-shrink-0 w-2 h-2 rounded-full bg-success" />
+              <span class="shrink-0 w-2 h-2 rounded-full bg-success" />
             </Show>
           </div>
           <p class="text-xs text-muted-foreground truncate mb-2">

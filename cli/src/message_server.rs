@@ -539,7 +539,7 @@ impl MessageHandler for SystemControlMessageHandler {
                         let acp_package = match agent_type.as_str() {
                             "codex" => "@zed-industries/codex-acp",
                             "opencode" => "opencode-ai",
-                            "claude" => "@zed-industries/claude-agent-acp",
+                            "claude" => "@agentclientprotocol/claude-agent-acp",
                             "gemini" => "@google/gemini-cli",
                             "cursor" => {
                                 return Ok(Some(

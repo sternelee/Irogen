@@ -302,7 +302,9 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
 
   onMount(() => {
     const hasCachedEntries = state.entries.length > 0;
-    const pathToLoad = hasCachedEntries ? resolvePath(state.currentPath) : rootPath();
+    const pathToLoad = hasCachedEntries
+      ? resolvePath(state.currentPath)
+      : rootPath();
     loadDirectory(pathToLoad);
   });
 
@@ -457,7 +459,7 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
               {(segment, i) => (
                 <>
                   <button
-                    class="h-6 sm:h-7 max-w-[88px] sm:max-w-[100px] truncate rounded-md px-1 text-[11px] sm:px-1.5 sm:text-xs hover:bg-muted"
+                    class="h-6 sm:h-7 max-w-22 sm:max-w-25 truncate rounded-md px-1 text-[11px] sm:px-1.5 sm:text-xs hover:bg-muted"
                     onClick={() => loadDirectory(segment.path)}
                   >
                     {segment.name}
@@ -576,7 +578,9 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
                         </span>
                         {entry.name}
                       </td>
-                      <td class="px-2 py-1.5 sm:px-3 sm:py-2 text-muted-foreground/50">-</td>
+                      <td class="px-2 py-1.5 sm:px-3 sm:py-2 text-muted-foreground/50">
+                        -
+                      </td>
                     </tr>
                   )}
                 </For>
@@ -592,7 +596,9 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
                         </span>
                         {entry.name}
                       </td>
-                      <td class="px-2 py-1.5 sm:px-3 sm:py-2">{formatSize(entry.size)}</td>
+                      <td class="px-2 py-1.5 sm:px-3 sm:py-2">
+                        {formatSize(entry.size)}
+                      </td>
                     </tr>
                   )}
                 </For>

@@ -1223,16 +1223,34 @@ async fn connect_to_peer(
                                     #[cfg(debug_assertions)]
                                     tracing::debug!("Received TCP forwarding message: {:?}", tcp_msg.action);
 
+                                    let mut event_payload = serde_json::json!({
+                                        "action": format!("{:?}", tcp_msg.action),
+                                        "request_id": tcp_msg.request_id,
+                                    });
+
+                                    // Add session details if it's a CreateSession action from CLI
+                                    if let shared::message_protocol::TcpForwardingAction::CreateSession {
+                                        local_addr,
+                                        remote_host,
+                                        remote_port,
+                                        session_id: tcp_session_id,
+                                        ..
+                                    } = &tcp_msg.action
+                                    {
+                                        if let Some(obj) = event_payload.as_object_mut() {
+                                            obj.insert("local_addr".into(), serde_json::json!(local_addr));
+                                            obj.insert("remote_host".into(), serde_json::json!(remote_host));
+                                            obj.insert("remote_port".into(), serde_json::json!(remote_port));
+                                            obj.insert("tcp_session_id".into(), serde_json::json!(tcp_session_id));
+                                        }
+                                    }
+
                                     // Emit TCP forwarding event to frontend
                                     let _ = app_handle_clone.emit(
                                         &format!("tcp-forwarding-{}", session_id_clone),
-                                        &serde_json::json!({
-                                            "action": format!("{:?}", tcp_msg.action),
-                                            "request_id": tcp_msg.request_id,
-                                        })
+                                        &event_payload
                                     );
-                                }
-                                MessagePayload::TcpData(tcp_data_msg) => {
+                                }                                MessagePayload::TcpData(tcp_data_msg) => {
                                     // Handle TCP data messages from CLI
                                     #[cfg(debug_assertions)]
                                     tracing::debug!("Received TCP data message: session_id={}, connection_id={}, data_type={:?}",
@@ -2377,33 +2395,36 @@ async fn create_tcp_forwarding_session(
 
 #[tauri::command(rename_all = "camelCase")]
 async fn list_tcp_forwarding_sessions(
-    session_id: String,
+    session_id: Option<String>,
     state: State<'_, AppState>,
-) -> Result<(), String> {
-    let session = {
-        let sessions = state.sessions.read().await;
-        sessions
-            .get(&session_id)
-            .cloned()
-            .ok_or("Session not found")?
-    };
+) -> Result<Vec<tcp_forwarding::TcpForwardingSession>, String> {
+    if let Some(agent_session_id) = session_id {
+        let session = {
+            let sessions = state.sessions.read().await;
+            sessions
+                .get(&agent_session_id)
+                .cloned()
+                .ok_or("Session not found")?
+        };
 
-    let message = MessageBuilder::tcp_forwarding(
-        "clawdchat_app".to_string(),
-        TcpForwardingAction::ListSessions,
-        Some(session_id.clone()),
-    )
-    .with_session(session_id.clone());
+        let message = MessageBuilder::tcp_forwarding(
+            "clawdchat_app".to_string(),
+            TcpForwardingAction::ListSessions,
+            Some(agent_session_id.clone()),
+        )
+        .with_session(agent_session_id.clone());
 
-    send_message_via_client(
-        &state,
-        &session.connection_id,
-        message,
-        "TCP forwarding sessions list",
-    )
-    .await?;
+        let _ = send_message_via_client(
+            &state,
+            &session.connection_id,
+            message,
+            "TCP forwarding sessions list",
+        )
+        .await;
+    }
 
-    Ok(())
+    let manager = state.tcp_forwarding_manager.lock().await;
+    Ok(manager.list_sessions().await)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -3152,7 +3173,7 @@ async fn install_acp_package_local(agent_type: String) -> Result<String, String>
     let acp_package = match agent_type.as_str() {
         "codex" => "@zed-industries/codex-acp",
         "opencode" => "opencode-ai",
-        "claude" => "@zed-industries/claude-agent-acp",
+        "claude" => "@agentclientprotocol/claude-agent-acp",
         "gemini" => "@google/gemini-cli",
         "cursor" => {
             return Err("Cursor does not support ACP auto-install in Irogen".to_string());

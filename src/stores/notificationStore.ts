@@ -1,74 +1,82 @@
 /**
- * Notification Store (solid-sonner adapter)
+ * Notification Store (DaisyUI Toast)
  */
 
-import { toast } from "solid-sonner";
+import { createStore } from "solid-js/store";
 
-const toSonnerDuration = (duration: number): number => {
-  if (duration === 0) return Number.POSITIVE_INFINITY;
-  return duration;
+export type NotificationType = "info" | "success" | "warning" | "error";
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  message: string;
+  title: string;
+  duration: number;
+}
+
+interface NotificationState {
+  notifications: Notification[];
+}
+
+const [state, setState] = createStore<NotificationState>({
+  notifications: [],
+});
+
+const removeNotification = (id: string) => {
+  setState("notifications", (notifications) =>
+    notifications.filter((n) => n.id !== id),
+  );
 };
 
 const notify = (
-  type: "info" | "success" | "warning" | "error",
+  type: NotificationType,
   message: string,
   title: string,
   duration: number,
 ): string => {
-  const baseClass =
-    "alert bg-base-100 text-base-content border shadow-lg rounded-xl px-3 py-2 pr-10";
-  const typeClass =
-    type === "success"
-      ? "border-success/45"
-      : type === "error"
-        ? "border-error/45"
-        : type === "warning"
-          ? "border-warning/45"
-          : "border-info/45";
-
-  const options = {
-    description: message,
-    duration: toSonnerDuration(duration),
-    unstyled: true,
-    class: `${baseClass} ${typeClass}`,
-    classes: {
-      title: "font-semibold text-sm leading-tight",
-      description: "text-xs opacity-80 leading-relaxed",
-      closeButton:
-        "btn btn-ghost btn-xs btn-circle bg-base-200 text-base-content/75 border border-base-content/15",
-    },
+  const id = Math.random().toString(36).substring(2, 9);
+  const newNotification: Notification = {
+    id,
+    type,
+    message,
+    title,
+    duration,
   };
 
-  const id =
-    type === "success"
-      ? toast.success(title, options)
-      : type === "warning"
-        ? toast.warning(title, options)
-        : type === "error"
-          ? toast.error(title, options)
-          : toast.info(title, options);
+  setState("notifications", (notifications) => [
+    ...notifications,
+    newNotification,
+  ]);
 
-  return String(id);
+  if (duration > 0) {
+    setTimeout(() => {
+      removeNotification(id);
+    }, duration);
+  }
+
+  return id;
 };
 
 export const createNotificationStore = () => {
-  const info = (message: string, title?: string, duration = 5000) =>
+  const info = (message: string, title?: string, duration = 15000) =>
     notify("info", message, title ?? "Info", duration);
 
-  const success = (message: string, title?: string, duration = 3000) =>
+  const success = (message: string, title?: string, duration = 13000) =>
     notify("success", message, title ?? "Success", duration);
 
-  const warning = (message: string, title?: string, duration = 5000) =>
+  const warning = (message: string, title?: string, duration = 15000) =>
     notify("warning", message, title ?? "Warning", duration);
 
   const error = (message: string, title?: string, duration = 0) =>
     notify("error", message, title ?? "Error", duration);
 
   return {
+    state,
     info,
     success,
     warning,
     error,
+    removeNotification,
   };
 };
 
