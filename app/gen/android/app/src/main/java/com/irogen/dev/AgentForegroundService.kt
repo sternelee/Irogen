@@ -1,4 +1,4 @@
-package com.clawdpilot.dev
+package com.irogen.dev
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -15,7 +15,7 @@ import androidx.core.content.ContextCompat
 import org.json.JSONObject
 
 /**
- * Foreground service to keep ClawdPilot running in background
+ * Foreground service to keep Irogen running in background
  * and display agent status (thinking, permissions, etc.) in notification
  */
 class AgentForegroundService : Service() {
@@ -193,10 +193,10 @@ class AgentForegroundService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "clawdpilot-agent"
+        private const val CHANNEL_ID = "irogen-agent"
         private const val NOTIFICATION_ID = 2001
-        private const val ACTION_UPSERT = "com.clawdpilot.dev.action.UPSERT_FOREGROUND"
-        private const val ACTION_STOP = "com.clawdpilot.dev.action.STOP_FOREGROUND"
+        private const val ACTION_UPSERT = "com.irogen.dev.action.UPSERT_FOREGROUND"
+        private const val ACTION_STOP = "com.irogen.dev.action.STOP_FOREGROUND"
         private const val EXTRA_PAYLOAD = "payload"
 
         /**

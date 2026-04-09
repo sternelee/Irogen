@@ -246,8 +246,8 @@
 				);
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION)";
 				"OTHER_LDFLAGS[arch=arm64]" = "-Wl,-U,__swift_FORCE_LOAD_$_swiftCompatibility56 -Wl,-U,__swift_FORCE_LOAD_$_swiftCompatibilityConcurrency -Wl,-U,__swift_FORCE_LOAD_$_swiftCompatibilityPacks";
-				PRODUCT_BUNDLE_IDENTIFIER = com.clawdpilot.dev.sterne;
-				PRODUCT_NAME = "ClawdPilot";
+				PRODUCT_BUNDLE_IDENTIFIER = com.irogen.dev.sterne;
+				PRODUCT_NAME = "Irogen";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -335,8 +335,8 @@
 				);
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION)";
 				"OTHER_LDFLAGS[arch=arm64]" = "-Wl,-U,__swift_FORCE_LOAD_$_swiftCompatibility56 -Wl,-U,__swift_FORCE_LOAD_$_swiftCompatibilityConcurrency -Wl,-U,__swift_FORCE_LOAD_$_swiftCompatibilityPacks";
-				PRODUCT_BUNDLE_IDENTIFIER = com.clawdpilot.dev.sterne;
-				PRODUCT_NAME = "ClawdPilot";
+				PRODUCT_BUNDLE_IDENTIFIER = com.irogen.dev.sterne;
+				PRODUCT_NAME = "Irogen";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

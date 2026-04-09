@@ -9,8 +9,8 @@
 | ----- | -------- | --- | ------------------------------------------------------------------------- | ---- |
 | #1922 | 1:48 AM  | ✅  | Staged all modified files including documentation and frontend components | ~162 |
 | #1855 | 1:14 AM  | ✅  | Stage refactoring files for git commit                                    | ~189 |
-| #1854 | "        | 🔄  | Agent wrapper module migrated to clawdpilot-lib                            | ~190 |
+| #1854 | "        | 🔄  | Agent wrapper module migrated to irogen-lib                            | ~190 |
 | #1853 | 1:09 AM  | 🔄  | Rename lib crate and update workspace imports                             | ~364 |
-| #1833 | 12:46 AM | 🔄  | Added clawdpilot-lib dependency to app/Cargo.toml                          | ~81  |
+| #1833 | 12:46 AM | 🔄  | Added irogen-lib dependency to app/Cargo.toml                          | ~81  |
 
 </claude-mem-context>

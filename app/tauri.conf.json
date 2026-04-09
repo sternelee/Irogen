@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ClawdPilot",
+  "productName": "Irogen",
   "version": "0.6.1",
-  "identifier": "com.clawdpilot.dev",
+  "identifier": "com.irogen.dev",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "ClawdPilot - Remote Agent Platform",
+        "title": "Irogen - Remote Agent Platform",
         "width": 960,
         "height": 640,
         "resizable": true,

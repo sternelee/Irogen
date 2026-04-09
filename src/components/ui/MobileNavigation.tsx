@@ -188,7 +188,7 @@ export function MobileNavigation(props: MobileNavigationProps) {
               onClick={() => setShowStatusPanel(!showStatusPanel())}
             >
               <span class="text-lg hidden sm:inline">⚡</span>
-              <span class="font-bold text-sm sm:text-base">ClawdPilot</span>
+              <span class="font-bold text-sm sm:text-base">Irogen</span>
             </Button>
           </div>
         </div>

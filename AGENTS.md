@@ -2,7 +2,7 @@
 
 ## Project Structure
 
-- `cli/` - Rust CLI binary (`clawdpilot`), host command and terminal handling
+- `cli/` - Rust CLI binary (`irogen`), host command and terminal handling
 - `app/` - Tauri backend (Rust) for desktop/mobile app with agent session management
 - `shared/` - Rust networking and protocol library (iroh QUIC) shared by CLI/app
 - `src/` - SolidJS frontend (Vite + TailwindCSS v4 + DaisyUI + Kobalte primitives)

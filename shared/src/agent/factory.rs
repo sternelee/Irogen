@@ -54,12 +54,12 @@ struct AgentConfigEntry {
 
 fn agent_config_path() -> Option<std::path::PathBuf> {
     if let Some(config_dir) = dirs::config_dir() {
-        return Some(config_dir.join("clawdpilot").join("agents.json"));
+        return Some(config_dir.join("irogen").join("agents.json"));
     }
     if let Ok(home) = std::env::var("HOME") {
         return Some(
             std::path::PathBuf::from(home)
-                .join(".clawdpilot")
+                .join(".irogen")
                 .join("agents.json"),
         );
     }

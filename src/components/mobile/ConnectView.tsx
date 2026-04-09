@@ -62,7 +62,7 @@ export const ConnectView: Component<ConnectViewProps> = (props) => {
           </span>
         </div>
         <div class="flex-1">
-          <h1 class="text-xl font-black tracking-tighter text-primary px-2">ClawdPilot</h1>
+          <h1 class="text-xl font-black tracking-tighter text-primary px-2">Irogen</h1>
         </div>
         <div class="flex-none">
           <Button 

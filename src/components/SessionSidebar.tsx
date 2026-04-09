@@ -825,7 +825,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
             </div>
             <div>
               <h1 class="text-sm font-black tracking-tight uppercase leading-none">
-                ClawdPilot
+                Irogen
               </h1>
               <p class="text-[10px] opacity-40 mt-0.5 font-bold uppercase tracking-wider">
                 {t("sidebar.platform")}

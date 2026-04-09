@@ -137,7 +137,7 @@ A comprehensive continuity ledger documenting:
 
 ## Architecture
 
-### Client Mode (`clawdpilot run`)
+### Client Mode (`irogen run`)
 
 ```
 User (CLI) → LocalClientSession → AgentManager → AcpStreamingSession → ACP Agent
@@ -146,7 +146,7 @@ User (CLI) → LocalClientSession → AgentManager → AcpStreamingSession → A
               commands                 management        routing
 ```
 
-### Host Mode (`clawdpilot host` - Already Existing)
+### Host Mode (`irogen host` - Already Existing)
 
 ```
 Mobile App → P2P Network (iroh QUIC) → CliMessageServer → AgentManager → ACP Agent

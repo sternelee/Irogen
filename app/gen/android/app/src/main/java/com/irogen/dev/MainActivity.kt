@@ -1,4 +1,4 @@
-package com.clawdpilot.dev
+package com.irogen.dev
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

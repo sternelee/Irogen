@@ -52,7 +52,7 @@ export const SetupGuide: Component<SetupGuideProps> = (props) => {
 
   const pages = [
     {
-      title: "什么是 ClawdPilot?",
+      title: "什么是 Irogen?",
       description:
         "通过 P2P 加密直连，在手机上安全地控制电脑端的 AI 助理 (Claude, Codex, Gemini 等)。",
       icon: <Smartphone size={56} class="text-primary" stroke-width={1.5} />,
@@ -89,7 +89,7 @@ export const SetupGuide: Component<SetupGuideProps> = (props) => {
     },
     {
       title: "安装 CLI 工具",
-      description: "首先，在你的电脑上安装 ClawdPilot CLI。打开终端并运行：",
+      description: "首先，在你的电脑上安装 Irogen CLI。打开终端并运行：",
       icon: <Terminal size={56} class="text-base-content" stroke-width={1.5} />,
       color: "bg-base-200",
       content: (
@@ -99,7 +99,7 @@ export const SetupGuide: Component<SetupGuideProps> = (props) => {
               <button
                 onClick={() =>
                   copyToClipboard(
-                    "curl -fsSL https://raw.githubusercontent.com/sternelee/ClawdPilot/main/install.sh | sh",
+                    "curl -fsSL https://raw.githubusercontent.com/sternelee/Irogen/main/install.sh | sh",
                     1,
                   )
                 }
@@ -135,7 +135,7 @@ export const SetupGuide: Component<SetupGuideProps> = (props) => {
           <div class="mockup-code bg-neutral text-neutral-content text-[11px] shadow-xl relative">
             <div class="absolute right-4 top-3 z-10">
               <button
-                onClick={() => copyToClipboard("clawdpilot --daemon", 2)}
+                onClick={() => copyToClipboard("irogen --daemon", 2)}
                 class="btn btn-ghost btn-xs btn-square text-neutral-content/40 hover:text-primary hover:bg-primary/10"
               >
                 {copiedIndex() === 2 ? (
@@ -147,7 +147,7 @@ export const SetupGuide: Component<SetupGuideProps> = (props) => {
             </div>
             <pre data-prefix="$">
               <code class="font-bold text-success-content">
-                clawdpilot --daemon
+                irogen --daemon
               </code>
             </pre>
             <div class="divider divider-neutral m-0 h-1 opacity-10"></div>

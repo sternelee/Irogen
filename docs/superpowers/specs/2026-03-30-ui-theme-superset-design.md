@@ -6,7 +6,7 @@
 
 ## Overview
 
-Migrate ClawdPilot's color system to Superset's oklch-based CSS variable theme while preserving the DaisyUI theme switching mechanism.
+Migrate Irogen's color system to Superset's oklch-based CSS variable theme while preserving the DaisyUI theme switching mechanism.
 
 ## Goals
 

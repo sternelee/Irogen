@@ -1,10 +1,10 @@
-# ClawdPilot
+# Irogen
 
 [English](./README.md) | [中文](./README_cn.md)
 
 A multi-agent local/remote management platform.
 
-ClawdPilot provides a unified session management experience for running and controlling multiple AI agents (Claude, Codex, Gemini, OpenCode, OpenClaw) across local and remote modes.
+Irogen provides a unified session management experience for running and controlling multiple AI agents (Claude, Codex, Gemini, OpenCode, OpenClaw) across local and remote modes.
 
 ## Core Capabilities
 
@@ -44,7 +44,7 @@ The CLI runs on your computer to host remote sessions. Install via:
 
 ```bash
 # Quick install (macOS/Linux)
-curl -fsSL https://raw.githubusercontent.com/sternelee/ClawdPilot/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sternelee/Irogen/main/install.sh | sh
 
 # Or manually download from GitHub Releases
 ```

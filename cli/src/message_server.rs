@@ -549,7 +549,7 @@ impl MessageHandler for SystemControlMessageHandler {
                                             success: false,
                                             data: None,
                                             message: Some(
-                                                "Cursor does not support ACP auto-install in ClawdPilot"
+                                                "Cursor does not support ACP auto-install in Irogen"
                                                     .to_string(),
                                             ),
                                         },

@@ -22,25 +22,25 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: cli
-            asset_name: clawdpilot_cli-linux-amd64
+            asset_name: irogen_cli-linux-amd64
 
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: cli
-            asset_name: clawdpilot_cli-darwin-amd64
+            asset_name: irogen_cli-darwin-amd64
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: cli
-            asset_name: clawdpilot_cli-darwin-arm64
+            asset_name: irogen_cli-darwin-arm64
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: cli.exe
-            asset_name: clawdpilot_cli-windows-amd64
+            asset_name: irogen_cli-windows-amd64
           - os: windows-latest
             target: aarch64-pc-windows-msvc
             artifact_name: cli.exe
-            asset_name: clawdpilot_cli-windows-arm64
+            asset_name: irogen_cli-windows-arm64
 
     steps:
       - name: Checkout code
@@ -142,7 +142,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: ClawdPilot ${{ github.ref_name }}
+          releaseName: Irogen ${{ github.ref_name }}
           releaseBody: See CLI archives and app installers in this release.
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
@@ -153,7 +153,7 @@ jobs:
       - name: Upload desktop app artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: clawdpilot_app_${{ matrix.artifact_id }}
+          name: irogen_app_${{ matrix.artifact_id }}
           if-no-files-found: warn
           path: |
             target/release/bundle/**
@@ -268,13 +268,13 @@ jobs:
             name="$(basename "$apk")"
             lower_name="$(echo "$name" | tr '[:upper:]' '[:lower:]')"
             if [[ "$lower_name" == *"arm64"* || "$lower_name" == *"aarch64"* ]]; then
-              cp "$apk" "dist/android/aarch64/clawdpilot_android-aarch64.apk"
+              cp "$apk" "dist/android/aarch64/irogen_android-aarch64.apk"
             elif [[ "$lower_name" == *"armeabi-v7a"* || "$lower_name" == *"armv7"* || "$lower_name" == *"-arm-"* ]]; then
-              cp "$apk" "dist/android/armv7/clawdpilot_android-armv7.apk"
+              cp "$apk" "dist/android/armv7/irogen_android-armv7.apk"
             elif [[ "$lower_name" == *"x86_64"* ]]; then
               continue
             elif [[ "$lower_name" == *"x86"* || "$lower_name" == *"i686"* ]]; then
-              cp "$apk" "dist/android/i686/clawdpilot_android-i686.apk"
+              cp "$apk" "dist/android/i686/irogen_android-i686.apk"
             fi
           done < <(find app/gen/android/app/build/outputs/apk -type f -name "*.apk" -print0)
 
@@ -282,15 +282,15 @@ jobs:
 
           ls -lahR dist/android
 
-          test -f dist/android/aarch64/clawdpilot_android-aarch64.apk
-          test -f dist/android/armv7/clawdpilot_android-armv7.apk
-          test -f dist/android/i686/clawdpilot_android-i686.apk
+          test -f dist/android/aarch64/irogen_android-aarch64.apk
+          test -f dist/android/armv7/irogen_android-armv7.apk
+          test -f dist/android/i686/irogen_android-i686.apk
 
       - name: Upload Android aarch64 APK
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: clawdpilot_android_aarch64
+          name: irogen_android_aarch64
           if-no-files-found: error
           path: dist/android/aarch64/*.apk
 
@@ -298,7 +298,7 @@ jobs:
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: clawdpilot_android_armv7
+          name: irogen_android_armv7
           if-no-files-found: error
           path: dist/android/armv7/*.apk
 
@@ -306,7 +306,7 @@ jobs:
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: clawdpilot_android_i686
+          name: irogen_android_i686
           if-no-files-found: error
           path: dist/android/i686/*.apk
 
@@ -314,7 +314,7 @@ jobs:
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: clawdpilot_android_aab
+          name: irogen_android_aab
           if-no-files-found: warn
           path: dist/android/aab/*.aab
 
@@ -335,7 +335,7 @@ jobs:
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          pattern: clawdpilot_cli-*
+          pattern: irogen_cli-*
           merge-multiple: true
           path: dist/cli
 
@@ -343,7 +343,7 @@ jobs:
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          pattern: clawdpilot_android_*
+          pattern: irogen_android_*
           merge-multiple: false
           path: dist/android
 
@@ -351,7 +351,7 @@ jobs:
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          pattern: clawdpilot_app_*
+          pattern: irogen_app_*
           merge-multiple: false
           path: dist/app
 
@@ -364,7 +364,7 @@ jobs:
           set -euo pipefail
           shopt -s nullglob globstar
 
-          files=( dist/cli/**/clawdpilot_cli-* )
+          files=( dist/cli/**/irogen_cli-* )
           for file in "${files[@]}"; do
             if [[ -f "$file" && "$file" != *.tar.gz && "$file" != *.zip ]]; then
               base="$(basename "$file")"
@@ -406,16 +406,16 @@ jobs:
           body: |
             ## CLI Downloads
 
-            - Linux AMD64: `clawdpilot_cli-linux-amd64.tar.gz`
-            - macOS AMD64: `clawdpilot_cli-darwin-amd64.tar.gz`
-            - macOS ARM64: `clawdpilot_cli-darwin-arm64.tar.gz`
-            - Windows AMD64: `clawdpilot_cli-windows-amd64.zip`
-            - Windows ARM64: `clawdpilot_cli-windows-arm64.zip`
+            - Linux AMD64: `irogen_cli-linux-amd64.tar.gz`
+            - macOS AMD64: `irogen_cli-darwin-amd64.tar.gz`
+            - macOS ARM64: `irogen_cli-darwin-arm64.tar.gz`
+            - Windows AMD64: `irogen_cli-windows-amd64.zip`
+            - Windows ARM64: `irogen_cli-windows-arm64.zip`
 
       - name: Upload to public mirror repository
         uses: softprops/action-gh-release@v2
         with:
-          repository: sternelee/clawdpilot
+          repository: sternelee/irogen
           token: ${{ secrets.PUBLIC_REPO_PAT }}
           tag_name: ${{ github.ref_name }}
           files: |

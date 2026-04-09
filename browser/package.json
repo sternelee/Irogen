@@ -1,9 +1,9 @@
 {
-  "name": "clawdpilot-browser",
+  "name": "irogen-browser",
   "version": "0.1.0",
-  "description": "ClawdChat browser WASM client",
-  "main": "pkg/clawdchat_browser.js",
-  "types": "pkg/clawdchat_browser.d.ts",
+  "description": "Irogen browser WASM client",
+  "main": "pkg/irogen_browser.js",
+  "types": "pkg/irogen_browser.d.ts",
   "scripts": {
     "build": "wasm-pack build --target web --out-dir pkg",
     "dev": "wasm-pack build --target web --out-dir pkg --dev",

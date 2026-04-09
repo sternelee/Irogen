@@ -136,7 +136,7 @@ export function SessionSidebar(props: SessionSidebarProps) {
       {/* Footer */}
       <div class="p-3 border-t border-base-300">
         <div class="text-xs text-neutral text-center">
-          ClawdPilot Web Terminal
+          Irogen Web Terminal
         </div>
       </div>
     </div>

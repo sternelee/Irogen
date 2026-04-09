@@ -7,7 +7,7 @@
 
 | ID    | Time     | T   | Title                                                         | Read |
 | ----- | -------- | --- | ------------------------------------------------------------- | ---- |
-| #1854 | 1:14 AM  | 🔄  | Agent wrapper module migrated to clawdpilot-lib                | ~190 |
+| #1854 | 1:14 AM  | 🔄  | Agent wrapper module migrated to irogen-lib                | ~190 |
 | #1818 | 12:44 AM | 🔄  | Qwen output parser module copied to lib/src/agent/qwen.rs     | ~76  |
 | #1816 | "        | 🔄  | Codex output parser module copied to lib/src/agent/codex.rs   | ~77  |
 | #1813 | "        | 🔄  | Claude output parser module copied to lib/src/agent/claude.rs | ~79  |

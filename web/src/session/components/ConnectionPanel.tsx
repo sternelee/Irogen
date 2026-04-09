@@ -105,7 +105,7 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
                 <span>
                   Run{' '}
                   <code class="px-1.5 py-0.5 bg-base-100 rounded text-primary">
-                    clawdpilot host
+                    irogen host
                   </code>{' '}
                   on your machine
                 </span>

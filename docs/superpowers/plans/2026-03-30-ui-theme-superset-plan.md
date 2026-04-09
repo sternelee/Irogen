@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Migrate ClawdPilot's color system to Superset's oklch-based CSS variables while preserving DaisyUI theme switching.
+**Goal:** Migrate Irogen's color system to Superset's oklch-based CSS variables while preserving DaisyUI theme switching.
 
 **Architecture:** Add Superset-style CSS variables via `@theme inline` in Tailwind v4, override DaisyUI theme colors with oklch values, standardize focus rings and border radius.
 
@@ -198,7 +198,7 @@ Insert in `@layer utilities`:
 
 - [ ] **Step 1: Run dev server and verify**
 
-Run: `cd /Users/sternelee/www/github/ClawdPilot && pnpm dev`
+Run: `cd /Users/sternelee/www/github/Irogen && pnpm dev`
 Expected: Dev server starts without CSS errors
 
 - [ ] **Step 2: Test theme switcher functionality**

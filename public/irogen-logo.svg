@@ -21,6 +21,6 @@
   <path d="M154 140V164H167C174 164 180 158 180 152C180 146 174 140 167 140H154Z" fill="#F59E0B"/>
   <path d="M160 222L178 250H142L160 222Z" fill="url(#iconAccent)"/>
 
-  <text x="344" y="198" fill="url(#word)" font-family="'Segoe UI', 'SF Pro Display', sans-serif" font-size="112" font-weight="700" letter-spacing="-2">ClawdPilot</text>
+  <text x="344" y="198" fill="url(#word)" font-family="'Segoe UI', 'SF Pro Display', sans-serif" font-size="112" font-weight="700" letter-spacing="-2">Irogen</text>
   <text x="350" y="244" fill="#334155" font-family="'Segoe UI', 'SF Pro Text', sans-serif" font-size="30" font-weight="500" letter-spacing="1.2">MULTI-AGENT CONTROL DECK</text>
 </svg>

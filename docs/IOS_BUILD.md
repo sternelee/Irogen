@@ -24,7 +24,7 @@ rustup target add aarch64-apple-ios-sim
 
 ```json
 {
-  "identifier": "com.clawdpilot.dev.sterne"
+  "identifier": "com.irogen.dev.sterne"
 }
 ```
 
@@ -49,7 +49,7 @@ rustup target add aarch64-apple-ios-sim
 ### 方式一：使用 Tauri CLI（推荐）
 
 ```bash
-cd ClawdPilot
+cd Irogen
 
 # 1. 构建 iOS 版本
 pnpm tauri build --target aarch64-apple-ios
@@ -82,7 +82,7 @@ open app/gen/apple/app.xcodeproj
 ```yaml
 name: app
 options:
-  bundleIdPrefix: com.clawdpilot.dev.sterne
+  bundleIdPrefix: com.irogen.dev.sterne
   deploymentTarget:
     iOS: "15.0"
 
@@ -118,11 +118,11 @@ targets:
 
 ```bash
 # 1. 构建成功后，IPA 位于
-# app/gen/apple/build/arm64/ClawdPilot.ipa
+# app/gen/apple/build/arm64/Irogen.ipa
 
 # 2. 安装到已连接设备
 xcrun devicectl device install app --device "设备名称" \
-  app/gen/apple/build/arm64/ClawdPilot.ipa
+  app/gen/apple/build/arm64/Irogen.ipa
 ```
 
 ### 使用 Xcode 安装
@@ -136,7 +136,7 @@ xcrun devicectl device install app --device "设备名称" \
 ### 命令行启动
 
 ```bash
-xcrun devicectl device process launch --device "设备名称" com.clawdpilot.dev.sterne
+xcrun devicectl device process launch --device "设备名称" com.irogen.dev.sterne
 ```
 
 ### 手动启动
@@ -157,10 +157,10 @@ xcrun devicectl device process launch --device "设备名称" com.clawdpilot.dev
 ### Bundle Identifier 已被注册
 
 ```
-error: Failed Registering Bundle Identifier: The app identifier "com.clawdpilot.dev" cannot be registered
+error: Failed Registering Bundle Identifier: The app identifier "com.irogen.dev" cannot be registered
 ```
 
-**解决方案**：修改 `identifier` 为唯一值，如 `com.clawdpilot.dev.你的名字`
+**解决方案**：修改 `identifier` 为唯一值，如 `com.irogen.dev.你的名字`
 
 ### Swift 兼容性库错误
 
@@ -196,10 +196,10 @@ Tauri iOS 构建会尝试运行 `pnpm tauri ios xcode-script`，这需要 Tauri 
 ## IPA 输出位置
 
 ```
-app/gen/apple/build/arm64/ClawdPilot.ipa
+app/gen/apple/build/arm64/Irogen.ipa
 ```
 
 ## 开发者
 
 - 团队 ID: HUJ467VC3N (Sterne Lee)
-- Bundle ID: com.clawdpilot.dev.sterne
+- Bundle ID: com.irogen.dev.sterne

@@ -1,6 +1,6 @@
 name: app
 options:
-  bundleIdPrefix: com.clawdpilot.dev.sterne
+  bundleIdPrefix: com.irogen.dev.sterne
   deploymentTarget:
     iOS: "15.0"
 fileGroups: [../../src]
@@ -10,8 +10,8 @@ configs:
 settingGroups:
   app:
     base:
-      PRODUCT_NAME: ClawdPilot
-      PRODUCT_BUNDLE_IDENTIFIER: com.clawdpilot.dev.sterne
+      PRODUCT_NAME: Irogen
+      PRODUCT_BUNDLE_IDENTIFIER: com.irogen.dev.sterne
 targetTemplates:
   app:
     type: application

@@ -76,7 +76,7 @@ function Home() {
             </div>
             <h1 class="text-5xl md:text-6xl font-black text-white">
               <span class="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                ClawdPilot
+                Irogen
               </span>
             </h1>
           </div>
@@ -168,9 +168,9 @@ function Home() {
                   Run CLI Host
                 </h3>
                 <p class="text-neutral">
-                  Start the ClawdPilot CLI host on your machine with{' '}
+                  Start the Irogen CLI host on your machine with{' '}
                   <code class="px-2 py-0.5 bg-base-300 rounded text-primary">
-                    clawdpilot host
+                    irogen host
                   </code>
                   . It generates a session ticket for secure connections.
                 </p>
@@ -214,7 +214,7 @@ function Home() {
       {/* Footer */}
       <footer class="py-8 px-6 border-t border-base-300">
         <div class="max-w-7xl mx-auto text-center text-neutral text-sm">
-          <p>ClawdPilot - Multi-Agent Remote Management Platform</p>
+          <p>Irogen - Multi-Agent Remote Management Platform</p>
           <p class="mt-2">Built with Tauri 2, SolidJS, and iroh P2P</p>
         </div>
       </footer>

@@ -4,7 +4,7 @@ Last updated: 2026-03-18
 
 ## Scope
 
-Target: align ClawdPilot with `@zed-industries/claude-agent-acp` style capabilities across:
+Target: align Irogen with `@zed-industries/claude-agent-acp` style capabilities across:
 
 - local app mode (Tauri + local AgentManager)
 - remote CLI mode (P2P message protocol + host CLI)

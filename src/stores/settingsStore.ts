@@ -49,7 +49,7 @@ const defaultSettings: UserSettings = {
 };
 
 // Local storage key
-const SETTINGS_KEY = "clawdpilot-settings";
+const SETTINGS_KEY = "irogen-settings";
 
 const normalizeTheme = (theme: unknown): ThemeType => {
   switch (theme) {
@@ -200,7 +200,7 @@ export const settingsStore = {
 export const translations = {
   en: {
     // UI Labels
-    "app.title": "ClawdPilot - P2P Agent",
+    "app.title": "Irogen - P2P Agent",
     "connection.title": "Agent Connection",
     "settings.title": "Settings",
     "hosts.title": "Hosts",
@@ -263,7 +263,7 @@ export const translations = {
   },
   "zh-CN": {
     // UI Labels
-    "app.title": "ClawdPilot - P2P 终端",
+    "app.title": "Irogen - P2P 终端",
     "connection.title": "终端连接",
     "settings.title": "设置",
     "hosts.title": "主机",

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "clawdpilot"
+name = "irogen"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

@@ -234,7 +234,7 @@ function SessionPage() {
         <header class="flex items-center justify-between px-4 py-3 border-b border-base-300 bg-base-200/50">
           <div class="flex items-center gap-3">
             <Terminal class="w-5 h-5 text-primary" />
-            <h1 class="text-lg font-semibold">ClawdPilot Session</h1>
+            <h1 class="text-lg font-semibold">Irogen Session</h1>
           </div>
 
           <div class="flex items-center gap-2">

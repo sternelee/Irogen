@@ -1,14 +1,14 @@
 #!/bin/sh
-# ClawdPilot CLI Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/sternelee/ClawdPilot/main/install.sh | sh
+# Irogen CLI Installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/sternelee/Irogen/main/install.sh | sh
 
 set -e
 
 # Configuration
-REPO="sternelee/ClawdPilot"
-BINARY_NAME="clawdpilot_cli"
+REPO="sternelee/Irogen"
+BINARY_NAME="irogen_cli"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
-CONFIG_DIR="${HOME}/.config/clawdpilot"
+CONFIG_DIR="${HOME}/.config/irogen"
 
 # Colors
 RED='\033[0;31m'
@@ -121,8 +121,8 @@ download_and_install() {
     mkdir -p "$INSTALL_DIR"
 
     # Install binary
-    cp "$BINARY" "${INSTALL_DIR}/clawdpilot"
-    chmod +x "${INSTALL_DIR}/clawdpilot"
+    cp "$BINARY" "${INSTALL_DIR}/irogen"
+    chmod +x "${INSTALL_DIR}/irogen"
 
     # Create config directory
     mkdir -p "$CONFIG_DIR"
@@ -136,9 +136,9 @@ download_and_install() {
 
 # Verify installation
 verify_installation() {
-    if [ -x "${INSTALL_DIR}/clawdpilot" ]; then
-        log_info "Verification: ${INSTALL_DIR}/clawdpilot"
-        "${INSTALL_DIR}/clawdpilot" --version || true
+    if [ -x "${INSTALL_DIR}/irogen" ]; then
+        log_info "Verification: ${INSTALL_DIR}/irogen"
+        "${INSTALL_DIR}/irogen" --version || true
     else
         log_error "Installation verification failed"
         exit 1
@@ -147,7 +147,7 @@ verify_installation() {
 
 # Main
 main() {
-    log_info "ClawdPilot CLI Installer"
+    log_info "Irogen CLI Installer"
     echo ""
 
     detect_platform
@@ -158,7 +158,7 @@ main() {
     echo ""
     log_info "Installation complete!"
     log_info "Add ${INSTALL_DIR} to your PATH if needed."
-    log_info "Run 'clawdpilot host' to start the CLI server."
+    log_info "Run 'irogen host' to start the CLI server."
 }
 
 main "$@"

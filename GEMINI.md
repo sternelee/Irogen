@@ -1,6 +1,6 @@
-# ClawdPilot Project Context
+# Irogen Project Context
 
-ClawdPilot is a multi-agent local/remote management platform that provides a unified session management experience for controlling multiple AI agents (Claude, Codex, Gemini, OpenCode, OpenClaw) across local and remote environments.
+Irogen is a multi-agent local/remote management platform that provides a unified session management experience for controlling multiple AI agents (Claude, Codex, Gemini, OpenCode, OpenClaw) across local and remote environments.
 
 ## Project Overview
 

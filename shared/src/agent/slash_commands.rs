@@ -1,6 +1,6 @@
 //! Built-in slash command processor
 //!
-//! This module converts ClawdPilot built-in commands to ACP prompts,
+//! This module converts Irogen built-in commands to ACP prompts,
 //! leveraging Claude Code's capabilities to implement these features.
 
 use std::path::Path;

@@ -122,13 +122,13 @@ cargo build --release -p cli
 
 ### Client/Host Dual Mode
 
-1. **Client Mode** (`clawdpilot run`):
+1. **Client Mode** (`irogen run`):
    - Direct local ACP agent interaction
    - Uses AgentManager to spawn ACP subprocess
    - Interactive CLI with slash commands
    - Reads from stdin, writes to stdout
 
-2. **Host Mode** (`clawdpilot host`):
+2. **Host Mode** (`irogen host`):
    - P2P server via iroh QUIC
    - Forwards requests to local ACP agents
    - Handles connection management

@@ -1,10 +1,10 @@
-# ClawdPilot
+# Irogen
 
 [English](./README.md) | [中文](./README_cn.md)
 
 一个多 Agent 本地/远程管理平台。
 
-ClawdPilot 提供统一会话管理体验，用于在本地与远程模式下运行和控制多个 AI Agent（Claude、Codex、Gemini、OpenCode、OpenClaw）。
+Irogen 提供统一会话管理体验，用于在本地与远程模式下运行和控制多个 AI Agent（Claude、Codex、Gemini、OpenCode、OpenClaw）。
 
 ## 核心能力
 
@@ -18,7 +18,7 @@ ClawdPilot 提供统一会话管理体验，用于在本地与远程模式下运
 
 ## 仓库结构
 
-- `cli/`：Rust CLI（`clawdpilot`）Host 入口
+- `cli/`：Rust CLI（`irogen`）Host 入口
 - `app/`：Tauri 后端（Rust）
 - `shared/`：共享网络/协议层（Rust）
 - `src/`：SolidJS 前端（聊天、会话、权限、工具）
@@ -94,7 +94,7 @@ git push origin v0.5.0
 工作流：`.github/workflows/publish-to-auto-release.yml`
 
 - App 打包使用官方 `tauri-apps/tauri-action`
-- CLI 产物按 `clawdpilot_cli-*` 命名发布
+- CLI 产物按 `irogen_cli-*` 命名发布
 
 ## 文档
 

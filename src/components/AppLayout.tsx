@@ -216,8 +216,8 @@ export const AppLayout: Component = () => {
                   {/* Logo */}
                   <div class="w-20 h-20 mx-auto mb-6 rounded-3xl flex items-center justify-center shadow-2xl shadow-primary/30 bg-base-200">
                     <img
-                      src="/clawdpilot-icon.svg"
-                      alt="ClawdPilot logo"
+                      src="/irogen-icon.svg"
+                      alt="Irogen logo"
                       class="h-20 w-20 rounded-2xl object-cover"
                     />
                   </div>

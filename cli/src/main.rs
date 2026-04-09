@@ -20,8 +20,8 @@ fn generate_qr_string(ticket: &str) -> String {
 }
 
 #[derive(Parser)]
-#[command(name = "clawdpilot")]
-#[command(about = "ClawdChat - P2P AI Agent Remote Management Tool")]
+#[command(name = "irogen")]
+#[command(about = "Irogen - P2P AI Agent Remote Management Tool")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 struct Cli {
     #[command(subcommand)]
@@ -90,7 +90,7 @@ async fn main() -> Result<()> {
 fn setup_logging() -> Result<()> {
     std::fs::create_dir_all("logs").ok();
 
-    let file_appender = RollingFileAppender::new(Rotation::DAILY, "logs", "clawdpilot-cli.log");
+    let file_appender = RollingFileAppender::new(Rotation::DAILY, "logs", "irogen-cli.log");
     let file_layer = tracing_subscriber::fmt::layer()
         .with_writer(file_appender)
         .with_ansi(false)
@@ -126,7 +126,7 @@ async fn run_host(
     temp_key: bool,
     daemon: bool,
 ) -> Result<()> {
-    info!("Starting ClawdChat Host Server");
+    info!("Starting Irogen Host Server");
 
     // 处理密钥文件路径
     let secret_key_path = if temp_key {
@@ -375,7 +375,7 @@ fn setup_daemon_logging() -> Result<()> {
     // 重新创建日志目录和文件
     std::fs::create_dir_all("logs").ok();
 
-    let file_appender = RollingFileAppender::new(Rotation::DAILY, "logs", "clawdpilot-cli.log");
+    let file_appender = RollingFileAppender::new(Rotation::DAILY, "logs", "irogen-cli.log");
     let file_layer = tracing_subscriber::fmt::layer()
         .with_writer(file_appender)
         .with_ansi(false)

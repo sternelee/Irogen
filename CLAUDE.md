@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**ClawdPilot** is a multi-agent local/remote management platform built with Rust (CLI/backend), SolidJS (frontend), and Tauri 2 (desktop/mobile). It provides unified session management for running and controlling multiple AI agents (Claude, Codex, Gemini, OpenCode, OpenClaw) across local and remote modes.
+**Irogen** is a multi-agent local/remote management platform built with Rust (CLI/backend), SolidJS (frontend), and Tauri 2 (desktop/mobile). It provides unified session management for running and controlling multiple AI agents (Claude, Codex, Gemini, OpenCode, OpenClaw) across local and remote modes.
 
 ## Repository Structure
 
-- `cli/`: `clawdpilot` host CLI, ticket/QR output, daemon mode
+- `cli/`: `irogen` host CLI, ticket/QR output, daemon mode
 - `shared/`: core QUIC transport, protocol, event bus, and agent runtime abstraction
 - `app/`: Tauri command layer and session orchestration between frontend and `shared`
 - `src/`: SolidJS desktop/mobile UI stores and chat/session components
@@ -238,7 +238,7 @@ git push origin v0.3.7
 
 Workflow (`.github/workflows/publish-to-auto-release.yml`):
 - Tauri app packaging via `tauri-apps/tauri-action`
-- CLI artifacts published as `clawdpilot_cli-*`
+- CLI artifacts published as `irogen_cli-*`
 
 ### Android Release
 

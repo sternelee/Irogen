@@ -3155,7 +3155,7 @@ async fn install_acp_package_local(agent_type: String) -> Result<String, String>
         "claude" => "@zed-industries/claude-agent-acp",
         "gemini" => "@google/gemini-cli",
         "cursor" => {
-            return Err("Cursor does not support ACP auto-install in ClawdPilot".to_string());
+            return Err("Cursor does not support ACP auto-install in Irogen".to_string());
         }
         "openclaw" => return Err("OpenClaw does not require ACP installation".to_string()),
         _ => return Err(format!("Unsupported agent type for ACP: {}", agent_type)),

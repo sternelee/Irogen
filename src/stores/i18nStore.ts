@@ -3,7 +3,7 @@ import { flatten, resolveTemplate, translator } from "@solid-primitives/i18n";
 
 export type Locale = "en" | "zh-CN";
 
-const LOCALE_STORAGE_KEY = "clawdpilot.locale";
+const LOCALE_STORAGE_KEY = "irogen.locale";
 
 const dictionaries = {
   en: flatten({
@@ -19,7 +19,7 @@ const dictionaries = {
       loadingHistory: "Loading history…",
     },
     home: {
-      welcomeTitle: "Welcome to ClawdPilot",
+      welcomeTitle: "Welcome to Irogen",
       welcomeDescription:
         "Manage multiple AI agent sessions in one place. Create a new session to get started.",
       createSession: "Create Session",
@@ -79,7 +79,7 @@ const dictionaries = {
       loadingHistory: "正在加载历史会话…",
     },
     home: {
-      welcomeTitle: "欢迎使用 ClawdPilot",
+      welcomeTitle: "欢迎使用 Irogen",
       welcomeDescription:
         "在一个地方管理多个 AI Agent 会话。创建一个新会话即可开始。",
       createSession: "创建会话",

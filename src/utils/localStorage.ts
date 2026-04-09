@@ -1,10 +1,10 @@
 /**
- * localStorage utilities for ClawdPilot tickets
+ * localStorage utilities for Irogen tickets
  */
 
-const STORAGE_KEY_LAST_TICKET = "clawdchat_last_ticket";
-const STORAGE_KEY_TICKET_HISTORY = "clawdchat_ticket_history";
-const STORAGE_KEY_PROJECT_PATH_HISTORY = "clawdchat_project_path_history";
+const STORAGE_KEY_LAST_TICKET = "irogen_last_ticket";
+const STORAGE_KEY_TICKET_HISTORY = "irogen_ticket_history";
+const STORAGE_KEY_PROJECT_PATH_HISTORY = "irogen_project_path_history";
 const MAX_TICKET_HISTORY_SIZE = 3;
 const MAX_PROJECT_PATH_HISTORY_SIZE = 10;
 
