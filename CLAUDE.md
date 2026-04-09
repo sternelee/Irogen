@@ -6,10 +6,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Irogen** is a multi-agent local/remote management platform built with Rust (CLI/backend), SolidJS (frontend), and Tauri 2 (desktop/mobile). It provides unified session management for running and controlling multiple AI agents (Claude, Codex, Gemini, OpenCode, OpenClaw) across local and remote modes.
 
+## Quick Reference
+
+```bash
+# Dev workflow
+pnpm tauri:dev              # Desktop app with hot reload
+cargo run -p cli -- host    # CLI host (prints QR code/ticket)
+
+# Build
+pnpm tauri:build            # Desktop app
+cargo build -p cli --release # CLI binary
+
+# Test
+cargo test --workspace
+pnpm tsc                    # Frontend TypeScript check
+```
+
 ## Repository Structure
 
 - `cli/`: `irogen` host CLI, ticket/QR output, daemon mode
-- `shared/`: core QUIC transport, protocol, event bus, and agent runtime abstraction
+- `shared/`: core QUIC transport (iroh), protocol, event bus, and agent runtime abstraction
 - `app/`: Tauri command layer and session orchestration between frontend and `shared`
 - `src/`: SolidJS desktop/mobile UI stores and chat/session components
 - `web/`: separate TanStack Start + Cloudflare Workers app (own pnpm workspace)
@@ -80,8 +96,12 @@ cargo build -p cli --release
 # Testing
 cargo test --workspace                           # All Rust tests
 cargo test -p <crate> <test_name>                # Run specific test (e.g., cargo test -p shared message_protocol)
+cargo test -p <crate> --test <test_file>         # Run specific test file (e.g., cargo test -p shared --test integration)
 cargo test -- --nocapture                        # Show stdout/stderr
 ./test_ticket_output.sh                          # CLI ticket verification
+
+# Frontend tests (web workspace)
+cd web && pnpm test                              # Vitest tests
 
 # Linting & Formatting
 cargo fmt --all
@@ -91,16 +111,24 @@ pnpm exec prettier --write "src/**/*.{ts,tsx}"
 
 **Pre-commit check:** `cargo fmt --all && cargo clippy --workspace -- -D warnings && pnpm tsc`
 
-### Web App (Cloudflare Workers)
+## Web Workspace (Separate App)
+
+The `web/` directory is a **separate TanStack Start + Cloudflare Workers application** with its own pnpm workspace. It has different conventions:
 
 ```bash
 cd web && pnpm install
 cd web && pnpm dev         # Dev server on port 3000
-cd web && pnpm test        # Run web Vitest suite
-cd web && pnpm lint        # Run web ESLint
+cd web && pnpm test        # Run Vitest suite
+cd web && pnpm lint        # Run ESLint
 cd web && pnpm build       # Production build
 cd web && pnpm deploy      # Deploy to Cloudflare
 ```
+
+**Web-specific conventions** (`web/.cursorrules`):
+- TanStack Router for routing
+- TanStack Query for data fetching
+- Type-safe `createContext` patterns
+- Tailwind's `@layer` directive for custom styles
 
 ## Coding Conventions
 
@@ -190,12 +218,6 @@ export const Card: Component<CardProps> = (props) => {
 - Responsive design with mobile-first approach
 - Dark mode via DaisyUI themes with `[data-theme]` attribute
 - Default themes: `sunset` (light), `dark` (prefers-color-scheme)
-
-### Web workspace notes (`web/.cursorrules`)
-- Prefer functional components
-- Use TanStack Router for routing and type-safe `createContext` patterns
-- Keep strict TypeScript checks and proper event handler typing
-- Use Tailwind utility classes with `@apply`/`@layer` only for shared styles
 
 ### Mobile vs Desktop (Tauri)
 

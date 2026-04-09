@@ -23,19 +23,37 @@ pub fn process_builtin_command(cmd: &BuiltinCommand, _working_dir: &Path) -> Bui
     match cmd {
         BuiltinCommand::Init { description } => {
             let prompt = format!(
-                r#"Please help me initialize this project.
+                r#"Please analyze this codebase and create a CLAUDE.md file, which will be given to future instances of Claude Code to operate in this repository.
+
+What to add:
+1. Commands that will be commonly used, such as how to build, lint, and run tests. Include the necessary commands to develop in this codebase, such as how to run a single test.
+2. High-level code architecture and structure so that future instances can be productive more quickly. Focus on the "big picture" architecture that requires reading multiple files to understand.
+
+Usage notes:
+- If there's already a CLAUDE.md, suggest improvements to it.
+- When you make the initial CLAUDE.md, do not repeat yourself and do not include obvious instructions like "Provide helpful error messages to users", "Write unit tests for all new utilities", "Never include sensitive information (API keys, tokens) in code or commits".
+- Avoid listing every component or file structure that can be easily discovered.
+- Don't include generic development practices.
+- If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (in .github/copilot-instructions.md), make sure to include the important parts.
+- If there is a README.md, make sure to include the important parts.
+- Do not make up information such as "Common Development Tasks", "Tips for Development", "Support and Documentation" unless this is expressly included in other files that you read.
+- Be sure to prefix the file with the following text:
+
+```
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+```
 
 {}
 
-Please:
-1. Analyze project structure and existing files
-2. Identify technology stack and dependencies
-3. Create detailed development plan and architecture recommendations
-4. If there are config files, check if updates are needed"#,
-                description
-                    .as_ref()
-                    .map(|d| format!("Project description: {}\n", d))
-                    .unwrap_or_default()
+Please explore the codebase thoroughly to understand:
+- Build, test, and lint commands
+- Languages, frameworks, and package manager
+- Project structure
+- Code style rules
+- Non-obvious gotchas or workflow quirks"#,
+                description.as_ref().map(|d| format!("Additional context: {}\n", d)).unwrap_or_default()
             );
             BuiltinCommandResult {
                 prompt,
@@ -63,16 +81,23 @@ Please provide specific improvement suggestions and code examples."#,
                     t
                 )
             } else {
-                r#"Please review all changes in the current working directory (including uncommitted modifications).
+                r#"You are an expert code reviewer. Follow these steps:
 
-Please check:
-1. Code quality and readability
-2. Potential performance issues
-3. Security vulnerabilities
-4. Compliance with best practices
-5. Improvement suggestions
+1. Run `git status` and `git diff HEAD` to view all changes (staged and unstaged)
+2. Analyze the changes and provide a thorough code review that includes:
+   - Overview of what the changes do
+   - Analysis of code quality and style
+   - Specific suggestions for improvements
+   - Any potential issues or risks
 
-Please provide specific improvement suggestions and code examples."#
+Keep your review concise but thorough. Focus on:
+- Code correctness
+- Following project conventions
+- Performance implications
+- Test coverage
+- Security considerations
+
+Format your review with clear sections and bullet points."#
                     .to_string()
             };
             BuiltinCommandResult {
@@ -102,17 +127,41 @@ Please tell me the commit result when done."#,
                 }
             } else {
                 BuiltinCommandResult {
-                    prompt: r#"Please help me generate a commit message and create a commit.
+                    prompt: r#"## Context
 
-Steps:
-1. Run `git status` and `git diff --staged` (or `git diff`) to view changes
-2. Generate a commit message following Conventional Commits specification based on the changes
-3. Execute `git add -A` and `git commit` to complete the commit
+- Current git status: !`git status`
+- Current git diff (staged and unstaged changes): !`git diff HEAD`
+- Current branch: !`git branch --show-current`
+- Recent commits: !`git log --oneline -10`
 
-Commit message format: <type>(<scope>): <description>
-Type can be: feat, fix, docs, style, refactor, test, chore
+## Git Safety Protocol
 
-Please generate the commit message for my confirmation first, then execute the commit."#
+- NEVER update the git config
+- NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
+- CRITICAL: ALWAYS create NEW commits. NEVER use git commit --amend, unless the user explicitly requests it
+- Do not commit files that likely contain secrets (.env, credentials.json, etc). Warn the user if they specifically request to commit those files
+- If there are no changes to commit (i.e., no untracked files and no modifications), do not create an empty commit
+- Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported
+
+## Your task
+
+Based on the above changes, create a single git commit:
+
+1. Analyze all staged changes and draft a commit message:
+   - Look at the recent commits above to follow this repository's commit message style
+   - Summarize the nature of the changes (new feature, enhancement, bug fix, refactoring, test, docs, etc.)
+   - Ensure the message accurately reflects the changes and their purpose (i.e. "add" means a wholly new feature, "update" means an enhancement to an existing feature, "fix" means a bug fix, etc.)
+   - Draft a concise (1-2 sentences) commit message that focuses on the "why" rather than the "what"
+
+2. Stage relevant files and create the commit using HEREDOC syntax:
+```
+git commit -m "$(cat <<'EOF'
+Commit message here.
+EOF
+)"
+```
+
+You have the capability to call multiple tools in a single response. Stage and create the commit using a single message. Do not use any other tools or do anything else. Do not send any other text or messages besides these tool calls."#
                         .to_string(),
                     system_prompt: Some(
                         "You are a git expert, adept at generating standardized commit messages.".to_string(),
@@ -181,9 +230,10 @@ Please:
             } else {
                 BuiltinCommandResult {
                     prompt: r#"Please help me check the branch situation:
-1. Run `git branch -a` to list all branches
-2. Run `git status` to view current status
-3. Tell me recommended actions (create new branch, switch branch, or stay on current branch)"#
+1. Run `git status` to view current status
+2. Run `git branch -a` to list all branches
+3. Run `git branch --show-current` to see current branch
+4. Tell me recommended actions (create new branch, switch branch, or stay on current branch)"#
                         .to_string(),
                     system_prompt: None,
                     requires_confirmation: false,
