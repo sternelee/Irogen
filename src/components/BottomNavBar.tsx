@@ -45,7 +45,7 @@ export const BottomNavBar: Component = () => {
   };
 
   return (
-    <footer class="fixed bottom-0 z-50 flex h-12 w-full items-stretch justify-around rounded-t-2xl border-t border-base-content/10 bg-base-100 pb-safe shadow-2xl md:hidden">
+    <footer class="fixed bottom-0 z-50 flex h-12 gap-4 w-full items-stretch justify-around rounded-t-2xl border-t border-base-content/10 bg-base-100 pb-safe shadow-2xl md:hidden">
       <For each={NAV_ITEMS}>
         {(item) => {
           const isActive = () => activeView() === item.id;

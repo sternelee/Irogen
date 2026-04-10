@@ -95,7 +95,7 @@ const ToastItem: Component<ToastItemProps> = (props) => {
       <button
         type="button"
         onClick={() => props.onDismiss(props.toast.id)}
-        class="btn btn-ghost btn-sm btn-square"
+        class="btn btn-sm btn-square bg-base-content/25 hover:bg-base-content/40 text-base-200 border-0"
       >
         <FiX size={16} />
       </button>

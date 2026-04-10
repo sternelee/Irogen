@@ -228,16 +228,16 @@ const SystemMessageContent: Component<{
 
     if (card.type === "following") {
       return (
-        <div class="space-y-2.5">
-          <div class="inline-flex items-center rounded-md bg-info/12 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-info ring-1 ring-info/15">
+        <div class="space-y-2.5 rounded-lg border border-info/30 bg-info/8 p-3">
+          <div class="inline-flex items-center rounded-md bg-info/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-info ring-1 ring-info/25">
             Following
           </div>
           <For each={card.locations}>
             {(loc) => (
-              <div class="flex items-center gap-2 rounded-lg border border-base-content/10 bg-base-200 px-3 py-2.5">
+              <div class="flex items-center gap-2 rounded-lg border border-info/20 bg-info/12 px-3 py-2.5">
                 <button
                   type="button"
-                  class="flex-1 text-left text-[13px] sm:text-sm font-mono hover:text-primary transition-colors"
+                  class="flex-1 text-left text-[13px] sm:text-sm font-mono hover:text-info transition-colors"
                   onClick={() => {
                     if (props.onOpenFileLocation) {
                       props.onOpenFileLocation(loc.path, loc.line);
@@ -279,11 +279,11 @@ const SystemMessageContent: Component<{
     if (card.type === "edit_review") {
       const diffText = `--- old\n+++ new\n-${card.oldText}\n+${card.newText}`;
       return (
-        <div class="space-y-2.5">
-          <div class="inline-flex items-center rounded-md bg-warning/12 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-warning ring-1 ring-warning/15">
+        <div class="space-y-2.5 rounded-lg border border-accent/30 bg-accent/8 p-3">
+          <div class="inline-flex items-center rounded-md bg-accent/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-accent ring-1 ring-accent/25">
             Edit Review
           </div>
-          <div class="rounded-lg border border-base-content/10 bg-base-200/80 px-3 py-2 text-[13px] sm:text-sm font-mono break-all text-base-content/80">
+          <div class="rounded-lg border border-accent/20 bg-accent/12 px-3 py-2 text-[13px] sm:text-sm font-mono break-all text-base-content/80">
             {card.path}
           </div>
           <div class="flex flex-wrap gap-2">
@@ -345,8 +345,8 @@ const SystemMessageContent: Component<{
       };
 
       return (
-        <div class="space-y-2.5">
-          <div class="inline-flex items-center rounded-md bg-success/12 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-success ring-1 ring-success/15">
+        <div class="space-y-2.5 rounded-lg border border-primary/30 bg-primary/8 p-3">
+          <div class="inline-flex items-center rounded-md bg-primary/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-primary ring-1 ring-primary/25">
             TODO List
           </div>
           <div class="space-y-1">
@@ -358,7 +358,7 @@ const SystemMessageContent: Component<{
                     ? todoStates()[index()]!
                     : initialDone;
                 return (
-                  <label class="flex items-center gap-2.5 rounded-lg px-2.5 py-2 hover:bg-base-content/5 cursor-pointer transition-colors">
+                  <label class="flex items-center gap-2.5 rounded-lg px-2.5 py-2 hover:bg-primary/15 cursor-pointer transition-colors">
                     <input
                       type="checkbox"
                       class="checkbox checkbox-primary checkbox-sm sm:checkbox-xs"
@@ -395,11 +395,11 @@ const SystemMessageContent: Component<{
 
     if (card.type === "terminal") {
       return (
-        <div class="space-y-2.5">
-          <div class="inline-flex items-center rounded-md bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-primary ring-1 ring-primary/15">
+        <div class="space-y-2.5 rounded-lg border border-secondary/30 bg-secondary/8 p-3">
+          <div class="inline-flex items-center rounded-md bg-secondary/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-secondary ring-1 ring-secondary/25">
             Terminal
           </div>
-          <div class="rounded-lg border border-base-content/10 bg-base-200/80 px-3 py-2.5 text-[13px] sm:text-sm text-base-content/80">
+          <div class="rounded-lg border border-secondary/20 bg-secondary/12 px-3 py-2.5 text-[13px] sm:text-sm text-base-content/80">
             <div class="font-mono break-all">
               {card.terminalId || "unknown"}
             </div>

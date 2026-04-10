@@ -44,6 +44,7 @@ import {
 import { Button, Input, Label } from "./ui/primitives";
 import { ConnectHostModal } from "./ConnectHostModal";
 import { LanguageSwitcher, ThemeSwitcher } from "./ui/ThemeSwitcher";
+import { SetupGuide } from "./mobile/SetupGuide";
 import {
   tcpForwardingStore,
   type TcpForwardingSession,
@@ -220,56 +221,11 @@ const getProxyPreviewUrl = (localAddr: string): string => {
 };
 
 const DashboardEmptyState: Component<{
-  icon: typeof FiActivity;
   title: string;
-  description: string;
-  primaryAction?: {
-    label: string;
-    onClick: () => void;
-    icon?: typeof FiPlus;
-  };
-  secondaryAction?: {
-    label: string;
-    onClick: () => void;
-  };
 }> = (props) => {
-  const Icon = props.icon;
-  const PrimaryIcon = props.primaryAction?.icon;
-
   return (
     <div class="flex flex-col items-center justify-center px-6 py-16 text-center md:py-24">
-      <div class="mb-5 flex h-18 w-18 items-center justify-center rounded-4xl border border-base-content/5 bg-base-200 shadow-inner">
-        <Icon size={30} class="opacity-20" />
-      </div>
-      <p class="text-lg font-bold opacity-50">{props.title}</p>
-      <p class="mt-3 max-w-md text-sm leading-relaxed text-base-content/50">
-        {props.description}
-      </p>
-      <Show when={props.primaryAction || props.secondaryAction}>
-        <div class="mt-8 flex flex-col gap-3 sm:flex-row">
-          <Show when={props.primaryAction}>
-            <Button
-              variant="default"
-              size="sm"
-              class="h-11 rounded-xl px-6 text-sm font-bold shadow-xl shadow-base-content/10"
-              onClick={props.primaryAction!.onClick}
-            >
-              {PrimaryIcon ? <PrimaryIcon size={16} class="mr-2" /> : null}
-              {props.primaryAction!.label}
-            </Button>
-          </Show>
-          <Show when={props.secondaryAction}>
-            <Button
-              variant="ghost"
-              size="sm"
-              class="h-11 rounded-xl px-6 text-sm font-bold"
-              onClick={props.secondaryAction!.onClick}
-            >
-              {props.secondaryAction!.label}
-            </Button>
-          </Show>
-        </div>
-      </Show>
+      <p class="text-lg font-semibold text-base-content/60">{props.title}</p>
     </div>
   );
 };
@@ -353,10 +309,6 @@ const TreeLineVertical: Component<{ height?: string }> = (props) => (
   />
 );
 
-const TreeLineHorizontal: Component = () => (
-  <div class="absolute left-0 w-8 tree-line-h" />
-);
-
 // ============================================================================
 // Agent Node Component
 // ============================================================================
@@ -378,12 +330,11 @@ const AgentNode: Component<AgentNodeProps> = (props) => {
   return (
     <button
       type="button"
-      class="relative flex w-full items-center py-3 pl-5 text-left transition-colors hover:bg-base-200/30"
+      class="relative flex w-full items-center py-3 px-4 text-left transition-colors rounded-lg mx-1.5 my-1 hover:bg-secondary/15 bg-secondary/8 border border-secondary/20"
       onClick={props.onClick}
     >
-      <TreeLineHorizontal />
-      <div class="flex flex-1 items-center justify-between">
-        <div class="flex items-center gap-3">
+      <div class="flex flex-1 items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
           {getAgentIcon(props.session.agentType)}
           <div class="min-w-0">
             <span class="font-mono text-xs font-medium block truncate">
@@ -396,7 +347,7 @@ const AgentNode: Component<AgentNodeProps> = (props) => {
           </div>
         </div>
         <div
-          class={`px-3 py-0.5 rounded-full text-[9px] font-bold tracking-[0.1em] border ${getStatusColor(statusText())} ${getStatusGlow(statusText())}`}
+          class={`px-3 py-0.5 rounded-full text-[9px] font-bold tracking-widest border ${getStatusColor(statusText())} ${getStatusGlow(statusText())}`}
         >
           {statusText()}
         </div>
@@ -424,7 +375,7 @@ const HostCard: Component<HostCardProps> = (props) => {
     <div class="group">
       {/* Host Header - Clickable to expand/collapse */}
       <div
-        class="flex items-center justify-between bg-base-200/50 p-4 rounded-lg border-l-2 border-primary transition-all hover:bg-base-200 cursor-pointer"
+        class="flex items-center justify-between bg-primary/8 p-4 rounded-lg border-l-4 border-primary transition-all hover:bg-primary/12 cursor-pointer"
         onClick={() => setExpanded(!expanded())}
       >
         <div class="flex items-center gap-4">
@@ -479,9 +430,9 @@ const HostCard: Component<HostCardProps> = (props) => {
       </div>
 
       <Show when={expanded()}>
-        <div class="ml-6 mt-2 relative">
+        <div class="ml-4 mt-2 relative">
           <TreeLineVertical
-            height={`${props.host.sessions.length * 52 + 16}px`}
+            height={`${props.host.sessions.length * 56 + 16}px`}
           />
           <For each={props.host.sessions}>
             {(session) => (
@@ -531,6 +482,7 @@ export const Dashboard: Component<DashboardProps> = (props) => {
 const TopologyView: Component = () => {
   const [isLoading, setIsLoading] = createSignal(false);
   const [connectModalOpen, setConnectModalOpen] = createSignal(false);
+  const [showSetupGuide, setShowSetupGuide] = createSignal(false);
 
   // Group sessions by host machine
   const hosts = createMemo(() => {
@@ -672,26 +624,23 @@ const TopologyView: Component = () => {
           onClose={() => setConnectModalOpen(false)}
         />
 
+        {/* Setup Guide Modal */}
+        <Show when={showSetupGuide()}>
+          <div class="fixed inset-0 z-9999 bg-black/50 backdrop-blur-sm flex items-center justify-center">
+            <div class="w-full h-full bg-base-100 rounded-t-3xl md:rounded-2xl md:max-w-2xl md:max-h-[90vh] flex flex-col">
+              <SetupGuide
+                onClose={() => setShowSetupGuide(false)}
+                onSkip={() => setShowSetupGuide(false)}
+              />
+            </div>
+          </div>
+        </Show>
+
         {/* Topology List */}
         <div class="space-y-4">
           <Show
             when={hosts().length > 0}
-            fallback={
-              <DashboardEmptyState
-                icon={FiActivity}
-                title="No active hosts"
-                description="Start a local agent or connect to a remote host to see your topology here."
-                primaryAction={{
-                  label: "Connect Host",
-                  onClick: () => setConnectModalOpen(true),
-                  icon: FiWifi,
-                }}
-                secondaryAction={{
-                  label: "Create Local Session",
-                  onClick: () => sessionStore.openNewSessionModal("local"),
-                }}
-              />
-            }
+            fallback={<DashboardEmptyState title="No active hosts" />}
           >
             <For each={hosts()}>
               {(host) => (
@@ -705,6 +654,19 @@ const TopologyView: Component = () => {
               )}
             </For>
           </Show>
+        </div>
+
+        {/* Setup Button */}
+        <div class="mt-6 flex justify-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            class="px-4 py-2 rounded text-[10px] font-label uppercase tracking-widest font-bold border border-base-content/20"
+            onClick={() => setShowSetupGuide(true)}
+          >
+            <FiBox size={14} class="mr-1" />
+            Setup Guide
+          </Button>
         </div>
       </div>
     </div>
@@ -1068,22 +1030,7 @@ const HostsView: Component = () => {
 
         <Show
           when={hosts().length > 0}
-          fallback={
-            <DashboardEmptyState
-              icon={FiServer}
-              title="No connected hosts yet"
-              description="Connect a remote host or create a local session first. Hosts will appear here once an agent is available."
-              primaryAction={{
-                label: "Add Host",
-                onClick: () => setConnectModalOpen(true),
-                icon: FiWifi,
-              }}
-              secondaryAction={{
-                label: "Create Local Session",
-                onClick: () => sessionStore.openNewSessionModal("local"),
-              }}
-            />
-          }
+          fallback={<DashboardEmptyState title="No connected hosts" />}
         >
           <div class="space-y-3">
             <For each={hosts()}>

@@ -26,10 +26,9 @@ import { navigationStore } from "../stores/navigationStore";
 import { i18nStore } from "../stores/i18nStore";
 import { isMobile } from "../stores/deviceStore";
 import { notificationStore } from "../stores/notificationStore";
-import { Button } from "./ui/primitives";
 import { KeyboardShortcutsDialog } from "./ui/KeyboardShortcuts";
 import { SpinnerWithLabel } from "./ui/Spinner";
-import { FiPlus, FiFolder, FiGitBranch, FiX } from "solid-icons/fi";
+import { FiFolder, FiGitBranch, FiX } from "solid-icons/fi";
 
 // ============================================================================
 // Main Layout Component
@@ -90,7 +89,6 @@ export const AppLayout: Component = () => {
   // Navigation state
   const activeView = createMemo(() => navigationStore.state.activeView);
   const mobile = createMemo(() => isMobile());
-  const hasSessions = createMemo(() => sessionStore.getSessionCount() > 0);
 
   // Auto-expand sidebar on desktop (md and above)
   createEffect(() => {
@@ -147,52 +145,11 @@ export const AppLayout: Component = () => {
 
   const renderChatEmptyState = () => (
     <div class="flex h-full min-h-0 flex-1 overflow-y-auto bg-base-100">
-      <div class="flex min-h-full w-full items-start justify-center p-6 pt-18 pb-10 md:items-center md:px-8 md:py-12">
-        <div class="w-full max-w-lg rounded-[2rem] border border-base-content/8 bg-base-100/90 p-8 text-center shadow-2xl shadow-base-content/5 backdrop-blur-sm md:p-10">
-          <div class="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-base-200 shadow-2xl shadow-primary/20">
-            <img
-              src="/irogen-icon.svg"
-              alt="Irogen logo"
-              class="h-20 w-20 rounded-2xl object-cover"
-            />
-          </div>
-          <h2 class="mb-3 text-3xl font-bold">
-            {hasSessions()
-              ? "Select a session to continue"
-              : i18nStore.t("home.welcomeTitle")}
-          </h2>
-          <p class="mb-8 text-base-content/60">
-            {hasSessions()
-              ? "Open Topology or Hosts, then choose an agent session to return to chat."
-              : i18nStore.t("home.welcomeDescription")}
+      <div class="flex min-h-full w-full items-center justify-center p-6">
+        <div class="text-center">
+          <p class="text-xl font-semibold text-base-content/60">
+            No agent selected
           </p>
-          <div class="flex flex-col justify-center gap-3 sm:flex-row">
-            <Button
-              variant="default"
-              size="lg"
-              class="h-12 rounded-2xl bg-primary px-8 text-sm font-bold text-primary-content shadow-xl"
-              onClick={() =>
-                hasSessions()
-                  ? navigationStore.setActiveView("dashboard")
-                  : sessionStore.openNewSessionModal("local")
-              }
-            >
-              <FiPlus size={18} class="mr-2" />
-              {hasSessions()
-                ? "Open Topology"
-                : i18nStore.t("home.createSession")}
-            </Button>
-            <Show when={!hasSessions()}>
-              <Button
-                variant="ghost"
-                size="lg"
-                class="h-12 rounded-2xl px-8 text-sm font-bold"
-                onClick={() => navigationStore.setActiveView("hosts")}
-              >
-                Browse Hosts
-              </Button>
-            </Show>
-          </div>
         </div>
       </div>
     </div>
