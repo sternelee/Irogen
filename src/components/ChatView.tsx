@@ -6,7 +6,7 @@
  */
 
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
-import { FiAlertTriangle, FiRefreshCw, FiGlobe } from "solid-icons/fi";
+import { FiAlertTriangle, FiRefreshCw } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { Virtualizer } from "virtua/solid";
 import { chatStore } from "../stores/chatStore";
@@ -28,7 +28,6 @@ import { fileBrowserStore } from "../stores/fileBrowserStore";
 import { PermissionMessage, UserQuestionMessage } from "./ui/PermissionCard";
 import { MessageBubble } from "./ui/MessageBubble";
 import { ChatInput } from "./ui/ChatInput";
-import { LanguageSwitcher, ThemeSwitcher } from "./ui/ThemeSwitcher";
 import { TcpForwardingModal } from "./TcpForwardingModal";
 
 // ============================================================================
@@ -1877,37 +1876,12 @@ export function ChatView(props: ChatViewProps) {
           checked={rightPanelView() !== "none"}
           readOnly
         />
-        <div class="drawer-content flex h-full bg-base-100 relative pb-safe lg:pb-0 overflow-hidden">
+        <div class="drawer-content flex h-full bg-base-100 relative overflow-hidden">
           <div class="flex flex-col h-full min-w-0 flex-1">
             {/* Header */}
-            <div class="compact-mobile-controls z-20 flex items-center h-12 sm:h-16 box-border justify-between border-b border-base-content/10 bg-base-100/80 backdrop-blur-md px-3 sm:px-6 py-1.5 sm:py-2 shadow-sm sticky top-0">
-              <div class="flex items-center gap-1 sm:gap-3 overflow-hidden">
-                {/* Mobile Sidebar Toggle */}
-                <Show when={!props.sidebarOpen}>
-                  <button
-                    type="button"
-                    class="btn btn-ghost btn-xs sm:btn-sm h-8 w-8 sm:h-10 sm:w-10 min-h-8 sm:min-h-10 rounded-lg sm:rounded-xl lg:hidden active:scale-95 transition-transform"
-                    onClick={() => props.onToggleSidebar?.()}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="w-4 h-4 sm:w-5 sm:h-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <title>Menu</title>
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M4 6h16M4 12h16M4 18h16"
-                      />
-                    </svg>
-                  </button>
-                </Show>
-
-                <div class="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+            <div class="compact-mobile-controls z-20 sticky top-0 flex h-16 shrink-0 items-center justify-between border-b border-base-content/10 bg-base-100/80 px-4 sm:px-6 shadow-sm backdrop-blur-lg">
+              <div class="flex items-center gap-3 overflow-hidden">
+                <div class="flex items-center gap-2.5 min-w-0">
                   <div class="hidden rounded-xl bg-primary/10 p-2 text-primary shadow-inner ring-1 ring-primary/10 xs:flex shrink-0">
                     {getAgentIcon()}
                   </div>
@@ -1921,7 +1895,7 @@ export function ChatView(props: ChatViewProps) {
                       {props.agentType === "openclaw" && "OpenClaw"}
                     </h2>
                     <div
-                      class="text-[10px] sm:text-[11px] opacity-50 truncate max-w-48 sm:max-w-[18rem] flex items-center gap-1.5 mt-0.5"
+                      class="mt-0.5 flex max-w-48 items-center gap-1.5 truncate text-[10px] opacity-50 sm:max-w-[18rem] sm:text-[11px]"
                       title={props.projectPath}
                     >
                       <span class="inline-flex items-center gap-1">
@@ -1936,28 +1910,13 @@ export function ChatView(props: ChatViewProps) {
                   </div>
                 </div>
               </div>
-
-              <div class="flex items-center gap-0.5 sm:gap-1 shrink-0">
-                <Show when={props.sessionMode === "remote"}>
-                  <button
-                    type="button"
-                    class="btn btn-ghost btn-xs sm:btn-sm h-8 w-8 sm:h-10 sm:w-10 min-h-8 sm:min-h-10 rounded-lg sm:rounded-xl text-base-content/60 hover:text-primary active:scale-95 transition-all"
-                    onClick={() => setTcpModalOpen(true)}
-                    title="TCP Forwarding"
-                  >
-                    <FiGlobe class="w-4 h-4 sm:w-5 sm:h-5" />
-                  </button>
-                </Show>
-                <LanguageSwitcher />
-                <ThemeSwitcher />
-              </div>
             </div>
 
             {/* Messages Area */}
             <div
               ref={setMessageScrollEl}
               onScroll={updateScrollState}
-              class="flex-1 overflow-y-auto px-3.5 sm:px-6 py-6 sm:py-8 pb-28 sm:pb-10 overflow-x-hidden bg-base-100"
+              class="flex-1 overflow-y-auto px-3.5 sm:px-6 py-6 sm:py-8 pb-36 sm:pb-10 overflow-x-hidden bg-base-100"
             >
               <Show
                 when={
@@ -2009,7 +1968,7 @@ export function ChatView(props: ChatViewProps) {
               </Show>
 
               {/* Messages */}
-              <div class="max-w-4xl mx-auto w-full space-y-6">
+              <div class="max-w-4xl 2xl:max-w-none mx-auto w-full space-y-6">
                 <Show when={messages().length > 0}>
                   <Virtualizer
                     scrollRef={messageScrollEl()}

@@ -57,6 +57,18 @@ textarea:focus {
     content: counter(step);
   }
 
+  /* Tree line styles for Dashboard */
+  .tree-line-v {
+    width: 1px;
+    background-color: hsl(var(--bc) / 0.1);
+  }
+
+  .tree-line-h {
+    height: 1px;
+    width: 32px;
+    background-color: hsl(var(--bc) / 0.1);
+  }
+
   /* Safe area padding for mobile status bar */
   .pt-safe {
     padding-top: env(safe-area-inset-top, 0px);

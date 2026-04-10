@@ -380,48 +380,50 @@ export const NewSessionModal: Component = () => {
             New Session
           </h3>
 
-          {/* Mode Toggle */}
-          <div class="hidden sm:flex gap-2 mb-4">
-            <Button
-              type="button"
-              size="sm"
-              class="flex-1"
-              variant={
-                sessionStore.state.newSessionMode === "remote"
-                  ? "primary"
-                  : "ghost"
-              }
-              onClick={() => {
-                sessionStore.setNewSessionMode("remote");
-                sessionStore.setConnectionError(null);
-                // Auto-select first remote connection if available
-                const connections = remoteConnections();
-                if (connections.length > 0) {
-                  sessionStore.setTargetControlSessionId(
-                    connections[0].controlSessionId,
-                  );
+          {/* Mode Toggle - Hidden when opened from a specific host */}
+          <Show when={!sessionStore.state.newSessionModeFromHost}>
+            <div class="hidden sm:flex gap-2 mb-4">
+              <Button
+                type="button"
+                size="sm"
+                class="flex-1"
+                variant={
+                  sessionStore.state.newSessionMode === "remote"
+                    ? "primary"
+                    : "ghost"
                 }
-              }}
-            >
-              <FiCloud class="mr-1.5" /> Remote
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              class="hidden flex-1 sm:inline-flex"
-              variant={
-                sessionStore.state.newSessionMode === "local"
-                  ? "primary"
-                  : "ghost"
-              }
-              onClick={() => {
-                sessionStore.setNewSessionMode("local");
-                sessionStore.setConnectionError(null);
-              }}
-            >
-              <FiHome class="mr-1.5" /> Local
-            </Button>
-          </div>
+                onClick={() => {
+                  sessionStore.setNewSessionMode("remote");
+                  sessionStore.setConnectionError(null);
+                  // Auto-select first remote connection if available
+                  const connections = remoteConnections();
+                  if (connections.length > 0) {
+                    sessionStore.setTargetControlSessionId(
+                      connections[0].controlSessionId,
+                    );
+                  }
+                }}
+              >
+                <FiCloud class="mr-1.5" /> Remote
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                class="hidden flex-1 sm:inline-flex"
+                variant={
+                  sessionStore.state.newSessionMode === "local"
+                    ? "primary"
+                    : "ghost"
+                }
+                onClick={() => {
+                  sessionStore.setNewSessionMode("local");
+                  sessionStore.setConnectionError(null);
+                }}
+              >
+                <FiHome class="mr-1.5" /> Local
+              </Button>
+            </div>
+          </Show>
 
           {/* Remote Connection Selector */}
           <Show

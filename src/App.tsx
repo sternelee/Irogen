@@ -19,6 +19,7 @@ import { ToastContainer } from "./components/ToastContainer";
 import { sessionStore } from "./stores/sessionStore";
 import { notificationStore } from "./stores/notificationStore";
 import { initializeDeviceDetection } from "./stores/deviceStore";
+import { navigationStore } from "./stores/navigationStore";
 import { initializeMobileUtils } from "./utils/mobile";
 import { cn } from "./lib/utils";
 
@@ -81,13 +82,13 @@ export default function App() {
         let machineId = "remote";
 
         if (payload.control_session_id) {
-          const controlSession = sessionStore.getSession(
+          const connectedHost = sessionStore.getConnectedHost(
             payload.control_session_id,
           );
-          if (controlSession) {
-            hostname = controlSession.hostname;
-            os = controlSession.os;
-            machineId = controlSession.machineId;
+          if (connectedHost) {
+            hostname = connectedHost.hostname;
+            os = connectedHost.os;
+            machineId = connectedHost.machineId;
           }
         }
 
@@ -110,6 +111,7 @@ export default function App() {
 
         // Set as active session
         sessionStore.setActiveSession(payload.session_id);
+        navigationStore.setActiveView("chat");
 
         notificationStore.success(`${agentType} session created`, "Session");
       },
@@ -124,6 +126,7 @@ export default function App() {
 
         sessionStore.setConnectionState("disconnected");
         const disconnectedControlId = payload.sessionId;
+        sessionStore.removeConnectedHost(disconnectedControlId);
 
         // Find all agent sessions that depend on this control session
         const sessions = sessionStore.getSessions();
@@ -157,8 +160,14 @@ export default function App() {
 
         if (payload.state === "reconnecting") {
           sessionStore.setConnectionState("reconnecting");
+          sessionStore.updateConnectedHost(payload.sessionId, {
+            status: "reconnecting",
+          });
         } else if (payload.state === "connected") {
           sessionStore.setConnectionState("connected");
+          sessionStore.updateConnectedHost(payload.sessionId, {
+            status: "online",
+          });
           // 重连成功后恢复相关 session 为 active
           const sessions = sessionStore.getSessions();
           sessions.forEach((session) => {
@@ -172,6 +181,9 @@ export default function App() {
           notificationStore.success("Connection restored", "Connection");
         } else if (payload.state === "disconnected") {
           sessionStore.setConnectionState("disconnected");
+          sessionStore.updateConnectedHost(payload.sessionId, {
+            status: "offline",
+          });
         }
       },
     );

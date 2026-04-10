@@ -73,9 +73,15 @@ export class HapticFeedback {
     }
   }
 
+  static warning(): void {
+    if (this.isSupported()) {
+      navigator.vibrate([50, 30, 50]);
+    }
+  }
+
   static success(): void {
     if (this.isSupported()) {
-      navigator.vibrate([10, 5, 10]);
+      navigator.vibrate(15);
     }
   }
 
@@ -427,7 +433,6 @@ export class MobileKeyboard {
     (visible: boolean, keyboardInfo?: KeyboardInfo) => void
   > = [];
   private static activeInput: HTMLElement | null = null;
-  private static initialVisualViewportHeight = 0;
   private static initialWindowHeight = 0;
   private static keyboardHeight = 0;
   private static adjustmentCallbacks: Array<() => void> = [];
@@ -436,8 +441,6 @@ export class MobileKeyboard {
 
   static init(integrateWithViewportManager: boolean = false): void {
     // Store initial heights for accurate comparison
-    this.initialVisualViewportHeight =
-      window.visualViewport?.height || window.innerHeight;
     this.initialWindowHeight = window.innerHeight;
     this.viewportManagerIntegration = integrateWithViewportManager;
 
@@ -457,8 +460,6 @@ export class MobileKeyboard {
 
     // Handle page load and orientation changes
     window.addEventListener("load", () => {
-      this.initialVisualViewportHeight =
-        window.visualViewport?.height || window.innerHeight;
       this.initialWindowHeight = window.innerHeight;
     });
 

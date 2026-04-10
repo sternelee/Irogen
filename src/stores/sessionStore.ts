@@ -9,6 +9,7 @@
  */
 
 import { createStore, produce } from "solid-js/store";
+import { navigationStore } from "./navigationStore";
 import { invoke } from "@tauri-apps/api/core";
 import { notificationStore } from "./notificationStore";
 import { sessionEventRouter } from "./sessionEventRouter";
@@ -50,6 +51,14 @@ export interface AgentSessionMetadata {
   mode?: SessionMode;
   controlSessionId?: string; // ID of the connection session
   lastReceivedSequence: number; // Last received message sequence for reconnection
+}
+
+export interface ConnectedHostMetadata {
+  controlSessionId: string;
+  hostname: string;
+  os: string;
+  machineId: string;
+  status: "online" | "offline" | "reconnecting";
 }
 
 export interface BackendSessionMetadata {
@@ -120,6 +129,7 @@ export type ConnectionState =
 
 interface SessionState {
   sessions: Record<string, AgentSessionMetadata>;
+  connectedHosts: Record<string, ConnectedHostMetadata>;
   activeSessionId: string | null;
   connectionState: ConnectionState;
   lastConnected: number | null;
@@ -127,6 +137,7 @@ interface SessionState {
   // New Session Modal State
   isNewSessionModalOpen: boolean;
   newSessionMode: SessionMode;
+  newSessionModeFromHost: boolean; // true if opened from a specific host
   newSessionAgent: AgentType;
   newSessionPath: string;
   newSessionArgs: string;
@@ -145,12 +156,14 @@ interface SessionState {
 
 const initialState: SessionState = {
   sessions: {},
+  connectedHosts: {},
   activeSessionId: null,
   connectionState: "disconnected",
   lastConnected: null,
 
   isNewSessionModalOpen: false,
   newSessionMode: "remote",
+  newSessionModeFromHost: false,
   newSessionAgent: "claude",
   newSessionPath: "",
   newSessionArgs: "",
@@ -177,6 +190,16 @@ export const createSessionStore = () => {
     return Object.values(state.sessions);
   };
 
+  const getConnectedHosts = (): ConnectedHostMetadata[] => {
+    return Object.values(state.connectedHosts);
+  };
+
+  const getConnectedHost = (
+    controlSessionId: string,
+  ): ConnectedHostMetadata | undefined => {
+    return state.connectedHosts[controlSessionId];
+  };
+
   const getSession = (sessionId: string): AgentSessionMetadata | undefined => {
     return state.sessions[sessionId];
   };
@@ -192,6 +215,28 @@ export const createSessionStore = () => {
     setState(
       produce((s: SessionState) => {
         s.sessions[metadata.sessionId] = metadata;
+      }),
+    );
+  };
+
+  const addConnectedHost = (metadata: ConnectedHostMetadata) => {
+    setState(
+      produce((s: SessionState) => {
+        s.connectedHosts[metadata.controlSessionId] = metadata;
+      }),
+    );
+  };
+
+  const updateConnectedHost = (
+    controlSessionId: string,
+    updates: Partial<ConnectedHostMetadata>,
+  ) => {
+    setState(
+      produce((s: SessionState) => {
+        const host = s.connectedHosts[controlSessionId];
+        if (host) {
+          Object.assign(host, updates);
+        }
       }),
     );
   };
@@ -224,6 +269,17 @@ export const createSessionStore = () => {
     );
   };
 
+  const removeConnectedHost = (controlSessionId: string) => {
+    setState(
+      produce((s: SessionState) => {
+        delete s.connectedHosts[controlSessionId];
+        if (s.targetControlSessionId === controlSessionId) {
+          s.targetControlSessionId = null;
+        }
+      }),
+    );
+  };
+
   const setActiveSession = (sessionId: string | null) => {
     setState("activeSessionId", sessionId);
   };
@@ -235,11 +291,13 @@ export const createSessionStore = () => {
   const openNewSessionModal = (
     mode: SessionMode = "remote",
     controlSessionId?: string | null,
+    fromHost: boolean = false,
   ) => {
     setState(
       produce((s: SessionState) => {
         s.isNewSessionModalOpen = true;
         s.newSessionMode = mode;
+        s.newSessionModeFromHost = fromHost;
         // Only update targetControlSessionId if explicitly provided
         // This preserves the existing connection when reopening the modal
         if (controlSessionId !== undefined) {
@@ -254,7 +312,12 @@ export const createSessionStore = () => {
   };
 
   const closeNewSessionModal = () => {
-    setState("isNewSessionModalOpen", false);
+    setState(
+      produce((s: SessionState) => {
+        s.isNewSessionModalOpen = false;
+        s.newSessionModeFromHost = false;
+      }),
+    );
   };
 
   const setNewSessionMode = (mode: SessionMode) => {
@@ -389,6 +452,13 @@ export const createSessionStore = () => {
 
       setConnectionState("connected");
       setTargetControlSessionId(connectionSessionId);
+      addConnectedHost({
+        controlSessionId: connectionSessionId,
+        hostname: "Remote Host",
+        os: "Connected via ticket",
+        machineId: connectionSessionId,
+        status: "online",
+      });
       setConnectionError(null);
 
       // Best-effort: load existing remote sessions.
@@ -401,6 +471,12 @@ export const createSessionStore = () => {
           },
         );
         for (const s of remoteSessions) {
+          updateConnectedHost(connectionSessionId, {
+            hostname: s.hostname || "Remote Host",
+            os: s.os || "Connected via ticket",
+            machineId: s.machine_id || connectionSessionId,
+            status: s.active ? "online" : "offline",
+          });
           addSession(
             mapBackendSessionMetadata(s, "remote", connectionSessionId),
           );
@@ -541,6 +617,7 @@ export const createSessionStore = () => {
         // Auto-select the new session if exactly one was created
         if (newSessionId) {
           setActiveSession(newSessionId);
+          navigationStore.setActiveView("chat");
         }
       } catch (listError) {
         console.warn(
@@ -613,6 +690,7 @@ export const createSessionStore = () => {
 
       addSession(newSession);
       setActiveSession(sessionId);
+      navigationStore.setActiveView("chat");
       closeNewSessionModal();
       setNewSessionPath("");
       setNewSessionArgs("");
@@ -664,11 +742,16 @@ export const createSessionStore = () => {
 
     // Sessions
     getSessions,
+    getConnectedHosts,
+    getConnectedHost,
     getSession,
     getActiveSession,
     addSession,
+    addConnectedHost,
+    updateConnectedHost,
     updateSession,
     removeSession,
+    removeConnectedHost,
     setActiveSession,
 
     // Modal

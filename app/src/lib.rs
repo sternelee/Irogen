@@ -1761,6 +1761,56 @@ async fn get_node_info(state: State<'_, AppState>) -> Result<String, String> {
     Ok(format!("{:?}", quic_client.get_node_id().await))
 }
 
+/// Get local system stats (desktop only)
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn get_local_system_stats() -> Result<shared::SystemStats, String> {
+    shared::collect_system_stats().map_err(|e| e.to_string())
+}
+
+/// Get remote system stats via P2P
+#[tauri::command]
+async fn get_remote_system_stats(
+    control_session_id: String,
+    state: State<'_, AppState>,
+) -> Result<shared::SystemStats, String> {
+    let session = get_control_connection_session(&state, &control_session_id).await?;
+    let quic_client = {
+        let client_guard = state.quic_client.read().await;
+        match client_guard.as_ref() {
+            Some(c) => c.clone(),
+            None => return Err("QUIC client not initialized".to_string()),
+        }
+    };
+
+    // Create system stats request message
+    let payload = shared::MessagePayload::SystemInfo(Box::new(shared::SystemInfoMessage {
+        action: shared::SystemInfoAction::GetSystemStats,
+        request_id: Some(uuid::Uuid::new_v4().to_string()),
+    }));
+
+    let request = shared::Message::new(shared::MessageType::SystemInfo, "app".to_string(), payload)
+        .with_session(control_session_id.clone())
+        .requires_response();
+
+    // Send message and wait for response
+    let response = quic_client
+        .send_message_to_server_with_response(&session.connection_id, request)
+        .await
+        .map_err(|e| format!("Failed to get system stats: {}", e))?;
+
+    // Parse response
+    let response_msg = response.ok_or("No response received")?;
+
+    match response_msg.payload {
+        shared::MessagePayload::SystemInfo(msg) => match msg.action {
+            shared::SystemInfoAction::SystemStatsResponse(stats) => Ok(*stats),
+            _ => Err("Unexpected response type".to_string()),
+        },
+        _ => Err("Invalid response payload".to_string()),
+    }
+}
+
 #[tauri::command]
 async fn parse_session_ticket(ticket: String) -> Result<String, String> {
     // Use the same validation function
@@ -2011,6 +2061,62 @@ fn parse_response_payload(
     let raw = data.ok_or_else(|| format!("Missing {} response data", operation_name))?;
     serde_json::from_str(&raw)
         .map_err(|e| format!("Invalid {} response data: {}", operation_name, e))
+}
+
+fn parse_tcp_forwarding_sessions_payload(
+    data: Option<String>,
+    operation_name: &str,
+) -> Result<Vec<tcp_forwarding::TcpForwardingSession>, String> {
+    let payload = parse_response_payload(data, operation_name)?;
+    let sessions = payload
+        .get("sessions")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| format!("Missing {} sessions array", operation_name))?;
+
+    sessions
+        .iter()
+        .map(|session| {
+            let remote_target = session
+                .get("remote_target")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| format!("Missing {} remote_target", operation_name))?;
+
+            let (remote_host, remote_port_str) =
+                remote_target.rsplit_once(':').ok_or_else(|| {
+                    format!(
+                        "Invalid {} remote_target: {}",
+                        operation_name, remote_target
+                    )
+                })?;
+
+            let remote_port = remote_port_str.parse::<u16>().map_err(|e| {
+                format!(
+                    "Invalid {} remote_target port '{}': {}",
+                    operation_name, remote_port_str, e
+                )
+            })?;
+
+            Ok(tcp_forwarding::TcpForwardingSession {
+                id: session
+                    .get("id")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| format!("Missing {} session id", operation_name))?
+                    .to_string(),
+                local_addr: session
+                    .get("local_addr")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| format!("Missing {} local_addr", operation_name))?
+                    .to_string(),
+                remote_host: remote_host.to_string(),
+                remote_port,
+                status: session
+                    .get("status")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("running")
+                    .to_string(),
+            })
+        })
+        .collect()
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -2413,14 +2519,47 @@ async fn list_tcp_forwarding_sessions(
             Some(agent_session_id.clone()),
         )
         .with_session(agent_session_id.clone());
+        let request_id = message.id.clone();
 
-        let _ = send_message_via_client(
+        let response = send_message_via_client_with_response(
             &state,
             &session.connection_id,
             message,
+            &request_id,
             "TCP forwarding sessions list",
+            10,
         )
-        .await;
+        .await?;
+
+        if !response.success {
+            return Err(response
+                .message
+                .unwrap_or_else(|| "Failed to list TCP forwarding sessions".to_string()));
+        }
+
+        let parsed_sessions =
+            parse_tcp_forwarding_sessions_payload(response.data, "TCP forwarding sessions list")?;
+
+        let manager = state.tcp_forwarding_manager.lock().await;
+        for tcp_session in &parsed_sessions {
+            if let Err(err) = manager
+                .restore_session(
+                    tcp_session.id.clone(),
+                    tcp_session.local_addr.clone(),
+                    tcp_session.remote_host.clone(),
+                    tcp_session.remote_port,
+                )
+                .await
+            {
+                tracing::warn!(
+                    tcp_session_id = %tcp_session.id,
+                    error = %err,
+                    "Failed to restore local TCP forwarding session from remote list"
+                );
+            }
+        }
+
+        return Ok(parsed_sessions);
     }
 
     let manager = state.tcp_forwarding_manager.lock().await;
@@ -2444,19 +2583,37 @@ async fn stop_tcp_forwarding_session(
     let message = MessageBuilder::tcp_forwarding(
         "clawdchat_app".to_string(),
         TcpForwardingAction::StopSession {
-            session_id: tcp_session_id,
+            session_id: tcp_session_id.clone(),
         },
         Some(session_id.clone()),
     )
     .with_session(session_id.clone());
+    let request_id = message.id.clone();
 
-    send_message_via_client(
+    let response = send_message_via_client_with_response(
         &state,
         &session.connection_id,
         message,
+        &request_id,
         "TCP forwarding session stop",
+        10,
     )
     .await?;
+
+    if !response.success {
+        return Err(response
+            .message
+            .unwrap_or_else(|| "Failed to stop TCP forwarding session".to_string()));
+    }
+
+    let manager = state.tcp_forwarding_manager.lock().await;
+    if let Err(err) = manager.stop_session(&tcp_session_id).await {
+        tracing::warn!(
+            tcp_session_id = %tcp_session_id,
+            error = %err,
+            "Failed to stop local TCP forwarding session state after remote stop"
+        );
+    }
 
     Ok(())
 }
@@ -4039,6 +4196,10 @@ pub fn run() {
             local_load_agent_history,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             get_permission_mode,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            get_local_system_stats,
+            // Remote System Stats
+            get_remote_system_stats,
             // Remote Agent Control Commands
             send_agent_control,
             // macOS Panel Commands
