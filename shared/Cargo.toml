@@ -19,6 +19,7 @@ std = [
   "rand_core",
   "sha2",
   "chrono",
+  "sysinfo",
 ]
 # Mobile: minimal dependencies for remote agent sessions
 mobile = [
@@ -69,6 +70,9 @@ bytes = { workspace = true }
 
 # WebSocket support - only in std
 tokio-tungstenite = { workspace = true, optional = true }
+
+# System monitoring - only in std
+sysinfo = { version = "0.33", optional = true }
 
 # OpenClaw Gateway support - only in std
 ed25519-dalek = { version = "2.0", features = ["rand_core"], optional = true }

@@ -38,7 +38,7 @@ pub use permission_handler::{
     ApprovalDecision, AutoApprovalDecision, CompletedPermissionEntry, PendingPermissionEntry,
     PermissionHandler, PermissionHandlerState, PermissionMode, PermissionStatus,
 };
-pub use slash_commands::{parse_slash_command, process_builtin_command, BuiltinCommandResult};
+pub use slash_commands::{BuiltinCommandResult, parse_slash_command, process_builtin_command};
 
 /// Session kind enum for unified agent management.
 ///

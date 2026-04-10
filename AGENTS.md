@@ -1,12 +1,14 @@
 # Repository Guidelines
 
+**Irogen** is a multi-agent local/remote management platform (Rust + SolidJS + Tauri).
+
 ## Project Structure
 
 - `cli/` - Rust CLI binary (`irogen`), host command and terminal handling
 - `app/` - Tauri backend (Rust) for desktop/mobile app with agent session management
 - `shared/` - Rust networking and protocol library (iroh QUIC) shared by CLI/app
-- `src/` - SolidJS frontend (Vite + TailwindCSS v4 + DaisyUI + Kobalte primitives)
-- `web/` - Cloudflare Workers SSR frontend (TanStack Start + SolidJS)
+- `src/` - SolidJS frontend for desktop/mobile (Vite + TailwindCSS v4 + DaisyUI + Kobalte)
+- `web/` - **Separate** Cloudflare Workers SSR app (TanStack Start + SolidJS) - see Web section below
 - `browser/` - WebAssembly browser client
 - `plugins/` - Vite/Tauri build helpers
 
@@ -28,7 +30,7 @@ pnpm tauri:android:dev|build   # Android (macOS)
 pnpm tauri:ios:dev|build       # iOS (macOS)
 ```
 
-### Web (Cloudflare Workers)
+### Web (Cloudflare Workers - Separate Workspace)
 
 ```bash
 cd web && pnpm install
@@ -79,7 +81,6 @@ cargo clippy --workspace -- -D warnings  # Lint with warnings as errors
 cd web && pnpm lint                      # ESLint
 cd web && pnpm format                     # Prettier check
 cd web && pnpm check                      # Prettier write + ESLint fix
-pnpm tsc                                  # TypeScript check
 ```
 
 ## Code Style Guidelines
@@ -190,6 +191,12 @@ export const Card: Component<CardProps> = (props) => {
 - Cloudflare Workers SSR with `@tanstack/solid-start`
 - Tailwind's `@layer` directive for custom styles
 
+### Frontend TypeScript (src/)
+
+```bash
+pnpm tsc              # TypeScript check (run before committing)
+```
+
 ## Commit Guidelines
 
 - Follow Conventional Commits: `feat:`, `fix:`, `refactor:`, `chore:` with optional scope
@@ -198,14 +205,17 @@ export const Card: Component<CardProps> = (props) => {
 
 ## Security
 
-- Never commit secrets (e.g., `clawdchat_secret_key`, `.riterm_client_key`)
+- Never commit secrets (API keys, client keys, tokens)
 - Use environment variables for sensitive configuration
 - Regenerate keys if compromised
+- `shared/src/message_protocol.rs` uses bincode + JSON for wire protocol; `chacha20poly1305` for encryption
 
 ## Architecture Notes
 
 - CLI host uses iroh QUIC for P2P connections with relay support
-- Message protocol: `shared/src/message_protocol.rs`
+- Message protocol: `shared/src/message_protocol.rs` (bincode + JSON serialization)
 - Agent management: `shared/src/agent.rs` with `AgentFactory`
 - Frontend uses `sessionStore` pattern for multi-session management
 - Permission modes: AlwaysAsk, AcceptEdits, Plan, AutoApprove
+- Desktop/mobile split: `app/Cargo.toml` gates heavy dependencies (portable-pty, agent-client-protocol) behind `cfg(not(any(target_os = "android", target_os = "ios")))`
+- Web workspace (`web/`) is a separate TanStack Start + Cloudflare Workers app with own `pnpm` workspace

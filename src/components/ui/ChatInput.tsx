@@ -238,7 +238,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   return (
     <div
       class={cn(
-        "flex flex-col gap-1 sm:gap-1.5 px-1.5 sm:px-4 pt-1.5 sm:pt-3 pb-[max(env(safe-area-inset-bottom,0.65rem),0.65rem)] sm:pb-3 bg-base-100/95 backdrop-blur-md sticky bottom-0 z-20 transition-all duration-300",
+        "flex flex-col gap-1 sm:gap-1.5 px-1.5 sm:px-4 pt-1.5 sm:pt-3 pb-[max(env(safe-area-inset-bottom,0.65rem),0.65rem)] sm:pb-3 bg-base-100/95 backdrop-blur-md sticky bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] md:bottom-0 z-20 transition-all duration-300",
         focused() && "bg-base-100",
         props.class,
       )}

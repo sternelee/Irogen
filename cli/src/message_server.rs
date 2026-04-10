@@ -543,17 +543,16 @@ impl MessageHandler for SystemControlMessageHandler {
                             "gemini" => "@google/gemini-cli",
                             "cursor" => {
                                 return Ok(Some(
-                                    message.create_response(MessagePayload::Response(
-                                        ResponseMessage {
-                                            request_id: response_request_id.clone(),
-                                            success: false,
-                                            data: None,
-                                            message: Some(
-                                                "Cursor does not support ACP auto-install in Irogen"
-                                                    .to_string(),
-                                            ),
-                                        },
-                                    )),
+                                    message
+                                        .create_response(MessagePayload::Response(ResponseMessage {
+                                        request_id: response_request_id.clone(),
+                                        success: false,
+                                        data: None,
+                                        message: Some(
+                                            "Cursor does not support ACP auto-install in Irogen"
+                                                .to_string(),
+                                        ),
+                                    })),
                                 ));
                             }
                             "openclaw" => {
@@ -1194,6 +1193,41 @@ impl MessageHandler for SystemInfoMessageHandler {
                     SystemInfoAction::SystemInfoResponse(_) => {
                         // 服务器端不应该收到响应消息
                         warn!("Received unexpected SystemInfoResponse message");
+                        return Ok(None);
+                    }
+                    SystemInfoAction::GetSystemStats => {
+                        info!("Received system stats request");
+                        match shared::collect_system_stats() {
+                            Ok(stats) => {
+                                let response_payload = MessagePayload::SystemInfo(Box::new(
+                                    shared::message_protocol::SystemInfoMessage {
+                                        action: SystemInfoAction::SystemStatsResponse(Box::new(
+                                            stats,
+                                        )),
+                                        request_id: system_info_msg.request_id.clone(),
+                                    },
+                                ));
+                                return Ok(Some(message.create_response(response_payload)));
+                            }
+                            Err(e) => {
+                                error!("Failed to collect system stats: {}", e);
+                                return Ok(Some(message.create_response(
+                                    MessagePayload::Response(ResponseMessage {
+                                        request_id: message.id.clone(),
+                                        success: false,
+                                        data: None,
+                                        message: Some(format!(
+                                            "Failed to collect system stats: {}",
+                                            e
+                                        )),
+                                    }),
+                                )));
+                            }
+                        }
+                    }
+                    SystemInfoAction::SystemStatsResponse(_) => {
+                        // 服务器端不应该收到响应消息
+                        warn!("Received unexpected SystemStatsResponse message");
                         return Ok(None);
                     }
                 }

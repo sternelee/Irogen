@@ -361,6 +361,58 @@ pub enum SystemInfoAction {
     GetSystemInfo,
     /// 响应系统信息
     SystemInfoResponse(Box<SystemInfo>),
+    /// 获取系统运行状态
+    GetSystemStats,
+    /// 响应系统运行状态
+    SystemStatsResponse(Box<SystemStats>),
+}
+
+/// 系统运行状态
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemStats {
+    /// CPU 使用率 (0-100)
+    pub cpu_usage: f32,
+    /// 内存使用率 (0-100)
+    pub memory_usage: f32,
+    /// 总内存 (字节)
+    pub total_memory: u64,
+    /// 已用内存 (字节)
+    pub used_memory: u64,
+    /// 磁盘使用率 (0-100)
+    pub disk_usage: f32,
+    /// 总磁盘空间 (字节)
+    pub total_disk: u64,
+    /// 已用磁盘空间 (字节)
+    pub used_disk: u64,
+    /// 系统运行时间 (秒)
+    pub uptime: u64,
+    /// 负载平均值 (1分钟, 5分钟, 15分钟)
+    pub load_avg: Option<LoadAverage>,
+    /// 网络统计
+    pub network_stats: Option<NetworkStats>,
+    /// 时间戳
+    pub timestamp: u64,
+}
+
+/// 负载平均值
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadAverage {
+    pub one: f64,
+    pub five: f64,
+    pub fifteen: f64,
+}
+
+/// 网络统计
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkStats {
+    /// 接收的字节数
+    pub bytes_received: u64,
+    /// 发送的字节数
+    pub bytes_sent: u64,
+    /// 接收的包数
+    pub packets_received: u64,
+    /// 发送的包数
+    pub packets_sent: u64,
 }
 
 /// 系统信息结构
@@ -995,10 +1047,17 @@ pub enum BuiltinCommand {
     Init { description: Option<String> },
     /// 代码审查 - 审查指定文件或当前更改
     Review { target: Option<String> },
+    /// 代码审查（审查分支）
+    ReviewBranch,
+    /// 代码审查（审查提交）
+    ReviewCommit,
     /// 提交更改 - 生成提交信息并创建 git commit
     Commit { message: Option<String> },
     /// 循环执行 - 重复执行某个任务
-    Loop { task: String, iterations: Option<u32> },
+    Loop {
+        task: String,
+        iterations: Option<u32>,
+    },
     /// 添加目录到上下文 - 将目录内容纳入对话上下文
     AddDir { path: String },
     /// 分支操作 - 创建或切换分支
@@ -1013,6 +1072,8 @@ pub enum BuiltinCommand {
     Plan { description: String },
     /// 重命名会话
     Rename { new_name: String },
+    /// 登出 - 结束会话
+    Logout,
 }
 
 /// 斜杠命令响应

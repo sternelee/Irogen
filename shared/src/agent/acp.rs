@@ -1011,11 +1011,8 @@ pub async fn list_agent_history(
                                     .terminal(true),
                             )
                             .client_info(
-                                acp::Implementation::new(
-                                    "irogen-cli",
-                                    env!("CARGO_PKG_VERSION"),
-                                )
-                                .title("ClawdChat CLI"),
+                                acp::Implementation::new("irogen-cli", env!("CARGO_PKG_VERSION"))
+                                    .title("ClawdChat CLI"),
                             ),
                     ),
                 )

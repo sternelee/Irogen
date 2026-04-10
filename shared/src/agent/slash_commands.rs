@@ -110,6 +110,56 @@ Format your review with clear sections and bullet points."#
             }
         }
 
+        BuiltinCommand::ReviewBranch => {
+            BuiltinCommandResult {
+                prompt: r#"Please conduct a code review for the current branch.
+
+Run the following commands to gather information:
+1. `git log main..HEAD --oneline` to see commits on this branch
+2. `git diff main..HEAD` to see all changes
+3. Analyze the changes and provide a thorough code review.
+
+Focus on:
+- What this branch introduces and its purpose
+- Code quality and style
+- Potential issues or risks
+- Compliance with best practices
+- Suggestions for improvement
+
+Format your review with clear sections."#.to_string(),
+                system_prompt: Some(
+                    "You are a strict code review expert, adept at identifying potential issues and providing constructive feedback."
+                        .to_string(),
+                ),
+                requires_confirmation: false,
+            }
+        }
+
+        BuiltinCommand::ReviewCommit => {
+            BuiltinCommandResult {
+                prompt: r#"Please conduct a code review for the latest commit.
+
+Run the following command to see the commit:
+1. `git log -1 --stat` to see commit summary
+2. `git show HEAD` to see the full commit diff
+3. Analyze the changes and provide a thorough code review.
+
+Focus on:
+- What this commit introduces
+- Code quality and style
+- Potential issues or risks
+- Compliance with best practices
+- Suggestions for improvement
+
+Format your review with clear sections."#.to_string(),
+                system_prompt: Some(
+                    "You are a strict code review expert, adept at identifying potential issues and providing constructive feedback."
+                        .to_string(),
+                ),
+                requires_confirmation: false,
+            }
+        }
+
         BuiltinCommand::Commit { message } => {
             if let Some(msg) = message {
                 BuiltinCommandResult {
@@ -322,6 +372,14 @@ Please appropriately reference this name in subsequent responses."#,
             }
         }
 
+        BuiltinCommand::Logout => {
+            BuiltinCommandResult {
+                prompt: String::new(),
+                system_prompt: None,
+                requires_confirmation: false,
+            }
+        }
+
         // Other commands are not processed through this handler
         _ => BuiltinCommandResult {
             prompt: String::new(),
@@ -353,9 +411,12 @@ pub fn parse_slash_command(input: &str) -> Option<BuiltinCommand> {
         "review" => Some(BuiltinCommand::Review {
             target: args.join(" ").trim().to_string().into(),
         }),
+        "review-branch" => Some(BuiltinCommand::ReviewBranch),
+        "review-commit" => Some(BuiltinCommand::ReviewCommit),
         "commit" => Some(BuiltinCommand::Commit {
             message: args.join(" ").trim().to_string().into(),
         }),
+        "logout" => Some(BuiltinCommand::Logout),
         "loop" => {
             // Parse format: /loop [n] <task>
             if args.is_empty() {
@@ -430,6 +491,18 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_review_branch() {
+        let cmd = parse_slash_command("/review-branch");
+        assert!(matches!(cmd, Some(BuiltinCommand::ReviewBranch)));
+    }
+
+    #[test]
+    fn test_parse_review_commit() {
+        let cmd = parse_slash_command("/review-commit");
+        assert!(matches!(cmd, Some(BuiltinCommand::ReviewCommit)));
+    }
+
+    #[test]
     fn test_parse_commit() {
         let cmd = parse_slash_command("/commit fix: bug in parser");
         assert!(matches!(cmd, Some(BuiltinCommand::Commit { .. })));
@@ -439,5 +512,11 @@ mod tests {
     fn test_parse_clear() {
         let cmd = parse_slash_command("/clear");
         assert!(matches!(cmd, Some(BuiltinCommand::Clear)));
+    }
+
+    #[test]
+    fn test_parse_logout() {
+        let cmd = parse_slash_command("/logout");
+        assert!(matches!(cmd, Some(BuiltinCommand::Logout)));
     }
 }

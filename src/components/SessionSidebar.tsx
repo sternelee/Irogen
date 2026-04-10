@@ -5,12 +5,18 @@
  * Acts as navigation menu - no session list
  */
 
+import { Show, type Component } from "solid-js";
 import {
-  Show,
-  type Component,
-} from "solid-js";
-import { FiX, FiActivity, FiServer, FiMessageSquare, FiBox } from "solid-icons/fi";
-import { navigationStore, type NavigationView } from "../stores/navigationStore";
+  FiX,
+  FiActivity,
+  FiServer,
+  FiMessageSquare,
+  FiBox,
+} from "solid-icons/fi";
+import {
+  navigationStore,
+  type NavigationView,
+} from "../stores/navigationStore";
 import { sessionStore } from "../stores/sessionStore";
 
 // ============================================================================
@@ -46,17 +52,22 @@ const NavItemButton: Component<NavItemButtonProps> = (props) => {
   return (
     <button
       type="button"
-      class={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200
+      class={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 border
         ${
           props.isActive
-            ? "bg-primary/10 text-primary border border-primary/20"
-            : "text-base-content/60 hover:bg-base-content/5 hover:text-base-content"
+            ? "bg-primary/10 text-primary border-primary/20"
+            : "text-base-content/60 hover:bg-base-content/5 hover:text-base-content border-transparent"
         }`}
       onClick={props.onClick}
     >
       <Icon size={20} class={props.isActive ? "text-primary" : ""} />
       <span class="font-medium text-sm">{props.item.label}</span>
-      <Show when={props.item.id === "chat" && sessionStore.getActiveSessions().length > 0}>
+      <Show
+        when={
+          props.item.id === "chat" &&
+          sessionStore.getActiveSessions().length > 0
+        }
+      >
         <span class="ml-auto w-2 h-2 rounded-full bg-primary animate-pulse" />
       </Show>
     </button>
@@ -133,8 +144,12 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
       <div class="px-4 py-3 border-t border-base-content/10 bg-base-100/50">
         <div class="flex items-center gap-2">
           <span class="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-tighter opacity-40">
-            <span class={`w-2 h-2 rounded-full ${sessionStore.state.connectionState === "connected" ? "bg-success shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-base-content/30"}`} />
-            {sessionStore.state.connectionState === "connected" ? "Connected" : "Disconnected"}
+            <span
+              class={`w-2 h-2 rounded-full ${sessionStore.state.connectionState === "connected" ? "bg-success shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-base-content/30"}`}
+            />
+            {sessionStore.state.connectionState === "connected"
+              ? "Connected"
+              : "Disconnected"}
           </span>
         </div>
       </div>
