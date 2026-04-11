@@ -1881,6 +1881,28 @@ export function ChatView(props: ChatViewProps) {
             {/* Header */}
             <div class="compact-mobile-controls z-20 sticky top-0 flex h-16 shrink-0 items-center justify-between border-b border-base-content/10 bg-base-100/80 px-4 sm:px-6 shadow-sm backdrop-blur-lg">
               <div class="flex items-center gap-3 overflow-hidden">
+                {/* Hamburger menu - only visible on mobile */}
+                <label
+                  for="drawer"
+                  aria-label="Open menu"
+                  class="btn btn-square btn-ghost drawer-button lg:hidden"
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    class="inline-block h-5 w-5 stroke-current"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 6h16M4 12h16M4 18h16"
+                    ></path>
+                  </svg>
+                </label>
                 <div class="flex items-center gap-2.5 min-w-0">
                   <div class="hidden rounded-xl bg-primary/10 p-2 text-primary shadow-inner ring-1 ring-primary/10 xs:flex shrink-0">
                     {getAgentIcon()}

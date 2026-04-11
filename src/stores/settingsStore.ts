@@ -217,10 +217,14 @@ export const translations = {
     "connection.status.failed": "Connection Failed",
 
     // Settings
+    "settings.description": "Customize your Irogen experience",
+    "settings.appearance": "Appearance",
     "settings.theme": "Theme",
     "settings.language": "Language",
     "settings.fontSize": "Font Size",
     "settings.animations": "Enable Animations",
+    "settings.about": "About",
+    "settings.aboutDesc": "Multi-agent local/remote management platform",
     "settings.scanLines": "Enable Scan Lines",
     "settings.matrixRain": "Enable Matrix Rain",
     "settings.soundEffects": "Sound Effects",
@@ -230,6 +234,11 @@ export const translations = {
     "settings.maxHistory": "Max History Entries",
     "settings.networkTimeout": "Network Timeout (ms)",
     "settings.retryAttempts": "Retry Attempts",
+
+    // Setup Guide
+    "setupGuide.title": "Setup Guide",
+    "setupGuide.settingsDesc": "Learn how to set up Irogen on your devices",
+    "setupGuide.open": "Open Setup Guide",
 
     // Themes
     "theme.dark": "Dark",
@@ -279,16 +288,25 @@ export const translations = {
     "connection.status.failed": "连接失败",
 
     // Settings
+    "settings.description": "自定义您的 Irogen 体验",
+    "settings.appearance": "外观",
     "settings.theme": "主题",
     "settings.language": "语言",
     "settings.fontSize": "字体大小",
     "settings.animations": "启用动画",
+    "settings.about": "关于",
+    "settings.aboutDesc": "多代理本地/远程管理平台",
     "settings.scanLines": "启用扫描线",
     "settings.matrixRain": "启用矩阵雨",
     "settings.soundEffects": "声音效果",
     "settings.autoConnect": "自动连接",
     "settings.rememberSession": "记住上次会话",
     "settings.saveHistory": "保存连接历史",
+
+    // Setup Guide
+    "setupGuide.title": "设置指南",
+    "setupGuide.settingsDesc": "了解如何在您的设备上设置 Irogen",
+    "setupGuide.open": "打开设置指南",
     "settings.maxHistory": "最大历史条目",
     "settings.networkTimeout": "网络超时 (毫秒)",
     "settings.retryAttempts": "重试次数",

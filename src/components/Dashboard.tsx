@@ -279,6 +279,28 @@ const PageHeader: Component<PageHeaderProps> = (props) => {
   return (
     <header class="compact-mobile-controls z-20 flex min-h-16 shrink-0 items-center justify-between gap-4 border-b border-base-content/10 bg-base-100/80 px-4 py-3 backdrop-blur-lg md:px-6">
       <div class="flex items-center gap-3">
+        {/* Hamburger menu - only visible on mobile */}
+        <label
+          for="drawer"
+          aria-label="Open menu"
+          class="btn btn-square btn-ghost drawer-button lg:hidden"
+        >
+          <svg
+            width="20"
+            height="20"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            class="inline-block h-5 w-5 stroke-current"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 6h16M4 12h16M4 18h16"
+            ></path>
+          </svg>
+        </label>
         <div class="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
           <Icon class="w-5 h-5 text-primary-content" />
         </div>
@@ -1104,13 +1126,37 @@ const ProxiesView: Component = () => {
     <div class="flex min-h-0 flex-1 flex-col bg-base-100 h-full">
       <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-base-100">
         <header class="flex items-center justify-between gap-3 border-b border-base-content/10 bg-base-100/80 px-4 py-3 backdrop-blur-lg md:px-6">
-          <div class="min-w-0">
-            <p class="text-[10px] font-black uppercase tracking-[0.3em] text-primary/80">
-              TCP Preview
-            </p>
-            <h2 class="truncate text-sm font-bold md:text-base">
-              {selectedHost()?.hostname || "TCP Proxies"}
-            </h2>
+          <div class="flex items-center gap-3 min-w-0">
+            {/* Hamburger menu - only visible on mobile */}
+            <label
+              for="drawer"
+              aria-label="Open menu"
+              class="btn btn-square btn-ghost drawer-button lg:hidden"
+            >
+              <svg
+                width="20"
+                height="20"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                class="inline-block h-5 w-5 stroke-current"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 6h16M4 12h16M4 18h16"
+                ></path>
+              </svg>
+            </label>
+            <div class="min-w-0">
+              <p class="text-[10px] font-black uppercase tracking-[0.3em] text-primary/80">
+                TCP Preview
+              </p>
+              <h2 class="truncate text-sm font-bold md:text-base">
+                {selectedHost()?.hostname || "TCP Proxies"}
+              </h2>
+            </div>
           </div>
           <Show when={previewProxy()?.status === "running"}>
             <a

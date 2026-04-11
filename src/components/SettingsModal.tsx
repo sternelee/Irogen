@@ -68,6 +68,7 @@ export function SettingsModal(props: SettingsModalProps) {
             <Select
               value={settingsStore.get().fontSize}
               onChange={(val) => settingsStore.setFontSize(val as FontSizeType)}
+              class="w-fit max-w-20 ml-auto"
             >
               <option value="small">{t("fontSize.small")}</option>
               <option value="medium">{t("fontSize.medium")}</option>

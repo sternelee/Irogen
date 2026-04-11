@@ -144,8 +144,35 @@ export const AppLayout: Component = () => {
   };
 
   const renderChatEmptyState = () => (
-    <div class="flex h-full min-h-0 flex-1 overflow-y-auto bg-base-100">
-      <div class="flex min-h-full w-full items-center justify-center p-6">
+    <div class="flex flex-col h-full min-h-0 flex-1 overflow-hidden bg-base-100">
+      {/* Empty State Header with Hamburger */}
+      <header class="compact-mobile-controls z-20 flex min-h-16 shrink-0 items-center justify-between gap-4 border-b border-base-content/10 bg-base-100/80 px-4 py-3 backdrop-blur-lg md:px-6">
+        <div class="flex items-center gap-3">
+          <label
+            for="drawer"
+            aria-label="Open menu"
+            class="btn btn-square btn-ghost drawer-button lg:hidden"
+          >
+            <svg
+              width="20"
+              height="20"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              class="inline-block h-5 w-5 stroke-current"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 6h16M4 12h16M4 18h16"
+              ></path>
+            </svg>
+          </label>
+          <h1 class="text-xl font-bold">Chat</h1>
+        </div>
+      </header>
+      <div class="flex flex-1 items-center justify-center p-6">
         <div class="text-center">
           <p class="text-xl font-semibold text-base-content/60">
             No agent selected
@@ -305,32 +332,6 @@ export const AppLayout: Component = () => {
             </div>
           </div>
         </Show>
-
-        {/* Mobile Header with Menu Button - hidden on lg and above */}
-        <header class="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-base-content/10 bg-base-100 px-3 pt-safe shrink-0 lg:hidden">
-          <label
-            for="drawer"
-            aria-label="Open menu"
-            class="btn btn-square btn-ghost drawer-button"
-          >
-            <svg
-              width="20"
-              height="20"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              class="inline-block h-5 w-5 stroke-current"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 6h16M4 12h16M4 18h16"
-              ></path>
-            </svg>
-          </label>
-          <span class="text-sm font-bold">Irogen</span>
-        </header>
 
         {/* Main Content Area */}
         <main class="flex-1 flex min-h-0 flex-col min-w-0">

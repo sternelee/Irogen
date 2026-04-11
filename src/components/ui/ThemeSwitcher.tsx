@@ -2,6 +2,7 @@ import { createSignal, createEffect, onMount, For, Show } from "solid-js";
 import { cn } from "~/lib/utils";
 import { FiChevronDown } from "solid-icons/fi";
 import { i18nStore } from "../../stores/i18nStore";
+import { settingsStore, type LanguageType } from "../../stores/settingsStore";
 
 interface ThemeSwitcherProps {
   class?: string;
@@ -157,6 +158,14 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
 export function LanguageSwitcher(props: LanguageSwitcherProps) {
   const t = i18nStore.t;
 
+  // Sync language from settings store
+  const currentLang = () => settingsStore.get().language;
+
+  const handleSetLanguage = (lang: LanguageType) => {
+    i18nStore.setLocale(lang as "en" | "zh-CN");
+    settingsStore.setLanguage(lang);
+  };
+
   return (
     <div
       class={cn(
@@ -168,11 +177,11 @@ export function LanguageSwitcher(props: LanguageSwitcherProps) {
         type="button"
         class={cn(
           "language-switcher-compact__button rounded-md px-1.5 py-1 text-[11px] font-bold transition-colors sm:px-2.5 sm:py-1.5 sm:text-xs",
-          i18nStore.locale() === "en"
+          currentLang() === "en"
             ? "bg-primary text-primary-content"
             : "text-base-content/60 hover:bg-base-content/5",
         )}
-        onClick={() => i18nStore.setLocale("en")}
+        onClick={() => handleSetLanguage("en")}
         title={t("common.english")}
       >
         EN
@@ -181,11 +190,11 @@ export function LanguageSwitcher(props: LanguageSwitcherProps) {
         type="button"
         class={cn(
           "language-switcher-compact__button rounded-md px-1.5 py-1 text-[11px] font-bold transition-colors sm:px-2.5 sm:py-1.5 sm:text-xs",
-          i18nStore.locale() === "zh-CN"
+          currentLang() === "zh-CN"
             ? "bg-primary text-primary-content"
             : "text-base-content/60 hover:bg-base-content/5",
         )}
-        onClick={() => i18nStore.setLocale("zh-CN")}
+        onClick={() => handleSetLanguage("zh-CN")}
         title={t("common.chinese")}
       >
         中

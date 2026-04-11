@@ -37,14 +37,40 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
 
   return (
     <div class={props.class}>
-      <div class="flex flex-col gap-6 p-4 sm:p-6 max-w-2xl mx-auto">
-        {/* Header */}
-        <div>
-          <h1 class="text-2xl font-bold">{t("settings.title")}</h1>
-          <p class="text-sm opacity-60 mt-1">
-            {t("settings.description") || "Customize your Irogen experience"}
-          </p>
+      {/* Page Header with Hamburger Menu */}
+      <header class="compact-mobile-controls z-20 flex min-h-16 shrink-0 items-center justify-between gap-4 border-b border-base-content/10 bg-base-100/80 px-4 py-3 backdrop-blur-lg md:px-6">
+        <div class="flex items-center gap-3">
+          {/* Hamburger menu - only visible on mobile */}
+          <label
+            for="drawer"
+            aria-label="Open menu"
+            class="btn btn-square btn-ghost drawer-button lg:hidden"
+          >
+            <svg
+              width="20"
+              height="20"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              class="inline-block h-5 w-5 stroke-current"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 6h16M4 12h16M4 18h16"
+              ></path>
+            </svg>
+          </label>
+          <h1 class="text-xl font-bold">{t("settings.title")}</h1>
         </div>
+      </header>
+
+      <div class="flex flex-col gap-6 p-4 sm:p-6 max-w-2xl mx-auto">
+        {/* Description */}
+        <p class="text-sm opacity-60">
+          {t("settings.description") || "Customize your Irogen experience"}
+        </p>
 
         {/* Appearance Section */}
         <div class="card bg-base-200 shadow">
@@ -54,14 +80,14 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               {t("settings.appearance") || "Appearance"}
             </h2>
 
-            {/* Theme Switcher */}
-            <div class="form-control">
+            {/* Theme Switcher - Label left, switcher right */}
+            <div class="flex items-center justify-between">
               <Label>{t("settings.theme")}</Label>
-              <ThemeSwitcher class="w-full" />
+              <ThemeSwitcher />
             </div>
 
             {/* Font Size */}
-            <div class="form-control">
+            <div class="flex items-center justify-between">
               <Label>{t("settings.fontSize")}</Label>
               <Select
                 value={settingsStore.get().fontSize}
@@ -76,14 +102,12 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
             </div>
 
             {/* Animations */}
-            <div class="form-control">
-              <div class="label">
-                <Label>{t("settings.animations")}</Label>
-                <Switch
-                  checked={settingsStore.get().enableAnimations}
-                  onChange={() => settingsStore.toggleAnimations()}
-                />
-              </div>
+            <div class="flex items-center justify-between">
+              <Label>{t("settings.animations")}</Label>
+              <Switch
+                checked={settingsStore.get().enableAnimations}
+                onChange={() => settingsStore.toggleAnimations()}
+              />
             </div>
           </div>
         </div>
@@ -96,9 +120,9 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               {t("settings.language") || "Language"}
             </h2>
 
-            <div class="form-control">
+            <div class="flex items-center justify-between">
               <Label>{t("settings.language")}</Label>
-              <LanguageSwitcher class="w-full justify-start" />
+              <LanguageSwitcher />
             </div>
           </div>
         </div>
