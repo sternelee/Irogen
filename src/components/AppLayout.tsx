@@ -261,7 +261,7 @@ export const AppLayout: Component = () => {
 
       {/* Setup Guide - Full Screen Overlay */}
       <Show when={showSetupGuide()}>
-        <div class="fixed inset-0 z-70 bg-base-100">
+        <div class="fixed inset-0 z-70 bg-base-100 pb-safe">
           <SetupGuide
             onClose={() => setShowSetupGuide(false)}
             onSkip={() => setShowSetupGuide(false)}
