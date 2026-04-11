@@ -40,6 +40,7 @@ import {
   FiChevronDown,
   FiTrash2,
   FiExternalLink,
+  FiClock,
 } from "solid-icons/fi";
 import { Button, Input, Label } from "./ui/primitives";
 import { ConnectHostModal } from "./ConnectHostModal";
@@ -49,6 +50,7 @@ import {
   type TcpForwardingSession,
 } from "../stores/tcpForwardingStore";
 import { cn } from "../lib/utils";
+import { HistorySelectionModal } from "./HistorySelectionModal";
 
 // ============================================================================
 // Types
@@ -400,6 +402,7 @@ interface HostCardProps {
   onShowStats: () => void;
   onAgentClick: (sessionId: string) => void;
   onAddAgent: (host: HostNode) => void;
+  onLoadHistory: () => void;
 }
 
 const HostCard: Component<HostCardProps> = (props) => {
@@ -443,6 +446,20 @@ const HostCard: Component<HostCardProps> = (props) => {
             <FiPlus size={12} class="mr-1" />
             Agent
           </Button>
+          <Show when={props.host.machineId === "local"}>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7 px-2 text-[10px] font-label uppercase tracking-widest border border-base-content/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onLoadHistory();
+              }}
+            >
+              <FiClock size={12} class="mr-1" />
+              History
+            </Button>
+          </Show>
           <Button
             variant="ghost"
             size="sm"
@@ -517,6 +534,8 @@ const TopologyView: Component = () => {
   const [isLoading, setIsLoading] = createSignal(false);
   const [connectModalOpen, setConnectModalOpen] = createSignal(false);
   const [showSetupGuide, setShowSetupGuide] = createSignal(false);
+  const [historyModalOpen, setHistoryModalOpen] = createSignal(false);
+  const [historyHost, setHistoryHost] = createSignal<HostNode | null>(null);
 
   // Group sessions by host machine
   const hosts = createMemo(() => {
@@ -616,6 +635,19 @@ const TopologyView: Component = () => {
     );
   };
 
+  const handleLoadHistory = (host: HostNode) => {
+    const isLocal = host.machineId === "local";
+    if (!isLocal) {
+      notificationStore.error(
+        "History loading is only available for local agents",
+        "Error",
+      );
+      return;
+    }
+    setHistoryHost(host);
+    setHistoryModalOpen(true);
+  };
+
   return (
     <div class="flex min-h-0 flex-1 flex-col bg-base-100 h-full">
       <PageHeader icon={FiTerminal} section="Topology" />
@@ -690,11 +722,19 @@ const TopologyView: Component = () => {
                   onShowStats={() => handleShowStats(host)}
                   onAgentClick={handleAgentClick}
                   onAddAgent={handleAddAgent}
+                  onLoadHistory={() => handleLoadHistory(host)}
                 />
               )}
             </For>
           </Show>
         </div>
+
+        <HistorySelectionModal
+          isOpen={historyModalOpen()}
+          onClose={() => setHistoryModalOpen(false)}
+          hostMachineId={historyHost()?.machineId}
+          defaultProjectPath={historyHost()?.sessions[0]?.currentDir}
+        />
       </div>
     </div>
   );
