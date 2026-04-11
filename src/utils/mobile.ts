@@ -1027,9 +1027,19 @@ export function initializeMobileUtils(
   }, { passive: true });
 
   // Simplified keyboard state management
-  MobileKeyboard.onVisibilityChange((visible, _keyboardInfo) => {
+  MobileKeyboard.onVisibilityChange((visible, keyboardInfo) => {
     document.documentElement.classList.toggle("keyboard-visible", visible);
-    
+
+    // Update CSS variable for keyboard height
+    if (visible && keyboardInfo) {
+      document.documentElement.style.setProperty(
+        "--keyboard-height",
+        `${keyboardInfo.height}px`,
+      );
+    } else {
+      document.documentElement.style.setProperty("--keyboard-height", "0px");
+    }
+
     // Always reset scroll to 0 to prevent OS-level jumping
     window.scrollTo(0, 0);
     document.body.scrollTop = 0;

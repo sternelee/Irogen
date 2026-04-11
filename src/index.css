@@ -863,6 +863,28 @@ textarea:focus {
     bottom: var(--keyboard-height, 0px);
   }
 
+  /* Mobile keyboard input adjustment */
+  .mobile-keyboard-adjust {
+    transition: bottom 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .keyboard-visible .mobile-keyboard-adjust {
+    bottom: calc(4rem + env(safe-area-inset-bottom, 0px) + var(--keyboard-height, 0px));
+  }
+
+  @media (min-width: 768px) {
+    .keyboard-visible .mobile-keyboard-adjust {
+      bottom: 0;
+    }
+  }
+
+  /* Message area keyboard adjustment - reduce padding when keyboard visible */
+  @media (max-width: 767px) {
+    .keyboard-visible .pb-36 {
+      padding-bottom: calc(1rem + var(--keyboard-height, 0px));
+    }
+  }
+
   /* Enhanced input field optimizations */
   @media (max-width: 768px) {
     /* Prevent iOS automatic zoom on input focus */
