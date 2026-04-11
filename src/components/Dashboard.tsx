@@ -221,10 +221,24 @@ const getProxyPreviewUrl = (localAddr: string): string => {
 
 const DashboardEmptyState: Component<{
   title: string;
+  description?: string;
+  action?: { label: string; onClick: () => void };
 }> = (props) => {
   return (
     <div class="flex flex-col items-center justify-center px-6 py-16 text-center md:py-24">
-      <p class="text-lg font-semibold text-base-content/60">{props.title}</p>
+      <h3 class="text-lg font-semibold text-base-content/80 mb-2">{props.title}</h3>
+      <Show when={props.description}>
+        <p class="text-sm text-base-content/50 max-w-xs mb-6">{props.description}</p>
+      </Show>
+      <Show when={props.action}>
+        <button
+          type="button"
+          class="px-4 py-2 text-sm rounded-xl bg-primary text-primary-content font-medium shadow-lg shadow-primary/20 hover:shadow-xl transition-shadow"
+          onClick={props.action?.onClick}
+        >
+          {props.action?.label}
+        </button>
+      </Show>
     </div>
   );
 };
@@ -660,7 +674,13 @@ const TopologyView: Component = () => {
         <div class="space-y-4">
           <Show
             when={hosts().length > 0}
-            fallback={<DashboardEmptyState title="No active hosts" />}
+            fallback={
+              <DashboardEmptyState
+                title="No active hosts"
+                description="Add a host to start managing agents remotely"
+                action={{ label: "Add Host", onClick: () => setConnectModalOpen(true) }}
+              />
+            }
           >
             <For each={hosts()}>
               {(host) => (
@@ -1037,7 +1057,13 @@ const HostsView: Component = () => {
 
         <Show
           when={hosts().length > 0}
-          fallback={<DashboardEmptyState title="No connected hosts" />}
+          fallback={
+            <DashboardEmptyState
+              title="No connected hosts"
+              description="Connect to a remote host to manage agents"
+              action={{ label: "Add Host", onClick: () => setConnectModalOpen(true) }}
+            />
+          }
         >
           <div class="space-y-3">
             <For each={hosts()}>

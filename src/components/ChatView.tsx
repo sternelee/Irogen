@@ -5,7 +5,7 @@
  * Displays messages, handles user input, shows permission requests, and supports slash commands.
  */
 
-import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
+import { Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import { FiAlertTriangle, FiRefreshCw } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { Virtualizer } from "virtua/solid";
@@ -25,10 +25,13 @@ import type { SystemCard } from "../stores/chatStore";
 import type { AgentType } from "../stores/sessionStore";
 import { notificationStore } from "../stores/notificationStore";
 import { fileBrowserStore } from "../stores/fileBrowserStore";
-import { PermissionMessage, UserQuestionMessage } from "./ui/PermissionCard";
 import { MessageBubble } from "./ui/MessageBubble";
 import { ChatInput } from "./ui/ChatInput";
 import { TcpForwardingModal } from "./TcpForwardingModal";
+import { ChatHeader } from "./chat/ChatHeader";
+import { ChatEmptyState } from "./chat/MessageListView";
+import { PermissionPanel } from "./chat/PermissionPanel";
+import { UserQuestionPanel } from "./chat/UserQuestionPanel";
 
 // ============================================================================
 // Helper Functions
@@ -1837,35 +1840,6 @@ export function ChatView(props: ChatViewProps) {
       }
     };
 
-    const getAgentIcon = () => {
-      const normalizedType = props.agentType?.toLowerCase() || "";
-
-      // Map agent types to local SVG icons in public folder
-      const iconPaths: Record<string, string> = {
-        claude: "/claude-ai.svg",
-        claudecode: "/claude-ai.svg",
-        "claude-code": "/claude-ai.svg",
-        codex: "/openai-light.svg",
-        cursor: "/cursor.svg",
-        opencode: "/opencode-wordmark-dark.svg",
-        open: "/openai-light.svg",
-        openai: "/openai-light.svg",
-        gemini: "/google-gemini.svg",
-        "gemini-cli": "/google-gemini.svg",
-        openclaw: "/openclaw.svg",
-        "open-claw": "/openclaw.svg",
-      };
-
-      const iconPath = iconPaths[normalizedType];
-
-      if (iconPath) {
-        return <img src={iconPath} alt={normalizedType} class="w-6 h-6" />;
-      }
-
-      // Fallback
-      return <span class="text-2xl">🤖</span>;
-    };
-
     return (
       <div
         class={`drawer drawer-end h-full ${rightPanelView() !== "none" ? "drawer-open" : ""}`}
@@ -1879,60 +1853,13 @@ export function ChatView(props: ChatViewProps) {
         <div class="drawer-content flex h-dvh bg-base-100 relative overflow-hidden">
           <div class="flex flex-col h-full min-w-0 flex-1">
             {/* Header */}
-            <div class="compact-mobile-controls z-20 sticky top-0 flex h-16 shrink-0 items-center justify-between border-b border-base-content/10 bg-base-100/80 px-4 sm:px-6 shadow-sm backdrop-blur-lg">
-              <div class="flex items-center gap-3 overflow-hidden">
-                {/* Hamburger menu - only visible on mobile */}
-                <label
-                  for="drawer"
-                  aria-label="Open menu"
-                  class="btn btn-square btn-ghost drawer-button lg:hidden"
-                >
-                  <svg
-                    width="20"
-                    height="20"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    class="inline-block h-5 w-5 stroke-current"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M4 6h16M4 12h16M4 18h16"
-                    ></path>
-                  </svg>
-                </label>
-                <div class="flex items-center gap-2.5 min-w-0">
-                  <div class="hidden rounded-xl bg-primary/10 p-2 text-primary shadow-inner ring-1 ring-primary/10 xs:flex shrink-0">
-                    {getAgentIcon()}
-                  </div>
-                  <div class="min-w-0">
-                    <h2 class="text-[13px] sm:text-[15px] font-bold tracking-tight truncate leading-tight">
-                      {props.agentType === "claude" && "Claude Code"}
-                      {props.agentType === "codex" && "Codex"}
-                      {props.agentType === "cursor" && "Cursor"}
-                      {props.agentType === "opencode" && "OpenCode"}
-                      {props.agentType === "gemini" && "Gemini CLI"}
-                      {props.agentType === "openclaw" && "OpenClaw"}
-                    </h2>
-                    <div
-                      class="mt-0.5 flex max-w-48 items-center gap-1.5 truncate text-[10px] opacity-50 sm:max-w-[18rem] sm:text-[11px]"
-                      title={props.projectPath}
-                    >
-                      <span class="inline-flex items-center gap-1">
-                        <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-base-100)_82%,transparent)]" />
-                        <span class="font-medium hidden sm:inline">Active</span>
-                      </span>
-                      <span class="opacity-30 hidden sm:inline">•</span>
-                      <span class="truncate font-mono">
-                        {props.projectPath?.split("/").pop() || "No project"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ChatHeader
+              sessionId={props.sessionId}
+              agentType={props.agentType}
+              sessionMode={props.sessionMode}
+              projectPath={props.projectPath}
+              onToggleSidebar={props.onToggleSidebar}
+            />
 
             {/* Messages Area */}
             <div
@@ -1945,48 +1872,7 @@ export function ChatView(props: ChatViewProps) {
                   messages().length === 0 && pendingPermissions().length === 0
                 }
               >
-                <div class="flex flex-col items-center text-center justify-center h-full max-w-sm mx-auto px-2 sm:px-0">
-                  <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl sm:rounded-4xl bg-linear-to-br from-primary/20 to-primary/5 flex items-center justify-center mb-4 sm:mb-6 shadow-xl shadow-primary/10 border border-primary/10">
-                    <div class="text-[28px] sm:text-3xl scale-[1.35] sm:scale-150 filter drop-shadow-sm">
-                      {getAgentIcon()}
-                    </div>
-                  </div>
-                  <h3 class="text-xl sm:text-2xl font-bold mb-2 sm:mb-3 tracking-tight">
-                    Ready to assist
-                  </h3>
-                  <p class="text-[13px] sm:text-sm opacity-60 leading-relaxed px-2 sm:px-4">
-                    I can help you write code, explain concepts, or debug
-                    issues. How can I help you today?
-                  </p>
-                  {/* Quick actions */}
-                  <div class="flex flex-wrap items-center justify-center gap-2 mt-5 sm:mt-8 px-1 sm:px-2">
-                    <button
-                      type="button"
-                      class="btn btn-outline btn-xs sm:btn-sm rounded-lg sm:rounded-xl px-3 sm:px-4 font-bold border-base-content/20"
-                      onClick={() => {
-                        const session = sessionStore.getSession(
-                          props.sessionId,
-                        );
-                        if (session?.projectPath) {
-                          setSessionInputValue(
-                            `List files in ${session.projectPath}`,
-                          );
-                        }
-                      }}
-                    >
-                      List files
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn-outline btn-xs sm:btn-sm rounded-lg sm:rounded-xl px-3 sm:px-4 font-bold border-base-content/20"
-                      onClick={() => {
-                        setSessionInputValue("Explain what you can do");
-                      }}
-                    >
-                      What can you do?
-                    </button>
-                  </div>
-                </div>
+                <ChatEmptyState agentType={props.agentType} />
               </Show>
 
               {/* Messages */}
@@ -2014,66 +1900,48 @@ export function ChatView(props: ChatViewProps) {
                   </Virtualizer>
                 </Show>
 
-                {/* Pending Permission Requests (inline) */}
-                <For each={pendingPermissionsForModal()}>
-                  {(permission) => (
-                    <div class="animate-slide-up">
-                      <PermissionMessage
-                        toolName={permission.tool_name}
-                        toolParams={permission.tool_params}
-                        message={permission.message}
-                        requestId={permission.request_id}
-                        permissionMode={permissionMode()}
-                        disabled={!isActive()}
-                        onApprove={(decision) => {
-                          const response =
-                            decision === "ApprovedForSession"
-                              ? "approved_for_session"
-                              : "approved";
-                          handlePermissionResponse(
-                            permission.request_id,
-                            response,
-                          );
-                        }}
-                        onDeny={() => {
-                          handlePermissionResponse(
-                            permission.request_id,
-                            "denied",
-                          );
-                        }}
-                      />
-                    </div>
-                  )}
-                </For>
+                {/* Pending Permission Requests */}
+                <Show when={pendingPermissionsForModal().length > 0}>
+                  <PermissionPanel
+                    permissions={pendingPermissionsForModal().map(p => ({
+                      id: p.request_id,
+                      sessionId: p.session_id,
+                      toolName: p.tool_name,
+                      toolParams: p.tool_params,
+                      description: p.message,
+                      requestedAt: p.created_at,
+                      status: "pending" as const,
+                    }))}
+                    permissionMode={permissionMode()}
+                    disabled={!isActive()}
+                    onApprove={(requestId, decision) => {
+                      const response =
+                        decision === "ApprovedForSession"
+                          ? "approved_for_session"
+                          : "approved";
+                      handlePermissionResponse(requestId, response);
+                    }}
+                    onDeny={(requestId) => {
+                      handlePermissionResponse(requestId, "denied");
+                    }}
+                  />
+                </Show>
 
                 {/* Pending User Questions */}
-                <For each={pendingQuestions()}>
-                  {(question) => (
-                    <div class="animate-slide-up">
-                      <UserQuestionMessage
-                        question={question.question}
-                        options={question.options}
-                        questionId={question.id}
-                        disabled={!isActive() || question.status === "answered"}
-                        onSelect={(option) => {
-                          chatStore.answerQuestion(
-                            props.sessionId,
-                            question.id,
-                            option,
-                          );
-                          // Send the answer back to the agent
-                          // For now, just clear the question - backend should handle sending response
-                          chatStore.clearQuestion(props.sessionId, question.id);
-                          // Add user response as a message
-                          chatStore.addMessage(props.sessionId, {
-                            role: "user",
-                            content: option,
-                          });
-                        }}
-                      />
-                    </div>
-                  )}
-                </For>
+                <Show when={pendingQuestions().length > 0}>
+                  <UserQuestionPanel
+                    questions={pendingQuestions()}
+                    disabled={!isActive()}
+                    onSelect={(questionId, option) => {
+                      chatStore.answerQuestion(props.sessionId, questionId, option);
+                      chatStore.clearQuestion(props.sessionId, questionId);
+                      chatStore.addMessage(props.sessionId, {
+                        role: "user",
+                        content: option,
+                      });
+                    }}
+                  />
+                </Show>
               </div>
             </div>
 
