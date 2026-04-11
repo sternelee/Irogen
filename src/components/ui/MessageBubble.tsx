@@ -90,9 +90,11 @@ const UserMessage: Component<{ content: string; timestamp?: number }> = (
   props,
 ) => {
   return (
-    <div class="chat chat-end overflow-x-hidden">
-      <div class="prose prose-sm max-w-none text-[14px] sm:text-sm leading-relaxed sm:leading-6 selectable prose-invert break-words [overflow-wrap:anywhere]">
-        <SolidMarkdown children={props.content} />
+    <div class="chat chat-end">
+      <div class="chat-bubble bg-primary text-primary-content rounded-2xl px-4 py-3 max-w-[85%] sm:max-w-[80%]">
+        <div class="prose prose-sm max-w-none text-[14px] sm:text-sm leading-relaxed sm:leading-6 selectable prose-invert wrap-anywhere">
+          <SolidMarkdown children={props.content} />
+        </div>
       </div>
     </div>
   );
@@ -112,7 +114,7 @@ interface AssistantMessageProps {
 
 const AssistantMessage: Component<AssistantMessageProps> = (props) => {
   return (
-    <div class="chat chat-start overflow-x-hidden">
+    <div class="chat chat-start">
       {/* Thinking/Reasoning */}
       <Show when={props.thinking}>
         <ReasoningBlock
@@ -122,26 +124,28 @@ const AssistantMessage: Component<AssistantMessageProps> = (props) => {
       </Show>
 
       {/* Content */}
-      <div class="prose prose-sm max-w-none text-[14px] sm:text-sm leading-relaxed sm:leading-6 selectable break-words [overflow-wrap:anywhere]">
-        <SolidMarkdown
-          children={props.thinking ? undefined : props.content}
-          components={{
-            code({ inline, class: className, children, ...codeProps }) {
-              const match = /language-(\w+)/.exec(className || "");
-              const codeString = String(children).replace(/\n$/, "");
-              if (inline || !match) {
+      <div class="chat-bubble bg-base-200 rounded-2xl px-4 py-3 max-w-[85%] sm:max-w-[92%]">
+        <div class="prose prose-sm max-w-none text-[14px] sm:text-sm leading-relaxed sm:leading-6 selectable wrap-anywhere">
+          <SolidMarkdown
+            children={props.thinking ? undefined : props.content}
+            components={{
+              code({ inline, class: className, children, ...codeProps }) {
+                const match = /language-(\w+)/.exec(className || "");
+                const codeString = String(children).replace(/\n$/, "");
+                if (inline || !match) {
+                  return (
+                    <code class={className} {...codeProps}>
+                      {children}
+                    </code>
+                  );
+                }
                 return (
-                  <code class={className} {...codeProps}>
-                    {children}
-                  </code>
+                  <CodeBlockWithCopy code={codeString} language={match[1]} />
                 );
-              }
-              return (
-                <CodeBlockWithCopy code={codeString} language={match[1]} />
-              );
-            },
-          }}
-        />
+              },
+            }}
+          />
+        </div>
       </div>
 
       {/* Tool Calls */}
@@ -212,6 +216,7 @@ const SystemMessageContent: Component<{
 }> = (props) => {
   const [todoStates, setTodoStates] = createSignal<Record<number, boolean>>({});
   const [showDiff, setShowDiff] = createSignal(false);
+  const [toolOutputExpanded, setToolOutputExpanded] = createSignal(false);
   const [, , write] = createClipboard();
 
   const copyText = async (text: string) => {
@@ -509,20 +514,24 @@ const SystemMessageContent: Component<{
         <Show
           when={isTerminalOutput()}
           fallback={
-            <div class="prose prose-sm break-words [overflow-wrap:anywhere] text-[14px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
-              <SolidMarkdown
-                children={normalizeEscapedLineBreaks(props.content)}
-              />
+            <div class="chat-bubble bg-base-200/70 border border-base-content/10 rounded-2xl px-4 py-3 max-w-[85%] sm:max-w-[80%]">
+              <div class="prose prose-sm wrap-anywhere text-[14px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
+                <SolidMarkdown
+                  children={normalizeEscapedLineBreaks(props.content)}
+                />
+              </div>
             </div>
           }
         >
           <Show
             when={parseTerminalOutput()}
             fallback={
-              <div class="prose prose-sm break-words [overflow-wrap:anywhere] text-[14px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
-                <SolidMarkdown
-                  children={normalizeEscapedLineBreaks(props.content)}
-                />
+              <div class="chat-bubble bg-base-200/70 border border-base-content/10 rounded-2xl px-4 py-3 max-w-[85%] sm:max-w-[80%]">
+                <div class="prose prose-sm wrap-anywhere text-[14px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
+                  <SolidMarkdown
+                    children={normalizeEscapedLineBreaks(props.content)}
+                  />
+                </div>
               </div>
             }
           >
@@ -543,10 +552,19 @@ const SystemMessageContent: Component<{
                 }
               >
                 <div class="text-xs sm:text-sm">
-                  <span class="inline-flex items-center rounded-md bg-info/12 px-2 py-1 font-mono text-xs text-info ring-1 ring-info/15">
-                    [{parsed().toolName}]
-                  </span>
-                  <Show when={parsed().output}>
+                  <button
+                    type="button"
+                    onClick={() => setToolOutputExpanded(!toolOutputExpanded())}
+                    class="inline-flex items-center gap-1.5 hover:bg-base-content/5 rounded-md px-1 py-0.5 -ml-1 transition-colors"
+                  >
+                    <span class="inline-flex items-center rounded-md bg-info/12 px-2 py-1 font-mono text-xs text-info ring-1 ring-info/15">
+                      [{parsed().toolName}]
+                    </span>
+                    <span class="text-base-content/40">
+                      {toolOutputExpanded() ? "▼" : "▶"}
+                    </span>
+                  </button>
+                  <Show when={toolOutputExpanded() && parsed().output}>
                     <pre class="mt-1.5 sm:mt-2 text-[11px] sm:text-xs opacity-60 whitespace-pre-wrap break-all">
                       {normalizeEscapedLineBreaks(parsed().output || "")}
                     </pre>

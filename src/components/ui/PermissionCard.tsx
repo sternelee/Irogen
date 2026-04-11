@@ -245,32 +245,32 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
   });
 
   return (
-    <div class="rounded-xl border border-warning/20 bg-warning/8 px-4 py-3">
+    <div class="chat-bubble bg-warning/10 border border-warning/20 rounded-2xl px-4 py-3 max-w-[85%] sm:max-w-[80%]">
       {/* Header */}
-      <div class="flex items-center gap-2 mb-3">
-        <div class="rounded-lg bg-warning/15 p-1.5 text-warning ring-1 ring-warning/15">
-          <FiShield size={16} />
+      <div class="flex items-center gap-2 mb-2">
+        <div class="rounded-lg bg-warning/20 p-1.5 text-warning">
+          <FiShield size={14} />
         </div>
-        <div class="flex-1">
+        <div class="flex-1 min-w-0">
           <div class="font-medium text-sm">Permission Required</div>
-          <div class="text-xs text-muted-foreground">{props.toolName}</div>
+          <div class="text-xs text-base-content/50 truncate">{props.toolName}</div>
         </div>
       </div>
 
       {/* Message/Description */}
       <Show when={props.message}>
-        <div class="mb-3 text-sm text-muted-foreground">
+        <div class="mb-2 text-sm text-base-content/70">
           <SolidMarkdown children={props.message} />
         </div>
       </Show>
 
       {/* Tool Parameters */}
       <Show when={props.toolParams}>
-        <div class="mb-3">
-          <div class="text-xs font-medium text-muted-foreground mb-1">
+        <div class="mb-2">
+          <div class="text-[10px] font-medium text-base-content/40 mb-1">
             Parameters
           </div>
-          <pre class="overflow-x-auto rounded bg-base-300 p-2 text-xs font-mono max-h-32">
+          <pre class="overflow-x-auto rounded bg-base-300/50 p-2 text-[11px] font-mono max-h-24">
             {formatToolInput(props.toolParams)}
           </pre>
         </div>
@@ -282,7 +282,7 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
           <Button
             variant="default"
             size="sm"
-            class="flex-1 min-w-0 px-2 sm:px-3"
+            class="flex-1 min-w-0 px-2 sm:px-3 h-8"
             onClick={() => props.onApprove("Approved")}
           >
             <FiCheck size={12} class="mr-0.5 shrink-0" />
@@ -293,7 +293,7 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
             <Button
               variant="outline"
               size="sm"
-              class="flex-1 min-w-0 px-2 sm:px-3"
+              class="flex-1 min-w-0 px-2 sm:px-3 h-8"
               onClick={() => props.onApprove("ApprovedForSession")}
             >
               <span class="text-[11px] sm:text-xs truncate">Allow for Session</span>
@@ -303,7 +303,7 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
           <Button
             variant="destructive"
             size="sm"
-            class="flex-1 min-w-0 px-2 sm:px-3"
+            class="flex-1 min-w-0 px-2 sm:px-3 h-8"
             onClick={props.onDeny}
           >
             <FiX size={12} class="mr-0.5 shrink-0" />
@@ -313,9 +313,9 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
       </Show>
 
       <Show when={props.disabled}>
-        <div class="flex items-center justify-center py-2 text-muted-foreground">
-          <FiLoader size={16} class="animate-spin mr-2" />
-          <span class="text-sm">Waiting...</span>
+        <div class="flex items-center justify-center py-2 text-base-content/50">
+          <FiLoader size={14} class="animate-spin mr-2" />
+          <span class="text-xs">Waiting...</span>
         </div>
       </Show>
     </div>
@@ -338,17 +338,17 @@ export const UserQuestionMessage: Component<UserQuestionMessageProps> = (
   props,
 ) => {
   return (
-    <div class="rounded-xl border border-info/20 bg-info/8 px-4 py-3">
+    <div class="chat-bubble bg-info/10 border border-info/20 rounded-2xl px-4 py-3 max-w-[85%] sm:max-w-[80%]">
       {/* Header */}
-      <div class="flex items-center gap-2 mb-3">
-        <div class="rounded-lg bg-info/15 p-1.5 text-info ring-1 ring-info/15">
-          <FiLoader size={16} />
+      <div class="flex items-center gap-2 mb-2">
+        <div class="rounded-lg bg-info/20 p-1.5 text-info">
+          <FiLoader size={14} />
         </div>
         <div class="font-medium text-sm">Question</div>
       </div>
 
       {/* Question */}
-      <div class="mb-3 text-sm text-muted-foreground">
+      <div class="mb-3 text-sm text-base-content/70">
         <SolidMarkdown children={props.question} />
       </div>
 
@@ -359,22 +359,22 @@ export const UserQuestionMessage: Component<UserQuestionMessageProps> = (
             <Button
               variant="outline"
               size="sm"
-              class="w-full justify-start text-left"
+              class="w-full justify-start text-left h-9 px-3"
               onClick={() => props.onSelect(option)}
             >
-              <span class="mr-2 text-muted-foreground">
+              <span class="mr-2 text-base-content/50 font-medium">
                 {String.fromCharCode(65 + index)}.
               </span>
-              {option}
+              <span class="truncate">{option}</span>
             </Button>
           ))}
         </div>
       </Show>
 
       <Show when={props.disabled}>
-        <div class="flex items-center justify-center py-2 text-muted-foreground">
-          <FiLoader size={16} class="animate-spin mr-2" />
-          <span class="text-sm">Waiting for response...</span>
+        <div class="flex items-center justify-center py-2 text-base-content/50">
+          <FiLoader size={14} class="animate-spin mr-2" />
+          <span class="text-xs">Waiting for response...</span>
         </div>
       </Show>
     </div>
