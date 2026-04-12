@@ -20,6 +20,7 @@
     "@tauri-apps/plugin-updater": "~2",
     "lucide-solid": "^0.540.0",
     "prismjs": "^1.30.0",
+    "shiki": "^4.0.2",
     "solid-icons": "^1.2.0",
     "solid-js": "^1.9.11",
     "solid-markdown": "^2.1.1",

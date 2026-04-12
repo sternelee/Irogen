@@ -20,46 +20,7 @@ import {
   TerminalOutput,
   FileEditDiff,
 } from "./EnhancedMessageComponents";
-
-// ============================================================================
-// Code Block with Copy Button
-// ============================================================================
-
-interface CodeBlockProps {
-  code: string;
-  language?: string;
-}
-
-const CodeBlockWithCopy: Component<CodeBlockProps> = (props) => {
-  const [copied, setCopied] = createSignal(false);
-  const [, , write] = createClipboard();
-
-  const handleCopy = () => {
-    write(props.code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div class="relative min-w-0 max-w-full rounded-xl overflow-hidden">
-      <button
-        type="button"
-        onClick={handleCopy}
-        class="absolute right-2 top-2 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors z-10"
-        title="Copy code"
-      >
-        <Show when={copied()} fallback={<FiCopy size={14} />}>
-          <FiCheck size={14} class="text-green-500" />
-        </Show>
-      </button>
-      <div class="min-w-0 w-full max-w-full overflow-x-auto rounded-xl bg-muted/80 border border-border/50">
-        <pre class="m-0 p-3 pr-10 text-xs font-mono">
-          <code class="block">{props.code}</code>
-        </pre>
-      </div>
-    </div>
-  );
-};
+import { ShikiCodeBlock } from "./ShikiCodeBlock";
 
 // ============================================================================
 // Types
@@ -138,7 +99,7 @@ const AssistantMessage: Component<AssistantMessageProps> = (props) => {
                   );
                 }
                 return (
-                  <CodeBlockWithCopy code={codeString} language={match[1]} />
+                  <ShikiCodeBlock code={codeString} language={match[1]} />
                 );
               },
             }}
