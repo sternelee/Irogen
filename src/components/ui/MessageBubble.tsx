@@ -91,7 +91,7 @@ const UserMessage: Component<{ content: string; timestamp?: number }> = (
 ) => {
   return (
     <div class="chat chat-end">
-      <div class="chat-bubble bg-primary text-primary-content rounded-2xl px-4 py-3 max-w-[85%] sm:max-w-[80%]">
+      <div class="chat-bubble bg-primary text-primary-content px-4 py-3 max-w-[85%] sm:max-w-[80%]">
         <div class="prose prose-sm max-w-none text-[14px] sm:text-sm leading-relaxed sm:leading-6 selectable prose-invert wrap-anywhere">
           <SolidMarkdown children={props.content} />
         </div>
@@ -124,7 +124,7 @@ const AssistantMessage: Component<AssistantMessageProps> = (props) => {
       </Show>
 
       {/* Content */}
-      <div class="chat-bubble bg-base-200 rounded-2xl px-4 py-3 max-w-[85%] sm:max-w-[92%]">
+      <div class="chat-bubble bg-base-200 px-4 py-3 max-w-[85%] sm:max-w-[92%]">
         <div class="prose prose-sm max-w-none text-[14px] sm:text-sm leading-relaxed sm:leading-6 selectable wrap-anywhere">
           <SolidMarkdown
             children={props.thinking ? undefined : props.content}
@@ -514,7 +514,7 @@ const SystemMessageContent: Component<{
         <Show
           when={isTerminalOutput()}
           fallback={
-            <div class="chat-bubble bg-base-200/70 border border-base-content/10 rounded-2xl px-4 py-3 max-w-[85%] sm:max-w-[80%]">
+            <div class="chat-bubble bg-base-200/70 border border-base-content/10 px-4 py-3 max-w-[85%] sm:max-w-[80%]">
               <div class="prose prose-sm wrap-anywhere text-[14px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
                 <SolidMarkdown
                   children={normalizeEscapedLineBreaks(props.content)}
@@ -526,7 +526,7 @@ const SystemMessageContent: Component<{
           <Show
             when={parseTerminalOutput()}
             fallback={
-              <div class="chat-bubble bg-base-200/70 border border-base-content/10 rounded-2xl px-4 py-3 max-w-[85%] sm:max-w-[80%]">
+              <div class="chat-bubble bg-base-200/70 border border-base-content/10 px-4 py-3 max-w-[85%] sm:max-w-[80%]">
                 <div class="prose prose-sm wrap-anywhere text-[14px] sm:text-sm max-w-none leading-relaxed sm:leading-6 text-base-content/70 selectable">
                   <SolidMarkdown
                     children={normalizeEscapedLineBreaks(props.content)}
