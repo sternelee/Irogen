@@ -3676,6 +3676,87 @@ async fn local_get_pending_permissions(
         .collect())
 }
 
+/// Subscribe to ACP inspector events for a session
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command(rename_all = "camelCase")]
+async fn subscribe_acp_inspector(
+    session_id: String,
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    let agent_manager_guard = state.agent_manager.read().await;
+    let manager = agent_manager_guard
+        .as_ref()
+        .ok_or("Agent manager not initialized")?
+        .clone();
+
+    let receiver = manager
+        .subscribe(&session_id)
+        .await
+        .ok_or_else(|| format!("Session not found: {}", session_id))?;
+
+    let buffered_events = manager.drain_event_buffer(&session_id).await;
+
+    let event_name = format!("acp-inspector-event-{}", session_id);
+    let event_name_for_spawn = event_name.clone();
+
+    for event in buffered_events {
+        let payload = serde_json::to_value(&event)
+            .map_err(|e| format!("Failed to serialize event: {}", e))?;
+        let _ = app_handle.emit(&event_name, payload);
+    }
+
+    tokio::spawn(async move {
+        let mut receiver = receiver;
+        loop {
+            match receiver.recv().await {
+                Ok(event) => {
+                    let payload = match serde_json::to_value(&event) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            tracing::warn!("Failed to serialize inspector event: {}", e);
+                            continue;
+                        }
+                    };
+                    let _ = app_handle.emit(&event_name_for_spawn, payload);
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    tracing::debug!("Inspector receiver closed for session {}", session_id);
+                    break;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!("Inspector receiver lagged {} events for session {}", n, session_id);
+                }
+            }
+        }
+    });
+
+    Ok(event_name)
+}
+
+/// Respond to a permission request from ACP inspector
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command(rename_all = "camelCase")]
+async fn respond_permission(
+    session_id: String,
+    request_id: String,
+    approved: bool,
+    approve_for_session: bool,
+    reason: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let agent_manager_guard = state.agent_manager.read().await;
+    let manager = agent_manager_guard
+        .as_ref()
+        .ok_or("Agent manager not initialized")?
+        .clone();
+
+    manager
+        .respond_to_permission(&session_id, request_id, approved, approve_for_session, reason)
+        .await
+        .map_err(|e| format!("Failed to respond to permission: {}", e))
+}
+
 /// List external agent history sessions (ACP list_sessions)
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command(rename_all = "camelCase")]
