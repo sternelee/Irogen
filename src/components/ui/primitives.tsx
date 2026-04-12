@@ -31,9 +31,9 @@ const variantClasses: Record<ButtonVariant, string> = {
   primary: "btn-primary",
   secondary: "btn-secondary",
   accent: "btn-accent",
-  ghost: "btn-ghost",
+  ghost: "btn-ghost hover:bg-base-content/10",
   link: "btn-link",
-  outline: "btn-outline",
+  outline: "btn-outline hover:bg-base-content/5",
   error: "btn-error",
   success: "btn-success",
   warning: "btn-warning",
@@ -57,7 +57,12 @@ export const Button = (props: ButtonProps) => {
     <button
       type={props.type || "button"}
       class={cn(
-        "btn",
+        "btn rounded-lg",
+        "transition-all duration-200 ease-out",
+        "hover:scale-[1.02] hover:shadow-md",
+        "active:scale-[0.98]",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base-100",
+        "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none",
         variantClasses[variant()],
         sizeClasses[size()],
         props.class
@@ -76,7 +81,7 @@ export const Button = (props: ButtonProps) => {
 
 export const buttonVariants = (variant?: ButtonVariant, size?: ButtonSize) => {
   return cn(
-    "btn",
+    "btn rounded-lg transition-all duration-200 ease-out",
     variant ? variantClasses[variant] : "btn-primary",
     size ? sizeClasses[size] : ""
   );
@@ -90,14 +95,24 @@ export type { ButtonProps };
 
 export type InputProps = JSX.InputHTMLAttributes<HTMLInputElement> & {
   class?: string;
+  error?: boolean;
 };
 
 export function Input(props: InputProps) {
-  const [local, rest] = splitProps(props, ["class"]);
+  const [local, rest] = splitProps(props, ["class", "error"]);
   return (
     <input
       {...rest}
-      class={cn("input input-bordered w-full", local.class)}
+      class={cn(
+        "input input-bordered w-full",
+        "transition-all duration-200",
+        "hover:border-primary/50",
+        "focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none",
+        "placeholder:text-base-content/40 placeholder:font-normal",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+        local.error && "input-error border-error",
+        local.class
+      )}
     />
   );
 }
@@ -108,14 +123,24 @@ export function Input(props: InputProps) {
 
 export type TextareaProps = JSX.TextareaHTMLAttributes<HTMLTextAreaElement> & {
   class?: string;
+  error?: boolean;
 };
 
 export function Textarea(props: TextareaProps) {
-  const [local, rest] = splitProps(props, ["class"]);
+  const [local, rest] = splitProps(props, ["class", "error"]);
   return (
     <textarea
       {...rest}
-      class={cn("textarea textarea-bordered w-full", local.class)}
+      class={cn(
+        "textarea textarea-bordered w-full",
+        "transition-all duration-200",
+        "hover:border-primary/50",
+        "focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none",
+        "placeholder:text-base-content/40 placeholder:font-normal",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+        local.error && "textarea-error border-error",
+        local.class
+      )}
     />
   );
 }

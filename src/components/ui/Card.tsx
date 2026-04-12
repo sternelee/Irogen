@@ -40,17 +40,17 @@ export interface CardFooterProps {
 // ============================================================================
 
 const variantClasses = {
-  default: "bg-base-100 border border-border",
+  default: "bg-base-100 border border-border/50",
   bordered: "bg-base-100 border-2 border-border",
-  elevated: "bg-base-100 shadow-lg",
-  ghost: "bg-transparent",
+  elevated: "bg-base-100 shadow-lg shadow-base-content/5 border border-border/30",
+  ghost: "bg-transparent border-transparent",
 };
 
 const paddingClasses = {
   none: "",
   sm: "p-3",
-  md: "p-4",
-  lg: "p-6",
+  md: "p-4 sm:p-5",
+  lg: "p-5 sm:p-6 lg:p-8",
 };
 
 // ============================================================================
