@@ -1,14 +1,14 @@
 /**
- * Enhanced Toast/Notification System
+ * Enhanced Toast/Notification System - DaisyUI v5
  *
  * Features:
- * - Slide-in/fade animations
+ * - Uses DaisyUI alert component with variant classes
+ * - Slide-in animations via DaisyUI transitions
  * - Progress bar for auto-dismiss countdown
  * - Stacking for multiple toasts
- * - Toast variant icons with better styling
- * - "Undo" action support
- * - Improved positioning (top-right corner)
- * - Better mobile responsiveness
+ * - Toast variant icons with DaisyUI styling
+ * - "Undo" action support via btn classes
+ * - Top-right positioning with mobile responsiveness
  */
 
 import {
@@ -18,7 +18,6 @@ import {
   createSignal,
   onMount,
   onCleanup,
-  createEffect,
 } from "solid-js";
 import { cn } from "~/lib/utils";
 import {
@@ -67,29 +66,8 @@ const toastIcons = {
   info: FiInfo,
 };
 
-const toastStyles = {
-  success: "border-l-success",
-  error: "border-l-error",
-  warning: "border-l-warning",
-  info: "border-l-info",
-};
-
-const toastIconStyles = {
-  success: "text-success",
-  error: "text-error",
-  warning: "text-warning",
-  info: "text-info",
-};
-
-const toastGlowStyles = {
-  success: "shadow-success/20",
-  error: "shadow-error/20",
-  warning: "shadow-warning/20",
-  info: "shadow-info/20",
-};
-
 // ============================================================================
-// Toast Item Component
+// Toast Item Component - DaisyUI Alert Style
 // ============================================================================
 
 const ToastItem: Component<ToastItemProps> = (props) => {
@@ -107,10 +85,9 @@ const ToastItem: Component<ToastItemProps> = (props) => {
 
     // Auto-dismiss after duration
     if (duration > 0) {
-      // Start progress countdown
-      const step = 50; // Update every 50ms
+      const step = 50;
       const decrementPerStep = (100 / duration) * step;
-      
+
       progressInterval = window.setInterval(() => {
         setProgress((prev) => {
           const next = prev - decrementPerStep;
@@ -131,105 +108,67 @@ const ToastItem: Component<ToastItemProps> = (props) => {
 
   const handleDismiss = () => {
     setIsVisible(false);
-    // Wait for exit animation before removing
     setTimeout(() => {
       props.onDismiss(props.toast.id);
-    }, 300);
+    }, 200);
   };
 
   const Icon = toastIcons[props.toast.type];
+  const alertClass = `alert-${props.toast.type}`;
 
   return (
     <div
       role="alert"
       class={cn(
-        "relative overflow-hidden",
-        "bg-base-100 border border-base-content/10 rounded-xl",
-        "shadow-lg shadow-base-content/5",
-        "transition-all duration-300 ease-out",
-        // Entrance/exit animations
+        "alert shadow-lg transition-all duration-200",
+        alertClass,
         isVisible()
-          ? "translate-x-0 opacity-100"
-          : "translate-x-full opacity-0",
-        // Stacking offset based on index
-        toastStyles[props.toast.type],
-        props.stackIndex > 0 && "mt-2",
-        // Glow effect
-        toastGlowStyles[props.toast.type],
-        "hover:shadow-xl hover:scale-[1.01]"
+          ? "translate-x-0 opacity-100 scale-100"
+          : "translate-x-full opacity-0 scale-95",
+        props.stackIndex > 0 && "mt-2"
       )}
-      style={{
-        "border-left-width": "4px",
-        "border-left-color": `var(--sonner-${props.toast.type})`,
-      }}
     >
-      <div class="flex items-start gap-3 p-4 pr-12">
-        {/* Icon */}
-        <div
-          class={cn(
-            "shrink-0 p-2 rounded-lg",
-            "bg-base-content/5"
-          )}
-        >
-          <Icon size={18} class={toastIconStyles[props.toast.type]} />
-        </div>
+      {/* Icon */}
+      <Icon class="shrink-0 w-5 h-5" />
 
-        {/* Content */}
-        <div class="flex-1 min-w-0">
-          <div class="text-sm font-semibold">{props.toast.title}</div>
-          <Show when={props.toast.description}>
-            <div class="text-xs text-base-content/60 mt-0.5 line-clamp-2">
-              {props.toast.description}
-            </div>
-          </Show>
+      {/* Content */}
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-semibold">{props.toast.title}</div>
+        <Show when={props.toast.description}>
+          <div class="text-xs opacity-80 mt-0.5 line-clamp-2">
+            {props.toast.description}
+          </div>
+        </Show>
 
-          {/* Action Button */}
-          <Show when={props.toast.action}>
-            <button
-              type="button"
-              onClick={() => {
-                props.toast.action?.onClick();
-                handleDismiss();
-              }}
-              class={cn(
-                "mt-2 inline-flex items-center gap-1.5",
-                "text-xs font-medium px-2.5 py-1 rounded-md",
-                "bg-base-content/5 hover:bg-base-content/10",
-                "transition-colors duration-150"
-              )}
-            >
-              <FiRotateCcw size={12} />
-              {props.toast.action?.label}
-            </button>
-          </Show>
-        </div>
+        {/* Action Button */}
+        <Show when={props.toast.action}>
+          <button
+            type="button"
+            onClick={() => {
+              props.toast.action?.onClick();
+              handleDismiss();
+            }}
+            class="btn btn-xs btn-ghost mt-1"
+          >
+            <FiRotateCcw class="w-3 h-3 mr-1" />
+            {props.toast.action?.label}
+          </button>
+        </Show>
       </div>
 
       {/* Close Button */}
       <button
         type="button"
         onClick={handleDismiss}
-        class={cn(
-          "absolute top-3 right-3",
-          "w-7 h-7 rounded-full",
-          "flex items-center justify-center",
-          "bg-base-content/5 hover:bg-base-content/10",
-          "text-base-content/60 hover:text-base-content",
-          "transition-all duration-150",
-          "hover:scale-105 active:scale-95"
-        )}
+        class="btn btn-sm btn-ghost btn-square"
       >
-        <FiX size={14} />
+        <FiX class="w-4 h-4" />
       </button>
 
       {/* Progress Bar */}
       <Show when={duration > 0 && progress() > 0}>
         <div
-          class={cn(
-            "absolute bottom-0 left-0 h-0.5",
-            "transition-all duration-50 ease-linear",
-            toastIconStyles[props.toast.type]
-          )}
+          class="absolute bottom-0 left-0 h-1 bg-base-100/50 transition-all duration-50 ease-linear rounded-none"
           style={{ width: `${progress()}%` }}
         />
       </Show>
@@ -251,11 +190,9 @@ export const ToastContainer: Component<ToastContainerProps> = (props) => {
   return (
     <div
       class={cn(
-        "fixed top-4 right-4 z-[100] flex flex-col gap-2",
-        "w-full max-w-sm sm:max-w-[356px]",
-        // Mobile: full width with padding
-        "left-4 sm:left-auto",
-        "max-h-[calc(100vh-2rem)] overflow-hidden",
+        "toast toast-top toast-end z-[100]",
+        "flex flex-col gap-2",
+        "max-h-[calc(100vh-2rem)]",
         props.class
       )}
     >
@@ -298,7 +235,7 @@ export function createToast(options: UseToastOptions = {}) {
       duration: options.duration,
       action,
     };
-    setToasts((prev) => [...prev.slice(-4), toast]); // Keep max 5 toasts
+    setToasts((prev) => [...prev.slice(-4), toast]);
     return id;
   };
 
