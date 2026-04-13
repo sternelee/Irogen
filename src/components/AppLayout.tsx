@@ -49,7 +49,8 @@ export const AppLayout: Component = () => {
   const closeRightPanel = () => setRightPanelView("none");
 
   createEffect(() => {
-    const shouldLockScroll = navigationStore.state.sidebarOpen || rightPanelView() !== "none";
+    const shouldLockScroll =
+      navigationStore.state.sidebarOpen || rightPanelView() !== "none";
     document.body.style.overflow = shouldLockScroll ? "hidden" : "";
   });
 
@@ -212,8 +213,8 @@ export const AppLayout: Component = () => {
             />
           </Show>
           <aside
-            class={`fixed bottom-0 left-0 right-0 z-50 h-[min(86dvh,42rem)] rounded-t-2xl border-t border-border/50 bg-background shadow-2xl
-              flex flex-col overflow-hidden pb-safe sm:top-0 sm:bottom-0 sm:left-auto sm:right-0 sm:h-full sm:max-h-none sm:w-80 md:w-96 lg:w-[28rem]
+            class={`fixed bottom-0 left-0 right-0 z-50 h-[min(86dvh,42rem)] rounded-t-2xl border-t border-border/50 bg-base-200 shadow-2xl
+              flex flex-col overflow-hidden pb-safe sm:top-0 sm:bottom-0 sm:left-auto sm:right-0 sm:h-full sm:max-h-none sm:w-80 md:w-96 lg:w-md
               transform transition-transform duration-300 ease-out
               ${rightPanelView() !== "none" ? "translate-y-0 sm:translate-x-0" : "translate-y-full sm:translate-y-0 sm:translate-x-full"}
             `}
@@ -227,9 +228,7 @@ export const AppLayout: Component = () => {
               <div class="flex items-center gap-2 text-sm font-semibold">
                 <Show
                   when={rightPanelView() === "file"}
-                  fallback={
-                    <FiGitBranch size={16} class="text-primary" />
-                  }
+                  fallback={<FiGitBranch size={16} class="text-primary" />}
                 >
                   <FiFolder size={16} class="text-primary" />
                 </Show>
@@ -324,7 +323,9 @@ export const AppLayout: Component = () => {
       <button
         type="button"
         class={`fixed inset-0 z-40 h-full w-full cursor-default border-none bg-black/50 backdrop-blur-sm transition-all duration-300 md:hidden ${
-          navigationStore.state.sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          navigationStore.state.sidebarOpen
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none"
         }`}
         onClick={() => navigationStore.setSidebarOpen(false)}
         aria-label="Close sidebar"

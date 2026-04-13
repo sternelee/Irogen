@@ -7,8 +7,17 @@ import {
   type Component,
 } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { FiClock, FiFolder, FiChevronRight, FiChevronDown, FiX } from "solid-icons/fi";
-import { sessionStore, AgentType, type AgentSessionMetadata } from "../stores/sessionStore";
+import {
+  FiClock,
+  FiFolder,
+  FiChevronRight,
+  FiChevronDown,
+} from "solid-icons/fi";
+import {
+  sessionStore,
+  AgentType,
+  type AgentSessionMetadata,
+} from "../stores/sessionStore";
 import { isMobile } from "../stores/deviceStore";
 import { notificationStore } from "../stores/notificationStore";
 import { Button } from "./ui/primitives";
@@ -46,23 +55,34 @@ interface HistorySelectionModalProps {
 export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
   props,
 ) => {
-  const [agentType, setAgentType] = createSignal<AgentType>(props.agentType || "claude");
+  const [agentType, setAgentType] = createSignal<AgentType>(
+    props.agentType || "claude",
+  );
   const [projectPath, setProjectPath] = createSignal<string>("");
-  const [historySessions, setHistorySessions] = createSignal<AgentHistoryEntry[]>([]);
+  const [historySessions, setHistorySessions] = createSignal<
+    AgentHistoryEntry[]
+  >([]);
   const [isLoadingHistory, setIsLoadingHistory] = createSignal(false);
   const [isLoadingSession, setIsLoadingSession] = createSignal(false);
-  const [selectedSession, setSelectedSession] = createSignal<string | null>(null);
-  const [expandedNodes, setExpandedNodes] = createSignal<Set<string>>(new Set());
+  const [selectedSession, setSelectedSession] = createSignal<string | null>(
+    null,
+  );
+  const [autoLoadTriggered, setAutoLoadTriggered] = createSignal(false);
+  const [expandedNodes, setExpandedNodes] = createSignal<Set<string>>(
+    new Set(),
+  );
 
   // Convert flat list to tree structure (grouped by date)
-  const buildSessionTree = (sessions: AgentHistoryEntry[]): HistoryTreeNode[] => {
+  const buildSessionTree = (
+    sessions: AgentHistoryEntry[],
+  ): HistoryTreeNode[] => {
     const grouped: Map<string, AgentHistoryEntry[]> = new Map();
-    
+
     sessions.forEach((session) => {
       const dateStr = session.updated_at
         ? new Date(session.updated_at).toLocaleDateString()
         : "Unknown Date";
-      
+
       if (!grouped.has(dateStr)) {
         grouped.set(dateStr, []);
       }
@@ -108,6 +128,7 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
       setSelectedSession(null);
       setIsLoadingHistory(false);
       setIsLoadingSession(false);
+      setAutoLoadTriggered(false);
       if (props.defaultProjectPath) {
         setProjectPath(props.defaultProjectPath);
       }
@@ -119,7 +140,13 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
 
   // Auto-load history when modal opens with agent type and project path
   createEffect(() => {
-    if (props.isOpen && props.agentType && props.defaultProjectPath && historySessions().length === 0) {
+    if (
+      props.isOpen &&
+      props.agentType &&
+      props.defaultProjectPath &&
+      !autoLoadTriggered()
+    ) {
+      setAutoLoadTriggered(true);
       loadHistory();
     }
   });
@@ -165,6 +192,8 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
   };
 
   const loadSelectedSession = async () => {
+    if (isLoadingSession()) return;
+
     const sessionId = selectedSession();
     if (!sessionId) return;
 
@@ -249,20 +278,11 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
             <FiClock class="w-5 h-5 text-primary" />
             <h3 class="text-lg font-semibold">Load History Session</h3>
           </div>
-          <button
-            type="button"
-            class="btn btn-ghost btn-sm btn-square"
-            onClick={props.onClose}
-          >
-            <FiX size={18} />
-          </button>
         </div>
 
         <Show when={isMobile()}>
           <div class="alert alert-warning mb-4">
-            <span>
-              History loading is only available on desktop platforms.
-            </span>
+            <span>History loading is only available on desktop platforms.</span>
           </div>
         </Show>
 
@@ -310,7 +330,14 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
             onClick={loadHistory}
             disabled={isLoadingHistory() || !projectPath().trim()}
           >
-            <Show when={isLoadingHistory()} fallback={<><FiClock class="mr-1.5 size-4" /> Load History</>}>
+            <Show
+              when={isLoadingHistory()}
+              fallback={
+                <>
+                  <FiClock class="mr-1.5 size-4" /> Load History
+                </>
+              }
+            >
               <SpinnerWithLabel label="Loading..." size="sm" />
             </Show>
           </Button>
@@ -330,16 +357,32 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
                       class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-base-content/5 transition-colors"
                       onClick={() => toggleNodeExpanded(node.id)}
                     >
-                      <Show when={node.children && node.children.length > 0} fallback={<div class="w-4" />}>
+                      <Show
+                        when={node.children && node.children.length > 0}
+                        fallback={<div class="w-4" />}
+                      >
                         <Show
                           when={expandedNodes().has(node.id)}
-                          fallback={<FiChevronRight size={14} class="text-muted-foreground shrink-0" />}
+                          fallback={
+                            <FiChevronRight
+                              size={14}
+                              class="text-muted-foreground shrink-0"
+                            />
+                          }
                         >
-                          <FiChevronDown size={14} class="text-muted-foreground shrink-0" />
+                          <FiChevronDown
+                            size={14}
+                            class="text-muted-foreground shrink-0"
+                          />
                         </Show>
                       </Show>
-                      <FiClock size={12} class="text-muted-foreground shrink-0" />
-                      <span class="text-xs font-semibold text-base-content/70">{node.label}</span>
+                      <FiClock
+                        size={12}
+                        class="text-muted-foreground shrink-0"
+                      />
+                      <span class="text-xs font-semibold text-base-content/70">
+                        {node.label}
+                      </span>
                     </button>
 
                     {/* Child nodes (individual sessions) */}
@@ -357,7 +400,10 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
                               onClick={() => setSelectedSession(child.id)}
                             >
                               <div class="flex items-start gap-2">
-                                <FiFolder size={12} class="mt-0.5 text-muted-foreground shrink-0" />
+                                <FiFolder
+                                  size={12}
+                                  class="mt-0.5 text-muted-foreground shrink-0"
+                                />
                                 <div class="flex-1 min-w-0">
                                   <div class="font-medium text-xs truncate">
                                     {child.label}
@@ -379,7 +425,13 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
           </div>
         </Show>
 
-        <Show when={!isLoadingHistory() && historySessions().length === 0 && projectPath().trim()}>
+        <Show
+          when={
+            !isLoadingHistory() &&
+            historySessions().length === 0 &&
+            projectPath().trim()
+          }
+        >
           <div class="text-center py-8 text-muted-foreground">
             <FiClock class="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p class="text-sm">No history sessions found for this project</p>

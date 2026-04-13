@@ -259,7 +259,9 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
               onMouseEnter={() => setActiveMentionIndex(index)}
             >
               <FiFolder size={14} class="text-primary/70 shrink-0" />
-              <span class="truncate font-mono text-foreground/90">{item.path}</span>
+              <span class="truncate font-mono text-foreground/90">
+                {item.path}
+              </span>
             </button>
           ))}
         </div>
@@ -395,7 +397,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
 
               {/* Settings Dropdown / Bottom Sheet */}
               <Show when={showSettings()}>
-                <div class="fixed bottom-0 left-0 right-0 z-[101] overflow-hidden rounded-t-3xl border-t border-border/50 bg-background shadow-2xl transition-all duration-300 animate-slide-up sm:absolute sm:bottom-full sm:left-0 sm:right-auto sm:mb-2 sm:w-64 sm:rounded-2xl">
+                <div class="fixed bottom-0 left-0 right-0 z-101 overflow-hidden rounded-t-3xl border-t border-border/50 bg-base-300 shadow-2xl transition-all duration-300 animate-slide-up sm:absolute sm:bottom-full sm:left-0 sm:right-auto sm:mb-2 sm:w-64 sm:rounded-2xl">
                   {/* Handle for mobile bottom sheet */}
                   <div class="flex justify-center py-3 sm:hidden">
                     <div class="w-10 h-1 bg-muted rounded-full" />
@@ -429,7 +431,9 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
                         }}
                       >
                         <div class="flex-1 min-w-0">
-                          <div class="text-sm font-semibold">{option.label}</div>
+                          <div class="text-sm font-semibold">
+                            {option.label}
+                          </div>
                           <div class="text-xs text-muted-foreground truncate">
                             {option.description}
                           </div>
@@ -500,9 +504,18 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
               <div class="flex items-center gap-1.5">
                 <span class="text-primary font-medium">Thinking</span>
                 <div class="flex items-center gap-0.5">
-                  <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce-dot" style="animation-delay: 0ms;" />
-                  <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce-dot" style="animation-delay: 150ms;" />
-                  <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce-dot" style="animation-delay: 300ms;" />
+                  <span
+                    class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce-dot"
+                    style="animation-delay: 0ms;"
+                  />
+                  <span
+                    class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce-dot"
+                    style="animation-delay: 150ms;"
+                  />
+                  <span
+                    class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce-dot"
+                    style="animation-delay: 300ms;"
+                  />
                 </div>
               </div>
             </Show>
@@ -541,7 +554,9 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
               fallback={
                 <div class="flex items-center gap-2">
                   <FiSend size={16} />
-                  <span class="text-sm font-semibold hidden sm:inline">Send</span>
+                  <span class="text-sm font-semibold hidden sm:inline">
+                    Send
+                  </span>
                 </div>
               }
             >

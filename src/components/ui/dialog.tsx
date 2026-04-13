@@ -10,6 +10,7 @@
 
 import { type JSX, Show, createEffect, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
+import { FiX } from "solid-icons/fi";
 import { cn } from "~/lib/utils";
 
 type DialogProps = {
@@ -35,9 +36,9 @@ export function Dialog(props: DialogProps) {
   // Focus trap
   const trapFocus = (e: KeyboardEvent) => {
     if (e.key !== "Tab" || !dialogRef) return;
-    
+
     const focusableElements = dialogRef.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"]'
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"]',
     );
     const firstElement = focusableElements[0];
     const lastElement = focusableElements[focusableElements.length - 1];
@@ -61,11 +62,11 @@ export function Dialog(props: DialogProps) {
       previousFocus = document.activeElement as HTMLElement;
       document.body.style.overflow = "hidden";
       document.addEventListener("keydown", trapFocus);
-      
+
       // Focus first focusable element
       setTimeout(() => {
         const firstFocusable = dialogRef?.querySelector<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"]'
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"]',
         );
         firstFocusable?.focus();
       }, 50);
@@ -86,7 +87,7 @@ export function Dialog(props: DialogProps) {
   return (
     <Show when={props.open}>
       <Portal>
-        <div 
+        <div
           class="fixed inset-0 z-50 flex items-center justify-center"
           role="dialog"
           aria-modal="true"
@@ -105,7 +106,7 @@ export function Dialog(props: DialogProps) {
               "relative bg-base-100 rounded-t-3xl rounded-b-none sm:rounded-2xl",
               "shadow-2xl max-h-[85vh] overflow-auto",
               "animate-content-show", // zoom-in animation
-              props.class
+              props.class,
             )}
             open
           >
@@ -115,44 +116,33 @@ export function Dialog(props: DialogProps) {
             </div>
 
             {/* Content wrapper with slide-up effect */}
-            <div 
+            <div
               class={cn(
                 "relative px-6 py-4 sm:px-8 sm:py-6",
                 "animate-slide-up",
-                props.contentClass
+                props.contentClass,
               )}
               onClick={(e) => e.stopPropagation()}
             >
               {props.children}
 
               {/* Improved Close button - top right, always visible */}
+
               <button
                 type="button"
                 class={cn(
                   "absolute right-4 top-4 w-8 h-8 p-0",
+                  "btn btn-ghost btn-sm btn-square",
                   "flex items-center justify-center",
-                  "rounded-full bg-base-200/50 hover:bg-base-200",
+                  "bg-base-200/50 hover:bg-base-200",
                   "text-base-content/60 hover:text-base-content",
                   "transition-all duration-200",
                   "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-                  "hidden sm:flex"
+                  "hidden sm:flex",
                 )}
                 onClick={props.onClose}
-                aria-label="Close dialog"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="w-4 h-4"
-                >
-                  <path d="M18 6 6 18" />
-                  <path d="m6 6 12 12" />
-                </svg>
+                <FiX size={18} />
               </button>
 
               {/* Mobile close button - bottom right */}
@@ -165,7 +155,7 @@ export function Dialog(props: DialogProps) {
                   "text-base-content/60 hover:text-base-content",
                   "transition-all duration-200",
                   "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-                  "sm:hidden"
+                  "sm:hidden",
                 )}
                 onClick={props.onClose}
                 aria-label="Close dialog"

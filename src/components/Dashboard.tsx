@@ -26,6 +26,7 @@ import {
 import {
   sessionStore,
   type AgentSessionMetadata,
+  type AgentType,
   type ConnectedHostMetadata,
 } from "../stores/sessionStore";
 import { sessionEventRouter } from "../stores/sessionEventRouter";
@@ -56,6 +57,7 @@ import {
   FiX,
   FiInbox,
   FiCalendar,
+  FiClock,
   FiChevronRight,
 } from "solid-icons/fi";
 import { Button, Input, Label } from "./ui/primitives";
@@ -354,6 +356,7 @@ const getStatusDotColor = (status: string) => {
 interface SessionActionsMenuProps {
   session: AgentSessionMetadata;
   onPin?: () => void;
+  onHistory?: () => void;
   onDelete?: () => void;
   onShare?: () => void;
   onCopyUrl?: () => void;
@@ -427,6 +430,16 @@ const SessionActionsMenu: Component<SessionActionsMenuProps> = (props) => {
             <FiShare2 size={14} />
             Share
           </button>
+          <Show when={props.session.mode === "local"}>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-base-content/80 hover:bg-base-200/60 hover:text-base-content transition-colors"
+              onClick={() => handleAction(() => props.onHistory?.())}
+            >
+              <FiClock size={14} />
+              Load History
+            </button>
+          </Show>
           <div class="my-1 h-px bg-base-content/10" />
           <button
             type="button"
@@ -594,6 +607,7 @@ interface AgentNodeProps {
   isActive: boolean;
   onClick: () => void;
   onPin?: () => void;
+  onHistory?: () => void;
   onDelete?: () => void;
   onShare?: () => void;
   onCopyUrl?: () => void;
@@ -712,6 +726,7 @@ const AgentNode: Component<AgentNodeProps> = (props) => {
         <SessionActionsMenu
           session={props.session}
           onPin={props.onPin}
+          onHistory={props.onHistory}
           onDelete={props.onDelete}
           onShare={props.onShare}
           onCopyUrl={props.onCopyUrl}
@@ -732,7 +747,7 @@ interface HostCardProps {
   onShowStats: () => void;
   onAgentClick: (sessionId: string) => void;
   onAddAgent: (host: HostNode) => void;
-  onLoadHistory: () => void;
+  onLoadHistory: (session: AgentSessionMetadata) => void;
   searchQuery?: string;
 }
 
@@ -922,6 +937,7 @@ const HostCard: Component<HostCardProps> = (props) => {
                       isActive={activeSessionId() === session.sessionId}
                       onClick={() => props.onAgentClick(session.sessionId)}
                       onPin={() => togglePin(session.sessionId)}
+                      onHistory={() => props.onLoadHistory(session)}
                       onDelete={() => {
                         // Handle delete
                         notificationStore.info(
@@ -993,6 +1009,7 @@ const PageHeader: Component<PageHeaderProps> = (props) => {
           </p>
         </div>
       </div>
+
       <DashboardToolbar
         searchQuery={() => ""}
         onSearchChange={() => {}}
@@ -1036,6 +1053,9 @@ const TopologyView: Component = () => {
   const [showSetupGuide, setShowSetupGuide] = createSignal(false);
   const [historyModalOpen, setHistoryModalOpen] = createSignal(false);
   const [historyHost, setHistoryHost] = createSignal<HostNode | null>(null);
+  const [historyAgentType, setHistoryAgentType] =
+    createSignal<AgentType>("claude");
+  const [historyProjectPath, setHistoryProjectPath] = createSignal("");
   const [searchQuery, setSearchQuery] = createSignal("");
 
   // Group sessions by host machine
@@ -1151,8 +1171,8 @@ const TopologyView: Component = () => {
     );
   };
 
-  const handleLoadHistory = (host: HostNode) => {
-    const isLocal = host.machineId === "local";
+  const handleLoadHistory = (host: HostNode, session: AgentSessionMetadata) => {
+    const isLocal = session.mode === "local" || host.machineId === "local";
     if (!isLocal) {
       notificationStore.error(
         "History loading is only available for local agents",
@@ -1160,7 +1180,10 @@ const TopologyView: Component = () => {
       );
       return;
     }
+
     setHistoryHost(host);
+    setHistoryAgentType(session.agentType);
+    setHistoryProjectPath(session.currentDir || session.projectPath);
     setHistoryModalOpen(true);
   };
 
@@ -1285,7 +1308,7 @@ const TopologyView: Component = () => {
                   onShowStats={() => handleShowStats(host)}
                   onAgentClick={handleAgentClick}
                   onAddAgent={handleAddAgent}
-                  onLoadHistory={() => handleLoadHistory(host)}
+                  onLoadHistory={(session) => handleLoadHistory(host, session)}
                   searchQuery={searchQuery()}
                 />
               )}
@@ -1297,7 +1320,8 @@ const TopologyView: Component = () => {
           isOpen={historyModalOpen()}
           onClose={() => setHistoryModalOpen(false)}
           hostMachineId={historyHost()?.machineId}
-          defaultProjectPath={historyHost()?.sessions[0]?.currentDir}
+          agentType={historyAgentType()}
+          defaultProjectPath={historyProjectPath()}
         />
       </div>
     </div>

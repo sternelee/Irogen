@@ -12,3 +12,4 @@ tsc-cache
 .kotlin
 .worktrees
 .omx/
+.opencode
