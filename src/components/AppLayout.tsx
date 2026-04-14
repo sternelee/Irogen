@@ -20,8 +20,10 @@ import { ChatView } from "./ChatView";
 import { FileBrowserView } from "./FileBrowserView";
 import { GitDiffView } from "./GitDiffView";
 import { SetupGuide } from "./mobile/SetupGuide";
+import { ConnectView } from "./mobile/ConnectView";
 import { Dashboard } from "./Dashboard";
 import { SettingsView } from "./SettingsView";
+import { ConnectHostModal } from "./ConnectHostModal";
 import { sessionStore } from "../stores/sessionStore";
 import { navigationStore } from "../stores/navigationStore";
 import { i18nStore } from "../stores/i18nStore";
@@ -29,7 +31,7 @@ import { isMobile } from "../stores/deviceStore";
 import { notificationStore } from "../stores/notificationStore";
 import { KeyboardShortcutsDialog } from "./ui/KeyboardShortcuts";
 import { SpinnerWithLabel } from "./ui/Spinner";
-import { FiFolder, FiGitBranch, FiX } from "solid-icons/fi";
+import { FiFolder, FiGitBranch, FiX, FiPlus, FiServer, FiMessageSquare } from "solid-icons/fi";
 
 // ============================================================================
 // Main Layout Component
@@ -38,6 +40,7 @@ import { FiFolder, FiGitBranch, FiX } from "solid-icons/fi";
 export const AppLayout: Component = () => {
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = createSignal(false);
   const [showSetupGuide, setShowSetupGuide] = createSignal(false);
+  const [showConnectModal, setShowConnectModal] = createSignal(false);
   const [rightPanelView, setRightPanelView] = createSignal<
     "none" | "file" | "git"
   >("none");
@@ -143,6 +146,48 @@ export const AppLayout: Component = () => {
     }
   };
 
+  const handleConnectWithTicket = async (ticket: string) => {
+    if (!ticket) {
+      setShowConnectModal(true);
+      return;
+    }
+    sessionStore.setSessionTicket(ticket);
+    sessionStore.setConnectionError(null);
+    try {
+      await sessionStore.handleRemoteConnect();
+      notificationStore.success("Connected to host", "Success");
+      sessionStore.openNewSessionModal();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      notificationStore.error(`Connection failed: ${msg}`, "Error");
+    }
+  };
+
+  const handleScanQRForConnect = async () => {
+    try {
+      const { checkPermissions, Format, requestPermissions, scan } =
+        await import("@tauri-apps/plugin-barcode-scanner");
+      let permissionStatus = await checkPermissions();
+      if (permissionStatus !== "granted") {
+        permissionStatus = await requestPermissions();
+      }
+      if (permissionStatus !== "granted") {
+        notificationStore.error(
+          "Camera permission is required to scan QR codes",
+          "Scan Error",
+        );
+        return;
+      }
+      const result = await scan({ formats: [Format.QRCode] });
+      if (result?.content) {
+        await handleConnectWithTicket(result.content);
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      notificationStore.error(`Scan failed: ${msg}`, "Scan Error");
+    }
+  };
+
   const renderChatEmptyState = () => (
     <div class="flex flex-col h-full min-h-0 flex-1 overflow-hidden bg-background">
       {/* Empty State Header */}
@@ -174,13 +219,36 @@ export const AppLayout: Component = () => {
         </h1>
       </header>
       <div class="flex flex-1 items-center justify-center p-6">
-        <div class="text-center">
-          <p class="text-lg font-medium text-muted-foreground">
-            No agent selected
-          </p>
-          <p class="mt-2 text-sm text-muted-foreground/60">
-            Select a session from the sidebar to start chatting
-          </p>
+        <div class="flex flex-col items-center text-center gap-5 max-w-xs">
+          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
+            <FiMessageSquare size={28} class="text-primary/60" />
+          </div>
+          <div>
+            <p class="text-base font-semibold text-foreground">
+              No active session
+            </p>
+            <p class="mt-1 text-sm text-muted-foreground/70">
+              Start a new session or connect to a remote host
+            </p>
+          </div>
+          <div class="flex flex-col gap-2 w-full">
+            <button
+              type="button"
+              class="btn btn-primary btn-sm rounded-xl w-full gap-2"
+              onClick={() => sessionStore.openNewSessionModal()}
+            >
+              <FiPlus size={15} />
+              New Session
+            </button>
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm rounded-xl w-full gap-2"
+              onClick={() => navigationStore.setActiveView("hosts")}
+            >
+              <FiServer size={15} />
+              Connect to Host
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -273,7 +341,25 @@ export const AppLayout: Component = () => {
       case "settings":
         return <SettingsView />;
       case "hosts":
-        return <Dashboard view="hosts" />;
+        return (
+          <>
+            <ConnectView
+              onConnect={handleConnectWithTicket}
+              onOpenGuide={() => setShowSetupGuide(true)}
+              onOpenSettings={() => navigationStore.setActiveView("settings")}
+              onScanQR={handleScanQRForConnect}
+              onToggleSidebar={() => navigationStore.setSidebarOpen(true)}
+              isConnecting={
+                sessionStore.state.isConnecting ||
+                sessionStore.state.connectionState === "connecting"
+              }
+            />
+            <ConnectHostModal
+              isOpen={showConnectModal()}
+              onClose={() => setShowConnectModal(false)}
+            />
+          </>
+        );
       case "proxies":
         return <Dashboard view="proxies" />;
       case "chat":

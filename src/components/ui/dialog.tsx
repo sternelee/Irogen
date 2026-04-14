@@ -138,41 +138,10 @@ export function Dialog(props: DialogProps) {
                   "text-base-content/60 hover:text-base-content",
                   "transition-all duration-200",
                   "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-                  "hidden sm:flex",
                 )}
                 onClick={props.onClose}
               >
                 <FiX size={18} />
-              </button>
-
-              {/* Mobile close button - bottom right */}
-              <button
-                type="button"
-                class={cn(
-                  "absolute right-4 bottom-4 w-10 h-10 p-0",
-                  "flex items-center justify-center",
-                  "rounded-full bg-base-200/80 hover:bg-base-200",
-                  "text-base-content/60 hover:text-base-content",
-                  "transition-all duration-200",
-                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-                  "sm:hidden",
-                )}
-                onClick={props.onClose}
-                aria-label="Close dialog"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="w-5 h-5"
-                >
-                  <path d="M18 6 6 18" />
-                  <path d="m6 6 12 12" />
-                </svg>
               </button>
             </div>
           </dialog>

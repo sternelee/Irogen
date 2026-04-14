@@ -8,6 +8,7 @@
 import {
   Show,
   createEffect,
+  createMemo,
   createSignal,
   on,
   onCleanup,
@@ -348,6 +349,19 @@ export function ChatView(props: ChatViewProps) {
   {
     const session = () => sessionStore.getSession(props.sessionId);
     const isActive = () => session()?.active !== false;
+
+    const connectedHost = createMemo(() => {
+      const sess = session();
+      if (!sess?.controlSessionId) return undefined;
+      return sessionStore.getConnectedHost(sess.controlSessionId);
+    });
+
+    const showDisconnectBanner = createMemo(() => {
+      const sess = session();
+      if (!sess || sess.mode === "local") return false;
+      const host = connectedHost();
+      return !sess.active || host?.status === "offline" || host?.status === "reconnecting";
+    });
 
     const messages = () => chatStore.getMessages(props.sessionId);
     const pendingPermissions = () =>
@@ -1919,6 +1933,52 @@ export function ChatView(props: ChatViewProps) {
             projectPath={props.projectPath}
             onToggleSidebar={props.onToggleSidebar}
           />
+
+          {/* Disconnect / Reconnecting Banner */}
+          <Show when={showDisconnectBanner()}>
+            <div
+              class={`flex shrink-0 items-center gap-3 border-b px-4 py-2.5 text-sm ${
+                connectedHost()?.status === "reconnecting" || isReconnecting()
+                  ? "border-warning/20 bg-warning/10 text-warning"
+                  : "border-error/20 bg-error/10 text-error"
+              }`}
+            >
+              <span
+                class={`h-2 w-2 shrink-0 rounded-full ${
+                  connectedHost()?.status === "reconnecting" || isReconnecting()
+                    ? "animate-pulse bg-warning"
+                    : "bg-error"
+                }`}
+              />
+              <span class="flex-1 truncate font-medium">
+                {isReconnecting() || connectedHost()?.status === "reconnecting"
+                  ? `Reconnecting to ${connectedHost()?.hostname || session()?.hostname || "remote host"}…`
+                  : `Connection lost · ${connectedHost()?.hostname || session()?.hostname || "remote host"}`}
+              </span>
+              <Show
+                when={
+                  !isReconnecting() &&
+                  connectedHost()?.status !== "reconnecting"
+                }
+              >
+                <button
+                  type="button"
+                  class="btn btn-xs btn-ghost rounded-lg px-2.5 font-semibold"
+                  onClick={handleReconnect}
+                >
+                  Reconnect
+                </button>
+              </Show>
+              <Show
+                when={
+                  isReconnecting() ||
+                  connectedHost()?.status === "reconnecting"
+                }
+              >
+                <span class="loading loading-spinner loading-xs opacity-60" />
+              </Show>
+            </div>
+          </Show>
 
           {/* Messages Area */}
           <div

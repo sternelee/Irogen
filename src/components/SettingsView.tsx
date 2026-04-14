@@ -95,6 +95,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                 onChange={(val) =>
                   settingsStore.setFontSize(val as FontSizeType)
                 }
+                class="w-36"
               >
                 {fontSizeOptions.map((size) => (
                   <option value={size.value}>{size.label}</option>

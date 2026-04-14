@@ -24,6 +24,33 @@ interface ChatHeaderProps {
 export const ChatHeader: Component<ChatHeaderProps> = (props) => {
   const session = createMemo(() => sessionStore.getSession(props.sessionId));
 
+  const connectedHost = createMemo(() => {
+    const sess = session();
+    if (!sess?.controlSessionId || sess.mode !== "remote") return undefined;
+    return sessionStore.getConnectedHost(sess.controlSessionId);
+  });
+
+  const hostName = createMemo(() => {
+    const sess = session();
+    if (!sess || sess.mode !== "remote") return null;
+    return connectedHost()?.hostname || sess.hostname || null;
+  });
+
+  const hostStatusDot = createMemo(() => {
+    const host = connectedHost();
+    if (!host) return null;
+    switch (host.status) {
+      case "online":
+        return "bg-green-500";
+      case "reconnecting":
+        return "bg-yellow-500 animate-pulse";
+      case "offline":
+        return "bg-red-500";
+      default:
+        return "bg-muted-foreground/40";
+    }
+  });
+
   const statusColor = createMemo(() => {
     const sess = session();
     if (!sess?.active) return "bg-muted";
@@ -94,6 +121,19 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
               <Show when={projectName()}>
                 <span class="text-[11px] text-muted-foreground truncate block max-w-[140px] sm:max-w-[220px] font-mono">
                   {projectName()}
+                </span>
+              </Show>
+              <Show when={hostName()}>
+                <span class="flex items-center gap-1 mt-0.5">
+                  <span
+                    class={cn(
+                      "h-1.5 w-1.5 rounded-full shrink-0",
+                      hostStatusDot() ?? "bg-muted-foreground/40",
+                    )}
+                  />
+                  <span class="text-[11px] text-muted-foreground/70 font-medium truncate max-w-[120px] sm:max-w-[180px]">
+                    {hostName()}
+                  </span>
                 </span>
               </Show>
             </div>

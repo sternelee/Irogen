@@ -48,13 +48,11 @@ import {
   FiChevronDown,
   FiTrash2,
   FiExternalLink,
-  FiSearch,
   FiMoreVertical,
   FiFolder,
   FiBookmark,
   FiShare2,
   FiCopy,
-  FiX,
   FiInbox,
   FiCalendar,
   FiClock,
@@ -545,47 +543,6 @@ const DashboardEmptyState: Component<DashboardEmptyStateProps> = (props) => {
 };
 
 // ============================================================================
-// Dashboard Toolbar with Search
-// ============================================================================
-
-interface DashboardToolbarProps {
-  searchQuery?: () => string;
-  onSearchChange: (query: string) => void;
-  onRefresh: () => void;
-  onAddHost: () => void;
-  isLoading?: boolean;
-}
-
-const DashboardToolbar: Component<DashboardToolbarProps> = (props) => {
-  return (
-    <div class="flex flex-wrap items-center justify-end gap-2">
-      {/* Search Input */}
-      <div class="relative">
-        <FiSearch
-          size={14}
-          class="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40"
-        />
-        <input
-          type="text"
-          placeholder="Search sessions..."
-          value={props.searchQuery?.() ?? ""}
-          onInput={(e) => props.onSearchChange(e.currentTarget.value)}
-          class="pl-9 pr-4 py-2 h-9 text-sm rounded-xl border border-base-content/10 bg-base-200/50 placeholder:text-base-content/30 focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all w-48"
-        />
-        <Show when={props.searchQuery?.()}>
-          <button
-            type="button"
-            class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-base-300/50"
-            onClick={() => props.onSearchChange("")}
-          >
-            <FiX size={12} class="text-base-content/40" />
-          </button>
-        </Show>
-      </div>
-    </div>
-  );
-};
-
 // ============================================================================
 // Tree Line Components
 // ============================================================================
@@ -1009,13 +966,6 @@ const PageHeader: Component<PageHeaderProps> = (props) => {
           </p>
         </div>
       </div>
-
-      <DashboardToolbar
-        searchQuery={() => ""}
-        onSearchChange={() => {}}
-        onRefresh={() => {}}
-        onAddHost={() => {}}
-      />
     </header>
   );
 };
@@ -1056,7 +1006,6 @@ const TopologyView: Component = () => {
   const [historyAgentType, setHistoryAgentType] =
     createSignal<AgentType>("claude");
   const [historyProjectPath, setHistoryProjectPath] = createSignal("");
-  const [searchQuery, setSearchQuery] = createSignal("");
 
   // Group sessions by host machine
   const hosts = createMemo(() => {
@@ -1069,20 +1018,7 @@ const TopologyView: Component = () => {
     );
   });
 
-  const filteredHosts = createMemo(() => {
-    const query = searchQuery().toLowerCase();
-    if (!query) return hosts();
-
-    return hosts().filter(
-      (host) =>
-        host.hostname.toLowerCase().includes(query) ||
-        host.sessions.some(
-          (session) =>
-            session.agentType.toLowerCase().includes(query) ||
-            session.projectPath.toLowerCase().includes(query),
-        ),
-    );
-  });
+  const filteredHosts = hosts;
 
   const handleRefresh = async () => {
     if (isLoading()) return;
@@ -1222,29 +1158,6 @@ const TopologyView: Component = () => {
             </Button>
           </div>
 
-          {/* Search */}
-          <div class="relative w-full sm:w-64">
-            <FiSearch
-              size={14}
-              class="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40"
-            />
-            <input
-              type="text"
-              placeholder="Search hosts & sessions..."
-              value={searchQuery()}
-              onInput={(e) => setSearchQuery(e.currentTarget.value)}
-              class="w-full pl-9 pr-4 py-2 h-9 text-sm rounded-xl border border-base-content/10 bg-base-200/50 placeholder:text-base-content/30 focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all"
-            />
-            <Show when={searchQuery()}>
-              <button
-                type="button"
-                class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-base-300/50 transition-colors"
-                onClick={() => setSearchQuery("")}
-              >
-                <FiX size={12} class="text-base-content/40" />
-              </button>
-            </Show>
-          </div>
         </div>
 
         {/* Connect Host Modal */}
@@ -1271,32 +1184,18 @@ const TopologyView: Component = () => {
             when={filteredHosts().length > 0}
             fallback={
               <DashboardEmptyState
-                title={
-                  searchQuery() ? "No matching results" : "No active hosts"
-                }
-                description={
-                  searchQuery()
-                    ? `No hosts or sessions match "${searchQuery()}"`
-                    : "Add a host to start managing agents, debugging code, and collaborating"
-                }
-                icon={searchQuery() ? FiSearch : FiServer}
-                tips={
-                  searchQuery()
-                    ? undefined
-                    : [
-                        "Hosts let you run AI agents on any machine",
-                        "Agents can help write, review, and debug your code",
-                        "Connect to multiple machines for distributed workflows",
-                      ]
-                }
-                action={
-                  searchQuery()
-                    ? undefined
-                    : {
-                        label: "Add Host",
-                        onClick: () => setConnectModalOpen(true),
-                      }
-                }
+                title="No active hosts"
+                description="Add a host to start managing agents, debugging code, and collaborating"
+                icon={FiServer}
+                tips={[
+                  "Hosts let you run AI agents on any machine",
+                  "Agents can help write, review, and debug your code",
+                  "Connect to multiple machines for distributed workflows",
+                ]}
+                action={{
+                  label: "Add Host",
+                  onClick: () => setConnectModalOpen(true),
+                }}
               />
             }
           >
@@ -1309,7 +1208,7 @@ const TopologyView: Component = () => {
                   onAgentClick={handleAgentClick}
                   onAddAgent={handleAddAgent}
                   onLoadHistory={(session) => handleLoadHistory(host, session)}
-                  searchQuery={searchQuery()}
+                  searchQuery=""
                 />
               )}
             </For>
@@ -1658,26 +1557,6 @@ const HostsView: Component = () => {
       <PageHeader icon={FiServer} section="Hosts" />
 
       <div class="flex-1 overflow-y-auto bg-base-100 px-4 py-6 md:px-8 md:py-8">
-        <div class="mb-8 flex justify-between items-end">
-          <div>
-            <p class="font-label text-[10px] uppercase tracking-[0.3em] text-primary mb-1">
-              Connected
-            </p>
-            <h2 class="font-headline text-3xl font-light tracking-tight">
-              Hosts
-            </h2>
-          </div>
-          <Button
-            variant="default"
-            size="sm"
-            class="rounded-xl px-4 py-1.5 text-[10px] font-bold shadow-lg shadow-primary/20"
-            onClick={() => setConnectModalOpen(true)}
-          >
-            <FiWifi size={14} class="mr-1" />
-            Add Host
-          </Button>
-        </div>
-
         <ConnectHostModal
           isOpen={connectModalOpen()}
           onClose={() => setConnectModalOpen(false)}

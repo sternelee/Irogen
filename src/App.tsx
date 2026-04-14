@@ -55,6 +55,12 @@ export default function App() {
     }
     // Set mobile padding after initialization
     setMobilePadding(isMobilePlatform());
+
+    // On mobile with no connected hosts, default to the Hosts/Connect view
+    if (isMobilePlatform() && sessionStore.getConnectedHosts().length === 0) {
+      navigationStore.setActiveView("hosts");
+    }
+
     // Listen for agent session creation events
     setupEventListeners();
   });

@@ -96,20 +96,6 @@ export const ConnectView: Component<ConnectViewProps> = (props) => {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <div class="flex flex-col items-center justify-center py-10 px-6 shrink-0">
-        <div class="avatar placeholder mb-6">
-          <div class="bg-primary/10 text-primary rounded-full w-24 h-24 flex items-center justify-center border border-primary/10">
-            <div class="bg-primary text-primary-content rounded-2xl w-16 h-16 flex items-center justify-center shadow-lg">
-              <Terminal size={32} stroke-width={2.5} />
-            </div>
-          </div>
-        </div>
-        <h2 class="text-2xl font-bold text-center tracking-tight">
-          P2P 安全连接
-        </h2>
-      </div>
-
       {/* Machines Section */}
       <div class="flex-1 px-6 overflow-hidden flex flex-col">
         <div class="flex items-center justify-between mb-4 px-1 shrink-0">
