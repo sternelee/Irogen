@@ -1,32 +1,22 @@
-/**
- * Settings View Component
- *
- * Settings page with theme, language, setup guide, and other preferences
- */
-
-import { type Component, createSignal, Show } from "solid-js";
+import { type Component } from "solid-js";
 import { cn } from "../lib/utils";
-import { settingsStore, t, FontSizeType } from "../stores/settingsStore";
+import { settingsStore, FontSizeType } from "../stores/settingsStore";
+import { t } from "../stores/i18nStore";
 import { notificationStore } from "../stores/notificationStore";
 import { navigationStore } from "../stores/navigationStore";
-import { FiMoon, FiGlobe, FiPlay, FiInfo } from "solid-icons/fi";
-import { Button } from "./ui/primitives";
-import { Label, Select, Switch } from "./ui/primitives";
+import { FiMoon, FiGlobe, FiInfo, FiRefreshCw } from "solid-icons/fi";
 import { ThemeSwitcher, LanguageSwitcher } from "./ui/ThemeSwitcher";
-import { SetupGuide } from "./mobile/SetupGuide";
 
 interface SettingsViewProps {
   class?: string;
 }
 
 export const SettingsView: Component<SettingsViewProps> = (props) => {
-  const [showSetupGuide, setShowSetupGuide] = createSignal(false);
-
   const fontSizeOptions = [
-    { value: "small", label: t("fontSize.small") },
-    { value: "medium", label: t("fontSize.medium") },
-    { value: "large", label: t("fontSize.large") },
-    { value: "extra-large", label: t("fontSize.extra-large") },
+    { value: "small", label: t("settings.fontSizeSmall") as string },
+    { value: "medium", label: t("settings.fontSizeMedium") as string },
+    { value: "large", label: t("settings.fontSizeLarge") as string },
+    { value: "extra-large", label: t("settings.fontSizeExtraLarge") as string },
   ];
 
   const handleResetSettings = () => {
@@ -35,24 +25,27 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
   };
 
   return (
-    <div class={cn("flex flex-col min-h-0", props.class)}>
-      {/* Page Header with Hamburger Menu */}
-      <header class="compact-mobile-controls z-20 flex min-h-16 shrink-0 items-center justify-between gap-4 border-b border-base-content/10 bg-base-100/80 px-4 py-3 backdrop-blur-lg md:px-6">
-        <div class="flex items-center gap-3">
-          {/* Hamburger menu - only visible on mobile */}
+    <div
+      class={cn(
+        "flex h-full flex-col overflow-y-auto bg-background p-4 sm:p-8",
+        props.class,
+      )}
+    >
+      <div class="mx-auto w-full max-w-4xl space-y-8">
+        <header class="flex items-start sm:items-center gap-3">
           <button
             type="button"
-            aria-label="Open menu"
-            class="btn btn-square btn-ghost drawer-button lg:hidden"
+            class="btn btn-square btn-ghost h-10 w-10 rounded-xl md:hidden shrink-0 -ml-2"
             onClick={() => navigationStore.setSidebarOpen(true)}
+            aria-label="Open menu"
           >
             <svg
-              width="20"
-              height="20"
+              width="24"
+              height="24"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
-              class="inline-block h-5 w-5 stroke-current"
+              class="inline-block h-6 w-6 stroke-current"
             >
               <path
                 stroke-linecap="round"
@@ -62,135 +55,129 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               ></path>
             </svg>
           </button>
-          <h1 class="text-xl font-bold">{t("settings.title")}</h1>
-        </div>
-      </header>
+          <div>
+            <h1 class="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              {t("settings.title")}
+            </h1>
+            <p class="mt-1 text-sm text-muted-foreground">
+              {t("settings.desc")}
+            </p>
+          </div>
+        </header>
 
-      <div class="flex-1 overflow-y-auto">
-        <div class="flex flex-col gap-6 p-4 sm:p-6 max-w-2xl mx-auto">
-          {/* Description */}
-          <p class="text-sm opacity-60">
-            {t("settings.description") || "Customize your Irogen experience"}
-          </p>
-
-        {/* Appearance Section */}
-        <div class="card bg-base-200 shadow">
-          <div class="card-body">
-            <h2 class="card-title text-base">
-              <FiMoon size={18} />
-              {t("settings.appearance") || "Appearance"}
-            </h2>
-
-            {/* Theme Switcher - Label left, switcher right */}
-            <div class="flex items-center justify-between">
-              <Label>{t("settings.theme")}</Label>
+        <section>
+          <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <FiMoon size={16} />
+            {t("settings.appearance")}
+          </h2>
+          <div class="rounded-2xl border border-border/50 bg-base-200 divide-y divide-border/50">
+            <div class="flex items-center justify-between p-4 sm:p-5">
+              <div>
+                <p class="text-sm font-medium text-foreground">
+                  {t("settings.theme")}
+                </p>
+                <p class="text-xs text-muted-foreground mt-1">
+                  {t("settings.themeDesc")}
+                </p>
+              </div>
               <ThemeSwitcher />
             </div>
 
-            {/* Font Size */}
-            <div class="flex items-center justify-between">
-              <Label>{t("settings.fontSize")}</Label>
-              <Select
+            <div class="flex items-center justify-between p-4 sm:p-5">
+              <div>
+                <p class="text-sm font-medium text-foreground">
+                  {t("settings.fontSize")}
+                </p>
+                <p class="text-xs text-muted-foreground mt-1">
+                  {t("settings.fontSizeDesc")}
+                </p>
+              </div>
+              <select
+                class="select select-bordered select-sm rounded-xl bg-background border-border/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
                 value={settingsStore.get().fontSize}
-                onChange={(val) =>
-                  settingsStore.setFontSize(val as FontSizeType)
+                onChange={(e) =>
+                  settingsStore.setFontSize(
+                    e.currentTarget.value as FontSizeType,
+                  )
                 }
-                class="w-36"
               >
                 {fontSizeOptions.map((size) => (
                   <option value={size.value}>{size.label}</option>
                 ))}
-              </Select>
+              </select>
             </div>
 
-            {/* Animations */}
-            <div class="flex items-center justify-between">
-              <Label>{t("settings.animations")}</Label>
-              <Switch
-                checked={settingsStore.get().enableAnimations}
-                onChange={() => settingsStore.toggleAnimations()}
-              />
+            <div class="flex items-center justify-between p-4 sm:p-5">
+              <div>
+                <p class="text-sm font-medium text-foreground">
+                  {t("settings.animations")}
+                </p>
+                <p class="text-xs text-muted-foreground mt-1">
+                  {t("settings.animationsDesc")}
+                </p>
+              </div>
+              <label class="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  class="peer sr-only"
+                  checked={settingsStore.get().enableAnimations}
+                  onChange={() => settingsStore.toggleAnimations()}
+                />
+                <div class="peer h-6 w-11 rounded-full bg-muted after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-border/50 after:bg-background after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20"></div>
+              </label>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Language Section */}
-        <div class="card bg-base-200 shadow">
-          <div class="card-body">
-            <h2 class="card-title text-base">
-              <FiGlobe size={18} />
-              {t("settings.language") || "Language"}
-            </h2>
-
-            <div class="flex items-center justify-between">
-              <Label>{t("settings.language")}</Label>
+        <section>
+          <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <FiGlobe size={16} />
+            {t("settings.language")}
+          </h2>
+          <div class="rounded-2xl border border-border/50 bg-base-200 divide-y divide-border/50">
+            <div class="flex items-center justify-between p-4 sm:p-5">
+              <div>
+                <p class="text-sm font-medium text-foreground">
+                  {t("settings.language")}
+                </p>
+                <p class="text-xs text-muted-foreground mt-1">
+                  {t("settings.languageDesc")}
+                </p>
+              </div>
               <LanguageSwitcher />
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Setup Guide Section */}
-        <div class="card bg-base-200 shadow">
-          <div class="card-body">
-            <h2 class="card-title text-base">
-              <FiPlay size={18} />
-              {t("setupGuide.title") || "Setup Guide"}
-            </h2>
-
-            <p class="text-sm opacity-70">
-              {t("setupGuide.settingsDesc") ||
-                "Learn how to set up Irogen on your devices"}
-            </p>
-
-            <div class="card-actions justify-end mt-2">
-              <Button variant="primary" onClick={() => setShowSetupGuide(true)}>
-                {t("setupGuide.open") || "Open Setup Guide"}
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* About Section */}
-        <div class="card bg-base-200 shadow">
-          <div class="card-body">
-            <h2 class="card-title text-base">
-              <FiInfo size={18} />
-              {t("settings.about") || "About"}
-            </h2>
-
-            <div class="text-sm opacity-70 space-y-1">
-              <p>
-                <span class="font-semibold">Irogen</span> v0.6.1
-              </p>
-              <p>
+        <section>
+          <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <FiInfo size={16} />
+            {t("settings.about")}
+          </h2>
+          <div class="rounded-2xl border border-border/50 bg-base-200 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <p class="text-sm font-medium text-foreground">Irogen</p>
+              <p class="text-xs text-muted-foreground mt-1">
                 {t("settings.aboutDesc") ||
                   "Multi-agent local/remote management platform"}
               </p>
+              <p class="text-xs text-muted-foreground/70 mt-1 font-mono">
+                v0.6.1
+              </p>
             </div>
+
+            <button
+              class="btn btn-outline border-border/50 text-error hover:bg-error/10 hover:text-error hover:border-error/50 btn-sm rounded-xl gap-2 transition-colors self-start sm:self-auto"
+              onClick={handleResetSettings}
+            >
+              <FiRefreshCw size={14} />
+              {t("action.reset")}
+            </button>
           </div>
-        </div>
-
-        {/* Reset Button */}
-        <div class="flex justify-end">
-          <Button variant="destructive" onClick={handleResetSettings}>
-            {t("action.reset") || "Reset to Defaults"}
-          </Button>
-        </div>
-        </div>
+        </section>
       </div>
-
-      {/* Setup Guide Modal */}
-      <Show when={showSetupGuide()}>
-        <div class="fixed inset-0 z-70 bg-base-100 pb-safe">
-          <SetupGuide
-            onClose={() => setShowSetupGuide(false)}
-            onSkip={() => setShowSetupGuide(false)}
-          />
-        </div>
-      </Show>
     </div>
   );
 };
 
 export default SettingsView;
-

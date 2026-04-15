@@ -30,6 +30,7 @@ import {
 import { sessionStore, AgentType } from "../stores/sessionStore";
 import { isMobile } from "../stores/deviceStore";
 import { notificationStore } from "../stores/notificationStore";
+import { t } from "../stores/i18nStore";
 import { Alert } from "./ui/primitives";
 import { Button } from "./ui/primitives";
 import { Combobox } from "./ui/combobox";
@@ -372,30 +373,43 @@ export const NewSessionModal: Component = () => {
       <Dialog
         open={sessionStore.state.isNewSessionModalOpen}
         onClose={() => sessionStore.closeNewSessionModal()}
-        contentClass="max-w-md max-h-[90%] overflow-auto"
+        class="w-full max-w-[95vw] sm:max-w-[540px] md:max-w-[680px]"
       >
         <div>
           <h3 class="font-semibold text-base mb-3 flex items-center gap-2">
-            <FiPlus size={18} />
-            New Session
-          </h3>
+            <FiPlus size={18} />{t("newSession.title")}</h3>
 
           {/* Mode Toggle - Hidden when opened from a specific host */}
-          <Show when={!sessionStore.state.newSessionModeFromHost}>
-            <div class="hidden sm:flex gap-2 mb-4">
-              <Button
-                type="button"
-                size="sm"
-                class="flex-1"
-                variant={
+          <Show
+            when={!sessionStore.state.newSessionModeFromHost && !isMobile()}
+          >
+            <div
+              role="tablist"
+              class="tabs tabs-border flex p-1 bg-muted rounded-lg mb-5"
+            >
+              <a
+                role="tab"
+                class={`tab flex-1 flex items-center justify-center gap-2 py-1.5 px-3 rounded-md text-sm font-medium transition-all ${
+                  sessionStore.state.newSessionMode === "local"
+                    ? "bg-background text-foreground shadow-sm tab-active"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => {
+                  sessionStore.setNewSessionMode("local");
+                  sessionStore.setConnectionError(null);
+                }}
+              >
+                <FiHome size={14} />{t("newSession.local")}</a>
+              <a
+                role="tab"
+                class={`tab flex-1 flex items-center justify-center gap-2 py-1.5 px-3 rounded-md text-sm font-medium transition-all ${
                   sessionStore.state.newSessionMode === "remote"
-                    ? "primary"
-                    : "ghost"
-                }
+                    ? "bg-background text-foreground shadow-sm tab-active"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
                 onClick={() => {
                   sessionStore.setNewSessionMode("remote");
                   sessionStore.setConnectionError(null);
-                  // Auto-select first remote connection if available
                   const connections = remoteConnections();
                   if (connections.length > 0) {
                     sessionStore.setTargetControlSessionId(
@@ -404,24 +418,7 @@ export const NewSessionModal: Component = () => {
                   }
                 }}
               >
-                <FiCloud class="mr-1.5" /> Remote
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                class="hidden flex-1 sm:inline-flex"
-                variant={
-                  sessionStore.state.newSessionMode === "local"
-                    ? "primary"
-                    : "ghost"
-                }
-                onClick={() => {
-                  sessionStore.setNewSessionMode("local");
-                  sessionStore.setConnectionError(null);
-                }}
-              >
-                <FiHome class="mr-1.5" /> Local
-              </Button>
+                <FiCloud size={14} />{t("newSession.remote")}</a>
             </div>
           </Show>
 
@@ -433,7 +430,7 @@ export const NewSessionModal: Component = () => {
             }
           >
             <div class="mb-4 space-y-2">
-              <Label for="remote-connection">Remote Host</Label>
+              <Label for="remote-connection">{t("newSession.remoteHost")}</Label>
               <Select
                 id="remote-connection"
                 value={sessionStore.state.targetControlSessionId || "new"}
@@ -450,7 +447,7 @@ export const NewSessionModal: Component = () => {
                     </option>
                   )}
                 </For>
-                <option value="new">+ Connect to New Host</option>
+                <option value="new">{t("newSession.connectToNewHost")}</option>
               </Select>
             </div>
           </Show>
@@ -459,21 +456,19 @@ export const NewSessionModal: Component = () => {
           <Show when={isConnectingToNew()}>
             <div class="mb-4 space-y-2">
               <div class="flex items-center justify-between gap-2">
-                <Label for="session-ticket">Session Ticket</Label>
+                <Label for="session-ticket">{t("devices.sessionTicket")}</Label>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   class="sm:hidden"
                   onClick={handleScanBarcode}
-                >
-                  Scan QR
-                </Button>
+                >{t("newSession.scanQR")}</Button>
               </div>
               <Textarea
                 id="session-ticket"
                 class="h-20 font-mono text-sm"
-                placeholder="Paste session ticket..."
+                placeholder={t("devices.ticketPlaceholder")}
                 value={sessionStore.state.sessionTicket}
                 onInput={(e) => {
                   sessionStore.setSessionTicket(e.currentTarget.value);
@@ -524,8 +519,7 @@ export const NewSessionModal: Component = () => {
           >
             <Alert variant="info" class="mb-3 py-1.5">
               <div class="flex items-center justify-between gap-2 w-full">
-                <span class="text-xs">
-                  Remote: {(remoteControlSessionId() || "").slice(0, 8)}
+                <span class="text-xs">{t("newSession.remote")}: {(remoteControlSessionId() || "").slice(0, 8)}
                 </span>
                 <Button
                   type="button"
@@ -535,9 +529,7 @@ export const NewSessionModal: Component = () => {
                     sessionStore.setTargetControlSessionId(null);
                     sessionStore.setConnectionError(null);
                   }}
-                >
-                  Change
-                </Button>
+                >{t("newSession.change")}</Button>
               </div>
             </Alert>
           </Show>
@@ -546,9 +538,7 @@ export const NewSessionModal: Component = () => {
           <Show when={showAgentConfig()}>
             <div class="space-y-3">
               <div class="space-y-1">
-                <Label for="agent-type" class="text-xs">
-                  Agent
-                </Label>
+                <Label for="agent-type" class="text-xs">{t("newSession.agent")}</Label>
                 <Select
                   id="agent-type"
                   class="select-sm"
@@ -577,7 +567,7 @@ export const NewSessionModal: Component = () => {
                       </>
                     }
                   >
-                    <option value="">Select an agent</option>
+                    <option value="">{t("newSession.selectAgent")}</option>
                   </Show>
                 </Select>
               </div>
@@ -642,17 +632,13 @@ export const NewSessionModal: Component = () => {
                   <Show
                     when={isInstallingAcp()}
                     fallback="Install / Upgrade ACP"
-                  >
-                    Installing...
-                  </Show>
+                  >{t("newSession.installing")}</Show>
                 </Button>
               </Show>
             </div>
 
             <div class="space-y-1.5">
-              <Label for="project-path" class="text-xs">
-                Path
-              </Label>
+              <Label for="project-path" class="text-xs">{t("newSession.path")}</Label>
               <Combobox
                 value={sessionStore.state.newSessionPath}
                 onChange={(value) => {
@@ -672,12 +658,10 @@ export const NewSessionModal: Component = () => {
                   }
                 }}
                 items={pathComboboxItems()}
-                placeholder="Project path"
+                placeholder={t("newSession.projectPath")}
                 class="font-mono text-sm"
               />
-              <p class="text-xs text-muted-foreground">
-                Type path to autocomplete
-              </p>
+              <p class="text-xs text-muted-foreground">{t("newSession.typeToAutocomplete")}</p>
             </div>
 
             <Show
@@ -690,25 +674,23 @@ export const NewSessionModal: Component = () => {
               <div class="space-y-3">
                 <button
                   type="button"
-                  class="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  class="flex items-center gap-2 w-full py-2 text-sm text-muted-foreground hover:text-foreground transition-colors border-t border-border/50 mt-2 pt-3"
                   onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded())}
                 >
                   <span
-                    class={`text-xs transition-transform ${isAdvancedExpanded() ? "rotate-90" : ""}`}
+                    class={`transition-transform duration-200 ${isAdvancedExpanded() ? "rotate-90" : ""}`}
                   >
                     ▶
                   </span>
-                  <span class="font-medium">Advanced Options</span>
+                  <span class="font-medium">{t("newSession.advancedConfig")}</span>
                 </button>
                 <Show when={isAdvancedExpanded()}>
                   <Show when={agentArgsConfig().supported}>
                     <div class="space-y-1.5">
-                      <Label for="agent-args" class="text-xs">
-                        Agent Args
-                      </Label>
+                      <Label for="agent-args" class="text-xs">{t("newSession.agentArgs")}</Label>
                       <Textarea
                         id="agent-args"
-                        class="h-16 text-sm"
+                        class="min-h-[80px] text-sm font-mono"
                         placeholder={agentArgsConfig().placeholder}
                         value={sessionStore.state.newSessionArgs}
                         onInput={(e) => {
@@ -724,12 +706,10 @@ export const NewSessionModal: Component = () => {
                     when={sessionStore.state.newSessionAgent !== "openclaw"}
                   >
                     <div class="space-y-1.5">
-                      <Label for="mcp-servers" class="text-xs">
-                        MCP Servers
-                      </Label>
+                      <Label for="mcp-servers" class="text-xs">{t("newSession.mcpServers")}</Label>
                       <Textarea
                         id="mcp-servers"
-                        class="h-16 text-xs"
+                        class="min-h-[120px] text-xs font-mono"
                         placeholder='[{"type":"stdio","name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}]'
                         value={sessionStore.state.newSessionMcpServers}
                         onInput={(e) => {
@@ -738,9 +718,7 @@ export const NewSessionModal: Component = () => {
                           );
                         }}
                       />
-                      <p class="text-xs text-muted-foreground">
-                        ACP `mcpServers` JSON array
-                      </p>
+                      <p class="text-xs text-muted-foreground">{t("newSession.mcpServersHint")}</p>
                     </div>
                   </Show>
                 </Show>
@@ -760,9 +738,7 @@ export const NewSessionModal: Component = () => {
                 sessionStore.setNewSessionMcpServers("");
                 setIsAdvancedExpanded(false);
               }}
-            >
-              Cancel
-            </Button>
+            >{t("action.cancel")}</Button>
             <Show
               when={isConnectingToNew()}
               fallback={
@@ -779,9 +755,7 @@ export const NewSessionModal: Component = () => {
                   <Show
                     when={sessionStore.state.isStartingAgent}
                     fallback={<span>Create</span>}
-                  >
-                    Creating...
-                  </Show>
+                  >{t("newSession.creating")}</Show>
                 </Button>
               }
             >
@@ -798,9 +772,7 @@ export const NewSessionModal: Component = () => {
                 <Show
                   when={sessionStore.state.isConnecting}
                   fallback={<span>Connect</span>}
-                >
-                  Connecting...
-                </Show>
+                >{t("newSession.connecting")}</Show>
               </Button>
             </Show>
           </div>

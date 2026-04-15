@@ -25,9 +25,9 @@ use tokio::task;
 use tracing::{debug, info, warn};
 
 pub use acp::{
-    AcpSessionStartMode, AcpStreamingSession, HistoryListCacheManager, RetryConfig, SessionOptions,
-    SharedAcpRuntime, SubagentSessionInfo, TOOL_NAME_META_KEY, SUBAGENT_SESSION_INFO_META_KEY,
-    load_codex_session_history, load_opencode_session_history,
+    AcpSessionStartMode, AcpStreamingSession, HistoryListCacheManager, RetryConfig,
+    SUBAGENT_SESSION_INFO_META_KEY, SessionOptions, SharedAcpRuntime, SubagentSessionInfo,
+    TOOL_NAME_META_KEY, load_codex_session_history, load_opencode_session_history,
 };
 pub use acp_errors::{AcpSessionError, AcpStartupError, AcpTerminalError};
 pub use acp_permission::{AcpPermissionHandler, AcpPermissionState};
@@ -696,7 +696,11 @@ impl AgentManager {
         }
 
         if let Some(cached) = self.history_cache.get(&agent_type, &working_dir) {
-            info!("[AgentManager] Returning cached history for {:?} at {}", agent_type, working_dir.display());
+            info!(
+                "[AgentManager] Returning cached history for {:?} at {}",
+                agent_type,
+                working_dir.display()
+            );
             return Ok(cached);
         }
 
@@ -711,7 +715,8 @@ impl AgentManager {
         )
         .await?;
 
-        self.history_cache.set(&agent_type, working_dir, entries.clone());
+        self.history_cache
+            .set(&agent_type, working_dir, entries.clone());
 
         Ok(entries)
     }
@@ -1035,6 +1040,7 @@ pub fn try_install_package(package: &str, label: &str) -> Result<bool> {
             .args(args)
             .env("PATH", get_extended_path())
             .output(); // Use .output() to wait for completion and capture stdout/stderr
+        // g
 
         match output {
             Ok(output) => {

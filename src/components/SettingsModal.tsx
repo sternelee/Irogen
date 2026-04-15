@@ -1,11 +1,11 @@
 import { Show } from "solid-js";
 import {
   settingsStore,
-  t,
   ThemeType,
   LanguageType,
   FontSizeType,
 } from "../stores/settingsStore";
+import { t } from "../stores/i18nStore";
 import { Button } from "./ui/primitives";
 import { Dialog } from "./ui/primitives";
 import { Label } from "./ui/primitives";
@@ -19,15 +19,15 @@ interface SettingsModalProps {
 
 export function SettingsModal(props: SettingsModalProps) {
   const themeOptions = [
-    { value: "dark", label: t("theme.dark") },
-    { value: "light", label: t("theme.light") },
-    { value: "corporate", label: t("theme.corporate") },
-    { value: "business", label: t("theme.business") },
-    { value: "night", label: t("theme.night") },
-    { value: "black", label: t("theme.black") },
-    { value: "abyss", label: t("theme.abyss") },
-    { value: "luxury", label: t("theme.luxury") },
-    { value: "synthwave", label: t("theme.synthwave") },
+    { value: "dark", label: t("theme.dark") as string },
+    { value: "light", label: t("theme.light") as string },
+    { value: "corporate", label: t("theme.corporate") as string },
+    { value: "business", label: t("theme.business") as string },
+    { value: "night", label: t("theme.night") as string },
+    { value: "black", label: t("theme.black") as string },
+    { value: "abyss", label: t("theme.abyss") as string },
+    { value: "luxury", label: t("theme.luxury") as string },
+    { value: "synthwave", label: t("theme.synthwave") as string },
   ];
 
   return (
@@ -70,10 +70,18 @@ export function SettingsModal(props: SettingsModalProps) {
               onChange={(val) => settingsStore.setFontSize(val as FontSizeType)}
               class="w-fit max-w-20 ml-auto"
             >
-              <option value="small">{t("fontSize.small")}</option>
-              <option value="medium">{t("fontSize.medium")}</option>
-              <option value="large">{t("fontSize.large")}</option>
-              <option value="extra-large">{t("fontSize.extra-large")}</option>
+              <option value="small">
+                {t("settings.fontSizeSmall") as string}
+              </option>
+              <option value="medium">
+                {t("settings.fontSizeMedium") as string}
+              </option>
+              <option value="large">
+                {t("settings.fontSizeLarge") as string}
+              </option>
+              <option value="extra-large">
+                {t("settings.fontSizeExtraLarge") as string}
+              </option>
             </Select>
           </div>
 

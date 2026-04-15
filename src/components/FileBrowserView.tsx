@@ -401,37 +401,44 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
   const hasCachedEntries = createMemo(() => state.entries.length > 0);
 
   return (
-    <div class={`file-browser ${props.class || ""}`}>
+    <div class={`flex flex-col h-full bg-base-200 ${props.class || ""}`}>
       {/* Header */}
-      <div class="file-browser-header">
+      <div class="flex-none border-b border-border/50 bg-base-200/80 backdrop-blur-sm">
         {/* Navigation Bar */}
-        <div class="compact-mobile-controls flex items-center gap-1 p-1.5 sm:gap-1.5 sm:p-2 border-b border-border">
+        <div class="flex items-center gap-1.5 p-2 sm:p-3">
           {/* Navigation Buttons */}
-          <div class="flex gap-1">
+          <div class="flex items-center gap-1">
             <Button
               variant="ghost"
               size="xs"
+              class="h-7 w-7 rounded-lg"
               disabled={resolvePath(state.currentPath) === rootPath()}
               onClick={goUp}
               title="Up"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4 sm:h-5 sm:w-5"
+                class="h-4 w-4 sm:h-4 sm:w-4"
                 viewBox="0 0 20 20"
                 fill="currentColor"
               >
                 <path d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" />
               </svg>
             </Button>
-            <Button variant="ghost" size="xs" onClick={refresh} title="Refresh">
+            <Button
+              variant="ghost"
+              size="xs"
+              class="h-7 w-7 rounded-lg"
+              onClick={refresh}
+              title="Refresh"
+            >
               <Show when={state.isLoading}>
                 <Spinner size="sm" />
               </Show>
               <Show when={!state.isLoading}>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4 sm:h-5 sm:w-5"
+                  class="h-4 w-4 sm:h-4 sm:w-4"
                   viewBox="0 0 20 20"
                   fill="currentColor"
                 >
@@ -446,6 +453,7 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
             <Button
               variant="ghost"
               size="xs"
+              class="h-7 w-7 rounded-lg"
               onClick={() => loadDirectory(rootPath())}
               title="Home"
             >
@@ -453,31 +461,38 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
             </Button>
           </div>
 
+          <div class="h-4 w-px bg-border/50 mx-1" />
+
           {/* Breadcrumb */}
-          <div class="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
+          <div class="flex items-center flex-1 min-w-0 overflow-x-auto scrollbar-hide">
             <For each={pathSegments()}>
               {(segment, i) => (
-                <>
+                <div class="flex items-center shrink-0">
                   <button
-                    class="h-6 sm:h-7 max-w-22 sm:max-w-25 truncate rounded-md px-1 text-[11px] sm:px-1.5 sm:text-xs hover:bg-muted"
+                    class="max-w-24 sm:max-w-32 truncate rounded-md px-1.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                     onClick={() => loadDirectory(segment.path)}
                   >
                     {segment.name}
                   </button>
                   <Show when={i() < pathSegments().length - 1}>
-                    <ChevronRightIcon />
+                    <span class="text-muted-foreground/40 mx-0.5">
+                      <ChevronRightIcon />
+                    </span>
                   </Show>
-                </>
+                </div>
               )}
             </For>
+            <Show when={pathSegments().length === 0}>
+              <span class="px-1.5 text-xs font-medium text-muted-foreground">
+                /
+              </span>
+            </Show>
           </div>
 
           {/* View Mode Toggle */}
-          <div class="rounded-md border border-border hidden">
-            <Button
-              size="xs"
-              variant={state.viewMode === "list" ? "primary" : "ghost"}
-              class="rounded-r-none"
+          <div class="flex items-center rounded-lg bg-background p-0.5 border border-border/50 shadow-sm shrink-0">
+            <button
+              class={`rounded-md p-1 ${state.viewMode === "list" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}
               onClick={() => setViewMode("list")}
             >
               <svg
@@ -492,11 +507,9 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
                   clip-rule="evenodd"
                 />
               </svg>
-            </Button>
-            <Button
-              size="xs"
-              variant={state.viewMode === "grid" ? "primary" : "ghost"}
-              class="rounded-l-none border-l border-border"
+            </button>
+            <button
+              class={`rounded-md p-1 ${state.viewMode === "grid" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}
               onClick={() => setViewMode("grid")}
             >
               <svg
@@ -507,13 +520,13 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
               >
                 <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
               </svg>
-            </Button>
+            </button>
           </div>
         </div>
       </div>
 
       {/* Content Area */}
-      <div class="file-browser-content">
+      <div class="flex-1 overflow-y-auto">
         {/* Loading State */}
         <Show when={state.isLoading && !hasCachedEntries()}>
           <div class="flex items-center justify-center h-64">
@@ -523,10 +536,10 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
 
         {/* Error State */}
         <Show when={state.error}>
-          <Alert variant="destructive" class="mx-4 mt-4">
+          <Alert variant="destructive" class="m-4">
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              class="stroke-current shrink-0 h-6 w-6"
+              class="stroke-current shrink-0 h-5 w-5"
               fill="none"
               viewBox="0 0 24 24"
             >
@@ -537,21 +550,21 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
                 d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <span>{state.error}</span>
+            <span class="text-sm">{state.error}</span>
           </Alert>
         </Show>
 
         {/* File List View */}
         <Show when={state.viewMode === "list"}>
-          <div class="overflow-x-auto">
-            <table class="min-w-full text-left text-[11px] sm:text-xs">
-              <thead class="border-b border-border text-muted-foreground/70">
+          <div class="w-full">
+            <table class="w-full text-left text-sm whitespace-nowrap">
+              <thead class="sticky top-0 bg-base-200/90 backdrop-blur-sm z-10 border-b border-border/50 text-muted-foreground/70 text-xs uppercase tracking-wider font-semibold">
                 <tr>
-                  <th class="px-2 py-1.5 sm:px-3 sm:py-2">Name</th>
-                  <th class="px-2 py-1.5 sm:px-3 sm:py-2">Size</th>
+                  <th class="px-4 py-2 font-medium">Name</th>
+                  <th class="px-4 py-2 font-medium w-24 text-right">Size</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody class="divide-y divide-border/30">
                 <Show
                   when={
                     getDirectories().length === 0 && getFiles().length === 0
@@ -560,26 +573,29 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
                   <tr>
                     <td
                       colspan="2"
-                      class="py-8 text-center text-muted-foreground/50"
+                      class="py-12 text-center text-sm text-muted-foreground/50"
                     >
-                      This directory is empty
+                      <div class="flex flex-col items-center justify-center gap-2">
+                        <FolderIcon />
+                        <span>This directory is empty</span>
+                      </div>
                     </td>
                   </tr>
                 </Show>
                 <For each={getDirectories()}>
                   {(entry) => (
                     <tr
-                      class="cursor-pointer border-b border-border/50 hover:bg-muted"
+                      class="cursor-pointer hover:bg-background transition-colors group"
                       onClick={() => handleEntryClick(entry)}
                     >
-                      <td class="flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-3 sm:py-2">
-                        <span class="text-primary">
+                      <td class="flex items-center gap-2.5 px-4 py-2 text-foreground font-medium">
+                        <span class="text-primary/80 group-hover:text-primary transition-colors">
                           <FolderIcon />
                         </span>
-                        {entry.name}
+                        <span class="truncate">{entry.name}</span>
                       </td>
-                      <td class="px-2 py-1.5 sm:px-3 sm:py-2 text-muted-foreground/50">
-                        -
+                      <td class="px-4 py-2 text-muted-foreground/50 text-right text-xs">
+                        --
                       </td>
                     </tr>
                   )}
@@ -587,16 +603,16 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
                 <For each={getFiles()}>
                   {(entry) => (
                     <tr
-                      class="cursor-pointer border-b border-border/50 hover:bg-muted"
+                      class="cursor-pointer hover:bg-background transition-colors group"
                       onClick={() => handleEntryClick(entry)}
                     >
-                      <td class="flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-3 sm:py-2">
-                        <span class="text-muted-foreground/70">
+                      <td class="flex items-center gap-2.5 px-4 py-2 text-foreground/80 group-hover:text-foreground">
+                        <span class="text-muted-foreground/50 group-hover:text-muted-foreground transition-colors">
                           <FileIcon />
                         </span>
-                        {entry.name}
+                        <span class="truncate">{entry.name}</span>
                       </td>
-                      <td class="px-2 py-1.5 sm:px-3 sm:py-2">
+                      <td class="px-4 py-2 text-muted-foreground/60 text-right text-xs font-mono">
                         {formatSize(entry.size)}
                       </td>
                     </tr>
@@ -609,24 +625,32 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
 
         {/* Grid View */}
         <Show when={state.viewMode === "grid"}>
-          <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3 p-2 sm:p-3">
+          <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 p-4">
             <Show
               when={getDirectories().length === 0 && getFiles().length === 0}
             >
-              <div class="col-span-full text-center text-muted-foreground/50 py-8">
-                This directory is empty
+              <div class="col-span-full flex flex-col items-center justify-center gap-2 py-12 text-sm text-muted-foreground/50">
+                <FolderIcon />
+                <span>This directory is empty</span>
               </div>
             </Show>
             <For each={getDirectories()}>
               {(entry) => (
                 <div
-                  class="flex flex-col items-center p-2 sm:p-3 rounded-lg hover:bg-muted cursor-pointer transition-colors"
+                  class="group flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-background border border-transparent hover:border-border/50 hover:shadow-sm cursor-pointer transition-all"
                   onClick={() => handleEntryClick(entry)}
                 >
-                  <span class="text-primary mb-2">
-                    <FolderIcon />
+                  <span class="text-primary/80 group-hover:text-primary transition-colors drop-shadow-sm h-10 w-10 flex items-center justify-center">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-8 w-8"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                    </svg>
                   </span>
-                  <span class="text-xs text-center truncate w-full">
+                  <span class="text-xs font-medium text-center truncate w-full px-1 text-foreground">
                     {entry.name}
                   </span>
                 </div>
@@ -635,17 +659,25 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
             <For each={getFiles()}>
               {(entry) => (
                 <div
-                  class="flex flex-col items-center p-2 sm:p-3 rounded-lg hover:bg-muted cursor-pointer transition-colors"
+                  class="group flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-background border border-transparent hover:border-border/50 hover:shadow-sm cursor-pointer transition-all"
                   onClick={() => handleEntryClick(entry)}
                 >
-                  <span class="text-muted-foreground/70 mb-2">
-                    <FileIcon />
+                  <span class="text-muted-foreground/60 group-hover:text-muted-foreground transition-colors h-10 w-10 flex items-center justify-center">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-7 w-7"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
                   </span>
-                  <span class="text-xs text-center truncate w-full">
+                  <span class="text-xs text-center truncate w-full px-1 text-foreground/80 group-hover:text-foreground">
                     {entry.name}
-                  </span>
-                  <span class="text-xs text-muted-foreground/50">
-                    {formatSize(entry.size)}
                   </span>
                 </div>
               )}
@@ -659,19 +691,23 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
         <Dialog
           open={!!state.viewingFile}
           onClose={closeFile}
-          contentClass="max-w-4xl h-[80vh] flex flex-col"
+          contentClass="max-w-4xl max-h-[85vh] flex flex-col p-0 overflow-hidden bg-background rounded-2xl"
         >
-          <div>
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="font-bold text-lg truncate">
-                {state.viewingFile?.path}
+          <div class="flex flex-col h-full min-h-0">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-base-200/50 shrink-0">
+              <h3 class="font-medium text-sm text-foreground flex items-center gap-2 truncate">
+                <FileIcon />
+                {state.viewingFile?.path.split("/").pop() || "File"}
+                <span class="text-muted-foreground/50 font-normal text-xs ml-2 hidden sm:inline-block truncate">
+                  {state.viewingFile?.path}
+                </span>
               </h3>
             </div>
             <div
               ref={filePreviewContainerRef}
-              class="flex-1 overflow-auto rounded-sm bg-muted p-4"
+              class="flex-1 overflow-auto bg-base-100 p-4"
             >
-              <pre class="file-preview-prism text-xs leading-5">
+              <pre class="file-preview-prism text-[13px] leading-relaxed m-0 h-full">
                 <code
                   class={`language-${viewingLanguage()} font-mono`}
                   innerHTML={highlightedFileContent()}

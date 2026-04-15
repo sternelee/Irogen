@@ -9,11 +9,11 @@
 import { Show, For, type Component, createMemo } from "solid-js";
 import {
   FiActivity,
-  FiServer,
-  FiMessageSquare,
-  FiBox,
   FiSettings,
   FiChevronRight,
+  FiHome,
+  FiList,
+  FiMonitor,
 } from "solid-icons/fi";
 import {
   navigationStore,
@@ -22,23 +22,36 @@ import {
 import { sessionStore } from "../stores/sessionStore";
 import { cn } from "~/lib/utils";
 
+import { t } from "../stores/i18nStore";
+
 // ============================================================================
 // Navigation Items
 // ============================================================================
 
 interface NavItem {
   id: NavigationView;
-  label: string;
+  label: () => string;
   icon: typeof FiActivity;
   description?: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: "dashboard", label: "Topology", icon: FiActivity },
-  { id: "chat", label: "Chat", icon: FiMessageSquare },
-  { id: "hosts", label: "Hosts", icon: FiServer },
-  { id: "proxies", label: "Preview", icon: FiBox },
-  { id: "settings", label: "Settings", icon: FiSettings },
+  { id: "home", label: () => t("sidebar.home") as string, icon: FiHome },
+  {
+    id: "sessions",
+    label: () => t("sidebar.sessions") as string,
+    icon: FiList,
+  },
+  {
+    id: "devices",
+    label: () => t("sidebar.devices") as string,
+    icon: FiMonitor,
+  },
+  {
+    id: "settings",
+    label: () => t("sidebar.settings") as string,
+    icon: FiSettings,
+  },
 ];
 
 // ============================================================================
@@ -69,10 +82,10 @@ const ConnectionBadge: Component = () => {
       </span>
       <span class="text-xs font-medium text-muted-foreground">
         {isConnected()
-          ? "Connected"
+          ? t("sidebar.connected")
           : isReconnecting()
-            ? "Reconnecting..."
-            : "Disconnected"}
+            ? t("sidebar.reconnecting")
+            : t("sidebar.disconnected")}
       </span>
     </div>
   );
@@ -91,7 +104,8 @@ interface NavItemButtonProps {
 const NavItemButton: Component<NavItemButtonProps> = (props) => {
   const Icon = props.item.icon;
   const hasActiveSession =
-    props.item.id === "chat" && sessionStore.getActiveSessions().length > 0;
+    props.item.id === "workspace" &&
+    sessionStore.getActiveSessions().length > 0;
 
   return (
     <button
@@ -123,7 +137,7 @@ const NavItemButton: Component<NavItemButtonProps> = (props) => {
         )}
       />
       <span class="flex-1 text-left text-sm font-medium">
-        {props.item.label}
+        {props.item.label()}
       </span>
 
       {/* Active session indicator */}
@@ -181,7 +195,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
               Irogen
             </h1>
             <p class="text-[10px] text-muted-foreground mt-0.5 font-medium uppercase tracking-wider">
-              Agent Control
+              {t("sidebar.agentControl")}
             </p>
           </div>
         </div>
@@ -191,7 +205,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
       <div class="flex-1 overflow-y-auto px-3 py-4">
         {/* Section label */}
         <div class="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-          Navigation
+          {t("sidebar.navigation")}
         </div>
 
         {/* Nav items */}
@@ -209,7 +223,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
         <Show when={sessions().length > 0}>
           <div class="mt-6">
             <div class="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-              Active Sessions
+              {t("sidebar.activeSessions")}
             </div>
             <div class="space-y-1">
               <For each={sessions().slice(0, 3)}>
@@ -224,7 +238,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
                     )}
                     onClick={() => {
                       sessionStore.setActiveSession(session.sessionId);
-                      navigationStore.setActiveView("chat");
+                      navigationStore.setActiveView("workspace");
                     }}
                   >
                     {/* Status dot */}

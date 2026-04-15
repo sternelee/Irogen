@@ -114,35 +114,28 @@ export function MobileNavigation(props: MobileNavigationProps) {
       id: "home",
       title: "Home",
       icon: "🏠",
-      active: props.currentView === "home",
+      active: props.currentView === "home" || props.currentView === "dashboard",
     },
     {
-      id: "history",
-      title: "History",
+      id: "sessions",
+      title: "Sessions",
       icon: "📚",
-      active: false,
-      disabled: false,
+      active: props.currentView === "sessions",
     },
     {
-      id: "connect",
-      title: "Connect",
-      icon: "🔗",
-      active: false,
-      disabled: false,
-    },
-    {
-      id: "agent",
-      title: "Agent",
+      id: "devices",
+      title: "Devices",
       icon: "💻",
-      active: props.currentView === "agent",
-      disabled: !props.isConnected,
+      active:
+        props.currentView === "devices" ||
+        props.currentView === "hosts" ||
+        props.currentView === "proxies",
     },
     {
       id: "settings",
       title: "Settings",
       icon: "⚙️",
-      active: false,
-      disabled: false,
+      active: props.currentView === "settings",
     },
   ];
 
@@ -158,16 +151,11 @@ export function MobileNavigation(props: MobileNavigationProps) {
       case "home":
         props.onViewChange("home");
         break;
-      case "history":
-        props.onShowHistory?.();
+      case "sessions":
+        props.onViewChange("sessions");
         break;
-      case "connect":
-        props.onQuickConnect?.();
-        break;
-      case "agent":
-        if (props.isConnected) {
-          props.onViewChange("agent");
-        }
+      case "devices":
+        props.onViewChange("devices");
         break;
       case "settings":
         props.onShowSettings?.();

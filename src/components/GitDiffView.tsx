@@ -273,9 +273,9 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
   };
 
   return (
-    <div class={`git-diff-view ${props.class || ""}`}>
+    <div class={`flex flex-col h-full bg-base-200 ${props.class || ""}`}>
       {/* Header */}
-      <div class="git-diff-header compact-mobile-controls p-2 sm:p-3 border-b border-border">
+      <div class="flex-none border-b border-border/50 bg-base-200/80 backdrop-blur-sm p-2 sm:p-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-1.5 sm:gap-2">
             <GitBranchIcon />
@@ -328,12 +328,14 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
         </Show>
 
         <Show when={!hasChanges() && !state.isLoadingStatus}>
-          <div class="mt-2 text-xs text-base-content/55">No changes detected</div>
+          <div class="mt-2 text-xs text-base-content/55">
+            No changes detected
+          </div>
         </Show>
       </div>
 
       {/* Content */}
-      <div class="git-diff-content">
+      <div class="flex-1 overflow-y-auto">
         <Show when={state.isLoadingStatus && !state.statusEntries.length}>
           <div class="flex items-center justify-center h-32">
             <Spinner size="lg" class="text-primary" />

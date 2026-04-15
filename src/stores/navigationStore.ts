@@ -10,7 +10,16 @@ import { createStore } from "solid-js/store";
 // Types
 // ============================================================================
 
-export type NavigationView = "dashboard" | "hosts" | "chat" | "proxies" | "settings";
+export type NavigationView =
+  | "home"
+  | "sessions"
+  | "devices"
+  | "settings"
+  | "workspace"
+  | "dashboard"
+  | "hosts"
+  | "chat"
+  | "proxies";
 
 interface NavigationState {
   activeView: NavigationView;
@@ -23,7 +32,7 @@ interface NavigationState {
 // ============================================================================
 
 const initialState: NavigationState = {
-  activeView: "dashboard",
+  activeView: "home",
   previewProxyId: null,
   sidebarOpen: true,
 };
@@ -32,7 +41,12 @@ export const createNavigationStore = () => {
   const [state, setState] = createStore<NavigationState>(initialState);
 
   const setActiveView = (view: NavigationView) => {
-    setState("activeView", view);
+    let targetView = view;
+    if (view === "dashboard") targetView = "home";
+    if (view === "hosts" || view === "proxies") targetView = "devices";
+    if (view === "chat") targetView = "workspace";
+
+    setState("activeView", targetView);
   };
 
   const setPreviewProxyId = (proxyId: string | null) => {
