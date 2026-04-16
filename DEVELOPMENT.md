@@ -1,4 +1,4 @@
-# ClawdChat Development Guide
+# Irogen Development Guide
 
 面向当前版本（多 Agent 本地/远程管理平台）的开发说明。
 
@@ -66,7 +66,7 @@ git push origin v0.5.0
 发布工作流会执行：
 
 - 桌面应用打包：`tauri-apps/tauri-action@v0`
-- CLI 多平台构建并产出归档：`clawdchat_cli-*`
+- CLI 多平台构建并产出归档：`irogen_cli-*`
 - 发布到同一 GitHub Release
 
 ## CLI 说明

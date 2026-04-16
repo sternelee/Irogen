@@ -43,11 +43,11 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Read QR codes</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>ClawdChat needs local network access to establish P2P connections and share terminal sessions</string>
+	<string>Irogen needs local network access to establish P2P connections and share terminal sessions</string>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_clawdchat._tcp</string>
-		<string>_clawdchat._udp</string>
+		<string>_irogen._tcp</string>
+		<string>_irogen._udp</string>
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>

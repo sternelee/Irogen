@@ -12,6 +12,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The product centers on managing AI agent sessions (Claude, Codex, Gemini, OpenCode, OpenClaw) in both **local** and **remote** modes, with permission workflows and structured chat/tool-call UI.
 
+## Prerequisites
+
+- Rust stable
+- Node.js 20+
+- pnpm 10+
+
 ## Common Commands
 
 ### Root app / desktop-mobile UI
@@ -27,6 +33,7 @@ pnpm tauri:android:dev      # Android dev build (macOS)
 pnpm tauri:android:build    # Android release build (macOS)
 pnpm tauri:ios:dev          # iOS dev build (macOS)
 pnpm tauri:ios:build        # iOS release build (macOS)
+pnpm preview                # Preview production frontend build locally
 ```
 
 ### Rust workspace
@@ -35,10 +42,11 @@ pnpm tauri:ios:build        # iOS release build (macOS)
 cargo build --workspace
 cargo build -p cli --release
 cargo run -p cli -- host
-cargo run -p cli -- host --daemon
+cargo run -p cli -- host --daemon    # Unix-like systems only
 cargo test --workspace
 cargo test -p <crate> <test_name>          # Example: cargo test -p shared message_protocol
 cargo test -p <crate> --test <test_file>   # Example: cargo test -p shared --test integration
+cargo test -p <crate> --lib                # Run only library unit tests
 cargo test -- --nocapture
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
@@ -61,8 +69,11 @@ iOS build/install docs live in:
 cd web && pnpm install
 cd web && pnpm dev
 cd web && pnpm build
+cd web && pnpm start             # Start production server from built output
 cd web && pnpm test
 cd web && pnpm lint
+cd web && pnpm format            # Run Prettier check
+cd web && pnpm check             # Auto-format and fix ESLint issues
 cd web && pnpm deploy
 ```
 
@@ -72,6 +83,13 @@ cd web && pnpm deploy
 cargo fmt --all && cargo clippy --workspace -- -D warnings && pnpm tsc
 ```
 
+### Common debug points
+
+- Session switching / history: `src/components/SessionSidebar.tsx`
+- Message rendering / scroll: `src/components/ChatView.tsx`
+- Dropdown overlays: `src/components/ui/Dropdown.tsx`
+- Permission flow: `src/components/ui/PermissionCard.tsx` + backend permission handlers
+
 ## Repository Structure
 
 - `cli/`: Rust host binary that starts the remote-control server and prints the connection ticket / QR code
@@ -80,7 +98,7 @@ cargo fmt --all && cargo clippy --workspace -- -D warnings && pnpm tsc
 - `src/`: SolidJS frontend for session list, chat, permissions, tool calls, and connection UX
 - `browser/`: WASM client crate for browser-based connectivity
 - `web/`: separate TanStack Start + Cloudflare Workers app with its own tooling and conventions
-- `plugins/`: Vite/Tauri build helpers
+- `plugins/`: Vite build helpers (e.g. `fix-cjs-modules.ts`)
 
 ## Big-Picture Architecture
 
@@ -90,6 +108,7 @@ cargo fmt --all && cargo clippy --workspace -- -D warnings && pnpm tsc
 - `cli/src/message_server.rs` is the CLI-side control plane for remote actions, agent session spawning, and message handling.
 - `shared/src/quic_server.rs` contains both `QuicMessageServer` and `QuicMessageClientHandle`, which are the core Iroh QUIC transport primitives used by CLI and app.
 - `app/src/lib.rs` parses tickets, creates the app-side QUIC client, and owns active connection sessions.
+- `browser/src/lib.rs` is the WASM entry point for browser-based clients that connect via the same QUIC transport.
 
 ### 2. Unified wire protocol
 

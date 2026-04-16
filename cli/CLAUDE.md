@@ -7,6 +7,6 @@
 
 | ID    | Time     | T   | Title                             | Read |
 | ----- | -------- | --- | --------------------------------- | ---- |
-| #1238 | 11:17 PM | 🔵  | ClawdChat CLI architecture mapped | ~176 |
+| #1238 | 11:17 PM | 🔵  | Irogen CLI architecture mapped | ~176 |
 
 </claude-mem-context>

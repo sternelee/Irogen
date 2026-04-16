@@ -5,7 +5,7 @@
 
 ## Overview
 
-This document summarizes the completion of local ACP agent support in the ClawdChat CLI, enabling:
+This document summarizes the completion of local ACP agent support in the Irogen CLI, enabling:
 
 1. **Client Mode**: Direct interaction with local ACP agents for conversation
 2. **Host Mode**: P2P server that forwards requests to local ACP agents via iroh with data synchronization
@@ -312,7 +312,7 @@ test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 0.0
 
 ## Conclusion
 
-The implementation of ACP Client/Host support in the ClawdChat CLI is **complete** on the code level. The architecture leverages the existing ACP implementation in `lib/src/agent/acp.rs` which provides bidirectional JSON-RPC communication, permission management, and retry logic.
+The implementation of ACP Client/Host support in the Irogen CLI is **complete** on the code level. The architecture leverages the existing ACP implementation in `lib/src/agent/acp.rs` which provides bidirectional JSON-RPC communication, permission management, and retry logic.
 
 The remaining work involves:
 

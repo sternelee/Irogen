@@ -243,7 +243,7 @@ impl Default for QuicMessageServerConfig {
         // 默认使用当前启动目录
         let default_path = std::env::current_dir()
             .ok()
-            .map(|cwd| cwd.join("clawdchat_secret_key"));
+            .map(|cwd| cwd.join("irogen_secret_key"));
 
         Self {
             bind_addr: None,

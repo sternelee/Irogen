@@ -41,7 +41,7 @@ enum Commands {
         /// Bind address for the server
         #[arg(long, default_value = "0.0.0.0:61103")]
         bind_addr: String,
-        /// Custom path to secret key file (default: ./clawdchat_secret_key)
+        /// Custom path to secret key file (default: ./irogen_secret_key)
         #[arg(long)]
         secret_key_file: Option<String>,
         /// Use temporary secret key (not persisted to disk)
@@ -139,7 +139,7 @@ async fn run_host(
     } else {
         // 默认使用CLI启动目录
         let current_dir = std::env::current_dir()?;
-        let default_path = current_dir.join("clawdchat_secret_key");
+        let default_path = current_dir.join("irogen_secret_key");
         info!(
             "🔑 Using default secret key in CLI directory: {:?}",
             default_path

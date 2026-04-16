@@ -1,4 +1,4 @@
-# ClawdChat 项目方向调整规划
+# Irogen 项目方向调整规划
 
 ## 项目愿景转变
 
@@ -16,7 +16,7 @@
 
 ## 与 hapi 的关键差异
 
-| 特性     | hapi                               | ClawdChat               |
+| 特性     | hapi                               | Irogen               |
 | -------- | ---------------------------------- | ----------------------- |
 | 网络架构 | 中心化 (Client-Server + Socket.IO) | 去中心化 (P2P via iroh) |
 | 通信协议 | Socket.IO + SSE                    | iroh QUIC + E2E 加密    |
@@ -34,7 +34,7 @@
 │                                                                              │
 │   ┌──────────────┐         ┌──────────────┐         ┌──────────────┐        │
 │   │              │         │              │         │              │        │
-│   │  ClawdChat CLI  │◄───────►│ iroh P2P     │◄───────►│   Tauri      │        │
+│   │  Irogen CLI  │◄───────►│ iroh P2P     │◄───────►│   Tauri      │        │
 │   │              │ iroh    │   Network    │ iroh    │   Desktop    │        │
 │   │  + AI Agent  │ QUIC    │              │ QUIC    │   App        │        │
 │   │              │         │  E2E Encrypted│         │              │        │
@@ -65,7 +65,7 @@
 
 ### 组件职责
 
-#### 1. ClawdChat CLI
+#### 1. Irogen CLI
 
 包装和管理 AI 编码工具：
 

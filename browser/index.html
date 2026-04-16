@@ -3,24 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ClawdChat Web Terminal</title>
+    <title>Irogen Web Terminal</title>
 ...
         <div class="header">
-            <h1>ClawdChat Web Terminal</h1>
+            <h1>Irogen Web Terminal</h1>
             <p>Connect to remote terminal sessions from your browser</p>
         </div>
 ...
             <div class="terminal-output" id="output">
-ClawdChat Web Terminal v0.1.0
+Irogen Web Terminal v0.1.0
 =========================
 Waiting for connection...
             </div>
 ...
     <script type="module">
-        import init, { TerminalNode } from './pkg/clawdchat_browser.js';
+        import init, { TerminalNode } from './pkg/irogen_browser.js';
 ...
         clearBtn.addEventListener('click', () => {
-            outputEl.textContent = 'ClawdChat Web Terminal v0.1.0\n=========================\nOutput cleared.\n';
+            outputEl.textContent = 'Irogen Web Terminal v0.1.0\n=========================\nOutput cleared.\n';
         });
 
         inputEl.addEventListener('keypress', (e) => {

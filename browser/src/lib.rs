@@ -1,6 +1,6 @@
-//! ClawdChat Browser WASM Client
+//! Irogen Browser WASM Client
 //!
-//! WebAssembly client for connecting to ClawdChat agent sessions from the browser.
+//! WebAssembly client for connecting to Irogen agent sessions from the browser.
 //! Uses iroh for P2P connectivity over QUIC.
 
 use anyhow::Result;
@@ -43,7 +43,7 @@ fn start() {
         .with_ansi(false)
         .init();
 
-    tracing::info!("ClawdChat browser WASM initialized");
+    tracing::info!("Irogen browser WASM initialized");
 }
 
 // ============================================================================
@@ -498,7 +498,7 @@ fn start_mock_event_processing(
         // Text delta (streaming)
         let text_delta = AgentEvent::TextDelta {
             session_id: session_id.clone(),
-            text: "Welcome to ClawdChat Browser! (Mock Mode - Real integration in progress!)"
+            text: "Welcome to Irogen Browser! (Mock Mode - Real integration in progress!)"
                 .to_string(),
         };
         let _ = sender.unbounded_send(text_delta);

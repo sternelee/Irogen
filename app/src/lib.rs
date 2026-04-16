@@ -31,7 +31,7 @@ use shared::{
     AgentControlAction, AgentPermissionMode, AgentPermissionResponse, AgentType,
     CommunicationManager, DirEntry, Event, EventListener, EventType, FileBrowserAction,
     FileBrowserEntry, GitAction, MESSAGE_PROTOCOL_VERSION, MentionCandidate,
-    Message as ClawdChatMessage, MessageBuilder, MessagePayload, QuicMessageClientHandle,
+    Message as IrogenMessage, MessageBuilder, MessagePayload, QuicMessageClientHandle,
     SystemAction, TcpDataType, TcpForwardingAction, TcpForwardingType,
 };
 
@@ -378,7 +378,7 @@ async fn initialize_network_with_relay_internal(
     }
 
     // Create communication manager
-    let communication_manager = Arc::new(CommunicationManager::new("clawdchat_app".to_string()));
+    let communication_manager = Arc::new(CommunicationManager::new("irogen_app".to_string()));
     communication_manager
         .initialize()
         .await
@@ -395,7 +395,7 @@ async fn initialize_network_with_relay_internal(
                     .map_err(|e| format!("Failed to get app data directory: {}", e))?;
                 std::fs::create_dir_all(&app_data_dir)
                     .map_err(|e| format!("Failed to create app data directory: {}", e))?;
-                let path = app_data_dir.join("clawdchat_app_secret_key");
+                let path = app_data_dir.join("irogen_app_secret_key");
                 info!("🔑 Using persistent secret key for mobile: {:?}", path);
                 Some(path)
             }
@@ -418,7 +418,7 @@ async fn initialize_network_with_relay_internal(
                 std::fs::create_dir_all(&app_data_dir)
                     .map_err(|e| format!("Failed to create app data directory: {}", e))?;
 
-                let path = app_data_dir.join("clawdchat_app_secret_key");
+                let path = app_data_dir.join("irogen_app_secret_key");
                 info!(
                     "🔑 Using persistent secret key in app data directory: {:?}",
                     path
@@ -429,7 +429,7 @@ async fn initialize_network_with_relay_internal(
                 // Fallback for testing or contexts without app_handle
                 let app_data_dir =
                     std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-                let path = app_data_dir.join("clawdchat_app_secret_key");
+                let path = app_data_dir.join("irogen_app_secret_key");
                 info!(
                     "🔑 Using persistent secret key in current directory (fallback): {:?}",
                     path
@@ -1319,7 +1319,7 @@ async fn connect_to_peer(
     let cancellation_token_for_tcp = cancellation_token.clone();
 
     // Create a channel to send messages from the listener task to the sender task
-    let (tcp_msg_tx, mut tcp_msg_rx) = tokio::sync::mpsc::unbounded_channel::<ClawdChatMessage>();
+    let (tcp_msg_tx, mut tcp_msg_rx) = tokio::sync::mpsc::unbounded_channel::<IrogenMessage>();
 
     // Get a clone of the quic_client handle for sending messages
     let quic_client_handle_opt = {
@@ -1406,9 +1406,9 @@ async fn connect_to_peer(
                             tracing::debug!("TCP message to forward: session_id={}, connection_id={}, data_type={:?}",
                                 msg.session_id, msg.connection_id, msg.data_type);
 
-                            // Convert TcpMessageRequest to ClawdChatMessage and send to sender task
+                            // Convert TcpMessageRequest to IrogenMessage and send to sender task
                             let message = MessageBuilder::tcp_data(
-                                "clawdchat_app".to_string(),
+                                "irogen_app".to_string(),
                                 msg.session_id,
                                 msg.connection_id,
                                 msg.data_type,
@@ -1469,7 +1469,7 @@ async fn connect_to_peer(
 
         // Send list request to CLI
         let _list_message = MessageBuilder::tcp_forwarding(
-            "clawdchat_app".to_string(),
+            "irogen_app".to_string(),
             TcpForwardingAction::ListSessions,
             Some(session_id_for_sync.clone()),
         )
@@ -1494,7 +1494,7 @@ async fn connect_to_peer(
 async fn send_message_via_client(
     state: &State<'_, AppState>,
     connection_id: &str,
-    message: ClawdChatMessage,
+    message: IrogenMessage,
     operation_name: &str,
 ) -> Result<(), String> {
     let client_guard = state.quic_client.read().await;
@@ -1536,7 +1536,7 @@ async fn send_message_via_client(
 async fn send_message_via_client_with_response(
     state: &State<'_, AppState>,
     connection_id: &str,
-    message: ClawdChatMessage,
+    message: IrogenMessage,
     request_id: &str,
     operation_name: &str,
     timeout_secs: u64,
@@ -1608,7 +1608,7 @@ async fn probe_control_connection(
     for attempt in 1..=3 {
         let request_id = uuid::Uuid::new_v4().to_string();
         let probe_message = MessageBuilder::system_control(
-            "clawdchat_app".to_string(),
+            "irogen_app".to_string(),
             SystemAction::GetStatus,
             Some(request_id.clone()),
         )
@@ -2024,7 +2024,7 @@ async fn list_remote_directory(
     let action = FileBrowserAction::ListDirectory { path: path.clone() };
 
     let message = MessageBuilder::file_browser(
-        "clawdchat_app".to_string(),
+        "irogen_app".to_string(),
         action,
         Some(request_id.clone()),
     )
@@ -2128,7 +2128,7 @@ async fn remote_file_browser_list(
     let session = get_control_connection_session(&state, &control_session_id).await?;
     let request_id = uuid::Uuid::new_v4().to_string();
     let message = MessageBuilder::file_browser(
-        "clawdchat_app".to_string(),
+        "irogen_app".to_string(),
         FileBrowserAction::ListDirectory { path: path.clone() },
         Some(request_id.clone()),
     )
@@ -2179,7 +2179,7 @@ async fn remote_file_browser_read(
     let session = get_control_connection_session(&state, &control_session_id).await?;
     let request_id = uuid::Uuid::new_v4().to_string();
     let message = MessageBuilder::file_browser(
-        "clawdchat_app".to_string(),
+        "irogen_app".to_string(),
         FileBrowserAction::ReadFile { path: path.clone() },
         Some(request_id.clone()),
     )
@@ -2236,7 +2236,7 @@ async fn remote_git_status(
     let session = get_control_connection_session(&state, &control_session_id).await?;
     let request_id = uuid::Uuid::new_v4().to_string();
     let message = MessageBuilder::git_status(
-        "clawdchat_app".to_string(),
+        "irogen_app".to_string(),
         GitAction::GetStatus { path },
         Some(request_id.clone()),
     )
@@ -2285,7 +2285,7 @@ async fn remote_git_diff(
     let session = get_control_connection_session(&state, &control_session_id).await?;
     let request_id = uuid::Uuid::new_v4().to_string();
     let message = MessageBuilder::git_status(
-        "clawdchat_app".to_string(),
+        "irogen_app".to_string(),
         GitAction::GetDiff {
             path,
             file: file.clone(),
@@ -2356,7 +2356,7 @@ async fn list_remote_mention_candidates(
         limit,
     };
     let message = MessageBuilder::file_browser(
-        "clawdchat_app".to_string(),
+        "irogen_app".to_string(),
         action,
         Some(request_id.clone()),
     )
@@ -2481,7 +2481,7 @@ async fn create_tcp_forwarding_session(
     };
 
     let message = MessageBuilder::tcp_forwarding(
-        "clawdchat_app".to_string(),
+        "irogen_app".to_string(),
         action,
         Some(session_id.clone()),
     )
@@ -2514,7 +2514,7 @@ async fn list_tcp_forwarding_sessions(
         };
 
         let message = MessageBuilder::tcp_forwarding(
-            "clawdchat_app".to_string(),
+            "irogen_app".to_string(),
             TcpForwardingAction::ListSessions,
             Some(agent_session_id.clone()),
         )
@@ -2581,7 +2581,7 @@ async fn stop_tcp_forwarding_session(
     };
 
     let message = MessageBuilder::tcp_forwarding(
-        "clawdchat_app".to_string(),
+        "irogen_app".to_string(),
         TcpForwardingAction::StopSession {
             session_id: tcp_session_id.clone(),
         },
@@ -2633,7 +2633,7 @@ async fn get_tcp_forwarding_session_info(
     };
 
     let message = MessageBuilder::tcp_forwarding(
-        "clawdchat_app".to_string(),
+        "irogen_app".to_string(),
         TcpForwardingAction::GetSessionInfo {
             session_id: tcp_session_id,
         },
@@ -2682,7 +2682,7 @@ async fn send_tcp_data(
         };
 
     let message = MessageBuilder::tcp_data(
-        "clawdchat_app".to_string(),
+        "irogen_app".to_string(),
         tcp_session_id,
         connection_id,
         dt_type,
@@ -2753,7 +2753,7 @@ async fn send_slash_command(
     let (_is_builtin, processed_command) = process_slash_command(&command);
 
     // Send the processed command (either converted builtin or passthrough)
-    let control_message = ClawdChatMessage::new(
+    let control_message = IrogenMessage::new(
         shared::MessageType::AgentControl,
         "app".to_string(),
         shared::MessagePayload::AgentControl(shared::AgentControlMessage {
@@ -2832,7 +2832,7 @@ async fn send_agent_control(
 
     let req_id = uuid::Uuid::new_v4().to_string();
 
-    let control_message = ClawdChatMessage::new(
+    let control_message = IrogenMessage::new(
         shared::MessageType::AgentControl,
         "app".to_string(),
         shared::MessagePayload::AgentControl(shared::AgentControlMessage {
@@ -2921,7 +2921,7 @@ async fn remote_spawn_session(
 
     // Create RemoteSpawn message
     let request_id = uuid::Uuid::new_v4().to_string();
-    let spawn_message = ClawdChatMessage::new(
+    let spawn_message = IrogenMessage::new(
         shared::MessageType::RemoteSpawn,
         "app".to_string(),
         shared::MessagePayload::RemoteSpawn(shared::RemoteSpawnMessage {
@@ -3026,7 +3026,7 @@ async fn remote_list_agents(
     };
 
     let request_id = uuid::Uuid::new_v4().to_string();
-    let list_message = ClawdChatMessage::new(
+    let list_message = IrogenMessage::new(
         shared::MessageType::RemoteSpawn,
         "app".to_string(),
         shared::MessagePayload::RemoteSpawn(shared::RemoteSpawnMessage {
@@ -3100,7 +3100,7 @@ async fn remote_stop_agent(
     };
 
     let request_id = uuid::Uuid::new_v4().to_string();
-    let stop_message = ClawdChatMessage::new(
+    let stop_message = IrogenMessage::new(
         shared::MessageType::RemoteSpawn,
         "app".to_string(),
         shared::MessagePayload::RemoteSpawn(shared::RemoteSpawnMessage {
@@ -3179,7 +3179,7 @@ async fn respond_to_agent_permission(
         reason: None,
     };
 
-    let permission_message = ClawdChatMessage::new(
+    let permission_message = IrogenMessage::new(
         shared::MessageType::AgentPermission,
         "app".to_string(),
         shared::MessagePayload::AgentPermission(shared::AgentPermissionMessage {
@@ -3253,7 +3253,7 @@ async fn send_agent_message(
     };
 
     // Send as AgentControl::SendInput
-    let control_message = ClawdChatMessage::new(
+    let control_message = IrogenMessage::new(
         shared::MessageType::AgentControl,
         "app".to_string(),
         shared::MessagePayload::AgentControl(shared::AgentControlMessage {
@@ -3296,7 +3296,7 @@ async fn abort_agent_action(
     };
 
     // Send as AgentControl::SendInterrupt
-    let control_message = ClawdChatMessage::new(
+    let control_message = IrogenMessage::new(
         shared::MessageType::AgentControl,
         "app".to_string(),
         shared::MessagePayload::AgentControl(shared::AgentControlMessage {
@@ -3387,7 +3387,7 @@ async fn install_acp_package_remote(
     };
 
     let message = MessageBuilder::system_control(
-        "clawdchat_app".to_string(),
+        "irogen_app".to_string(),
         action,
         Some(request_id.clone()),
     );
@@ -4070,7 +4070,7 @@ async fn remote_set_permission_mode(
         }
     };
 
-    let control_message = ClawdChatMessage::new(
+    let control_message = IrogenMessage::new(
         shared::MessageType::AgentControl,
         "app".to_string(),
         shared::MessagePayload::AgentControl(shared::AgentControlMessage {
@@ -4122,7 +4122,7 @@ async fn get_permission_mode(
     };
 
     let request_id = uuid::Uuid::new_v4().to_string();
-    let control_message = ClawdChatMessage::new(
+    let control_message = IrogenMessage::new(
         shared::MessageType::AgentControl,
         "app".to_string(),
         shared::MessagePayload::AgentControl(shared::AgentControlMessage {

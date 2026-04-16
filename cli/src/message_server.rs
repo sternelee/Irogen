@@ -144,7 +144,7 @@ impl CliMessageServer {
 
         // 创建通信管理器
         let communication_manager =
-            Arc::new(CommunicationManager::new("clawdchat_cli_host".to_string()));
+            Arc::new(CommunicationManager::new("irogen_cli_host".to_string()));
         communication_manager.initialize().await?;
 
         // 创建 QUIC 服务器
@@ -453,6 +453,19 @@ impl CliMessageServer {
     /// 关闭服务器
     pub async fn shutdown(&self) -> Result<()> {
         info!("Shutting down CLI message server");
+
+        // 停止所有 agent sessions，防止 ACP 子进程泄漏
+        let sessions = self.agent_manager.list_sessions().await;
+        if !sessions.is_empty() {
+            info!("Stopping {} agent session(s)...", sessions.len());
+            for session_id in sessions {
+                if let Err(e) = self.agent_manager.stop_session(&session_id).await {
+                    warn!("Failed to stop session {} during shutdown: {}", session_id, e);
+                } else {
+                    info!("Stopped session {}", session_id);
+                }
+            }
+        }
 
         // 关闭 QUIC 服务器
         self.quic_server.shutdown().await?;
@@ -1849,7 +1862,7 @@ impl TcpDataMessageHandler {
 
                                                     // 发送连接关闭消息给特定客户端
                                                     let close_message = MessageBuilder::tcp_data(
-                                                        "clawdchat_cli".to_string(),
+                                                        "irogen_cli".to_string(),
                                                         session_id_clone.clone(),
                                                         connection_id_clone.clone(),
                                                         TcpDataType::ConnectionClose,
@@ -1896,7 +1909,7 @@ impl TcpDataMessageHandler {
 
                                                     // 创建 TCP 数据消息并发送给特定客户端
                                                     let message = MessageBuilder::tcp_data(
-                                                        "clawdchat_cli".to_string(),
+                                                        "irogen_cli".to_string(),
                                                         session_id_clone.clone(),
                                                         connection_id_clone.clone(),
                                                         TcpDataType::Data,

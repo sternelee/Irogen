@@ -1091,7 +1091,8 @@ pub async fn list_agent_history(
         .current_dir(&cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
 
     cmd.env("PATH", &extended_path);
     if let Some(ref home) = home_dir {
@@ -1660,7 +1661,8 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
         .current_dir(&params.working_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
 
     // Ensure PATH includes common binary directories for GUI app context
     let extended_path = get_extended_path();

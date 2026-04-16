@@ -4,17 +4,17 @@
   <dict>
     <key>NSCameraUsageDescription</key>
     <string>Read QR codes</string>
-    
+
     <!-- Network access permissions for P2P functionality -->
     <key>NSLocalNetworkUsageDescription</key>
-    <string>ClawdChat needs local network access to establish P2P connections and share terminal sessions</string>
-    
+    <string>Irogen needs local network access to establish P2P connections and share terminal sessions</string>
+
     <key>NSBonjourServices</key>
     <array>
-      <string>_clawdchat._tcp</string>
-      <string>_clawdchat._udp</string>
+      <string>_irogen._tcp</string>
+      <string>_irogen._udp</string>
     </array>
-    
+
     <!-- Allow arbitrary loads for iroh P2P networking -->
     <key>NSAppTransportSecurity</key>
     <dict>
@@ -23,7 +23,7 @@
       <key>NSAllowsLocalNetworking</key>
       <true/>
     </dict>
-    
+
     <!-- Required for background network operations -->
     <key>UIBackgroundModes</key>
     <array>
