@@ -29,6 +29,9 @@ export type AgentType =
   | "codex"
   | "cursor"
   | "gemini"
+  | "cline"
+  | "pi"
+  | "qwen"
   | "openclaw";
 
 export type SessionMode = "remote" | "local";
@@ -82,6 +85,8 @@ export const normalizeAgentType = (type: string): AgentType => {
   if (lower === "opencode") return "opencode";
   if (lower === "cursor-agent") return "cursor";
   if (lower === "gemini-cli") return "gemini";
+  if (lower === "qwencode" || lower === "qwen_code" || lower === "qwen-code")
+    return "qwen";
   if (lower === "open-claw") return "openclaw";
   return lower as AgentType;
 };

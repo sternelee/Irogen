@@ -290,6 +290,9 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
               <option value="claude">Claude Code</option>
               <option value="codex">Codex</option>
               <option value="cursor">Cursor</option>
+              <option value="cline">Cline</option>
+              <option value="pi">Pi</option>
+              <option value="qwen">Qwen Code</option>
               <option value="opencode">OpenCode</option>
               <option value="gemini">Gemini CLI</option>
             </Select>

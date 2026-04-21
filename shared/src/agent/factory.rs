@@ -79,6 +79,9 @@ fn agent_key(agent_type: AgentType) -> &'static str {
         AgentType::Codex => "codex",
         AgentType::Cursor => "cursor",
         AgentType::Gemini => "gemini",
+        AgentType::Cline => "cline",
+        AgentType::Pi => "pi",
+        AgentType::QwenCode => "qwen-code",
         AgentType::OpenClaw => "openclaw",
     }
 }
@@ -499,6 +502,162 @@ impl Agent for CursorAgent {
     }
 }
 
+/// Cline CLI Agent (ACP compatible)
+pub struct ClineAgent;
+
+impl Agent for ClineAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::Cline
+    }
+
+    fn command(&self) -> &str {
+        "cline"
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        vec!["acp".to_string()]
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        let available = output.status.success();
+        let version = if available {
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            None
+        };
+
+        Ok(AgentAvailability {
+            available,
+            version,
+            executable: self.command().to_string(),
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!(
+                "Failed to get Cline CLI version. Ensure 'cline' is installed."
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
+/// Pi CLI Agent (ACP compatible)
+pub struct PiAgent;
+
+impl Agent for PiAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::Pi
+    }
+
+    fn command(&self) -> &str {
+        "pi"
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        vec!["acp".to_string()]
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        let available = output.status.success();
+        let version = if available {
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            None
+        };
+
+        Ok(AgentAvailability {
+            available,
+            version,
+            executable: self.command().to_string(),
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!(
+                "Failed to get Pi CLI version. Ensure 'pi' is installed."
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
+/// Qwen Code CLI Agent (ACP compatible)
+pub struct QwenCodeAgent;
+
+impl Agent for QwenCodeAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::QwenCode
+    }
+
+    fn command(&self) -> &str {
+        "qwen"
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        vec!["acp".to_string()]
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        let available = output.status.success();
+        let version = if available {
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            None
+        };
+
+        Ok(AgentAvailability {
+            available,
+            version,
+            executable: self.command().to_string(),
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!(
+                "Failed to get Qwen Code CLI version. Ensure 'qwen' is installed."
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
 /// OpenClaw Agent — WebSocket Gateway mode
 ///
 /// OpenClaw uses WebSocket Gateway mode to communicate.
@@ -568,6 +727,9 @@ impl AgentFactory {
             AgentType::Codex => Box::new(CodexAgent),
             AgentType::Cursor => Box::new(CursorAgent),
             AgentType::Gemini => Box::new(GeminiAgent),
+            AgentType::Cline => Box::new(ClineAgent),
+            AgentType::Pi => Box::new(PiAgent),
+            AgentType::QwenCode => Box::new(QwenCodeAgent),
             AgentType::OpenClaw => Box::new(OpenClawAgent),
         }
     }
@@ -582,6 +744,9 @@ impl AgentFactory {
             AgentType::Codex,
             AgentType::Cursor,
             AgentType::Gemini,
+            AgentType::Cline,
+            AgentType::Pi,
+            AgentType::QwenCode,
             AgentType::OpenClaw,
         ];
 
@@ -615,7 +780,7 @@ impl AgentFactory {
     pub fn get_default() -> Option<AgentType> {
         let available = Self::check_all_available().ok()?;
 
-        // 优先级: ClaudeCode > Codex > Cursor > OpenCode > OpenClaw > Gemini
+        // Priority: ClaudeCode > Codex > Cursor > Cline > Pi > QwenCode > OpenCode > OpenClaw > Gemini
         if available.contains_key(&AgentType::ClaudeCode) {
             return Some(AgentType::ClaudeCode);
         }
@@ -624,6 +789,15 @@ impl AgentFactory {
         }
         if available.contains_key(&AgentType::Cursor) {
             return Some(AgentType::Cursor);
+        }
+        if available.contains_key(&AgentType::Cline) {
+            return Some(AgentType::Cline);
+        }
+        if available.contains_key(&AgentType::Pi) {
+            return Some(AgentType::Pi);
+        }
+        if available.contains_key(&AgentType::QwenCode) {
+            return Some(AgentType::QwenCode);
         }
         if available.contains_key(&AgentType::OpenCode) {
             return Some(AgentType::OpenCode);

@@ -205,6 +205,11 @@ export default function App() {
   const parseAgentType = (agentTypeStr: string): AgentType => {
     const lower = agentTypeStr.toLowerCase().replace(/-/g, "_");
     if (lower.includes("claude")) return "claude";
+    if (lower.includes("openclaw")) return "openclaw";
+    if (lower.includes("cursor")) return "cursor";
+    if (lower.includes("cline")) return "cline";
+    if (lower === "pi" || lower.startsWith("pi_")) return "pi";
+    if (lower.includes("qwen")) return "qwen";
     if (lower.includes("open")) return "opencode";
     if (lower.includes("gemini")) return "gemini";
     if (lower.includes("codex")) return "codex";

@@ -2023,12 +2023,9 @@ async fn list_remote_directory(
     // Create file browser message for listing directory
     let action = FileBrowserAction::ListDirectory { path: path.clone() };
 
-    let message = MessageBuilder::file_browser(
-        "irogen_app".to_string(),
-        action,
-        Some(request_id.clone()),
-    )
-    .with_session(session_id.clone());
+    let message =
+        MessageBuilder::file_browser("irogen_app".to_string(), action, Some(request_id.clone()))
+            .with_session(session_id.clone());
 
     // Send message via QUIC client
     send_message_via_client(
@@ -2355,12 +2352,9 @@ async fn list_remote_mention_candidates(
         query,
         limit,
     };
-    let message = MessageBuilder::file_browser(
-        "irogen_app".to_string(),
-        action,
-        Some(request_id.clone()),
-    )
-    .with_session(session_id);
+    let message =
+        MessageBuilder::file_browser("irogen_app".to_string(), action, Some(request_id.clone()))
+            .with_session(session_id);
 
     let response = send_message_via_client_with_response(
         &state,
@@ -2480,12 +2474,9 @@ async fn create_tcp_forwarding_session(
         session_id: Some(session_id_result.clone()),
     };
 
-    let message = MessageBuilder::tcp_forwarding(
-        "irogen_app".to_string(),
-        action,
-        Some(session_id.clone()),
-    )
-    .with_session(session_id.clone());
+    let message =
+        MessageBuilder::tcp_forwarding("irogen_app".to_string(), action, Some(session_id.clone()))
+            .with_session(session_id.clone());
 
     let connection_id = session.connection_id;
 
@@ -2902,6 +2893,9 @@ async fn remote_spawn_session(
         "codex" => AgentType::Codex,
         "cursor" | "cursor-agent" => AgentType::Cursor,
         "gemini" | "gemini-cli" => AgentType::Gemini,
+        "cline" => AgentType::Cline,
+        "pi" => AgentType::Pi,
+        "qwen" | "qwen-code" | "qwen_code" => AgentType::QwenCode,
         "openclaw" | "open-claw" => AgentType::OpenClaw,
         _ => return Err(format!("Unknown agent type: {}", agent_type)),
     };
@@ -3335,6 +3329,15 @@ async fn install_acp_package_local(agent_type: String) -> Result<String, String>
         "cursor" => {
             return Err("Cursor does not support ACP auto-install in Irogen".to_string());
         }
+        "cline" => {
+            return Err("Cline does not support ACP auto-install in Irogen".to_string());
+        }
+        "pi" => {
+            return Err("Pi does not support ACP auto-install in Irogen".to_string());
+        }
+        "qwen" | "qwen-code" | "qwen_code" => {
+            return Err("Qwen Code does not support ACP auto-install in Irogen".to_string());
+        }
         "openclaw" => return Err("OpenClaw does not require ACP installation".to_string()),
         _ => return Err(format!("Unsupported agent type for ACP: {}", agent_type)),
     };
@@ -3386,11 +3389,8 @@ async fn install_acp_package_remote(
         agent_type: agent_type.clone(),
     };
 
-    let message = MessageBuilder::system_control(
-        "irogen_app".to_string(),
-        action,
-        Some(request_id.clone()),
-    );
+    let message =
+        MessageBuilder::system_control("irogen_app".to_string(), action, Some(request_id.clone()));
 
     // Send message via QUIC client and wait for response
     let response = send_message_via_client_with_response(
@@ -3443,6 +3443,9 @@ async fn local_start_agent(
         "codex" => AgentType::Codex,
         "cursor" | "cursor-agent" => AgentType::Cursor,
         "gemini" | "gemini-cli" => AgentType::Gemini,
+        "cline" => AgentType::Cline,
+        "pi" => AgentType::Pi,
+        "qwen" | "qwen-code" | "qwen_code" => AgentType::QwenCode,
         "openclaw" | "open-claw" => AgentType::OpenClaw,
         _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
     };
@@ -3720,7 +3723,11 @@ async fn subscribe_acp_inspector(
                     break;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                    tracing::warn!("Inspector receiver lagged {} events for session {}", n, session_id);
+                    tracing::warn!(
+                        "Inspector receiver lagged {} events for session {}",
+                        n,
+                        session_id
+                    );
                 }
             }
         }
@@ -3747,7 +3754,13 @@ async fn respond_permission(
         .clone();
 
     manager
-        .respond_to_permission(&session_id, request_id, approved, approve_for_session, reason)
+        .respond_to_permission(
+            &session_id,
+            request_id,
+            approved,
+            approve_for_session,
+            reason,
+        )
         .await
         .map_err(|e| format!("Failed to respond to permission: {}", e))
 }
@@ -3766,6 +3779,9 @@ async fn local_list_agent_history(
         "codex" => AgentType::Codex,
         "cursor" | "cursor-agent" => AgentType::Cursor,
         "gemini" | "gemini-cli" => AgentType::Gemini,
+        "cline" => AgentType::Cline,
+        "pi" => AgentType::Pi,
+        "qwen" | "qwen-code" | "qwen_code" => AgentType::QwenCode,
         "openclaw" | "open-claw" => AgentType::OpenClaw,
         _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
     };
@@ -3826,6 +3842,9 @@ async fn local_load_agent_history(
         "codex" => AgentType::Codex,
         "cursor" | "cursor-agent" => AgentType::Cursor,
         "gemini" | "gemini-cli" => AgentType::Gemini,
+        "cline" => AgentType::Cline,
+        "pi" => AgentType::Pi,
+        "qwen" | "qwen-code" | "qwen_code" => AgentType::QwenCode,
         "openclaw" | "open-claw" => AgentType::OpenClaw,
         _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
     };

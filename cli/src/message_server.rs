@@ -30,9 +30,8 @@ use crate::shell::ShellDetector;
 use shared::{AgentFactory, AgentManager};
 
 /// 共享的 event forwarders 映射类型
-type EventForwarders = Arc<
-    tokio::sync::RwLock<std::collections::HashMap<String, tokio::task::JoinHandle<()>>>,
->;
+type EventForwarders =
+    Arc<tokio::sync::RwLock<std::collections::HashMap<String, tokio::task::JoinHandle<()>>>>;
 
 /// Connection information for status display
 #[derive(Debug, Clone)]
@@ -479,7 +478,10 @@ impl CliMessageServer {
             info!("Stopping {} agent session(s)...", sessions.len());
             for session_id in sessions {
                 if let Err(e) = self.agent_manager.stop_session(&session_id).await {
-                    warn!("Failed to stop session {} during shutdown: {}", session_id, e);
+                    warn!(
+                        "Failed to stop session {} during shutdown: {}",
+                        session_id, e
+                    );
                 } else {
                     info!("Stopped session {}", session_id);
                 }
@@ -568,13 +570,14 @@ impl MessageHandler for SystemControlMessageHandler {
                         info!("Installing ACP for agent: {}", agent_type);
 
                         // Determine ACP package name based on agent type
-                        let acp_package = match agent_type.as_str() {
-                            "codex" => "@zed-industries/codex-acp",
-                            "opencode" => "opencode-ai",
-                            "claude" => "@agentclientprotocol/claude-agent-acp",
-                            "gemini" => "@google/gemini-cli",
-                            "cursor" => {
-                                return Ok(Some(
+                        let acp_package =
+                            match agent_type.as_str() {
+                                "codex" => "@zed-industries/codex-acp",
+                                "opencode" => "opencode-ai",
+                                "claude" => "@agentclientprotocol/claude-agent-acp",
+                                "gemini" => "@google/gemini-cli",
+                                "cursor" => {
+                                    return Ok(Some(
                                     message
                                         .create_response(MessagePayload::Response(ResponseMessage {
                                         request_id: response_request_id.clone(),
@@ -586,36 +589,78 @@ impl MessageHandler for SystemControlMessageHandler {
                                         ),
                                     })),
                                 ));
-                            }
-                            "openclaw" => {
-                                return Ok(Some(
-                                    message.create_response(MessagePayload::Response(
-                                        ResponseMessage {
-                                            request_id: response_request_id.clone(),
-                                            success: false,
-                                            data: None,
-                                            message: Some(
-                                                "OpenClaw does not require ACP installation"
-                                                    .to_string(),
-                                            ),
-                                        },
-                                    )),
-                                ));
-                            }
-                            _ => {
-                                return Ok(Some(message.create_response(
-                                    MessagePayload::Response(ResponseMessage {
+                                }
+                                "cline" => {
+                                    return Ok(Some(
+                                    message
+                                        .create_response(MessagePayload::Response(ResponseMessage {
                                         request_id: response_request_id.clone(),
                                         success: false,
                                         data: None,
-                                        message: Some(format!(
-                                            "Unsupported agent type for ACP: {}",
-                                            agent_type
+                                        message: Some(
+                                            "Cline does not support ACP auto-install in Irogen"
+                                                .to_string(),
+                                        ),
+                                    })),
+                                ));
+                                }
+                                "pi" => {
+                                    return Ok(Some(
+                                    message
+                                        .create_response(MessagePayload::Response(ResponseMessage {
+                                        request_id: response_request_id.clone(),
+                                        success: false,
+                                        data: None,
+                                        message: Some(
+                                            "Pi does not support ACP auto-install in Irogen"
+                                                .to_string(),
+                                        ),
+                                    })),
+                                ));
+                                }
+                                "qwen" | "qwen-code" | "qwen_code" => {
+                                    return Ok(Some(
+                                    message
+                                        .create_response(MessagePayload::Response(ResponseMessage {
+                                        request_id: response_request_id.clone(),
+                                        success: false,
+                                        data: None,
+                                        message: Some(
+                                            "Qwen Code does not support ACP auto-install in Irogen"
+                                                .to_string(),
+                                        ),
+                                    })),
+                                ));
+                                }
+                                "openclaw" => {
+                                    return Ok(Some(
+                                        message.create_response(MessagePayload::Response(
+                                            ResponseMessage {
+                                                request_id: response_request_id.clone(),
+                                                success: false,
+                                                data: None,
+                                                message: Some(
+                                                    "OpenClaw does not require ACP installation"
+                                                        .to_string(),
+                                                ),
+                                            },
                                         )),
-                                    }),
-                                )));
-                            }
-                        };
+                                    ));
+                                }
+                                _ => {
+                                    return Ok(Some(message.create_response(
+                                        MessagePayload::Response(ResponseMessage {
+                                            request_id: response_request_id.clone(),
+                                            success: false,
+                                            data: None,
+                                            message: Some(format!(
+                                                "Unsupported agent type for ACP: {}",
+                                                agent_type
+                                            )),
+                                        }),
+                                    )));
+                                }
+                            };
 
                         // Install package using spawn_blocking to avoid blocking async runtime
                         let acp_package_owned = acp_package.to_string();
@@ -2886,7 +2931,8 @@ impl AgentControlMessageHandler {
                     )
                     .await?;
 
-                self.attach_event_forwarder(target_session_id.clone(), event_rx).await;
+                self.attach_event_forwarder(target_session_id.clone(), event_rx)
+                    .await;
 
                 Ok(serde_json::json!({
                     "type": "session_loaded",
@@ -3251,6 +3297,9 @@ fn parse_agent_type(agent_type_str: &str) -> Result<AgentType> {
         "codex" => Ok(AgentType::Codex),
         "cursor" | "cursor-agent" => Ok(AgentType::Cursor),
         "gemini" | "gemini-cli" => Ok(AgentType::Gemini),
+        "cline" => Ok(AgentType::Cline),
+        "pi" => Ok(AgentType::Pi),
+        "qwen" | "qwen-code" | "qwen_code" => Ok(AgentType::QwenCode),
         "openclaw" | "open-claw" => Ok(AgentType::OpenClaw),
         _ => Err(anyhow::anyhow!("Unknown agent type: {}", agent_type_str)),
     }

@@ -356,6 +356,18 @@ impl AgentManager {
                                     return Err(anyhow!(error_msg));
                                 }
                             }
+                            AgentType::Cline => {
+                                error_msg += " Install Cline CLI so 'cline acp' is available, or pass an explicit --binary-path.";
+                                return Err(anyhow!(error_msg));
+                            }
+                            AgentType::Pi => {
+                                error_msg += " Install Pi CLI so 'pi acp' is available, or pass an explicit --binary-path.";
+                                return Err(anyhow!(error_msg));
+                            }
+                            AgentType::QwenCode => {
+                                error_msg += " Install Qwen Code CLI so 'qwen acp' is available, or pass an explicit --binary-path.";
+                                return Err(anyhow!(error_msg));
+                            }
                             _ => {}
                         }
 
@@ -382,6 +394,9 @@ impl AgentManager {
                         AgentType::OpenCode => task::spawn_blocking(|| try_install_opencode())
                             .await
                             .unwrap_or_else(|_| Ok(false))?,
+                        AgentType::Cline => false,
+                        AgentType::Pi => false,
+                        AgentType::QwenCode => false,
                         _ => false,
                     };
 
@@ -403,6 +418,9 @@ impl AgentManager {
                             | AgentType::Cursor
                             | AgentType::Gemini
                             | AgentType::OpenCode
+                            | AgentType::Cline
+                            | AgentType::Pi
+                            | AgentType::QwenCode
                     ) {
                         return Err(anyhow!(
                             "Agent auto-install failed. Install the agent CLI or pass an explicit --binary-path."
@@ -582,6 +600,15 @@ impl AgentManager {
                             }
                             AgentType::Gemini => {
                                 error_msg += " Install the Gemini CLI (e.g. npm install -g @google/gemini-cli) or pass an explicit --binary-path.";
+                            }
+                            AgentType::Cline => {
+                                error_msg += " Install Cline CLI so 'cline acp' is available, or pass an explicit --binary-path.";
+                            }
+                            AgentType::Pi => {
+                                error_msg += " Install Pi CLI so 'pi acp' is available, or pass an explicit --binary-path.";
+                            }
+                            AgentType::QwenCode => {
+                                error_msg += " Install Qwen Code CLI so 'qwen acp' is available, or pass an explicit --binary-path.";
                             }
                             _ => {}
                         }

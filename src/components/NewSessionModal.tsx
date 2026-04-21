@@ -331,6 +331,27 @@ export const NewSessionModal: Component = () => {
           placeholder: "",
           hint: "OpenClaw does not support custom Agent Args.",
         };
+      case "cline":
+        return {
+          supported: true,
+          placeholder:
+            'e.g. --model sonnet or ["--model","sonnet"]',
+          hint: "Passed to Cline ACP process (`cline acp`). Supports JSON array or space-separated args.",
+        };
+      case "pi":
+        return {
+          supported: true,
+          placeholder:
+            'e.g. --model default or ["--model","default"]',
+          hint: "Passed to Pi ACP process (`pi acp`). Supports JSON array or space-separated args.",
+        };
+      case "qwen":
+        return {
+          supported: true,
+          placeholder:
+            'e.g. --model qwen3-coder-plus or ["--model","qwen3-coder-plus"]',
+          hint: "Passed to Qwen Code ACP process (`qwen acp`). Supports JSON array or space-separated args.",
+        };
       default:
         return {
           supported: true,
@@ -561,6 +582,9 @@ export const NewSessionModal: Component = () => {
                         <option value="claude">Claude Code</option>
                         <option value="codex">Codex</option>
                         <option value="cursor">Cursor</option>
+                        <option value="cline">Cline</option>
+                        <option value="pi">Pi</option>
+                        <option value="qwen">Qwen Code</option>
                         <option value="openclaw">OpenClaw</option>
                         <option value="opencode">OpenCode</option>
                         <option value="gemini">Gemini CLI</option>
