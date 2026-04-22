@@ -350,7 +350,6 @@ impl AgentManager {
                                 error_msg += " Install Qwen Code CLI so 'qwen acp' is available, or pass an explicit --binary-path.";
                                 return Err(anyhow!(error_msg));
                             }
-                            _ => {}
                         }
 
                         return Err(anyhow!(error_msg));
@@ -379,7 +378,6 @@ impl AgentManager {
                         AgentType::Cline => false,
                         AgentType::Pi => false,
                         AgentType::QwenCode => false,
-                        _ => false,
                     };
 
                     if installed {

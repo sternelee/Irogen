@@ -184,9 +184,7 @@ cargo fmt --all && cargo clippy --workspace -- -D warnings && pnpm tsc
 
 ## Dependency notes
 
-The workspace `Cargo.toml` patches important dependencies:
-- `tokio-tungstenite` points to a custom fork.
-- `agent-client-protocol-schema` points to a patched crate that handles nullable `used` fields in UsageUpdate.
+The workspace `Cargo.toml` patches `agent-client-protocol-schema` to handle nullable `used` fields in UsageUpdate.
 
 ## When adding a new agent integration
 
