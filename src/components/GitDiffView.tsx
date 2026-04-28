@@ -4,8 +4,10 @@
  * P2P git operations component for viewing git status and diffs.
  */
 
-import { Component, For, Show, onMount } from "solid-js";
+import { Component, For, Show, createEffect, onCleanup, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { FileDiff, processFile } from "@pierre/diffs";
+import type { FileDiff as FileDiffInstance } from "@pierre/diffs";
 import { gitStore } from "../stores/gitStore";
 import { notificationStore } from "../stores/notificationStore";
 import type { SessionMode } from "../stores/sessionStore";
@@ -223,54 +225,38 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
   const summary = () => getStatusSummary();
 
   // ============================================================================
-  // Diff Line Component
+  // Pierre FileDiff renderer
   // ============================================================================
 
-  const DiffLine = (props: {
-    line: {
-      type: string;
-      content: string;
-      oldLineNum?: number;
-      newLineNum?: number;
-    };
-  }) => {
-    const line = () => props.line;
-    return (
-      <div
-        class={`flex ${
-          line().type === "add"
-            ? "bg-success/12"
-            : line().type === "remove"
-              ? "bg-error/12"
-              : ""
-        }`}
-      >
-        <Show when={line().oldLineNum !== undefined}>
-          <span class="w-12 select-none pr-2 text-right font-mono text-xs text-base-content/35">
-            {line().oldLineNum}
-          </span>
-        </Show>
-        <Show when={line().newLineNum !== undefined}>
-          <span class="w-12 select-none pr-2 text-right font-mono text-xs text-base-content/35">
-            {line().newLineNum}
-          </span>
-        </Show>
-        <span
-          class={`flex-1 font-mono text-xs whitespace-pre ${
-            line().type === "add"
-              ? "text-success-content"
-              : line().type === "remove"
-                ? "text-error-content"
-                : "text-base-content"
-          }`}
-        >
-          {line().type === "add" && "+"}
-          {line().type === "remove" && "-"}
-          {line().content}
-        </span>
-      </div>
-    );
-  };
+  let fileDiffInstance: FileDiffInstance;
+  let diffContainerRef: HTMLDivElement | undefined;
+
+  onMount(() => {
+    fileDiffInstance = new FileDiff({ theme: "pierre-dark" });
+  });
+
+  createEffect(() => {
+    const diff = state.currentDiff;
+    if (
+      state.viewMode === "diff" &&
+      diff?.diff &&
+      !state.isLoadingDiff &&
+      diffContainerRef &&
+      fileDiffInstance
+    ) {
+      const fileDiffMetadata = processFile(diff.diff, { isGitDiff: true });
+      if (fileDiffMetadata) {
+        fileDiffInstance.render({
+          fileDiff: fileDiffMetadata,
+          containerWrapper: diffContainerRef,
+        });
+      }
+    }
+  });
+
+  onCleanup(() => {
+    fileDiffInstance?.cleanUp();
+  });
 
   return (
     <div class={`flex flex-col h-full bg-base-200 ${props.class || ""}`}>
@@ -466,49 +452,21 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
               </div>
             </Show>
 
-            {/* Diff Content */}
-            <Show when={!state.isLoadingDiff && state.currentDiff?.hunks}>
-              <div class="bg-muted rounded-lg overflow-y-hidden overflow-x-auto text-xs">
-                <For each={state.currentDiff?.hunks}>
-                  {(hunk) => (
-                    <div class="border-b border-border last:border-0">
-                      {/* Hunk Header */}
-                      <div class="bg-muted/50 px-3 py-1 font-mono text-xs text-foreground/70">
-                        {hunk.header}
-                      </div>
-                      {/* Hunk Lines */}
-                      <For each={hunk.lines}>
-                        {(line) => <DiffLine line={line} />}
-                      </For>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </Show>
-
-            {/* Raw Diff */}
-            <Show
-              when={
-                !state.isLoadingDiff &&
-                !state.currentDiff?.hunks &&
-                !!state.currentDiff?.diff.trim()
-              }
-            >
-              <pre class="bg-muted rounded-lg p-2.5 text-xs overflow-x-auto whitespace-pre-wrap">
-                {state.currentDiff?.diff}
-              </pre>
-            </Show>
-
-            <Show
-              when={
-                !state.isLoadingDiff &&
-                state.currentDiff &&
-                !state.currentDiff.diff.trim()
-              }
-            >
-              <div class="mt-2 rounded-lg border border-border p-2.5 text-xs text-foreground/60">
-                No diff content available for this file.
-              </div>
+            {/* Pierre FileDiff Renderer */}
+            <Show when={!state.isLoadingDiff && state.currentDiff}>
+              <Show
+                when={state.currentDiff?.diff.trim()}
+                fallback={
+                  <div class="mt-2 rounded-lg border border-border p-2.5 text-xs text-foreground/60">
+                    No diff content available for this file.
+                  </div>
+                }
+              >
+                <div
+                  ref={diffContainerRef}
+                  class="rounded-lg overflow-hidden"
+                />
+              </Show>
             </Show>
           </div>
         </Show>
