@@ -152,7 +152,13 @@ cargo fmt --all && cargo clippy --workspace -- -D warnings && pnpm tsc
 - `src/stores/sessionStore.ts` owns session metadata, connected hosts, active session, connection lifecycle, and new-session modal state.
 - `src/stores/chatStore.ts` owns per-session messages, tool-call state, pending permission requests, user questions, attachments, slash commands, and custom prompts.
 - `src/stores/navigationStore.ts` drives view switching in the root app. The frontend does **not** use a URL router; views (`home`, `sessions`, `devices`, `settings`, `chat`, etc.) are rendered conditionally based on navigation store state.
-- `src/components/ChatView.tsx` and `src/components/Dashboard.tsx` consume `sessionEventRouter` state rather than talking directly to backend events.
+- `src/stores/deviceStore.ts` tracks connected remote hosts and their metadata.
+- `src/stores/settingsStore.ts` persists user preferences (theme, locale, permission defaults).
+- `src/stores/notificationStore.ts` queues toast/banner notifications from backend events.
+- `src/stores/fileBrowserStore.ts`, `gitStore.ts`, `tcpForwardingStore.ts`, `acpInspectorStore.ts` handle their respective feature domains.
+- `src/components/ChatView.tsx` and `src/components/WorkspaceShell.tsx` consume `sessionEventRouter` state rather than talking directly to backend events.
+- `src/components/AgentPanel.tsx` renders the tabbed multi-session workspace within a thread group.
+- `src/components/GitDiffView.tsx` and `src/components/FileBrowserView.tsx` are standalone views driven by their own stores.
 - `docs/SESSION_MANAGEMENT.md` explains the intended local-vs-remote session model and sidebar behavior.
 
 ### 6. Desktop vs mobile build split
@@ -167,11 +173,12 @@ cargo fmt --all && cargo clippy --workspace -- -D warnings && pnpm tsc
 
 - `web/` is not part of the root frontend/Tauri flow.
 - It is a distinct TanStack Start + Cloudflare Workers application with its own `package.json`, scripts, and conventions.
-- `web/.cursorrules` highlights the important expectations there:
-  - TanStack Router
-  - TanStack Query
-  - type-safe `createContext` usage
+- Key expectations in `web/`:
+  - TanStack Router for routing
+  - TanStack Query for data fetching
+  - Type-safe `createContext` usage
   - Tailwind `@layer` for custom styles
+  - `.tsx` for all JSX files, strict TypeScript
 
 ## Project-Specific Conventions and Notes
 
@@ -207,6 +214,15 @@ git push origin v0.x.y
 
 The publishing workflow is `.github/workflows/publish-to-auto-release.yml`.
 
+## UI Style Conventions (Zed-inspired)
+
+- Hard lines, high contrast, no gradients/shadows/animations
+- Flat design with solid colors
+- `border border-black/10` for borders
+- `bg-zinc-900` for active states
+- `text-zinc-500` for muted text
+- Do **not** use `rounded-2xl`, `rounded-xl`, `shadow-*`, `transition-*`, or `animate-*`
+
 ## Recent Changes (v0.6.1+)
 
 ### Parallel Agents Workspace
@@ -222,12 +238,7 @@ The publishing workflow is `.github/workflows/publish-to-auto-release.yml`.
 - UI component: `AdditionalProjects` for runtime project management
 
 ### UI Style (Zed-inspired)
-- Hard lines, high contrast, no gradients/shadows/animations
-- Flat design with solid colors
-- `border border-black/10` for borders
-- `bg-zinc-900` for active states
-- `text-zinc-500` for muted text
-- No `rounded-2xl`, `rounded-xl`, `shadow-*`, `transition-*`, `animate-*`
+- Hard lines, high contrast, no gradients/shadows/animations — see the `## UI Style Conventions` section above.
 
 Design specs:
 - `docs/superpowers/specs/2026-04-27-parallel-agents-design.md`

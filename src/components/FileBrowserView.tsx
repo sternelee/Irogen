@@ -17,7 +17,7 @@ import {
   onCleanup,
   onMount,
 } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { FileTree } from "@pierre/trees";
 import type { FileTreeBatchOperation } from "@pierre/trees";
 import { File as PierreFile } from "@pierre/diffs";
@@ -29,6 +29,69 @@ import { Alert } from "./ui/primitives";
 import { Button } from "./ui/primitives";
 import { Dialog } from "./ui/primitives";
 import { Spinner } from "./ui/primitives";
+
+// ============================================================================
+// File-type helpers
+// ============================================================================
+
+const IMAGE_EXTS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "svg",
+  "bmp",
+  "ico",
+  "avif",
+  "tiff",
+]);
+
+const BINARY_EXTS = new Set([
+  "pdf",
+  "zip",
+  "gz",
+  "tar",
+  "rar",
+  "7z",
+  "exe",
+  "dll",
+  "so",
+  "dylib",
+  "bin",
+  "wasm",
+  "mp4",
+  "mov",
+  "avi",
+  "mkv",
+  "webm",
+  "mp3",
+  "wav",
+  "ogg",
+  "flac",
+  "aac",
+  "ttf",
+  "otf",
+  "woff",
+  "woff2",
+  "db",
+  "sqlite",
+  "parquet",
+  "class",
+  "pyc",
+]);
+
+const getExt = (path: string): string =>
+  (path.split(".").pop() || "").toLowerCase();
+
+type FileKind = "image" | "binary" | "text";
+
+const classifyFile = (path: string): FileKind => {
+  const ext = getExt(path);
+  if (IMAGE_EXTS.has(ext)) return "image";
+  if (BINARY_EXTS.has(ext)) return "binary";
+  return "text";
+};
 
 // ============================================================================
 // Types
@@ -114,6 +177,10 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
   const [hasLoadedAny, setHasLoadedAny] = createSignal(false);
   // Counts of active directory fetches (for the loading overlay)
   const [activeFetches, setActiveFetches] = createSignal(0);
+  // Kind of the currently-viewed file
+  const [viewingKind, setViewingKind] = createSignal<FileKind>("text");
+  // Tauri-protocol src URL for image preview (local mode only)
+  const [imageSrc, setImageSrc] = createSignal<string | undefined>(undefined);
 
   // ── Pierre instances (stable across re-renders) ─────────────────────────────
   let fileTreeInstance: FileTree;
@@ -263,6 +330,29 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
   };
 
   const loadFile = async (absPath: string, jumpToLine?: number) => {
+    const kind = classifyFile(absPath);
+    setViewingKind(kind);
+    setImageSrc(undefined);
+
+    // Binary (non-image): just open the dialog to show the unsupported banner
+    if (kind === "binary") {
+      viewFile(absPath, "");
+      return;
+    }
+
+    // Image: use Tauri convertFileSrc for local sessions; unsupported for remote
+    if (kind === "image") {
+      if (props.sessionMode === "remote") {
+        // Remote image preview not supported — show unsupported banner
+        viewFile(absPath, "");
+      } else {
+        setImageSrc(convertFileSrc(absPath));
+        viewFile(absPath, "");
+      }
+      return;
+    }
+
+    // Text file: fetch content and render via @pierre/diffs
     setLoading(true);
     setError(null);
 
@@ -523,8 +613,51 @@ export const FileBrowserView: Component<FileBrowserViewProps> = (props) => {
               </span>
             </div>
 
-            {/* @pierre/diffs File renderer — signal ref ensures effect re-runs after Show mounts */}
-            <div ref={setFilePreviewContainer} class="flex-1 overflow-auto" />
+            {/* Body — differs by file kind */}
+            <Show when={viewingKind() === "image" && imageSrc()}>
+              {/* Local image preview */}
+              <div class="flex-1 overflow-auto flex items-center justify-center p-4 bg-zinc-950">
+                <img
+                  src={imageSrc()}
+                  alt={state.viewingFile?.path.split("/").pop() || "image"}
+                  class="max-w-full max-h-full object-contain"
+                />
+              </div>
+            </Show>
+
+            <Show
+              when={
+                viewingKind() === "binary" ||
+                (viewingKind() === "image" && !imageSrc())
+              }
+            >
+              {/* Binary / remote-image unsupported banner */}
+              <div class="flex-1 flex flex-col items-center justify-center gap-3 text-zinc-500 select-none p-8">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-10 w-10 opacity-40"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                  />
+                </svg>
+                <span class="text-sm">不支持预览此文件类型</span>
+                <span class="text-xs opacity-60">
+                  {state.viewingFile?.path.split("/").pop()}
+                </span>
+              </div>
+            </Show>
+
+            <Show when={viewingKind() === "text"}>
+              {/* @pierre/diffs File renderer — signal ref ensures effect re-runs after Show mounts */}
+              <div ref={setFilePreviewContainer} class="flex-1 overflow-auto" />
+            </Show>
           </div>
         </Dialog>
       </Show>
