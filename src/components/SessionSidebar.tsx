@@ -178,7 +178,9 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
             class="text-zinc-400 hover:text-foreground p-1"
             onClick={(event) => {
               event.stopPropagation();
-              props.onNewThread(props.group.sessions[0]);
+              if (props.group.sessions[0]) {
+                props.onNewThread(props.group.sessions[0]);
+              }
             }}
             title="New thread"
             aria-label="New thread in this project"
