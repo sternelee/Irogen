@@ -145,12 +145,18 @@ interface ThreadGroupSectionProps {
 const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
   const [isCollapsed, setIsCollapsed] = createSignal(false);
 
-  const group = () => props.group;
-  const sessions = () => group()?.sessions ?? [];
-  const activeCount = () => sessions().filter(s => s.active).length;
+  const activeCount = () => props.group?.sessions?.filter(s => s.active).length ?? 0;
+
+  const handleNewThread = (event: MouseEvent) => {
+    event.stopPropagation();
+    const sessions = props.group?.sessions;
+    if (sessions?.[0]) {
+      props.onNewThread(sessions[0]);
+    }
+  };
 
   return (
-    <Show when={group()} fallback={<div>Loading...</div>}>
+    <Show when={props.group} fallback={<div>Loading...</div>}>
       <div class="border border-black/10 dark:border-white/10">
         <button
           type="button"
@@ -162,7 +168,7 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <span class="text-xs font-semibold text-foreground truncate">
-                  {group()?.projectName}
+                  {props.group.projectName}
                 </span>
                 <Show when={activeCount() > 0}>
                   <span class="text-[10px] font-medium text-green-600 dark:text-green-400">
@@ -171,7 +177,7 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
                 </Show>
               </div>
               <div class="text-[10px] text-zinc-400 truncate">
-                {group()?.projectPath}
+                {props.group.projectPath}
               </div>
             </div>
           </div>
@@ -179,13 +185,7 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
             <button
               type="button"
               class="text-zinc-400 hover:text-foreground p-1"
-              onClick={(event) => {
-                event.stopPropagation();
-                const firstSession = sessions()[0];
-                if (firstSession) {
-                  props.onNewThread(firstSession);
-                }
-              }}
+              onClick={handleNewThread}
               title="New thread"
               aria-label="New thread in this project"
             >
@@ -202,7 +202,7 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
         </button>
         <Show when={!isCollapsed()}>
           <div>
-            <For each={sessions()}>
+            <For each={props.group.sessions ?? []}>
               {(session) => (
                 <ThreadItem
                   session={session}
