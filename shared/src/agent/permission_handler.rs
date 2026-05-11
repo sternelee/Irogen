@@ -201,6 +201,22 @@ pub fn infer_tool_kind(tool_name: &str, tool_title: Option<&str>) -> ToolKind {
     ToolKind::Other
 }
 
+/// Non-interactive permission policy for when TTY is not available
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NonInteractivePermissionPolicy {
+    /// Deny all permission requests when TTY is not available
+    Deny,
+    /// Fail with an error when TTY is not available
+    Fail,
+}
+
+impl Default for NonInteractivePermissionPolicy {
+    fn default() -> Self {
+        Self::Deny
+    }
+}
+
 /// Permission mode for tool approval workflow
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -209,6 +225,8 @@ pub enum PermissionMode {
     AlwaysAsk,
     /// Auto-approve file edits, ask for shell commands
     AcceptEdits,
+    /// Auto-approve read/search operations, ask for writes/executes
+    ApproveReads,
     /// Auto-approve everything (dangerous)
     AutoApprove,
     /// Plan mode - read-only, approve reads automatically
@@ -478,6 +496,24 @@ impl PermissionHandler {
                     return Some(AutoApprovalDecision {
                         decision: ApprovalDecision::Approved,
                         mode: Some(PermissionMode::AcceptEdits),
+                    });
+                }
+                None
+            }
+
+            PermissionMode::ApproveReads => {
+                // Auto-approve read/search/think operations
+                if matches!(
+                    tool_kind,
+                    ToolKind::Read | ToolKind::Search | ToolKind::Think
+                ) {
+                    debug!(
+                        "ApproveReads mode: auto-approving read/search/think tool '{}'",
+                        tool_name
+                    );
+                    return Some(AutoApprovalDecision {
+                        decision: ApprovalDecision::Approved,
+                        mode: Some(PermissionMode::ApproveReads),
                     });
                 }
                 None

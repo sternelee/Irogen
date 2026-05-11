@@ -1,19 +1,48 @@
 <!doctype html>
-<html lang="en" data-theme="sunset">
+<html lang="en">
   <head>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
+      content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
     <meta
       name="description"
-      content="Irogen - P2P Terminal Session Sharing"
+      content="HiAcpx - AI Agent P2P Remote Management"
+    />
+    <meta
+      name="theme-color"
+      content="#ffffff"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#1c1c1e"
+      media="(prefers-color-scheme: dark)"
     />
     <title>Irogen</title>
+    <style>
+      html {
+        background: #fff;
+      }
+      @media (prefers-color-scheme: dark) {
+        html {
+          background: #1c1c1e;
+          color-scheme: dark;
+        }
+      }
+    </style>
+    <script>
+      if (
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches
+      ) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

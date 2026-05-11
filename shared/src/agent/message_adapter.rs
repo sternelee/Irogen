@@ -331,15 +331,20 @@ pub fn event_to_agent_message_content(
             message: message.clone(),
         },
 
-        // Session lifecycle - skip these, they're not message content
-        AgentEvent::SessionStarted { .. } => AgentMessageContent::SystemNotification {
-            level: NotificationLevel::Info,
-            message: String::new(), // Empty, frontend should ignore
+        // Session lifecycle - pass through as raw events so frontend can recognize them
+        AgentEvent::SessionStarted { session_id, agent } => AgentMessageContent::RawEvent {
+            event_type: "session_started".to_string(),
+            data: serde_json::json!({
+                "sessionId": session_id,
+                "agent": format!("{:?}", agent),
+            }).to_string(),
         },
 
-        AgentEvent::SessionEnded { .. } => AgentMessageContent::SystemNotification {
-            level: NotificationLevel::Info,
-            message: String::new(), // Empty, frontend should ignore
+        AgentEvent::SessionEnded { session_id } => AgentMessageContent::RawEvent {
+            event_type: "session_ended".to_string(),
+            data: serde_json::json!({
+                "sessionId": session_id,
+            }).to_string(),
         },
 
         // Usage updates - skip, not message content

@@ -13,3 +13,4 @@ tsc-cache
 .worktrees
 .omx/
 .opencode
+.commandcode

@@ -1,184 +1,94 @@
-/**
- * Dialog (Modal) - DaisyUI Pattern with OpenChamber Animations
- *
- * Features:
- * - Smooth fade-in/zoom-in/slide-in animations
- * - Improved overlay with blur and dimming
- * - Focus trap for accessibility
- * - Better close button positioning
- */
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { forwardRef, type ComponentRef, type ComponentPropsWithoutRef } from "react";
+import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-import { type JSX, Show, createEffect, onCleanup, onMount } from "solid-js";
-import { Portal } from "solid-js/web";
-import { FiX } from "solid-icons/fi";
-import { cn } from "~/lib/utils";
+const Dialog = DialogPrimitive.Root;
+const DialogTrigger = DialogPrimitive.Trigger;
+const DialogPortal = DialogPrimitive.Portal;
+const DialogClose = DialogPrimitive.Close;
 
-type DialogProps = {
-  open: boolean;
-  onClose?: () => void;
-  class?: string;
-  contentClass?: string;
-  children: JSX.Element;
-};
+const DialogOverlay = forwardRef<
+  ComponentRef<typeof DialogPrimitive.Overlay>,
+  ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Overlay
+    ref={ref}
+    className={cn(
+      "fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out",
+      className
+    )}
+    {...props}
+  />
+));
+DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
-export function Dialog(props: DialogProps) {
-  let dialogRef: HTMLDialogElement | undefined;
-  let previousFocus: HTMLElement | null = null;
+const DialogContent = forwardRef<
+  ComponentRef<typeof DialogPrimitive.Content>,
+  ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
+  <DialogPortal>
+    <DialogOverlay />
+    <DialogPrimitive.Content
+      ref={ref}
+      className={cn(
+        "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl bg-[var(--app-bg)] p-6 shadow-lg animate-menu-pop",
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-full p-1 text-[var(--app-hint)] hover:text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] transition-colors">
+        <X className="h-4 w-4" />
+      </DialogPrimitive.Close>
+    </DialogPrimitive.Content>
+  </DialogPortal>
+));
+DialogContent.displayName = DialogPrimitive.Content.displayName;
 
-  // Handle escape key
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape" && props.onClose) {
-      e.preventDefault();
-      props.onClose();
-    }
-  };
-
-  // Focus trap
-  const trapFocus = (e: KeyboardEvent) => {
-    if (e.key !== "Tab" || !dialogRef) return;
-
-    const focusableElements = dialogRef.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"]',
-    );
-    const firstElement = focusableElements[0];
-    const lastElement = focusableElements[focusableElements.length - 1];
-
-    if (e.shiftKey && document.activeElement === firstElement) {
-      e.preventDefault();
-      lastElement?.focus();
-    } else if (!e.shiftKey && document.activeElement === lastElement) {
-      e.preventDefault();
-      firstElement?.focus();
-    }
-  };
-
-  onMount(() => {
-    document.addEventListener("keydown", handleKeyDown);
-  });
-
-  createEffect(() => {
-    if (props.open) {
-      // Store previous focus
-      previousFocus = document.activeElement as HTMLElement;
-      document.body.style.overflow = "hidden";
-      document.addEventListener("keydown", trapFocus);
-
-      // Focus first focusable element
-      setTimeout(() => {
-        const firstFocusable = dialogRef?.querySelector<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"]',
-        );
-        firstFocusable?.focus();
-      }, 50);
-    } else {
-      document.body.style.overflow = "";
-      document.removeEventListener("keydown", trapFocus);
-      // Restore previous focus
-      previousFocus?.focus();
-    }
-  });
-
-  onCleanup(() => {
-    document.removeEventListener("keydown", handleKeyDown);
-    document.removeEventListener("keydown", trapFocus);
-    document.body.style.overflow = "";
-  });
-
-  return (
-    <Show when={props.open}>
-      <Portal>
-        <div
-          class="fixed inset-0 z-50 flex items-center justify-center"
-          role="dialog"
-          aria-modal="true"
-        >
-          {/* Enhanced Overlay - blur + dim */}
-          <div
-            class="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
-            onClick={props.onClose}
-            aria-hidden="true"
-          />
-
-          {/* Dialog */}
-          <dialog
-            ref={dialogRef}
-            class={cn(
-              "relative bg-base-100 rounded-t-3xl rounded-b-none sm:rounded-2xl",
-              "shadow-2xl max-h-[85vh] overflow-auto",
-              "animate-content-show", // zoom-in animation
-              props.class,
-            )}
-            open
-          >
-            {/* Mobile handle */}
-            <div class="flex justify-center -mt-3 mb-2 sm:hidden">
-              <div class="w-12 h-1.5 bg-base-content/20 rounded-full" />
-            </div>
-
-            {/* Content wrapper with slide-up effect */}
-            <div
-              class={cn(
-                "relative px-6 py-4 sm:px-8 sm:py-6",
-                "animate-slide-up",
-                props.contentClass,
-              )}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {props.children}
-
-              {/* Improved Close button - top right, always visible */}
-
-              <button
-                type="button"
-                class={cn(
-                  "absolute right-4 top-4 w-8 h-8 p-0",
-                  "btn btn-ghost btn-sm btn-square",
-                  "flex items-center justify-center",
-                  "bg-base-200/50 hover:bg-base-200",
-                  "text-base-content/60 hover:text-base-content",
-                  "transition-all duration-200",
-                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-                )}
-                onClick={props.onClose}
-              >
-                <FiX size={18} />
-              </button>
-            </div>
-          </dialog>
-        </div>
-      </Portal>
-    </Show>
-  );
-}
-
-// Re-export Dialog components for compatibility
-export const DialogTrigger = "button";
-export const DialogContent: any = (props: {
-  class?: string;
-  children?: JSX.Element;
-}) => <div class={`modal-box ${props.class || ""}`}>{props.children}</div>;
-export const DialogHeader: any = (props: {
-  class?: string;
-  children?: JSX.Element;
-}) => <div class={`modal-header ${props.class || ""}`}>{props.children}</div>;
-export const DialogFooter: any = (props: {
-  class?: string;
-  children?: JSX.Element;
-}) => <div class={`modal-action ${props.class || ""}`}>{props.children}</div>;
-export const DialogTitle: any = (props: {
-  class?: string;
-  children?: JSX.Element;
-}) => (
-  <h3 class={`modal-title font-bold text-lg ${props.class || ""}`}>
-    {props.children}
-  </h3>
+const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div className={cn("mb-4 flex flex-col gap-1.5", className)} {...props} />
 );
-export const DialogDescription: any = (props: {
-  class?: string;
-  children?: JSX.Element;
-}) => <p class={`text-sm opacity-60 ${props.class || ""}`}>{props.children}</p>;
+DialogHeader.displayName = "DialogHeader";
 
-export type DialogComponentProps = {
-  class?: string;
-  children?: JSX.Element;
+const DialogTitle = forwardRef<
+  ComponentRef<typeof DialogPrimitive.Title>,
+  ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Title
+    ref={ref}
+    className={cn("text-lg font-semibold", className)}
+    {...props}
+  />
+));
+DialogTitle.displayName = DialogPrimitive.Title.displayName;
+
+const DialogDescription = forwardRef<
+  ComponentRef<typeof DialogPrimitive.Description>,
+  ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Description
+    ref={ref}
+    className={cn("text-sm text-[var(--app-hint)]", className)}
+    {...props}
+  />
+));
+DialogDescription.displayName = DialogPrimitive.Description.displayName;
+
+const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:gap-2", className)} {...props} />
+);
+DialogFooter.displayName = "DialogFooter";
+
+export {
+  Dialog,
+  DialogPortal,
+  DialogOverlay,
+  DialogClose,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
 };

@@ -10,6 +10,7 @@ pub mod events;
 pub mod factory;
 pub mod message_adapter;
 pub mod permission_handler;
+pub mod session_persistence;
 pub mod slash_commands;
 
 use std::collections::HashMap;
@@ -34,8 +35,12 @@ pub use events::{AgentEvent, AgentTurnEvent, PendingPermission, PermissionRespon
 pub use factory::{Agent, AgentAvailability, AgentFactory};
 pub use message_adapter::event_to_message_content;
 pub use permission_handler::{
-    ApprovalDecision, AutoApprovalDecision, CompletedPermissionEntry, PendingPermissionEntry,
-    PermissionHandler, PermissionHandlerState, PermissionMode, PermissionStatus,
+    ApprovalDecision, AutoApprovalDecision, CompletedPermissionEntry,
+    NonInteractivePermissionPolicy, PendingPermissionEntry, PermissionHandler,
+    PermissionHandlerState, PermissionMode, PermissionStatus, ToolKind,
+};
+pub use session_persistence::{
+    SessionConfig, SessionMessage, SessionRecord, SessionTokenUsage, default_sessions_dir,
 };
 pub use slash_commands::{BuiltinCommandResult, parse_slash_command, process_builtin_command};
 
@@ -67,6 +72,13 @@ impl SessionKind {
     pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<AgentTurnEvent> {
         match self {
             SessionKind::Acp(s) => s.subscribe(),
+        }
+    }
+
+    /// Emit SessionStarted event after subscribe() to ensure subscribers receive it.
+    pub fn emit_session_started(&self) {
+        match self {
+            SessionKind::Acp(s) => s.emit_session_started(),
         }
     }
 
@@ -154,6 +166,45 @@ impl SessionKind {
     pub async fn shutdown(&self) -> std::result::Result<(), String> {
         match self {
             SessionKind::Acp(s) => s.shutdown().await,
+        }
+    }
+
+    /// Set session mode.
+    pub async fn set_mode(&self, mode_id: String) -> std::result::Result<(), String> {
+        match self {
+            SessionKind::Acp(s) => s.set_mode(mode_id).await,
+        }
+    }
+
+    /// Set session config option.
+    pub async fn set_config_option(
+        &self,
+        config_id: String,
+        value: String,
+    ) -> std::result::Result<serde_json::Value, String> {
+        match self {
+            SessionKind::Acp(s) => s.set_config_option(config_id, value).await,
+        }
+    }
+
+    /// Set session model (unstable).
+    pub async fn set_model(&self, model_id: String) -> std::result::Result<(), String> {
+        match self {
+            SessionKind::Acp(s) => s.set_model(model_id).await,
+        }
+    }
+
+    /// Close the ACP session (unstable).
+    pub async fn close_session(&self) -> std::result::Result<(), String> {
+        match self {
+            SessionKind::Acp(s) => s.close_session().await,
+        }
+    }
+
+    /// Get agent lifecycle snapshot.
+    pub async fn get_lifecycle_snapshot(&self) -> acp::AgentLifecycleSnapshot {
+        match self {
+            SessionKind::Acp(s) => s.get_lifecycle_snapshot().await,
         }
     }
 }
@@ -359,6 +410,14 @@ impl AgentManager {
                                 error_msg += " Install Qwen Code CLI so 'qwen acp' is available, or pass an explicit --binary-path.";
                                 return Err(anyhow!(error_msg));
                             }
+                            AgentType::Copilot => {
+                                error_msg += " Install GitHub Copilot CLI with ACP support (copilot --acp --stdio), or pass an explicit --binary-path.";
+                                return Err(anyhow!(error_msg));
+                            }
+                            AgentType::Qoder => {
+                                error_msg += " Install Qoder CLI so 'qodercli --acp' is available, or pass an explicit --binary-path.";
+                                return Err(anyhow!(error_msg));
+                            }
                         }
 
                         return Err(anyhow!(error_msg));
@@ -387,6 +446,8 @@ impl AgentManager {
                         AgentType::Cline => false,
                         AgentType::Pi => false,
                         AgentType::QwenCode => false,
+                        AgentType::Copilot => false,
+                        AgentType::Qoder => false,
                     };
 
                     if installed {
@@ -410,6 +471,8 @@ impl AgentManager {
                             | AgentType::Cline
                             | AgentType::Pi
                             | AgentType::QwenCode
+                            | AgentType::Copilot
+                            | AgentType::Qoder
                     ) {
                         return Err(anyhow!(
                             "Agent auto-install failed. Install the agent CLI or pass an explicit --binary-path."
@@ -462,6 +525,7 @@ impl AgentManager {
         // the caller has a receiver that will not miss early events.
         let mut sessions = self.sessions.write().await;
         let event_rx = session.subscribe();
+        session.emit_session_started();
         sessions.insert(session_id.clone(), session);
         drop(sessions);
 
@@ -575,6 +639,12 @@ impl AgentManager {
                             AgentType::QwenCode => {
                                 error_msg += " Install Qwen Code CLI so 'qwen acp' is available, or pass an explicit --binary-path.";
                             }
+                            AgentType::Copilot => {
+                                error_msg += " Install GitHub Copilot CLI with ACP support, or pass an explicit --binary-path.";
+                            }
+                            AgentType::Qoder => {
+                                error_msg += " Install Qoder CLI so 'qodercli --acp' is available, or pass an explicit --binary-path.";
+                            }
                             _ => {}
                         }
                         return Err(anyhow!(error_msg));
@@ -648,6 +718,7 @@ impl AgentManager {
         let session = Arc::new(SessionKind::Acp(Arc::new(acp_session)));
         let mut sessions = self.sessions.write().await;
         let event_rx = session.subscribe();
+        session.emit_session_started();
         sessions.insert(session_id.clone(), session);
         drop(sessions);
 
@@ -953,6 +1024,81 @@ impl AgentManager {
         }
     }
 
+    /// Set session mode
+    pub async fn set_mode(&self, session_id: &str, mode_id: String) -> Result<()> {
+        let sessions = self.sessions.read().await;
+
+        if let Some(session) = sessions.get(session_id) {
+            session
+                .set_mode(mode_id)
+                .await
+                .map_err(|e| anyhow!("Failed to set mode: {}", e))
+        } else {
+            Err(anyhow!("Session not found: {}", session_id))
+        }
+    }
+
+    /// Set session config option
+    pub async fn set_config_option(
+        &self,
+        session_id: &str,
+        config_id: String,
+        value: String,
+    ) -> Result<serde_json::Value> {
+        let sessions = self.sessions.read().await;
+
+        if let Some(session) = sessions.get(session_id) {
+            session
+                .set_config_option(config_id, value)
+                .await
+                .map_err(|e| anyhow!("Failed to set config option: {}", e))
+        } else {
+            Err(anyhow!("Session not found: {}", session_id))
+        }
+    }
+
+    /// Set session model (unstable)
+    pub async fn set_model(&self, session_id: &str, model_id: String) -> Result<()> {
+        let sessions = self.sessions.read().await;
+
+        if let Some(session) = sessions.get(session_id) {
+            session
+                .set_model(model_id)
+                .await
+                .map_err(|e| anyhow!("Failed to set model: {}", e))
+        } else {
+            Err(anyhow!("Session not found: {}", session_id))
+        }
+    }
+
+    /// Close the ACP session (unstable)
+    pub async fn close_session(&self, session_id: &str) -> Result<()> {
+        let sessions = self.sessions.read().await;
+
+        if let Some(session) = sessions.get(session_id) {
+            session
+                .close_session()
+                .await
+                .map_err(|e| anyhow!("Failed to close session: {}", e))
+        } else {
+            Err(anyhow!("Session not found: {}", session_id))
+        }
+    }
+
+    /// Get agent lifecycle snapshot
+    pub async fn get_lifecycle_snapshot(
+        &self,
+        session_id: &str,
+    ) -> Result<acp::AgentLifecycleSnapshot> {
+        let sessions = self.sessions.read().await;
+
+        if let Some(session) = sessions.get(session_id) {
+            Ok(session.get_lifecycle_snapshot().await)
+        } else {
+            Err(anyhow!("Session not found: {}", session_id))
+        }
+    }
+
     /// Handle an incoming permission response from the app
     ///
     /// This is called when the app sends back a permission response.
@@ -962,6 +1108,7 @@ impl AgentManager {
         &self,
         request_id: &str,
         approved: bool,
+        approve_for_session: bool,
         reason: Option<String>,
     ) -> Result<()> {
         let sessions = self.sessions.read().await;
@@ -973,7 +1120,7 @@ impl AgentManager {
                 .respond_to_permission(
                     request_id.to_string(),
                     approved,
-                    false, // approve_for_session
+                    approve_for_session,
                     reason.clone(),
                 )
                 .await
@@ -1029,6 +1176,99 @@ fn try_install_gemini_cli() -> Result<bool> {
 
 fn try_install_opencode() -> Result<bool> {
     try_install_package("opencode-ai", "OpenCode")
+}
+
+fn try_install_copilot_acp() -> Result<bool> {
+    try_install_package("@github/copilot-cli", "Copilot CLI")
+}
+
+fn try_install_pi_acp() -> Result<bool> {
+    try_install_package("@mariozechner/pi-coding-agent", "Pi Agent")
+}
+
+fn try_install_cursor_acp() -> Result<bool> {
+    let label = "Cursor Agent";
+    info!("Attempting to install {} via curl...", label);
+    let output = std::process::Command::new("sh")
+        .args(["-c", "curl https://cursor.com/install -fsS | bash"])
+        .env("PATH", get_extended_path())
+        .output()
+        .map_err(|e| anyhow!("Failed to run curl install: {}", e))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        info!("{} installed successfully", label);
+        if !stdout.is_empty() {
+            debug!("Installation stdout: {}", stdout);
+        }
+        Ok(true)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        warn!("curl install failed: {}", stderr);
+        Ok(false)
+    }
+}
+
+fn try_install_qoder_acp() -> Result<bool> {
+    let label = "Qoder CLI";
+    info!("Attempting to install {} via curl...", label);
+    let output = std::process::Command::new("sh")
+        .args(["-c", "curl -fsSL https://qoder.com/install | bash"])
+        .env("PATH", get_extended_path())
+        .output()
+        .map_err(|e| anyhow!("Failed to run curl install: {}", e))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        info!("{} installed successfully", label);
+        if !stdout.is_empty() {
+            debug!("Installation stdout: {}", stdout);
+        }
+        Ok(true)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        warn!("curl install failed: {}", stderr);
+        Ok(false)
+    }
+}
+
+fn try_install_qwen_acp() -> Result<bool> {
+    try_install_package("@qwen-code/qwen-code", "Qwen Code")
+}
+
+fn try_install_cline_acp() -> Result<bool> {
+    try_install_package("@cline/cli", "Cline CLI")
+}
+
+/// Install the appropriate ACP package for a given agent type.
+/// Dispatches to the agent-specific install function.
+pub fn install_agent_acp(agent_type: &str) -> Result<String> {
+    info!("Installing ACP for agent: {}", agent_type);
+
+    let installed = match agent_type {
+        "claude" => try_install_claude_acp()?,
+        "codex" => try_install_codex_acp()?,
+        "opencode" => try_install_opencode()?,
+        "gemini" => try_install_gemini_cli()?,
+        "copilot" | "github-copilot" => try_install_copilot_acp()?,
+        "pi" => try_install_pi_acp()?,
+        "cursor" => try_install_cursor_acp()?,
+        "qoder" | "qodercli" | "qoder-cli" => try_install_qoder_acp()?,
+        "qwen" | "qwen-code" | "qwen_code" => try_install_qwen_acp()?,
+        "cline" => try_install_cline_acp()?,
+        other => {
+            return Err(anyhow!("Unsupported agent type for ACP: {}", other));
+        }
+    };
+
+    if installed {
+        Ok(format!("{} ACP installed successfully", agent_type))
+    } else {
+        Err(anyhow!(
+            "Installation failed. Please install {} manually or ensure the package manager is available.",
+            agent_type
+        ))
+    }
 }
 
 pub fn try_install_package(package: &str, label: &str) -> Result<bool> {

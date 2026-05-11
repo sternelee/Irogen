@@ -1,243 +1,40 @@
-/**
- * Irogen App
- *
- * Main application entry point - AI Agent P2P Remote Management
- * Multi-session management with SolidJS + Solid UI tokens
- */
+import { useEffect } from "react";
+import { Outlet } from "@tanstack/react-router";
+import { useAppContext } from "@/lib/app-context";
+import { useTauriEvents } from "@/hooks/useTauriEvents";
+import { SessionStoreProvider } from "@/lib/session-store";
+import { ToastContainer } from "@/components/ToastContainer";
 
-import { createSignal, onMount, onCleanup } from "solid-js";
-import { listen } from "@tauri-apps/api/event";
-import { type as osType } from "@tauri-apps/plugin-os";
+function AppInner() {
+  // Wire up Tauri event listeners
+  useTauriEvents();
 
-// Components
-import { AppLayout } from "./components/AppLayout";
-import { SettingsModal } from "./components/SettingsModal";
-import { NewSessionModal } from "./components/NewSessionModal";
-import { ToastContainer } from "./components/ToastContainer";
+  // Initialize device CSS classes
+  const { deviceInfo } = useAppContext();
 
-// Stores
-import { sessionStore } from "./stores/sessionStore";
-import { notificationStore } from "./stores/notificationStore";
-import { initializeDeviceDetection } from "./stores/deviceStore";
-import { navigationStore } from "./stores/navigationStore";
-import { initializeMobileUtils } from "./utils/mobile";
-import { cn } from "./lib/utils";
-
-// Types
-import type { AgentType } from "./stores/sessionStore";
-
-// Helper to check if running on mobile platform
-const isMobilePlatform = (): boolean => {
-  try {
-    const os = osType();
-    return os === "android" || os === "ios";
-  } catch {
-    // Fallback to CSS class detection
-    return (
-      document.documentElement.classList.contains("mobile") ||
-      document.documentElement.classList.contains("platform-android") ||
-      document.documentElement.classList.contains("platform-ios")
-    );
-  }
-};
-
-export default function App() {
-  // Settings modal state
-  const [isSettingsOpen, setIsSettingsOpen] = createSignal(false);
-  const [mobilePadding, setMobilePadding] = createSignal(false);
-
-  // Initialize app on mount
-  onMount(() => {
-    // Initialize device detection for mobile support
-    initializeDeviceDetection();
-    if (isMobilePlatform()) {
-      initializeMobileUtils();
+  useEffect(() => {
+    if (deviceInfo.isMobile) {
+      document.documentElement.classList.add("mobile");
     }
-    // Set mobile padding after initialization
-    setMobilePadding(isMobilePlatform());
-
-    // On mobile with no connected hosts, default to the Hosts/Connect view
-    if (isMobilePlatform() && sessionStore.getConnectedHosts().length === 0) {
-      navigationStore.setActiveView("hosts");
+    if (deviceInfo.platform) {
+      document.documentElement.classList.add(`platform-${deviceInfo.platform}`);
     }
-
-    // Listen for agent session creation events
-    setupEventListeners();
-  });
-
-  const setupEventListeners = async () => {
-    // Listen for agent session creation responses from CLI
-    const unlistenAgentCreated = await listen(
-      "agent-session-created",
-      (event) => {
-        const payload = event.payload as {
-          session_id: string;
-          agent_type: string;
-          project_path: string;
-          control_session_id?: string;
-        };
-
-        console.log("Agent session created event:", payload);
-
-        // Parse agent type
-        const agentType = parseAgentType(payload.agent_type);
-
-        // Find connection metadata if available
-        let hostname = "remote";
-        let os = "remote";
-        let machineId = "remote";
-
-        if (payload.control_session_id) {
-          const connectedHost = sessionStore.getConnectedHost(
-            payload.control_session_id,
-          );
-          if (connectedHost) {
-            hostname = connectedHost.hostname;
-            os = connectedHost.os;
-            machineId = connectedHost.machineId;
-          }
-        }
-
-        // Add session to store
-        sessionStore.addSession({
-          sessionId: payload.session_id,
-          agentType,
-          projectPath: payload.project_path,
-          additionalProjectPaths: [],  // 跨项目线程：附加项目列表
-          startedAt: Date.now(),
-          active: true,
-          controlledByRemote: true,
-          hostname,
-          os,
-          currentDir: payload.project_path,
-          machineId,
-          mode: "remote",
-          controlSessionId: payload.control_session_id,
-          lastReceivedSequence: 0,
-        });
-
-        // Set as active session
-        sessionStore.setActiveSession(payload.session_id);
-        navigationStore.setActiveView("chat");
-
-        notificationStore.success(`${agentType} session created`, "Session");
-      },
-    );
-
-    // Listen for peer disconnection events
-    const unlistenPeerDisconnected = await listen(
-      "peer-disconnected",
-      (event) => {
-        const payload = event.payload as { sessionId: string };
-        console.log("Peer disconnected event:", payload);
-
-        sessionStore.setConnectionState("disconnected");
-        const disconnectedControlId = payload.sessionId;
-        sessionStore.removeConnectedHost(disconnectedControlId);
-
-        // Find all agent sessions that depend on this control session
-        const sessions = sessionStore.getSessions();
-        sessions.forEach((session) => {
-          if (session.controlSessionId === disconnectedControlId) {
-            // Update session state to inactive
-            sessionStore.updateSession(session.sessionId, {
-              active: false,
-            });
-            notificationStore.error(
-              `Connection lost for session ${session.sessionId}`,
-              "Connection Lost",
-            );
-          }
-
-          // Also if the control session itself is in the store, mark it inactive
-          if (session.sessionId === disconnectedControlId) {
-            sessionStore.updateSession(session.sessionId, {
-              active: false,
-            });
-          }
-        });
-      },
-    );
-
-    // Listen for connection state changes (reconnecting, restored, etc.)
-    const unlistenConnectionState = await listen(
-      "connection-state-changed",
-      (event) => {
-        const payload = event.payload as { sessionId: string; state: string };
-
-        if (payload.state === "reconnecting") {
-          sessionStore.setConnectionState("reconnecting");
-          sessionStore.updateConnectedHost(payload.sessionId, {
-            status: "reconnecting",
-          });
-        } else if (payload.state === "connected") {
-          sessionStore.setConnectionState("connected");
-          sessionStore.updateConnectedHost(payload.sessionId, {
-            status: "online",
-          });
-          // 重连成功后恢复相关 session 为 active
-          const sessions = sessionStore.getSessions();
-          sessions.forEach((session) => {
-            if (
-              session.controlSessionId === payload.sessionId &&
-              !session.active
-            ) {
-              sessionStore.updateSession(session.sessionId, { active: true });
-            }
-          });
-          notificationStore.success("Connection restored", "Connection");
-        } else if (payload.state === "disconnected") {
-          sessionStore.setConnectionState("disconnected");
-          sessionStore.updateConnectedHost(payload.sessionId, {
-            status: "offline",
-          });
-        }
-      },
-    );
-
-    // Cleanup on unmount
-    onCleanup(() => {
-      unlistenAgentCreated();
-      unlistenPeerDisconnected();
-      unlistenConnectionState();
-    });
-  };
-
-  const parseAgentType = (agentTypeStr: string): AgentType => {
-    const lower = agentTypeStr.toLowerCase().replace(/-/g, "_");
-    if (lower.includes("claude")) return "claude";
-    if (lower.includes("cursor")) return "cursor";
-    if (lower.includes("cline")) return "cline";
-    if (lower === "pi" || lower.startsWith("pi_")) return "pi";
-    if (lower.includes("qwen")) return "qwen";
-    if (lower.includes("open")) return "opencode";
-    if (lower.includes("gemini")) return "gemini";
-    if (lower.includes("codex")) return "codex";
-    return "claude";
-  };
+  }, [deviceInfo]);
 
   return (
-    <>
-      <div
-        class={cn(
-          "h-full flex flex-col overflow-hidden",
-          mobilePadding() ? "pt-safe" : "",
-        )}
-      >
-        <AppLayout />
+    <div className="h-full flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0">
+        <Outlet />
       </div>
-
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen()}
-        onClose={() => setIsSettingsOpen(false)}
-      />
-
-      {/* New Session Modal */}
-      <NewSessionModal />
-
-      {/* DaisyUI Toast Container */}
       <ToastContainer />
-    </>
+    </div>
+  );
+}
+
+export function App() {
+  return (
+    <SessionStoreProvider>
+      <AppInner />
+    </SessionStoreProvider>
   );
 }

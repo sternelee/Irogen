@@ -82,6 +82,8 @@ fn agent_key(agent_type: AgentType) -> &'static str {
         AgentType::Cline => "cline",
         AgentType::Pi => "pi",
         AgentType::QwenCode => "qwen-code",
+        AgentType::Copilot => "copilot",
+        AgentType::Qoder => "qoder",
     }
 }
 
@@ -657,6 +659,160 @@ impl Agent for QwenCodeAgent {
     }
 }
 
+/// GitHub Copilot CLI Agent (ACP compatible)
+pub struct CopilotAgent;
+
+impl Agent for CopilotAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::Copilot
+    }
+
+    fn command(&self) -> &str {
+        "copilot"
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        vec!["--acp".to_string(), "--stdio".to_string()]
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        // First check if copilot binary exists
+        let help_output = Command::new(self.command())
+            .arg("--help")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        let has_acp = help_output.status.success()
+            && String::from_utf8_lossy(&help_output.stdout).contains("--acp");
+
+        if !has_acp {
+            return Ok(AgentAvailability {
+                available: false,
+                version: None,
+                executable: self.command().to_string(),
+            });
+        }
+
+        let version_output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        let version = if version_output.status.success() {
+            Some(
+                String::from_utf8_lossy(&version_output.stdout)
+                    .trim()
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+
+        Ok(AgentAvailability {
+            available: true,
+            version,
+            executable: self.command().to_string(),
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!(
+                "Failed to get Copilot CLI version. Ensure 'copilot' is installed with ACP support."
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
+/// Qoder CLI Agent (ACP compatible)
+pub struct QoderAgent;
+
+impl QoderAgent {
+    /// Build Qoder args with session options (allowed tools, max turns)
+    pub fn build_args_with_options(
+        &self,
+        allowed_tools: Option<&[String]>,
+        max_turns: Option<u32>,
+    ) -> Vec<String> {
+        let mut args = self.default_args();
+
+        if let Some(max) = max_turns {
+            args.push(format!("--max-turns={}", max));
+        }
+
+        if let Some(tools) = allowed_tools {
+            let encoded: Vec<String> = tools
+                .iter()
+                .map(|t| match t.trim().to_lowercase().as_str() {
+                    "bash" | "glob" | "grep" | "ls" | "read" | "write" => t.trim().to_uppercase(),
+                    other => other.to_string(),
+                })
+                .collect();
+            if !encoded.is_empty() {
+                args.push(format!("--allowed-tools={}", encoded.join(",")));
+            }
+        }
+
+        args
+    }
+}
+
+impl Agent for QoderAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::Qoder
+    }
+
+    fn command(&self) -> &str {
+        "qodercli"
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        vec!["--acp".to_string()]
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        let available = output.status.success();
+        let version = if available {
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            None
+        };
+
+        Ok(AgentAvailability {
+            available,
+            version,
+            executable: self.command().to_string(),
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!(
+                "Failed to get Qoder CLI version. Ensure 'qodercli' is installed."
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
 /// Agent 工厂
 pub struct AgentFactory;
 
@@ -675,6 +831,8 @@ impl AgentFactory {
             AgentType::Cline => Box::new(ClineAgent),
             AgentType::Pi => Box::new(PiAgent),
             AgentType::QwenCode => Box::new(QwenCodeAgent),
+            AgentType::Copilot => Box::new(CopilotAgent),
+            AgentType::Qoder => Box::new(QoderAgent),
         }
     }
 
@@ -691,6 +849,8 @@ impl AgentFactory {
             AgentType::Cline,
             AgentType::Pi,
             AgentType::QwenCode,
+            AgentType::Copilot,
+            AgentType::Qoder,
         ];
 
         for agent_type in agent_types {

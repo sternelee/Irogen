@@ -1,20 +1,24 @@
 import path from "path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
-import solid from "vite-plugin-solid";
+import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { fixCjsModules } from "./plugins/fix-cjs-modules";
+import { codeJumpPlugin } from "./src/code-jump-plugin";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [
-    solid(),
+    react(),
     tailwindcss(),
-    fixCjsModules(), // Fix CJS modules that cause issues
+    codeJumpPlugin({
+      hotkey: "F2",
+      editor: "cursor", // Note: need to configure the specific editor commands.
+    }),
   ],
   resolve: {
     alias: {
+      "@": path.resolve(__dirname, "./src"),
       "~": path.resolve(__dirname, "./src"),
     },
   },
@@ -29,6 +33,6 @@ export default defineConfig({
   },
   base: "./",
   optimizeDeps: {
-    exclude: ["solid-markdown-wasm"],
+    exclude: [],
   },
 });

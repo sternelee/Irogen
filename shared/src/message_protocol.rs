@@ -543,6 +543,10 @@ pub enum AgentType {
     Pi,
     /// Qwen Code CLI — ACP
     QwenCode,
+    /// GitHub Copilot CLI — ACP
+    Copilot,
+    /// Qoder CLI — ACP
+    Qoder,
 }
 
 /// AI Agent 会话元数据
@@ -748,6 +752,14 @@ pub enum AgentControlAction {
     SendInterrupt,
     /// 获取 Agent 状态
     GetStatus,
+    /// Set session mode (ACP 0.11)
+    SetMode { mode: String },
+    /// Set session config option (ACP 0.11)
+    SetConfigOption { key: String, value: String },
+    /// Set session model (ACP 0.11 unstable)
+    SetModel { model: String },
+    /// Close the ACP session (ACP 0.11 unstable)
+    CloseSession,
     /// List agent history sessions
     ListHistory {
         agent_type: String,
@@ -773,6 +785,8 @@ pub enum AgentPermissionMode {
     AutoApprove,
     /// Read-only mode, approve reads automatically
     Plan,
+    /// Approve read/search operations automatically
+    ApproveReads,
 }
 
 /// AI Agent 元数据更新

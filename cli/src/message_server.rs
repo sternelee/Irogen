@@ -569,121 +569,22 @@ impl MessageHandler for SystemControlMessageHandler {
                     SystemAction::InstallAcp { agent_type } => {
                         info!("Installing ACP for agent: {}", agent_type);
 
-                        // Determine ACP package name based on agent type
-                        let acp_package =
-                            match agent_type.as_str() {
-                                "codex" => "@zed-industries/codex-acp",
-                                "opencode" => "opencode-ai",
-                                "claude" => "@agentclientprotocol/claude-agent-acp",
-                                "gemini" => "@google/gemini-cli",
-                                "cursor" => {
-                                    return Ok(Some(
-                                    message
-                                        .create_response(MessagePayload::Response(ResponseMessage {
-                                        request_id: response_request_id.clone(),
-                                        success: false,
-                                        data: None,
-                                        message: Some(
-                                            "Cursor does not support ACP auto-install in Irogen"
-                                                .to_string(),
-                                        ),
-                                    })),
-                                ));
-                                }
-                                "cline" => {
-                                    return Ok(Some(
-                                    message
-                                        .create_response(MessagePayload::Response(ResponseMessage {
-                                        request_id: response_request_id.clone(),
-                                        success: false,
-                                        data: None,
-                                        message: Some(
-                                            "Cline does not support ACP auto-install in Irogen"
-                                                .to_string(),
-                                        ),
-                                    })),
-                                ));
-                                }
-                                "pi" => {
-                                    return Ok(Some(
-                                    message
-                                        .create_response(MessagePayload::Response(ResponseMessage {
-                                        request_id: response_request_id.clone(),
-                                        success: false,
-                                        data: None,
-                                        message: Some(
-                                            "Pi does not support ACP auto-install in Irogen"
-                                                .to_string(),
-                                        ),
-                                    })),
-                                ));
-                                }
-                                "qwen" | "qwen-code" | "qwen_code" => {
-                                    return Ok(Some(
-                                    message
-                                        .create_response(MessagePayload::Response(ResponseMessage {
-                                        request_id: response_request_id.clone(),
-                                        success: false,
-                                        data: None,
-                                        message: Some(
-                                            "Qwen Code does not support ACP auto-install in Irogen"
-                                                .to_string(),
-                                        ),
-                                    })),
-                                ));
-                                }
-                                _ => {
-                                    return Ok(Some(message.create_response(
-                                        MessagePayload::Response(ResponseMessage {
-                                            request_id: response_request_id.clone(),
-                                            success: false,
-                                            data: None,
-                                            message: Some(format!(
-                                                "Unsupported agent type for ACP: {}",
-                                                agent_type
-                                            )),
-                                        }),
-                                    )));
-                                }
-                            };
-
-                        // Install package using spawn_blocking to avoid blocking async runtime
-                        let acp_package_owned = acp_package.to_string();
-                        let agent_type_owned = agent_type.clone();
+                        let agent_type_clone = agent_type.clone();
                         let result = tokio::task::spawn_blocking(move || {
-                            shared::try_install_package(
-                                &acp_package_owned,
-                                &format!("{} ACP", agent_type_owned),
-                            )
+                            shared::install_agent_acp(&agent_type_clone)
                         })
                         .await;
 
                         match result {
-                            Ok(Ok(true)) => {
+                            Ok(Ok(msg)) => {
                                 return Ok(Some(message.create_response(
                                     MessagePayload::Response(ResponseMessage {
                                         request_id: response_request_id.clone(),
                                         success: true,
-                                        data: Some(acp_package.to_string()),
-                                        message: Some(format!(
-                                            "{} installed successfully",
-                                            acp_package
-                                        )),
+                                        data: None,
+                                        message: Some(msg),
                                     }),
                                 )));
-                            }
-                            Ok(Ok(false)) => {
-                                return Ok(Some(message.create_response(MessagePayload::Response(
-                                ResponseMessage {
-                                    request_id: response_request_id.clone(),
-                                    success: false,
-                                    data: None,
-                                    message: Some(format!(
-                                        "Installation failed. Please install {} manually or ensure a package manager is available.",
-                                        acp_package
-                                    )),
-                                },
-                            ))));
                             }
                             Ok(Err(e)) => {
                                 return Ok(Some(message.create_response(
@@ -691,7 +592,7 @@ impl MessageHandler for SystemControlMessageHandler {
                                         request_id: response_request_id.clone(),
                                         success: false,
                                         data: None,
-                                        message: Some(format!("Installation error: {}", e)),
+                                        message: Some(format!("{}", e)),
                                     }),
                                 )));
                             }
@@ -710,8 +611,10 @@ impl MessageHandler for SystemControlMessageHandler {
                             }
                         }
                     }
+                    _ => {}
                 }
             }
+
             _ => {}
         }
         Ok(None)
@@ -2940,6 +2843,7 @@ impl AgentControlMessageHandler {
                 let permission_mode = match mode {
                     AgentPermissionMode::AlwaysAsk => shared::agent::PermissionMode::AlwaysAsk,
                     AgentPermissionMode::AcceptEdits => shared::agent::PermissionMode::AcceptEdits,
+                    AgentPermissionMode::ApproveReads => shared::agent::PermissionMode::ApproveReads,
                     AgentPermissionMode::AutoApprove => shared::agent::PermissionMode::AutoApprove,
                     AgentPermissionMode::Plan => shared::agent::PermissionMode::Plan,
                 };
@@ -2958,6 +2862,9 @@ impl AgentControlMessageHandler {
                         shared::agent::PermissionMode::AlwaysAsk => AgentPermissionMode::AlwaysAsk,
                         shared::agent::PermissionMode::AcceptEdits => {
                             AgentPermissionMode::AcceptEdits
+                        }
+                        shared::agent::PermissionMode::ApproveReads => {
+                            AgentPermissionMode::ApproveReads
                         }
                         shared::agent::PermissionMode::AutoApprove => {
                             AgentPermissionMode::AutoApprove
@@ -2987,13 +2894,77 @@ impl AgentControlMessageHandler {
                     "action": "terminate",
                 }))
             }
-            AgentControlAction::Pause
-            | AgentControlAction::Resume
-            | AgentControlAction::GetStatus => {
+            AgentControlAction::GetStatus => {
+                let metadata = self
+                    .agent_manager
+                    .get_session_metadata(&session_id)
+                    .await;
+                let snapshot = self
+                    .agent_manager
+                    .get_lifecycle_snapshot(&session_id)
+                    .await;
+                match (metadata, snapshot) {
+                    (Some(meta), Ok(snap)) => {
+                        Ok(serde_json::json!({
+                            "type": "agent_status",
+                            "session_id": session_id,
+                            "agent_type": format!("{:?}", meta.agent_type),
+                            "project_path": meta.project_path,
+                            "active": meta.active,
+                            "pid": snap.pid,
+                            "running": snap.running,
+                            "started_at": snap.started_at,
+                            "last_exit": snap.last_exit,
+                        }))
+                    }
+                    _ => {
+                        Ok(serde_json::json!({
+                            "type": "agent_status",
+                            "session_id": session_id,
+                            "active": false,
+                        }))
+                    }
+                }
+            }
+            AgentControlAction::Pause | AgentControlAction::Resume => {
                 // These actions are not directly supported by the new API
                 Ok(serde_json::json!({
                     "type": "not_implemented",
                     "action": format!("{:?}", action),
+                }))
+            }
+            AgentControlAction::SetMode { mode } => {
+                self.agent_manager
+                    .set_mode(&session_id, mode.clone())
+                    .await?;
+                Ok(serde_json::json!({
+                    "type": "success",
+                    "action": "set_mode",
+                }))
+            }
+            AgentControlAction::SetConfigOption { key, value } => {
+                self.agent_manager
+                    .set_config_option(&session_id, key.clone(), value.clone())
+                    .await?;
+                Ok(serde_json::json!({
+                    "type": "success",
+                    "action": "set_config_option",
+                }))
+            }
+            AgentControlAction::SetModel { model } => {
+                self.agent_manager
+                    .set_model(&session_id, model.clone())
+                    .await?;
+                Ok(serde_json::json!({
+                    "type": "success",
+                    "action": "set_model",
+                }))
+            }
+            AgentControlAction::CloseSession => {
+                self.agent_manager.stop_session(&session_id).await?;
+                Ok(serde_json::json!({
+                    "type": "success",
+                    "action": "close_session",
                 }))
             }
         };
@@ -3068,12 +3039,19 @@ impl MessageHandler for AgentPermissionMessageHandler {
                         response.request_id, response.approved
                     );
 
+                    // Determine approve_for_session from permission_mode
+                    let approve_for_session = matches!(
+                        response.permission_mode,
+                        shared::PermissionMode::ApproveForSession
+                    );
+
                     // Forward the permission response to the appropriate agent session
                     if let Err(e) = self
                         .agent_manager
                         .handle_permission_response(
                             &response.request_id,
                             response.approved,
+                            approve_for_session,
                             response.reason.clone(),
                         )
                         .await

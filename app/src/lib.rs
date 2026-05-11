@@ -78,6 +78,24 @@ fn is_valid_session_ticket(ticket: &str) -> bool {
     ticket.len() > 20 && ticket.len() < 500
 }
 
+/// Parse an agent type string from the frontend (case-insensitive) into AgentType.
+/// Centralized so all Tauri commands accept the same set of aliases.
+fn parse_agent_type(s: &str) -> Result<AgentType, String> {
+    match s.to_lowercase().as_str() {
+        "claude" | "claudecode" | "claude-code" => Ok(AgentType::ClaudeCode),
+        "opencode" | "open" | "openai" => Ok(AgentType::OpenCode),
+        "codex" => Ok(AgentType::Codex),
+        "cursor" | "cursor-agent" => Ok(AgentType::Cursor),
+        "gemini" | "gemini-cli" => Ok(AgentType::Gemini),
+        "cline" => Ok(AgentType::Cline),
+        "pi" => Ok(AgentType::Pi),
+        "qwen" | "qwen-code" | "qwen_code" => Ok(AgentType::QwenCode),
+        "copilot" | "github-copilot" => Ok(AgentType::Copilot),
+        "qoder" | "qodercli" | "qoder-cli" => Ok(AgentType::Qoder),
+        _ => Err(format!("Unknown agent type: {}", s)),
+    }
+}
+
 // Parse ticket and extract EndpointAddr (includes direct addresses and relay URL)
 // Supports full address info for direct connection
 fn parse_ticket_to_node_addr(
@@ -2908,17 +2926,7 @@ async fn remote_spawn_session(
     let agent_session_id = format!("agent_{}", uuid::Uuid::new_v4());
 
     // Parse agent type
-    let agent_type = match agent_type.to_lowercase().as_str() {
-        "claude" | "claudecode" | "claude-code" => AgentType::ClaudeCode,
-        "opencode" | "open" | "openai" => AgentType::OpenCode,
-        "codex" => AgentType::Codex,
-        "cursor" | "cursor-agent" => AgentType::Cursor,
-        "gemini" | "gemini-cli" => AgentType::Gemini,
-        "cline" => AgentType::Cline,
-        "pi" => AgentType::Pi,
-        "qwen" | "qwen-code" | "qwen_code" => AgentType::QwenCode,
-        _ => return Err(format!("Unknown agent type: {}", agent_type)),
-    };
+    let agent_type = parse_agent_type(&agent_type)?;
 
     // Platform-based agent availability check
     #[cfg(mobile)]
@@ -3007,10 +3015,11 @@ async fn remote_spawn_session(
     if response.success {
         #[cfg(any(debug_assertions, not(feature = "release-logging")))]
         tracing::info!(
-            "[remote_spawn_session] spawn acknowledged: request_id={}",
-            request_id
+            "[remote_spawn_session] spawn acknowledged: request_id={}, agent_session_id={}",
+            request_id,
+            agent_session_id
         );
-        Ok("spawn_request_sent".to_string())
+        Ok(agent_session_id)
     } else {
         Err(response
             .message
@@ -3340,42 +3349,12 @@ async fn install_acp_package_local(agent_type: String) -> Result<String, String>
         agent_type
     );
 
-    // Determine of ACP package name based on agent type
-    let acp_package = match agent_type.as_str() {
-        "codex" => "@zed-industries/codex-acp",
-        "opencode" => "opencode-ai",
-        "claude" => "@agentclientprotocol/claude-agent-acp",
-        "gemini" => "@google/gemini-cli",
-        "cursor" => {
-            return Err("Cursor does not support ACP auto-install in Irogen".to_string());
-        }
-        "cline" => {
-            return Err("Cline does not support ACP auto-install in Irogen".to_string());
-        }
-        "pi" => {
-            return Err("Pi does not support ACP auto-install in Irogen".to_string());
-        }
-        "qwen" | "qwen-code" | "qwen_code" => {
-            return Err("Qwen Code does not support ACP auto-install in Irogen".to_string());
-        }
-        _ => return Err(format!("Unsupported agent type for ACP: {}", agent_type)),
-    };
+    let result = tokio::task::spawn_blocking(move || shared::install_agent_acp(&agent_type)).await;
 
-    // Install package using shared agent module's install logic
-    let installed = tokio::task::spawn_blocking(move || {
-        shared::try_install_package(acp_package, &format!("{} ACP", agent_type))
-            .map_err(|e| format!("Installation error: {}", e))
-    })
-    .await
-    .map_err(|e| format!("Failed to spawn install task: {}", e))??;
-
-    if installed {
-        Ok(format!("{} installed successfully", acp_package))
-    } else {
-        Err(format!(
-            "Installation failed. Please install {} manually or ensure a package manager is available.",
-            acp_package
-        ))
+    match result {
+        Ok(Ok(msg)) => Ok(msg),
+        Ok(Err(e)) => Err(format!("{}", e)),
+        Err(e) => Err(format!("Failed to spawn install task: {}", e)),
     }
 }
 
@@ -3458,17 +3437,7 @@ async fn local_start_agent(
     );
 
     // Parse agent type
-    let agent_type = match agent_type_str.as_str() {
-        "claude" | "claudecode" | "claude-code" => AgentType::ClaudeCode,
-        "opencode" | "open" | "openai" => AgentType::OpenCode,
-        "codex" => AgentType::Codex,
-        "cursor" | "cursor-agent" => AgentType::Cursor,
-        "gemini" | "gemini-cli" => AgentType::Gemini,
-        "cline" => AgentType::Cline,
-        "pi" => AgentType::Pi,
-        "qwen" | "qwen-code" | "qwen_code" => AgentType::QwenCode,
-        _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
-    };
+    let agent_type = parse_agent_type(&agent_type_str)?;
 
     // Platform-based agent availability check
     #[cfg(mobile)]
@@ -3856,17 +3825,7 @@ async fn local_list_agent_history(
     project_path: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<shared::message_protocol::AgentHistoryEntry>, String> {
-    let agent_type = match agent_type_str.as_str() {
-        "claude" | "claudecode" | "claude-code" => AgentType::ClaudeCode,
-        "opencode" | "open" | "openai" => AgentType::OpenCode,
-        "codex" => AgentType::Codex,
-        "cursor" | "cursor-agent" => AgentType::Cursor,
-        "gemini" | "gemini-cli" => AgentType::Gemini,
-        "cline" => AgentType::Cline,
-        "pi" => AgentType::Pi,
-        "qwen" | "qwen-code" | "qwen_code" => AgentType::QwenCode,
-        _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
-    };
+    let agent_type = parse_agent_type(&agent_type_str)?;
 
     {
         let mut agent_manager_guard = state.agent_manager.write().await;
@@ -3918,17 +3877,7 @@ async fn local_load_agent_history(
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let agent_type = match agent_type_str.as_str() {
-        "claude" | "claudecode" | "claude-code" => AgentType::ClaudeCode,
-        "opencode" | "open" | "openai" => AgentType::OpenCode,
-        "codex" => AgentType::Codex,
-        "cursor" | "cursor-agent" => AgentType::Cursor,
-        "gemini" | "gemini-cli" => AgentType::Gemini,
-        "cline" => AgentType::Cline,
-        "pi" => AgentType::Pi,
-        "qwen" | "qwen-code" | "qwen_code" => AgentType::QwenCode,
-        _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
-    };
+    let agent_type = parse_agent_type(&agent_type_str)?;
 
     {
         let mut agent_manager_guard = state.agent_manager.write().await;
@@ -4092,6 +4041,7 @@ fn parse_local_permission_mode(mode: &str) -> Result<shared::agent::PermissionMo
     match mode {
         "AlwaysAsk" => Ok(shared::agent::PermissionMode::AlwaysAsk),
         "AcceptEdits" => Ok(shared::agent::PermissionMode::AcceptEdits),
+        "ApproveReads" => Ok(shared::agent::PermissionMode::ApproveReads),
         "AutoApprove" => Ok(shared::agent::PermissionMode::AutoApprove),
         "Plan" => Ok(shared::agent::PermissionMode::Plan),
         _ => Err(format!("Invalid permission mode: {}", mode)),
@@ -4102,6 +4052,7 @@ fn parse_remote_permission_mode(mode: &str) -> Result<AgentPermissionMode, Strin
     match mode {
         "AlwaysAsk" => Ok(AgentPermissionMode::AlwaysAsk),
         "AcceptEdits" => Ok(AgentPermissionMode::AcceptEdits),
+        "ApproveReads" => Ok(AgentPermissionMode::ApproveReads),
         "AutoApprove" => Ok(AgentPermissionMode::AutoApprove),
         "Plan" => Ok(AgentPermissionMode::Plan),
         _ => Err(format!("Invalid permission mode: {}", mode)),
@@ -4252,6 +4203,371 @@ async fn get_permission_mode(
     Ok(mode.to_string())
 }
 
+// ============================================================================
+// ACP 0.11 Session Control Commands
+// ============================================================================
+
+/// Resolve connection_id from control_session_id or fallback to first session
+async fn resolve_connection_id(
+    state: &State<'_, AppState>,
+    control_session_id: &Option<String>,
+) -> Result<String, String> {
+    if let Some(cs_id) = control_session_id {
+        let sessions = state.sessions.read().await;
+        sessions
+            .get(cs_id)
+            .map(|s| s.connection_id.clone())
+            .ok_or_else(|| format!("Control session not found: {}", cs_id))
+    } else {
+        let sessions = state.sessions.read().await;
+        sessions
+            .values()
+            .next()
+            .map(|s| s.connection_id.clone())
+            .ok_or_else(|| "No active connection available".to_string())
+    }
+}
+
+/// Get agent status for a remote session
+#[tauri::command(rename_all = "camelCase")]
+async fn get_agent_status(
+    session_id: String,
+    control_session_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let connection_id = resolve_connection_id(&state, &control_session_id).await?;
+
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let control_message = IrogenMessage::new(
+        shared::MessageType::AgentControl,
+        "app".to_string(),
+        shared::MessagePayload::AgentControl(shared::AgentControlMessage {
+            session_id: session_id.clone(),
+            action: AgentControlAction::GetStatus,
+            request_id: Some(request_id.clone()),
+        }),
+    )
+    .requires_response();
+
+    let response = send_message_via_client_with_response(
+        &state,
+        &connection_id,
+        control_message,
+        &request_id,
+        "get agent status",
+        10,
+    )
+    .await?;
+
+    let data = response
+        .data
+        .ok_or_else(|| "Missing agent status response data".to_string())?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&data).map_err(|e| format!("Invalid response data: {}", e))?;
+
+    Ok(parsed)
+}
+
+/// Set session mode for a remote session
+#[tauri::command(rename_all = "camelCase")]
+async fn set_agent_mode(
+    session_id: String,
+    mode: String,
+    control_session_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let connection_id = resolve_connection_id(&state, &control_session_id).await?;
+
+    let control_message = IrogenMessage::new(
+        shared::MessageType::AgentControl,
+        "app".to_string(),
+        shared::MessagePayload::AgentControl(shared::AgentControlMessage {
+            session_id: session_id.clone(),
+            action: AgentControlAction::SetMode { mode },
+            request_id: Some(uuid::Uuid::new_v4().to_string()),
+        }),
+    );
+
+    send_message_via_client(&state, &connection_id, control_message, "set agent mode").await?;
+    Ok(())
+}
+
+/// Set config option for a remote session
+#[tauri::command(rename_all = "camelCase")]
+async fn set_agent_config(
+    session_id: String,
+    key: String,
+    value: String,
+    control_session_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let connection_id = resolve_connection_id(&state, &control_session_id).await?;
+
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let control_message = IrogenMessage::new(
+        shared::MessageType::AgentControl,
+        "app".to_string(),
+        shared::MessagePayload::AgentControl(shared::AgentControlMessage {
+            session_id: session_id.clone(),
+            action: AgentControlAction::SetConfigOption { key, value },
+            request_id: Some(request_id.clone()),
+        }),
+    )
+    .requires_response();
+
+    let response = send_message_via_client_with_response(
+        &state,
+        &connection_id,
+        control_message,
+        &request_id,
+        "set agent config",
+        10,
+    )
+    .await?;
+
+    let data = response
+        .data
+        .ok_or_else(|| "Missing config response data".to_string())?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&data).map_err(|e| format!("Invalid response data: {}", e))?;
+
+    Ok(parsed)
+}
+
+/// Set model for a remote session
+#[tauri::command(rename_all = "camelCase")]
+async fn set_agent_model(
+    session_id: String,
+    model: String,
+    control_session_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let connection_id = resolve_connection_id(&state, &control_session_id).await?;
+
+    let control_message = IrogenMessage::new(
+        shared::MessageType::AgentControl,
+        "app".to_string(),
+        shared::MessagePayload::AgentControl(shared::AgentControlMessage {
+            session_id: session_id.clone(),
+            action: AgentControlAction::SetModel { model },
+            request_id: Some(uuid::Uuid::new_v4().to_string()),
+        }),
+    );
+
+    send_message_via_client(&state, &connection_id, control_message, "set agent model").await?;
+    Ok(())
+}
+
+/// Close a remote agent session
+#[tauri::command(rename_all = "camelCase")]
+async fn close_agent_session(
+    session_id: String,
+    control_session_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let connection_id = resolve_connection_id(&state, &control_session_id).await?;
+
+    let control_message = IrogenMessage::new(
+        shared::MessageType::AgentControl,
+        "app".to_string(),
+        shared::MessagePayload::AgentControl(shared::AgentControlMessage {
+            session_id: session_id.clone(),
+            action: AgentControlAction::CloseSession,
+            request_id: Some(uuid::Uuid::new_v4().to_string()),
+        }),
+    );
+
+    send_message_via_client(&state, &connection_id, control_message, "close agent session")
+        .await?;
+
+    Ok(())
+}
+
+/// Get agent lifecycle snapshot for a remote session
+#[tauri::command(rename_all = "camelCase")]
+async fn get_agent_lifecycle(
+    session_id: String,
+    control_session_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let connection_id = resolve_connection_id(&state, &control_session_id).await?;
+
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let control_message = IrogenMessage::new(
+        shared::MessageType::AgentControl,
+        "app".to_string(),
+        shared::MessagePayload::AgentControl(shared::AgentControlMessage {
+            session_id: session_id.clone(),
+            action: AgentControlAction::GetStatus,
+            request_id: Some(request_id.clone()),
+        }),
+    )
+    .requires_response();
+
+    let response = send_message_via_client_with_response(
+        &state,
+        &connection_id,
+        control_message,
+        &request_id,
+        "get agent lifecycle",
+        10,
+    )
+    .await?;
+
+    let data = response
+        .data
+        .ok_or_else(|| "Missing lifecycle response data".to_string())?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&data).map_err(|e| format!("Invalid response data: {}", e))?;
+
+    Ok(parsed)
+}
+
+// ============================================================================
+// Local ACP 0.11 Session Control Commands (desktop only)
+// ============================================================================
+
+/// Get agent status for a local session
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command(rename_all = "camelCase")]
+async fn local_get_agent_status(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let agent_manager_guard = state.agent_manager.read().await;
+    let manager = agent_manager_guard
+        .as_ref()
+        .ok_or("Agent manager not initialized")?
+        .clone();
+
+    let metadata = manager
+        .get_session_metadata(&session_id)
+        .await
+        .ok_or_else(|| format!("Session not found: {}", session_id))?;
+
+    let snapshot = manager
+        .get_lifecycle_snapshot(&session_id)
+        .await
+        .map_err(|e| format!("Failed to get lifecycle snapshot: {}", e))?;
+
+    Ok(serde_json::json!({
+        "session_id": session_id,
+        "agent_type": format!("{:?}", metadata.agent_type),
+        "project_path": metadata.project_path,
+        "active": metadata.active,
+        "pid": snapshot.pid,
+        "running": snapshot.running,
+        "started_at": snapshot.started_at,
+        "last_exit": snapshot.last_exit,
+    }))
+}
+
+/// Set session mode for a local session
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command(rename_all = "camelCase")]
+async fn local_set_agent_mode(
+    session_id: String,
+    mode: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let agent_manager_guard = state.agent_manager.read().await;
+    let manager = agent_manager_guard
+        .as_ref()
+        .ok_or("Agent manager not initialized")?
+        .clone();
+
+    manager
+        .set_mode(&session_id, mode)
+        .await
+        .map_err(|e| format!("Failed to set mode: {}", e))
+}
+
+/// Set config option for a local session
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command(rename_all = "camelCase")]
+async fn local_set_agent_config(
+    session_id: String,
+    key: String,
+    value: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let agent_manager_guard = state.agent_manager.read().await;
+    let manager = agent_manager_guard
+        .as_ref()
+        .ok_or("Agent manager not initialized")?
+        .clone();
+
+    manager
+        .set_config_option(&session_id, key, value)
+        .await
+        .map_err(|e| format!("Failed to set config option: {}", e))
+}
+
+/// Set model for a local session
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command(rename_all = "camelCase")]
+async fn local_set_agent_model(
+    session_id: String,
+    model: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let agent_manager_guard = state.agent_manager.read().await;
+    let manager = agent_manager_guard
+        .as_ref()
+        .ok_or("Agent manager not initialized")?
+        .clone();
+
+    manager
+        .set_model(&session_id, model)
+        .await
+        .map_err(|e| format!("Failed to set model: {}", e))
+}
+
+/// Close a local agent session
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command(rename_all = "camelCase")]
+async fn local_close_agent_session(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let agent_manager_guard = state.agent_manager.read().await;
+    let manager = agent_manager_guard
+        .as_ref()
+        .ok_or("Agent manager not initialized")?
+        .clone();
+
+    manager
+        .close_session(&session_id)
+        .await
+        .map_err(|e| format!("Failed to close session: {}", e))
+}
+
+/// Get agent lifecycle snapshot for a local session
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command(rename_all = "camelCase")]
+async fn local_get_agent_lifecycle(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let agent_manager_guard = state.agent_manager.read().await;
+    let manager = agent_manager_guard
+        .as_ref()
+        .ok_or("Agent manager not initialized")?
+        .clone();
+
+    let snapshot = manager
+        .get_lifecycle_snapshot(&session_id)
+        .await
+        .map_err(|e| format!("Failed to get lifecycle snapshot: {}", e))?;
+
+    Ok(serde_json::json!({
+        "pid": snapshot.pid,
+        "running": snapshot.running,
+        "started_at": snapshot.started_at,
+        "last_exit": snapshot.last_exit,
+    }))
+}
+
 /// Initialize tracing with conditional log levels based on build configuration
 fn init_tracing() {
     // Set different log levels based on build profile and features
@@ -4381,6 +4697,26 @@ pub fn run() {
             get_remote_system_stats,
             // Remote Agent Control Commands
             send_agent_control,
+            // ACP 0.11 Session Control Commands (remote)
+            get_agent_status,
+            set_agent_mode,
+            set_agent_config,
+            set_agent_model,
+            close_agent_session,
+            get_agent_lifecycle,
+            // ACP 0.11 Session Control Commands (local)
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            local_get_agent_status,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            local_set_agent_mode,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            local_set_agent_config,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            local_set_agent_model,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            local_close_agent_session,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            local_get_agent_lifecycle,
             // macOS Panel Commands
             #[cfg(target_os = "macos")]
             show_panel,

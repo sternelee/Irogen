@@ -1,111 +1,15 @@
-# Repository Guidelines
+# Memory
 
-**Irogen** is a multi-agent local/remote management platform (Rust + SolidJS + Tauri).
+## Project Overview
+See @README.md for project overview and @package.json for available npm/pnpm commands for this project.
 
-## Project Structure
+## Code Style Guidelines
+- Use descriptive variable names
+- Follow existing patterns in the codebase
+- Extract complex conditions into meaningful boolean variables
 
-- `cli/` - Rust CLI binary (`irogen`), host command and terminal handling
-- `app/` - Tauri backend (Rust) for desktop/mobile app with agent session management
-- `shared/` - Rust networking and protocol library (iroh QUIC) shared by CLI/app
-- `src/` - SolidJS frontend for desktop/mobile (Vite + TailwindCSS v4 + DaisyUI + Kobalte)
-- `web/` - **Separate** Cloudflare Workers SSR app (TanStack Start + SolidJS) - see Web section below
-- `browser/` - WebAssembly browser client
-- `plugins/` - Vite/Tauri build helpers
+## Architecture Notes
+Add important architectural decisions and patterns here.
 
-## Build Commands
-
-### Prerequisites
-
-Rust stable, Node.js 20+, pnpm 10+.
-
-### Frontend (SolidJS/Tauri)
-
-```bash
-pnpm install && pnpm build    # Install and build (order matters)
-pnpm dev                      # Run SolidJS dev server (Vite, port 1420)
-pnpm tauri:dev                # Run Tauri desktop app in dev mode
-pnpm tauri:build              # Build desktop app
-pnpm tauri:android:dev|build  # Android (macOS)
-pnpm tauri:ios:dev|build      # iOS (macOS)
-```
-
-### Web (Separate Workspace)
-
-```bash
-cd web && pnpm install
-cd web && pnpm dev            # Dev server on port 3000
-cd web && pnpm build && pnpm deploy
-```
-
-### Rust
-
-```bash
-cargo build --workspace              # Build all crates
-cargo build -p cli --release         # Build CLI release binary
-cargo run -p cli -- host             # Run CLI host
-cargo run -p cli -- host --daemon    # Run CLI in background (Unix)
-```
-
-## Test Commands
-
-```bash
-cargo test --workspace                           # All tests
-cargo test -p <crate> <test_name>                # Single crate test (e.g., cargo test -p shared message_protocol)
-cargo test -- --nocapture                        # Show print output
-./test_ticket_output.sh                          # CLI ticket output verification (root-level helper)
-```
-
-## Verification Order
-
-```bash
-cargo fmt --all && cargo clippy --workspace -- -D warnings && pnpm tsc
-```
-
-## Lint & Format
-
-### Rust
-
-```bash
-cargo fmt --all && cargo fmt --all -- --check    # Format and verify
-cargo clippy --workspace -- -D warnings           # Lint with warnings as errors
-```
-
-### Frontend (src/ and web/)
-
-```bash
-pnpm tsc                     # TypeScript check (root: src/, web/: web/)
-cd web && pnpm lint && pnpm format
-```
-
-## Key Architecture
-
-- CLI host uses **iroh QUIC** for P2P connections with relay support
-- Wire protocol: `shared/src/message_protocol.rs` (bincode + JSON, chacha20poly1305 encryption)
-- `AgentManager` in `shared/src/agent/mod.rs` owns session lifecycle and runtime selection
-- Frontend uses `sessionStore` pattern for multi-session management
-- Permission modes: AlwaysAsk, AcceptEdits, Plan, AutoApprove
-
-## Desktop/Mobile Split
-
-`app/Cargo.toml` gates heavy dependencies (portable-pty, agent-client-protocol) behind `cfg(not(any(target_os = "android", target_os = "ios")))`.
-
-## Security
-
-- Never commit secrets (API keys, client keys, tokens)
-- Use environment variables for sensitive configuration
-- `shared/src/message_protocol.rs` uses chacha20poly1305 for encryption
-
-## Release
-
-```bash
-git tag v0.x.y && git push origin v0.x.y
-```
-
-## Adding a New Agent Integration
-
-1. `shared/src/message_protocol.rs` - add agent type
-2. `shared/src/agent/factory.rs` - process/binary detection
-3. `shared/src/agent/mod.rs` - session startup
-4. `shared/src/agent/` - streaming format and permissions handling
-5. `app/src/lib.rs` - backend commands/events
-6. `src/stores/` and components - frontend session/UI handling
+## Common Workflows
+Document frequently used workflows and commands here.

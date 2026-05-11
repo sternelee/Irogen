@@ -1,81 +1,51 @@
-import { For, Show } from "solid-js";
-import { TransitionGroup } from "solid-transition-group";
-import { Info, CheckCircle, TriangleAlert, XCircle, X } from "lucide-solid";
-import { notificationStore } from "../stores/notificationStore";
-import { cn } from "../lib/utils";
+import { useToast, type Toast } from "@/lib/toast-context";
+import { cn } from "@/lib/utils";
+import { X } from "lucide-react";
 
-export const ToastContainer = () => {
+function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
+  const colors: Record<string, string> = {
+    success: "bg-green-600 text-white",
+    error: "bg-red-600 text-white",
+    info: "bg-blue-600 text-white",
+    warning: "bg-yellow-500 text-black",
+  };
+
   return (
-    <div class="toast toast-top toast-end z-[100] p-4 pointer-events-none">
-      <TransitionGroup
-        onEnter={(el, done) => {
-          const a = el.animate(
-            [
-              { opacity: 0, transform: "translateX(20px)" },
-              { opacity: 1, transform: "translateX(0)" },
-            ],
-            { duration: 200 },
-          );
-          a.finished.then(done);
-        }}
-        onExit={(el, done) => {
-          const a = el.animate(
-            [
-              { opacity: 1, transform: "translateX(0)" },
-              { opacity: 0, transform: "translateX(20px)" },
-            ],
-            { duration: 200 },
-          );
-          a.finished.then(done);
-        }}
+    <div
+      className={cn(
+        "pointer-events-auto flex items-start gap-2 rounded-lg px-4 py-3 shadow-lg animate-slide-up max-w-sm",
+        colors[toast.type]
+      )}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium">{toast.title}</div>
+        {toast.body && <div className="text-xs opacity-90 mt-0.5">{toast.body}</div>}
+      </div>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="shrink-0 opacity-70 hover:opacity-100 transition-opacity"
       >
-        <For each={notificationStore.state.notifications}>
-          {(notification) => (
-            <div
-              class={cn(
-                "alert shadow-lg mb-2 flex items-center justify-between pr-2 pointer-events-auto border border-base-content/10",
-                notification.type === "success" && "alert-success",
-                notification.type === "error" && "alert-error",
-                notification.type === "warning" && "alert-warning",
-                notification.type === "info" && "alert-info",
-              )}
-            >
-              <div class="flex items-start gap-3 flex-1 min-w-0">
-                <div class="flex-shrink-0 mt-0.5">
-                  <Show when={notification.type === "success"}>
-                    <CheckCircle size={18} />
-                  </Show>
-                  <Show when={notification.type === "error"}>
-                    <XCircle size={18} />
-                  </Show>
-                  <Show when={notification.type === "warning"}>
-                    <TriangleAlert size={18} />
-                  </Show>
-                  <Show when={notification.type === "info"}>
-                    <Info size={18} />
-                  </Show>
-                </div>
-                <div class="flex flex-col gap-0.5 text-left flex-1 min-w-0">
-                  <h3 class="font-bold text-sm leading-none">
-                    {notification.title}
-                  </h3>
-                  <div class="text-xs opacity-90 leading-tight">
-                    {notification.message}
-                  </div>
-                </div>
-              </div>
-              <button
-                class="btn btn-xs btn-square shrink-0 ml-2 bg-base-content/45 hover:bg-base-content/70 text-base-200 border-0"
-                onClick={() =>
-                  notificationStore.removeNotification(notification.id)
-                }
-              >
-                <X size={14} />
-              </button>
-            </div>
-          )}
-        </For>
-      </TransitionGroup>
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
-};
+}
+
+export function ToastContainer() {
+  const { toasts, removeToast } = useToast();
+
+  if (toasts.length === 0) return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+      {toasts.map((toast) => (
+        <ToastItem
+          key={toast.id}
+          toast={toast}
+          onDismiss={() => removeToast(toast.id)}
+        />
+      ))}
+    </div>
+  );
+}
