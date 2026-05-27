@@ -9,7 +9,6 @@ tokio = { version = "1.47", features = [
   "fs",
   "rt-multi-thread",
 ] }
-tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "132f5b39c862e3a970f731d709608b3e6276d5f6" }
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -20,9 +19,11 @@ uuid = { version = "1.17", features = ["v4", "js"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
-iroh = { version = "0.97", default-features = false }
-iroh-base = { version = "0.97", default-features = false }
-iroh-tickets = "0.4"
+iroh = { version = "1.0.0-rc.1", default-features = false, features = [
+  "tls-ring",
+] }
+iroh-base = { version = "1.0.0-rc.1", default-features = false }
+iroh-tickets = "1.0.0-rc.1"
 bytes = "1.10"
 futures = "0.3"
 rand = "0.9"
@@ -41,10 +42,3 @@ codegen-units = 1
 [profile.production]
 inherits = "release"
 panic = "abort"
-
-[patch.crates-io]
-tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "132f5b39c862e3a970f731d709608b3e6276d5f6" }
-tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "9200079d3b54a1ff51072e24d81fd354f085156f" }
-# Patch: `used` field in UsageUpdate can be null but was expected u64
-# https://github.com/sternelee/agent-client-protocol-rust
-agent-client-protocol-schema = { git = "https://github.com/sternelee/agent-client-protocol-rust.git", rev = "b0d5b85cdbc11019eff112bba347010e58416f8d" }

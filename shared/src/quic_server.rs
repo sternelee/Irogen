@@ -326,7 +326,7 @@ impl QuicMessageServer {
                 } else {
                     // 生成新密钥并保存
                     info!("Generating new secret key and saving to: {:?}", path);
-                    let secret_key = SecretKey::generate(&mut rand::rng());
+                    let secret_key = SecretKey::generate();
 
                     // 确保目录存在
                     if let Some(parent) = path.parent() {
@@ -353,7 +353,7 @@ impl QuicMessageServer {
             }
             None => {
                 info!("No secret key path provided, generating temporary key");
-                Ok(SecretKey::generate(&mut rand::rng()))
+                Ok(SecretKey::generate())
             }
         }
     }

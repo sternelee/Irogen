@@ -38,7 +38,7 @@ shared = { path = "../shared" }
 # QUIC protocol dependencies
 async-trait = "0.1"
 futures-util = "0.3"
-agent-client-protocol = "0.9.4"
+agent-client-protocol = "0.12.1"
 tokio-util = { version = "0.7", features = ["compat"] }
 
 # Logging dependencies
