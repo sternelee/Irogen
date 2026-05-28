@@ -193,7 +193,7 @@ pub struct ConnectionSession {
     // It's managed separately in the connection task
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tyzen::Type)]
 struct PendingPermissionDto {
     request_id: String,
     tool_name: String,
@@ -202,7 +202,7 @@ struct PendingPermissionDto {
     created_at: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tyzen::Type)]
 struct CompletedPermissionDto {
     request_id: String,
     tool_name: String,
@@ -215,7 +215,7 @@ struct CompletedPermissionDto {
     completed_at: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tyzen::Type)]
 struct PermissionStateDto {
     mode: String,
     allowed_tools: Vec<String>,
@@ -328,7 +328,7 @@ pub struct NetworkConfig {
     pub relay_url: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tyzen::Type)]
 #[serde(rename_all = "camelCase")]
 struct GitStatusResponse {
     success: bool,
@@ -336,7 +336,7 @@ struct GitStatusResponse {
     error: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tyzen::Type)]
 #[serde(rename_all = "camelCase")]
 struct GitDiffResponse {
     success: bool,
@@ -345,7 +345,7 @@ struct GitDiffResponse {
     error: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tyzen::Type)]
 #[serde(rename_all = "camelCase")]
 struct FileBrowserListResponse {
     success: bool,
@@ -353,7 +353,7 @@ struct FileBrowserListResponse {
     error: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tyzen::Type)]
 #[serde(rename_all = "camelCase")]
 struct FileBrowserReadResponse {
     success: bool,
@@ -362,7 +362,7 @@ struct FileBrowserReadResponse {
     error: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, tyzen::Type)]
 pub struct DirectedMessageRequest {
     pub session_id: String,
     pub target_node_id: String,
@@ -490,6 +490,7 @@ async fn initialize_network_with_relay_internal(
     Ok(node_id)
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn initialize_network_with_relay(
     relay_url: Option<String>,
@@ -499,6 +500,7 @@ async fn initialize_network_with_relay(
     initialize_network_with_relay_internal(relay_url, &state, Some(&app_handle)).await
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn initialize_network(
     state: State<'_, AppState>,
@@ -509,6 +511,7 @@ async fn initialize_network(
 
 /// Connect to host (alias for connect_to_peer)
 /// This provides the command name that the frontend expects
+#[tyzen::command]
 #[tauri::command]
 async fn connect_to_host(
     session_ticket: String,
@@ -518,6 +521,7 @@ async fn connect_to_host(
     connect_to_peer(session_ticket, state, app_handle).await
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn connect_to_peer(
     session_ticket: String,
@@ -1693,6 +1697,7 @@ async fn probe_control_connection(
     Err(probe_err)
 }
 
+#[tyzen::command]
 #[tauri::command]
 #[allow(dead_code)]
 async fn send_directed_message(
@@ -1702,6 +1707,7 @@ async fn send_directed_message(
     Err("Directed messages are deprecated. Use terminal commands instead.".to_string())
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn disconnect_session(
     session_id: String,
@@ -1764,12 +1770,14 @@ async fn disconnect_session(
     Ok(())
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn get_active_sessions(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let sessions = state.sessions.read().await;
     Ok(sessions.keys().cloned().collect())
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn get_node_info(state: State<'_, AppState>) -> Result<String, String> {
     let quic_client = {
@@ -1784,12 +1792,14 @@ async fn get_node_info(state: State<'_, AppState>) -> Result<String, String> {
 
 /// Get local system stats (desktop only)
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command]
 async fn get_local_system_stats() -> Result<shared::SystemStats, String> {
     shared::collect_system_stats().map_err(|e| e.to_string())
 }
 
 /// Get remote system stats via P2P
+#[tyzen::command]
 #[tauri::command]
 async fn get_remote_system_stats(
     control_session_id: String,
@@ -1832,6 +1842,7 @@ async fn get_remote_system_stats(
     }
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn parse_session_ticket(ticket: String) -> Result<String, String> {
     // Use the same validation function
@@ -1842,11 +1853,13 @@ async fn parse_session_ticket(ticket: String) -> Result<String, String> {
     }
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn list_directory(path: String) -> Result<Vec<DirEntry>, String> {
     shared::list_directory(&path)
 }
 
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn list_mention_candidates(
     base_path: String,
@@ -1856,6 +1869,7 @@ async fn list_mention_candidates(
     shared::list_mention_candidates(&base_path, &query, limit)
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn file_browser_list(path: String) -> FileBrowserListResponse {
     match shared::file_browser_list(&path) {
@@ -1872,6 +1886,7 @@ async fn file_browser_list(path: String) -> FileBrowserListResponse {
     }
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn file_browser_read(path: String) -> FileBrowserReadResponse {
     match shared::file_browser_read(&path) {
@@ -1890,6 +1905,7 @@ async fn file_browser_read(path: String) -> FileBrowserReadResponse {
     }
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn git_status(path: String) -> GitStatusResponse {
     match shared::git_status(&path) {
@@ -1906,6 +1922,7 @@ async fn git_status(path: String) -> GitStatusResponse {
     }
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn git_diff(path: String, file: String) -> GitDiffResponse {
     match shared::git_diff(&path, &file) {
@@ -2024,6 +2041,7 @@ async fn start_cleanup_task(state: &State<'_, AppState>, app_handle: tauri::AppH
     });
 }
 
+#[tyzen::command]
 #[tauri::command]
 async fn list_remote_directory(
     session_id: String,
@@ -2137,6 +2155,7 @@ fn parse_tcp_forwarding_sessions_payload(
         .collect()
 }
 
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn remote_file_browser_list(
     control_session_id: String,
@@ -2188,6 +2207,7 @@ async fn remote_file_browser_list(
     })
 }
 
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn remote_file_browser_read(
     control_session_id: String,
@@ -2245,6 +2265,7 @@ async fn remote_file_browser_read(
     })
 }
 
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn remote_git_status(
     control_session_id: String,
@@ -2293,6 +2314,7 @@ async fn remote_git_status(
     })
 }
 
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn remote_git_diff(
     control_session_id: String,
@@ -2351,6 +2373,7 @@ async fn remote_git_diff(
     })
 }
 
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn list_remote_mention_candidates(
     session_id: String,
@@ -2407,6 +2430,7 @@ async fn list_remote_mention_candidates(
         .map_err(|e| format!("Invalid mention candidates payload: {}", e))
 }
 
+#[tyzen::command]
 #[tauri::command]
 #[cfg(target_os = "macos")]
 async fn show_panel(app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -2433,6 +2457,7 @@ async fn show_panel(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tyzen::command]
 #[tauri::command]
 #[cfg(target_os = "macos")]
 async fn hide_panel(app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -2444,6 +2469,7 @@ async fn hide_panel(app_handle: tauri::AppHandle) -> Result<(), String> {
 
 // === TCP Forwarding Management Commands ===
 
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn create_tcp_forwarding_session(
     session_id: String,
@@ -2511,6 +2537,7 @@ async fn create_tcp_forwarding_session(
     Ok(session_id_result)
 }
 
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn list_tcp_forwarding_sessions(
     session_id: Option<String>,
@@ -2578,6 +2605,7 @@ async fn list_tcp_forwarding_sessions(
     Ok(manager.list_sessions().await)
 }
 
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn stop_tcp_forwarding_session(
     session_id: String,
@@ -2630,6 +2658,7 @@ async fn stop_tcp_forwarding_session(
     Ok(())
 }
 
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn get_tcp_forwarding_session_info(
     session_id: String,
@@ -2664,6 +2693,7 @@ async fn get_tcp_forwarding_session_info(
     Ok(())
 }
 
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn send_tcp_data(
     session_id: String,
@@ -2739,6 +2769,7 @@ fn process_slash_command(_command: &str) -> (bool, String) {
 
 /// Send a slash command to an AI agent session
 /// Commands are parsed and either handled as builtin commands or forwarded to the agent
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn send_slash_command(
     session_id: String,
@@ -2784,6 +2815,7 @@ async fn send_slash_command(
 }
 
 /// Send agent control message to remote session
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn send_agent_control(
     connection_session_id: String,
@@ -2887,6 +2919,7 @@ async fn send_agent_control(
 // ============================================================================
 
 /// Spawn a remote AI agent session
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn remote_spawn_session(
     connection_session_id: String,
@@ -3019,6 +3052,7 @@ async fn remote_spawn_session(
 }
 
 /// List all active remote agent sessions from connected CLI
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn remote_list_agents(
     control_session_id: Option<String>,
@@ -3092,6 +3126,7 @@ async fn remote_list_agents(
 }
 
 /// Stop a remote agent session on connected CLI
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn remote_stop_agent(
     session_id: String,
@@ -3146,6 +3181,7 @@ async fn remote_stop_agent(
 }
 
 /// Respond to an agent permission request
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn respond_to_agent_permission(
     session_id: String,
@@ -3214,6 +3250,7 @@ async fn respond_to_agent_permission(
 
 /// Respond to a local agent permission request
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_respond_to_agent_permission(
     session_id: String,
@@ -3241,6 +3278,7 @@ async fn local_respond_to_agent_permission(
 }
 
 /// Send a message to an AI agent session
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn send_agent_message(
     session_id: String,
@@ -3286,6 +3324,7 @@ async fn send_agent_message(
 }
 
 /// Abort an action in an AI agent session
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn abort_agent_action(
     session_id: String,
@@ -3333,6 +3372,7 @@ async fn abort_agent_action(
 
 /// Install or upgrade ACP package for specified agent (local mode)
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command]
 async fn install_acp_package_local(agent_type: String) -> Result<String, String> {
     tracing::info!(
@@ -3380,6 +3420,7 @@ async fn install_acp_package_local(agent_type: String) -> Result<String, String>
 }
 
 /// Install or upgrade ACP package on remote CLI host via P2P
+#[tyzen::command]
 #[tauri::command]
 async fn install_acp_package_remote(
     session_id: String,
@@ -3438,6 +3479,7 @@ async fn install_acp_package_remote(
 /// Start a local AI agent session (in-app, no P2P)
 /// Desktop only
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_start_agent(
     agent_type_str: String,
@@ -3595,6 +3637,7 @@ async fn local_start_agent(
 
 /// Send a message to a local agent
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_send_agent_message(
     session_id: String,
@@ -3616,6 +3659,7 @@ async fn local_send_agent_message(
 
 /// Abort a local agent action
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_abort_agent_action(
     session_id: String,
@@ -3635,6 +3679,7 @@ async fn local_abort_agent_action(
 
 /// Stop a local agent session (backward-compatible command used by sidebar)
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_stop_agent(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
     let agent_manager_guard = state.agent_manager.read().await;
@@ -3659,6 +3704,7 @@ async fn local_stop_agent(session_id: String, state: State<'_, AppState>) -> Res
 
 /// List all active local agent sessions
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_list_agents(
     state: State<'_, AppState>,
@@ -3675,6 +3721,7 @@ async fn local_list_agents(
 
 /// Get pending permission requests for a local agent session
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_get_pending_permissions(
     session_id: String,
@@ -3705,6 +3752,7 @@ async fn local_get_pending_permissions(
 
 /// Get full permission state for a local agent session (mode + pending + completed + allowed tools)
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_get_permission_state(
     session_id: String,
@@ -3759,6 +3807,7 @@ async fn local_get_permission_state(
     })
 }
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn subscribe_acp_inspector(
     session_id: String,
@@ -3821,6 +3870,7 @@ async fn subscribe_acp_inspector(
 
 /// Respond to a permission request from ACP inspector
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn respond_permission(
     session_id: String,
@@ -3850,6 +3900,7 @@ async fn respond_permission(
 
 /// List external agent history sessions (ACP list_sessions)
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_list_agent_history(
     agent_type_str: String,
@@ -3907,6 +3958,7 @@ async fn local_list_agent_history(
 
 /// Load or resume an external agent history session
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_load_agent_history(
     agent_type_str: String,
@@ -4110,6 +4162,7 @@ fn parse_remote_permission_mode(mode: &str) -> Result<AgentPermissionMode, Strin
 
 /// Set permission mode for a local session
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn local_set_permission_mode(
     session_id: String,
@@ -4137,6 +4190,7 @@ async fn local_set_permission_mode(
 }
 
 /// Set permission mode for a remote session
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn remote_set_permission_mode(
     session_id: String,
@@ -4190,6 +4244,7 @@ async fn remote_set_permission_mode(
 
 /// Get permission mode for a session
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn get_permission_mode(
     session_id: String,
@@ -4274,6 +4329,12 @@ fn init_tracing() {
 pub fn run() {
     // Initialize tracing based on build configuration
     init_tracing();
+
+    // Generate TypeScript bindings for Tauri commands
+    #[cfg(debug_assertions)]
+    if let Err(e) = tyzen_tauri::generate("../src/generated/tauri-bindings.ts") {
+        eprintln!("[tyzen] warning: failed to generate TypeScript bindings: {}", e);
+    }
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -4389,4 +4450,31 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tyzen_tests {
+    #[test]
+    fn debug_inventory() {
+        let mut count = 0;
+        for cmd in ::tyzen::__private::inventory::iter::<::tyzen::CommandMeta>() {
+            println!("Command: {}", cmd.name);
+            count += 1;
+        }
+        println!("Total commands: {}", count);
+
+        let mut type_count = 0;
+        for ty in ::tyzen::__private::inventory::iter::<::tyzen::TypeMeta>() {
+            println!("Type: {}", ty.name);
+            type_count += 1;
+        }
+        println!("Total types: {}", type_count);
+    }
+
+    #[test]
+    fn generate_bindings() {
+        if let Err(e) = tyzen_tauri::generate("../src/generated/tauri-bindings.ts") {
+            panic!("[tyzen] failed to generate bindings: {}", e);
+        }
+    }
 }

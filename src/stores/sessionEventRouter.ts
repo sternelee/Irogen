@@ -14,6 +14,7 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification";
+import { parseAcpEvent, type AcpEvent } from "../types/acpEvents";
 
 // ============================================================================
 // Types
@@ -25,7 +26,7 @@ export interface SessionEvent {
   [key: string]: unknown;
 }
 
-export type SessionEventHandler = (event: SessionEvent) => void;
+export type SessionEventHandler = (event: AcpEvent) => void;
 
 export interface StreamingState {
   isStreaming: boolean;
@@ -108,24 +109,27 @@ class SessionEventRouter {
   /**
    * Route event to correct session handlers
    */
-  private routeEvent(event: SessionEvent): void {
-    // Handle both nested event format (from Rust) and flat format
-    // Rust sends: {sessionId, turnId, event: {type, ...}}
-    // Some events may also have type at top level
-    const nestedEvent = event.event as Record<string, unknown> | undefined;
-    const type = (event.type as string) || (nestedEvent?.type as string) || "";
-    const sessionId = (event.sessionId as string) || "";
+  private routeEvent(rawEvent: SessionEvent): void {
+    // Parse raw payload into typed AcpEvent
+    const event = parseAcpEvent(rawEvent as unknown as Record<string, unknown>);
+    if (!event) {
+      console.warn("[SessionEventRouter] Failed to parse event:", rawEvent);
+      return;
+    }
+
+    const type = event.type;
+    const sessionId = event.sessionId;
     const normalizedType = this.normalizeEventType(type);
 
     // Update streaming state
-    this.updateStreamingState(sessionId, type, event);
+    this.updateStreamingState(sessionId, type, rawEvent);
 
     // Track unread for non-active sessions on message events
     if (this.activeSessionId && sessionId !== this.activeSessionId) {
       if (MESSAGE_EVENT_TYPES.has(type)) {
         this.markUnread(sessionId);
       }
-      void this.notifyForInactiveSession(sessionId, normalizedType, event);
+      void this.notifyForInactiveSession(sessionId, normalizedType, rawEvent);
     }
 
     // Get handlers for this session
@@ -136,7 +140,7 @@ class SessionEventRouter {
       return;
     }
 
-    // Call all handlers for this session
+    // Call all handlers for this session with typed event
     sessionHandlers.forEach((handler) => {
       try {
         handler(event);

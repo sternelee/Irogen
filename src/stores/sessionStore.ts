@@ -534,33 +534,6 @@ export const createSessionStore = () => {
     );
   };
 
-  const requestMessageSync = async (sessionId: string) => {
-    const session = getSession(sessionId);
-    if (!session) {
-      console.error(`Session not found: ${sessionId}`);
-      return;
-    }
-
-    const lastSequence = session.lastReceivedSequence;
-
-    try {
-      await invoke("request_message_sync", {
-        sessionId,
-        lastSequence,
-      });
-      console.log(
-        `Requested message sync for session ${sessionId}, last_sequence: ${lastSequence}`,
-      );
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      notificationStore.error(
-        `Failed to request message sync: ${errorMessage}`,
-        "Error",
-      );
-    }
-  };
-
   const handleRemoteConnect = async () => {
     // Guard against duplicate concurrent connect calls
     if (state.isConnecting) return;
@@ -988,7 +961,6 @@ export const createSessionStore = () => {
 
     // Message Sync
     updateLastReceivedSequence,
-    requestMessageSync,
 
     handleCreateSession,
     handleRemoteConnect,

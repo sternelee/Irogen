@@ -23,10 +23,8 @@ import {
   type BackendSessionMetadata,
   type PermissionMode,
 } from "../stores/sessionStore";
-import {
-  sessionEventRouter,
-  type SessionEvent,
-} from "../stores/sessionEventRouter";
+import { sessionEventRouter } from "../stores/sessionEventRouter";
+import type { AcpEvent } from "../types/acpEvents";
 import { isMobile } from "../stores/deviceStore";
 import type { ChatMessage } from "../stores/chatStore";
 import type { SlashCommandItem } from "../stores/chatStore";
@@ -45,176 +43,6 @@ import { UserQuestionPanel } from "./chat/UserQuestionPanel";
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-interface ParsedEvent {
-  type: string;
-  // External agent protocol event types
-  sessionId?: string;
-  turnId?: string;
-  agent?: string;
-  // Text/Content
-  text?: string;
-  content?: string;
-  thinking?: boolean;
-  messageId?: string;
-  // Turn lifecycle
-  result?: unknown;
-  error?: string;
-  code?: string;
-  // Tool events
-  toolId?: string;
-  toolCallId?: string;
-  toolName?: string;
-  input?: unknown;
-  output?: unknown;
-  status?: string;
-  // Permission
-  requestId?: string;
-  message?: string;
-  createdAt?: number;
-  requestedAt?: number;
-  toolParams?: unknown;
-  description?: string;
-  // User Question
-  question?: string;
-  options?: string[];
-  questionId?: string;
-  // Usage
-  inputTokens?: number;
-  outputTokens?: number;
-  cachedTokens?: number;
-  modelContextWindow?: number;
-  modelUsage?: string;
-  // Progress
-  progress?: number;
-  // Notification
-  level?: string;
-  details?: unknown;
-  // File operations
-  operation?: string;
-  path?: string;
-  // Terminal
-  command?: string;
-  exitCode?: number;
-  // Raw fields
-  data?: unknown;
-}
-
-/**
- * Parse event from either format:
- * 1. Rust externally tagged: {TurnStarted: {turn_id: "..."}} -> type: "turn_started"
- * 2. Frontend inline format: {type: "text_delta", content: "..."}
- * 3. External agent protocol format: {type: "text:delta", sessionId: "...", text: "..."}
- * 4. Wrapped format: {event: {type: "text_delta", ...}, sessionId: "...", turnId: "..."}
- */
-function parseEvent(eventObj: Record<string, unknown>): ParsedEvent {
-  // Check for wrapped format first (event: {type: "...", ...})
-  if (
-    "event" in eventObj &&
-    typeof eventObj.event === "object" &&
-    eventObj.event !== null
-  ) {
-    const nestedEvent = eventObj.event as Record<string, unknown>;
-    if ("type" in nestedEvent) {
-      const result: ParsedEvent = { type: nestedEvent.type as string };
-
-      // Convert protocol type names from colon to underscore
-      const typeStr = result.type;
-      if (typeStr.includes(":")) {
-        result.type = typeStr.replace(":", "_");
-      }
-
-      // Copy all properties from nested event, converting snake_case to camelCase
-      for (const key of Object.keys(nestedEvent)) {
-        if (key !== "type") {
-          const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-          (result as unknown as Record<string, unknown>)[camelKey] =
-            nestedEvent[key];
-        }
-      }
-
-      // Also copy top-level properties (sessionId, turnId)
-      for (const key of Object.keys(eventObj)) {
-        if (key !== "event") {
-          const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-          (result as unknown as Record<string, unknown>)[camelKey] =
-            eventObj[key];
-        }
-      }
-
-      return result;
-    }
-  }
-
-  // Check for inline protocol format first (type: "text_delta" or "text:delta")
-  if ("type" in eventObj) {
-    const result: ParsedEvent = { type: eventObj.type as string };
-
-    // Convert protocol type names from kebab-case to camelCase
-    const typeStr = result.type;
-    if (typeStr.includes(":")) {
-      // Protocol: "text:delta" -> "text_delta"
-      result.type = typeStr.replace(":", "_");
-    }
-
-    // Copy all other properties, converting snake_case to camelCase
-    for (const key of Object.keys(eventObj)) {
-      if (key !== "type") {
-        const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-        (result as unknown as Record<string, unknown>)[camelKey] =
-          eventObj[key];
-      }
-    }
-
-    return result;
-  }
-
-  // Check for externally tagged format (Rust serialization)
-  const typeMapping: Record<string, string> = {
-    TextDelta: "text_delta",
-    ReasoningDelta: "reasoning_delta",
-    TurnStarted: "turn_started",
-    TurnCompleted: "turn_completed",
-    TurnError: "turn_error",
-    ToolCall: "tool_call",
-    ToolCallUpdate: "tool_call_update",
-    ToolResult: "tool_result",
-    MessageStart: "message_start",
-    MessageEnd: "message_end",
-    Ping: "ping",
-  };
-
-  // Find the event type key
-  for (const [key, value] of Object.entries(eventObj)) {
-    if (typeMapping[key]) {
-      const parsed: ParsedEvent = { type: typeMapping[key] };
-      if (value && typeof value === "object") {
-        const obj = value as Record<string, unknown>;
-        // Extract common fields
-        if ("text" in obj) parsed.text = obj.text as string;
-        if ("content" in obj) parsed.content = obj.content as string;
-        if ("thinking" in obj) parsed.thinking = obj.thinking as boolean;
-        if ("turn_id" in obj) parsed.turnId = obj.turn_id as string;
-        if ("result" in obj) parsed.result = obj.result;
-        if ("error" in obj) parsed.error = obj.error as string;
-        if ("tool_id" in obj) parsed.toolId = obj.tool_id as string;
-        if ("toolId" in obj) parsed.toolId = obj.toolId as string;
-        if ("tool_call_id" in obj)
-          parsed.toolCallId = obj.tool_call_id as string;
-        if ("toolCallId" in obj) parsed.toolCallId = obj.toolCallId as string;
-        if ("tool_name" in obj || "toolName" in obj) {
-          parsed.toolName = (obj.tool_name || obj.toolName) as string;
-        }
-        if ("status" in obj) parsed.status = obj.status as string;
-        if ("output" in obj) parsed.output = obj.output as string;
-        if ("data" in obj) parsed.data = obj.data;
-      }
-      return parsed;
-    }
-  }
-
-  return { type: "unknown" };
-}
 
 // ============================================================================
 // Types
@@ -821,46 +649,36 @@ export function ChatView(props: ChatViewProps) {
     // Session Event Handler (using centralized router)
     // ========================================================================
 
-    const handleSessionEvent = (event: SessionEvent) => {
-      // Parse event using helper that handles both Rust and frontend formats
-      const parsed = parseEvent(event as unknown as Record<string, unknown>);
-      const eventType = parsed.type;
-      const content = parsed.content || parsed.text || "";
-      const thinking = parsed.thinking || false;
-
-      // Handle different event types
-      switch (eventType) {
+    const handleSessionEvent = (event: AcpEvent) => {
+      // Handle different event types using discriminated union narrowing
+      switch (event.type) {
         case "text_delta": {
           setIsStreaming(true);
-          const deltaContent = content || "";
+          const deltaContent = event.text;
           const currentMessages = messages();
           const lastMessage = currentMessages[currentMessages.length - 1];
 
           if (lastMessage?.role === "assistant") {
             chatStore.updateMessage(props.sessionId, lastMessage.id, {
               content: lastMessage.content + deltaContent,
-              thinking,
+              thinking: false,
               timestamp: Date.now(),
             });
           } else {
             chatStore.addMessage(props.sessionId, {
               role: "assistant",
               content: deltaContent,
-              thinking,
+              thinking: false,
             });
           }
-          // Don't set isStreaming here - only user sending message should trigger it
           break;
         }
 
         case "response": {
           setIsStreaming(true);
-          // Full response - replace existing message or create new one
-          const responseContent = content || "";
-          const responseThinking = thinking;
-          const messageId = parsed.messageId;
-
-          // Don't set isStreaming here - only user sending message should trigger it
+          const responseContent = event.content || event.text || "";
+          const responseThinking = event.thinking || false;
+          const messageId = event.messageId;
 
           const currentMessages = messages();
           const lastMessage = currentMessages[currentMessages.length - 1];
@@ -903,17 +721,16 @@ export function ChatView(props: ChatViewProps) {
 
         case "turn_error": {
           setIsStreaming(false);
-          const error = parsed.error || "Unknown error";
           chatStore.addMessage(props.sessionId, {
             role: "system",
-            content: `Error: ${error}`,
+            content: `Error: ${event.error}`,
           });
           break;
         }
 
         case "reasoning_delta": {
           setIsStreaming(true);
-          const reasoningContent = content || "";
+          const reasoningContent = event.text;
           const reasonMessages = messages();
           const lastReasonMsg = reasonMessages[reasonMessages.length - 1];
 
@@ -930,42 +747,30 @@ export function ChatView(props: ChatViewProps) {
               thinking: true,
             });
           }
-          // Don't set isStreaming here - only user sending message should trigger it
           break;
         }
 
         case "tool_started": {
-          const explicitToolId = parsed.toolId || parsed.toolCallId;
-          const toolName = parsed.toolName || "unknown";
-          const toolInput = parsed.input;
+          const toolInput = event.input;
           const inputStr = toolInput ? JSON.stringify(toolInput) : "";
-          const toolContent = `[Tool: ${toolName} started]${inputStr ? `\nInput: ${inputStr}` : ""}`;
-          if (explicitToolId) {
-            const { toolNameKey, toolMessageKey } = resolveToolMessageKey(
-              toolName,
-              explicitToolId,
-            );
-            upsertToolMessage(toolMessageKey, toolContent);
-            toolNameMessageIds.set(toolNameKey, toolMessageKey);
-          } else {
-            chatStore.addMessage(props.sessionId, {
-              role: "system",
-              content: toolContent,
-            });
-          }
+          const toolContent = `[Tool: ${event.toolName} started]${inputStr ? `\nInput: ${inputStr}` : ""}`;
+          const { toolNameKey, toolMessageKey } = resolveToolMessageKey(
+            event.toolName,
+            event.toolId,
+          );
+          upsertToolMessage(toolMessageKey, toolContent);
+          toolNameMessageIds.set(toolNameKey, toolMessageKey);
           break;
         }
 
-        case "tool_inputUpdated": {
-          const explicitToolId = parsed.toolId || parsed.toolCallId;
-          const updateToolName = parsed.toolName || "unknown";
-          const updatedInput = parsed.input;
+        case "tool_input_updated": {
+          const updatedInput = event.input;
           const updateStr = updatedInput ? JSON.stringify(updatedInput) : "";
-          const toolContent = `[Tool: ${updateToolName} input updated]${updateStr ? `\n${updateStr}` : ""}`;
-          if (explicitToolId) {
+          const toolContent = `[Tool: ${event.toolName || "unknown"} input updated]${updateStr ? `\n${updateStr}` : ""}`;
+          if (event.toolId) {
             const { toolNameKey, toolMessageKey } = resolveToolMessageKey(
-              updateToolName,
-              explicitToolId,
+              event.toolName || "unknown",
+              event.toolId,
             );
             upsertToolMessage(toolMessageKey, toolContent);
             toolNameMessageIds.set(toolNameKey, toolMessageKey);
@@ -979,21 +784,18 @@ export function ChatView(props: ChatViewProps) {
         }
 
         case "tool_completed": {
-          const explicitToolId = parsed.toolId || parsed.toolCallId;
-          const compToolName = parsed.toolName || "unknown";
-          const compOutput = parsed.output;
-          const compError = parsed.error;
-          const outputStr = compOutput
-            ? typeof compOutput === "string"
-              ? compOutput
-              : JSON.stringify(compOutput, null, 2)
+          const output = event.output;
+          const outputStr = output
+            ? typeof output === "string"
+              ? output
+              : JSON.stringify(output, null, 2)
             : "";
-          if (compError) {
-            const toolContent = `[Tool: ${compToolName} failed]\nError: ${compError}`;
-            if (explicitToolId) {
+          if (event.error) {
+            const toolContent = `[Tool: ${event.toolName || "unknown"} failed]\nError: ${event.error}`;
+            if (event.toolId) {
               const { toolNameKey, toolMessageKey } = resolveToolMessageKey(
-                compToolName,
-                explicitToolId,
+                event.toolName || "unknown",
+                event.toolId,
               );
               upsertToolMessage(toolMessageKey, toolContent);
               toolMessageIds.delete(toolMessageKey);
@@ -1005,11 +807,11 @@ export function ChatView(props: ChatViewProps) {
               });
             }
           } else {
-            const toolContent = `[Tool: ${compToolName} completed]${outputStr ? `\n${outputStr}` : ""}`;
-            if (explicitToolId) {
+            const toolContent = `[Tool: ${event.toolName || "unknown"} completed]${outputStr ? `\n${outputStr}` : ""}`;
+            if (event.toolId) {
               const { toolNameKey, toolMessageKey } = resolveToolMessageKey(
-                compToolName,
-                explicitToolId,
+                event.toolName || "unknown",
+                event.toolId,
               );
               upsertToolMessage(toolMessageKey, toolContent);
               toolMessageIds.delete(toolMessageKey);
@@ -1025,16 +827,16 @@ export function ChatView(props: ChatViewProps) {
         }
 
         case "tool_call_update": {
-          const toolName = parsed.toolName || "unknown";
-          const status = parsed.status || "";
-          const output = parsed.output;
+          const toolName = event.toolName || "unknown";
+          const status = event.status || "";
+          const output = event.output;
           const stableToolId =
-            parsed.toolId ||
-            parsed.toolCallId ||
-            (typeof parsed.data === "string"
+            event.toolId ||
+            event.toolCallId ||
+            (typeof event.data === "string"
               ? (() => {
                   try {
-                    const rawData = JSON.parse(parsed.data) as Record<
+                    const rawData = JSON.parse(event.data) as Record<
                       string,
                       unknown
                     >;
@@ -1082,48 +884,62 @@ export function ChatView(props: ChatViewProps) {
         }
 
         case "user_question": {
-          const questionText = parsed.question || "Please select an option";
-          const questionOptions = parsed.options || [];
           const questionId =
-            parsed.questionId || parsed.requestId || crypto.randomUUID();
+            event.questionId || event.requestId || crypto.randomUUID();
 
           chatStore.addUserQuestion(props.sessionId, {
             sessionId: props.sessionId,
             id: questionId,
-            question: questionText,
-            options: questionOptions,
+            question: event.question || "Please select an option",
+            options: event.options || [],
           });
           break;
         }
 
-        case "approval_request":
-        case "permission_request": {
-          const permToolName = parsed.toolName || "unknown";
+        case "approval_request": {
           const permMessage =
-            parsed.message || `Permission request for ${permToolName}`;
-          const permInput = parsed.input || parsed.toolParams;
+            event.message || `Permission request for ${event.toolName}`;
+          const permInput = event.input;
           const permRequestDesc = `${permMessage}${permInput ? `\nInput: ${JSON.stringify(permInput)}` : ""}`;
           chatStore.addPermissionRequest(props.sessionId, {
             sessionId: props.sessionId,
-            id: parsed.requestId,
-            toolName: permToolName,
+            id: event.requestId,
+            toolName: event.toolName,
             toolParams: permInput as Record<string, unknown>,
             description: permRequestDesc,
-            requestedAt:
-              typeof parsed.createdAt === "number"
-                ? parsed.createdAt * 1000
-                : typeof parsed.requestedAt === "number"
-                  ? parsed.requestedAt * 1000
-                  : undefined,
+            requestedAt: undefined,
+          });
+          setIsStreaming(false);
+          break;
+        }
+
+        case "permission_request": {
+          const permMessage =
+            event.message || `Permission request for ${event.toolName}`;
+          const permInput = event.input || event.toolParams;
+          const permRequestDesc = `${permMessage}${permInput ? `\nInput: ${JSON.stringify(permInput)}` : ""}`;
+          const requestedAt =
+            typeof event.createdAt === "number"
+              ? event.createdAt * 1000
+              : typeof event.requestedAt === "number"
+                ? event.requestedAt * 1000
+                : undefined;
+          chatStore.addPermissionRequest(props.sessionId, {
+            sessionId: props.sessionId,
+            id: event.requestId,
+            toolName: event.toolName,
+            toolParams: permInput as Record<string, unknown>,
+            description: permRequestDesc,
+            requestedAt,
           });
           setIsStreaming(false);
           break;
         }
 
         case "tool_call": {
-          const legacyToolName = parsed.toolName || "unknown";
-          const legacyStatus = parsed.status || "started";
-          const legacyToolOutput = parsed.output as string | undefined;
+          const legacyToolName = event.toolName || "unknown";
+          const legacyStatus = event.status || "started";
+          const legacyToolOutput = event.output as string | undefined;
           const { toolNameKey, toolMessageKey } =
             resolveToolMessageKey(legacyToolName);
           const toolContent = `[Tool: ${legacyToolName}] Status: ${legacyStatus}${legacyToolOutput ? `\n${legacyToolOutput}` : ""}`;
@@ -1137,10 +953,9 @@ export function ChatView(props: ChatViewProps) {
         }
 
         case "session_started": {
-          const agentName = parsed.agent || "Agent";
           chatStore.addMessage(props.sessionId, {
             role: "system",
-            content: `[Session started: ${agentName}]`,
+            content: `[Session started: ${event.agent}]`,
           });
           break;
         }
@@ -1150,9 +965,7 @@ export function ChatView(props: ChatViewProps) {
           break;
 
         case "usage_update": {
-          const inputTokens = parsed.inputTokens;
-          const outputTokens = parsed.outputTokens;
-          const modelUsage = parsed.modelUsage;
+          const { inputTokens, outputTokens, modelUsage } = event;
           if (inputTokens || outputTokens || modelUsage) {
             const usageParts: string[] = [];
             if (modelUsage) usageParts.push(`Model: ${modelUsage}`);
@@ -1169,59 +982,51 @@ export function ChatView(props: ChatViewProps) {
         }
 
         case "progress_update": {
-          const progress = parsed.progress || 0;
-          const progressMsg = parsed.message || "";
-          const operation = parsed.operation || "Operation";
-          const progressPercent = Math.round(progress * 100);
+          const progressPercent = Math.round(event.progress * 100);
           chatStore.addMessage(props.sessionId, {
             role: "system",
-            content: `[Progress] ${operation}: ${progressPercent}%${progressMsg ? ` - ${progressMsg}` : ""}`,
+            content: `[Progress] ${event.operation}: ${progressPercent}%${event.message ? ` - ${event.message}` : ""}`,
           });
           break;
         }
 
         case "notification": {
-          const notifLevel = parsed.level || "Info";
-          const notifMessage = parsed.message || "";
-          if (notifLevel === "Info" && (!notifMessage || !notifMessage.trim()))
+          if (
+            event.level === "Info" &&
+            (!event.message || !event.message.trim())
+          )
             return;
           chatStore.addMessage(props.sessionId, {
             role: "system",
-            content: `[${notifLevel}] ${notifMessage}`,
+            content: `[${event.level}] ${event.message}`,
           });
           break;
         }
 
         case "file_operation": {
-          const fileOp = parsed.operation || "unknown";
-          const filePath = parsed.path || "";
-          const fileStatus = parsed.status || "";
           chatStore.addMessage(props.sessionId, {
             role: "system",
-            content: `[File: ${fileOp} ${filePath}]${fileStatus ? ` - ${fileStatus}` : ""}`,
+            content: `[File: ${event.operation} ${event.path}]${event.status ? ` - ${event.status}` : ""}`,
           });
           break;
         }
 
         case "terminal_output": {
-          const termCmd = parsed.command || "";
-          const termOutput = (parsed.output as string) || "";
-          const termExitCode = parsed.exitCode;
-          if (termCmd) {
-            if (termExitCode === 0) {
+          if (event.command) {
+            if (event.exitCode === 0) {
               chatStore.addMessage(props.sessionId, {
                 role: "system",
-                content: `[Command completed: ${termCmd}]\n${termOutput}`,
+                content: `[Command completed: ${event.command}]\n${event.output}`,
               });
-            } else if (termExitCode && termExitCode > 0) {
+            } else if (event.exitCode && event.exitCode > 0) {
               chatStore.addMessage(props.sessionId, {
                 role: "system",
-                content: `[Command failed (exit ${termExitCode}): ${termCmd}]\n${termOutput}`,
+                content: `[Command failed (exit ${event.exitCode}): ${event.command}]\n${event.output}`,
               });
             } else {
               chatStore.addMessage(props.sessionId, {
                 role: "system",
-                content: `[Command output: ${termCmd}]\n${termOutput}`,
+                content: `[Command output: ${event.command}]\n${event.output}`,
               });
             }
           }
@@ -1234,11 +1039,17 @@ export function ChatView(props: ChatViewProps) {
           break;
 
         case "raw":
-          handleAcpRawEvent(parsed.data);
+          handleAcpRawEvent(event.data);
+          break;
+
+        case "message_start":
+        case "message_end":
+        case "ping":
+          // No-op for lifecycle / keepalive events
           break;
 
         default:
-          console.log("[ChatView] Unknown event type:", eventType, parsed);
+          console.log("[ChatView] Unknown event type:", event);
       }
     };
 
@@ -1484,18 +1295,13 @@ export function ChatView(props: ChatViewProps) {
     ) => {
       if (props.sessionMode === "local") {
         if (isMobile()) {
-          await invoke("mobile_send_agent_message", {
-            sessionId,
-            content,
-            attachments,
-          });
-        } else {
-          await invoke("local_send_agent_message", {
-            sessionId,
-            content,
-            attachments,
-          });
+          throw new Error("Local agents are not supported on mobile devices");
         }
+        await invoke("local_send_agent_message", {
+          sessionId,
+          content,
+          attachments,
+        });
       } else {
         const controlSessionId =
           sessionStore.getSession(sessionId)?.controlSessionId;
@@ -1629,18 +1435,13 @@ export function ChatView(props: ChatViewProps) {
           if (props.sessionMode === "local") {
             // Local agent - use local_send_agent_message
             if (isMobile()) {
-              await invoke("mobile_send_agent_message", {
-                sessionId,
-                content,
-                attachments: [] as string[],
-              });
-            } else {
-              await invoke("local_send_agent_message", {
-                sessionId,
-                content,
-                attachments: [] as string[],
-              });
+              throw new Error("Local agents are not supported on mobile devices");
             }
+            await invoke("local_send_agent_message", {
+              sessionId,
+              content,
+              attachments: [] as string[],
+            });
           } else {
             // Remote agent - use send_slash_command
             const controlSessionId =

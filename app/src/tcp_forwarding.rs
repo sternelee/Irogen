@@ -16,7 +16,7 @@ use shared::{TcpDataType, quic_server::QuicMessageClientHandle};
 use std::sync::Arc as StdArc;
 
 /// TCP 转发会话信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, tyzen::Type)]
 pub struct TcpForwardingSession {
     #[allow(dead_code)]
     pub id: String,

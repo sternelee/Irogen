@@ -13,3 +13,6 @@ tsc-cache
 .worktrees
 .omx/
 .opencode
+# Auto-generated TypeScript bindings from tyzen
+src/generated/
+app/src/generated/
