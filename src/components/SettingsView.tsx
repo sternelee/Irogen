@@ -31,11 +31,11 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
   };
 
   return (
-    <div class={cn("flex h-full flex-col bg-background", props.class)}>
-      <header class="flex items-center gap-4 px-6 py-5 border-b border-black/10">
+    <div class={cn("flex h-full flex-col bg-base-100", props.class)}>
+      <header class="flex items-center gap-4 px-6 py-5 border-b border-base-content/10">
         <button
           type="button"
-          class="text-zinc-500 hover:text-foreground md:hidden"
+          class="text-base-content/50 hover:text-base-content md:hidden"
           onClick={() => navigationStore.setSidebarOpen(true)}
           aria-label="Open menu"
         >
@@ -44,8 +44,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
           </svg>
         </button>
         <div>
-          <h1 class="text-xl font-bold text-foreground">{t("settings.title")}</h1>
-          <p class="text-sm text-zinc-500">{t("settings.desc")}</p>
+          <h1 class="text-xl font-bold text-base-content">{t("settings.title")}</h1>
+          <p class="text-sm text-base-content/50">{t("settings.desc")}</p>
         </div>
       </header>
 
@@ -53,26 +53,26 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
         <div class="max-w-2xl mx-auto space-y-8">
           {/* Appearance */}
           <section>
-            <h2 class="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <h2 class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest mb-3 flex items-center gap-2">
               <FiMoon size={12} />
               {t("settings.appearance")}
             </h2>
-            <div class="border border-black/10">
-              <div class="flex items-center justify-between px-4 py-3 border-b border-black/5">
+            <div class="border border-base-content/10">
+              <div class="flex items-center justify-between px-4 py-3 border-b border-base-content/5">
                 <div>
-                  <p class="text-sm font-medium text-foreground">{t("settings.theme")}</p>
-                  <p class="text-xs text-zinc-500">{t("settings.themeDesc")}</p>
+                  <p class="text-sm font-medium text-base-content">{t("settings.theme")}</p>
+                  <p class="text-xs text-base-content/50">{t("settings.themeDesc")}</p>
                 </div>
                 <ThemeSwitcher />
               </div>
-              <div class="flex items-center justify-between px-4 py-3 border-b border-black/5">
+              <div class="flex items-center justify-between px-4 py-3 border-b border-base-content/5">
                 <div>
-                  <label for="font-size-select" class="text-sm font-medium text-foreground">{t("settings.fontSize")}</label>
-                  <p class="text-xs text-zinc-500">{t("settings.fontSizeDesc")}</p>
+                  <label for="font-size-select" class="text-sm font-medium text-base-content">{t("settings.fontSize")}</label>
+                  <p class="text-xs text-base-content/50">{t("settings.fontSizeDesc")}</p>
                 </div>
                 <select
                   id="font-size-select"
-                  class="border border-black/10 px-2 py-1 text-sm bg-background focus:outline-none focus:border-zinc-400"
+                  class="border border-base-content/10 px-2 py-1 text-sm bg-base-100 focus:outline-none focus:border-base-content/30"
                   value={settingsStore.get().fontSize}
                   onChange={(e) => settingsStore.setFontSize(e.currentTarget.value as FontSizeType)}
                 >
@@ -83,35 +83,32 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               </div>
               <div class="flex items-center justify-between px-4 py-3">
                 <div>
-                  <p class="text-sm font-medium text-foreground">{t("settings.animations")}</p>
-                  <p class="text-xs text-zinc-500">{t("settings.animationsDesc")}</p>
+                  <p class="text-sm font-medium text-base-content">{t("settings.animations")}</p>
+                  <p class="text-xs text-base-content/50">{t("settings.animationsDesc")}</p>
                 </div>
-                <label class="relative inline-flex cursor-pointer items-center">
-                  <input
-                    type="checkbox"
-                    class="peer sr-only"
-                    checked={settingsStore.get().enableAnimations}
-                    onChange={() => settingsStore.toggleAnimations()}
-                    role="switch"
-                    aria-checked={settingsStore.get().enableAnimations}
-                  />
-                  <div class="h-5 w-9 bg-zinc-200 peer-checked:bg-zinc-400" aria-hidden="true"></div>
-                </label>
+                <input
+                  type="checkbox"
+                  class="toggle"
+                  checked={settingsStore.get().enableAnimations}
+                  onChange={() => settingsStore.toggleAnimations()}
+                  role="switch"
+                  aria-checked={settingsStore.get().enableAnimations}
+                />
               </div>
             </div>
           </section>
 
           {/* Language */}
           <section>
-            <h2 class="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <h2 class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest mb-3 flex items-center gap-2">
               <FiGlobe size={12} />
               {t("settings.language")}
             </h2>
-            <div class="border border-black/10">
+            <div class="border border-base-content/10">
               <div class="flex items-center justify-between px-4 py-3">
                 <div>
-                  <p class="text-sm font-medium text-foreground">{t("settings.language")}</p>
-                  <p class="text-xs text-zinc-500">{t("settings.languageDesc")}</p>
+                  <p class="text-sm font-medium text-base-content">{t("settings.language")}</p>
+                  <p class="text-xs text-base-content/50">{t("settings.languageDesc")}</p>
                 </div>
                 <LanguageSwitcher />
               </div>
@@ -120,18 +117,18 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
 
           {/* About */}
           <section>
-            <h2 class="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <h2 class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest mb-3 flex items-center gap-2">
               <FiInfo size={12} />
               {t("settings.about")}
             </h2>
-            <div class="border border-black/10 px-4 py-3 flex items-center justify-between">
+            <div class="border border-base-content/10 px-4 py-3 flex items-center justify-between">
               <div>
-                <p class="text-sm font-medium text-foreground">Acpx</p>
-                <p class="text-xs text-zinc-500">Multi-agent local/remote management platform</p>
-                <p class="text-xs text-zinc-400 font-mono mt-1">v0.8.0</p>
+                <p class="text-sm font-medium text-base-content">Acpx</p>
+                <p class="text-xs text-base-content/50">Multi-agent local/remote management platform</p>
+                <p class="text-xs text-base-content/40 font-mono mt-1">v0.8.0</p>
               </div>
               <button
-                class="text-xs text-red-500 border border-red-500/20 px-3 py-1.5 hover:bg-red-500 hover:text-white"
+                class="text-xs text-error border border-error/20 px-3 py-1.5 hover:bg-error hover:text-error-content"
                 onClick={handleResetSettings}
               >
                 <FiRefreshCw size={12} class="inline mr-1" />

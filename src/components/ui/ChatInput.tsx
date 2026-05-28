@@ -145,44 +145,44 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   createEffect(() => { slashSuggestions(); setActiveSlashIndex(0); });
 
   return (
-    <div class={cn("relative flex flex-col px-4 py-3 bg-background border-t border-black/10", props.class)}>
+    <div class={cn("relative flex flex-col px-4 py-3 bg-base-100 border-t border-base-content/10", props.class)}>
       {/* Mention/Slash Suggestions */}
       <Show when={showMentionSuggestions()}>
-        <div class="absolute left-0 right-0 bottom-full z-50 mb-2 border border-black/10 bg-background max-h-48 overflow-y-auto">
+        <div class="absolute left-0 right-0 bottom-full z-50 mb-2 border border-base-content/10 bg-base-100 max-h-48 overflow-y-auto">
           {mentionSuggestions().map((item, index) => (
             <button
               type="button"
               class={cn(
-                "w-full px-4 py-2 text-left text-sm flex items-center gap-2 border-b border-black/5",
-                index === activeMentionIndex() ? "bg-zinc-100 dark:bg-zinc-800" : "hover:bg-zinc-50 dark:hover:bg-zinc-900",
+                "w-full px-4 py-2 text-left text-sm flex items-center gap-2 border-b border-base-content/5",
+                index === activeMentionIndex() ? "bg-base-200" : "hover:bg-base-200/50",
               )}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => props.onSelectMention?.(item.path)}
               onMouseEnter={() => setActiveMentionIndex(index)}
             >
-              <FiFolder size={12} class="text-zinc-400" />
-              <span class="truncate font-mono text-zinc-700 dark:text-zinc-300">{item.path}</span>
+              <FiFolder size={12} class="text-base-content/40" />
+              <span class="truncate font-mono text-base-content">{item.path}</span>
             </button>
           ))}
         </div>
       </Show>
 
       <Show when={showSlashSuggestions()}>
-        <div class="absolute left-0 right-0 bottom-full z-50 mb-2 border border-black/10 bg-background max-h-48 overflow-y-auto">
+        <div class="absolute left-0 right-0 bottom-full z-50 mb-2 border border-base-content/10 bg-base-100 max-h-48 overflow-y-auto">
           {slashSuggestions().map((item, index) => (
             <button
               type="button"
               class={cn(
-                "w-full px-4 py-2 text-left border-b border-black/5",
-                index === activeSlashIndex() ? "bg-zinc-100 dark:bg-zinc-800" : "hover:bg-zinc-50 dark:hover:bg-zinc-900",
+                "w-full px-4 py-2 text-left border-b border-base-content/5",
+                index === activeSlashIndex() ? "bg-base-200" : "hover:bg-base-200/50",
               )}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => props.onSelectSlash?.(item.value || item.name)}
               onMouseEnter={() => setActiveSlashIndex(index)}
             >
-              <span class="text-sm font-bold"><span class="text-zinc-400">/</span>{item.name}</span>
+              <span class="text-sm font-bold"><span class="text-base-content/40">/</span>{item.name}</span>
               <Show when={item.description}>
-                <span class="text-xs text-zinc-500 ml-2">{item.description}</span>
+                <span class="text-xs text-base-content/50 ml-2">{item.description}</span>
               </Show>
             </button>
           ))}
@@ -191,18 +191,18 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
 
       {/* Input Container */}
       <div class={cn(
-        "flex flex-col border border-black/10 dark:border-white/10",
-        focused() ? "border-zinc-400 dark:border-zinc-500" : "",
+        "flex flex-col border border-base-content/10",
+        focused() ? "border-base-content/30" : "",
       )}>
         {/* Attachments */}
         <Show when={props.attachments && props.attachments.length > 0}>
           <div class="flex flex-wrap gap-2 px-3 pt-2">
             {props.attachments!.map((file) => (
-              <div class="flex items-center gap-2 px-2 py-1 bg-base-200 text-xs border border-black/10">
+              <div class="flex items-center gap-2 px-2 py-1 bg-base-200 text-xs border border-base-content/10">
                 <span class="truncate max-w-[120px]">{file.name}</span>
                 <button
                   type="button"
-                  class="p-1 text-base-content/40 hover:text-red-500"
+                  class="p-1 text-base-content/40 hover:text-error"
                   onClick={() => {
                     const remaining = props.attachments?.filter((a) => a.name !== file.name) ?? [];
                     props.onAttach?.(remaining);
@@ -220,7 +220,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
         <div class="flex items-end gap-2 px-2 py-2">
           <button
             type="button"
-            class="p-2 text-zinc-400 hover:text-foreground"
+            class="p-2 text-base-content/40 hover:text-base-content"
             onClick={handleAttach}
             disabled={props.disabled}
             title="Attach files"
@@ -235,7 +235,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             placeholder={props.placeholder || "Type your message..."}
-            class="flex-1 px-2 py-2 bg-transparent border-none outline-none resize-none text-sm min-h-[40px] placeholder:text-zinc-400 text-foreground"
+            class="flex-1 px-2 py-2 bg-transparent border-none outline-none resize-none text-sm min-h-[40px] placeholder:text-base-content/40 text-base-content"
             disabled={props.disabled}
             rows={1}
             aria-label="Chat input"
@@ -253,8 +253,8 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             class={cn(
               "px-4 py-2 text-sm font-medium border",
               props.isStreaming
-                ? "border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-                : "border-black/10 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800",
+                ? "border-error text-error hover:bg-error hover:text-base-100"
+                : "border-base-content/10 text-base-content hover:bg-base-200",
             )}
           >
             {props.isStreaming ? <FaSolidStopCircle size={14} /> : <FiSend size={14} />}
@@ -263,30 +263,30 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
 
         {/* Streaming indicator */}
         <Show when={props.isStreaming}>
-          <div class="flex items-center px-2 pb-2 gap-1 border-t border-black/5">
-            <span class="text-xs text-zinc-500">Thinking...</span>
+          <div class="flex items-center px-2 pb-2 gap-1 border-t border-base-content/5">
+            <span class="text-xs text-base-content/50">Thinking...</span>
           </div>
         </Show>
       </div>
 
       {/* Settings Dropdown */}
       <Show when={showSettings()}>
-        <div class="mt-2 border border-black/10 bg-background">
-          <div class="px-3 py-2 border-b border-black/10 text-[10px] font-semibold text-zinc-400 uppercase">
+        <div class="mt-2 border border-base-content/10 bg-base-100">
+          <div class="px-3 py-2 border-b border-base-content/10 text-[10px] font-semibold text-base-content/40 uppercase">
             Permission Mode
           </div>
           {permissionOptions.map((option) => (
             <button
               type="button"
               class={cn(
-                "w-full flex items-center justify-between px-4 py-2 text-left border-b border-black/5 last:border-b-0",
-                props.permissionMode === option.value ? "bg-zinc-100 dark:bg-zinc-800" : "hover:bg-zinc-50 dark:hover:bg-zinc-900",
+                "w-full flex items-center justify-between px-4 py-2 text-left border-b border-base-content/5 last:border-b-0",
+                props.permissionMode === option.value ? "bg-base-200" : "hover:bg-base-200/50",
               )}
               onClick={() => { props.onPermissionModeChange?.(option.value); setShowSettings(false); }}
             >
               <div>
                 <div class="text-sm font-medium">{option.label}</div>
-                <div class="text-xs text-zinc-500">{option.description}</div>
+                <div class="text-xs text-base-content/50">{option.description}</div>
               </div>
               <Show when={props.permissionMode === option.value}>
                 <FiCheck size={14} />
@@ -322,7 +322,7 @@ export const PromptSuggestions: Component<PromptSuggestionsProps> = (props) => {
         <button
           type="button"
           onClick={() => props.onSelect(suggestion.prompt)}
-          class="px-3 py-1.5 text-xs text-zinc-500 border border-black/10 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+          class="px-3 py-1.5 text-xs text-base-content/50 border border-base-content/10 hover:bg-base-200/50"
         >
           {suggestion.label}
         </button>

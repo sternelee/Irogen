@@ -118,15 +118,15 @@ export const Dropdown: Component<DropdownProps> = (props) => {
             onClick={() => setIsOpen(!isOpen())}
             class={cn(
               "flex items-center justify-between gap-2",
-              "bg-background border border-border rounded-lg",
-              "hover:border-muted-foreground/30 transition-colors",
+              "bg-base-100 border border-base-300 rounded-lg",
+              "hover:border-base-content/30 transition-colors",
               "px-3 py-2 text-sm min-w-[120px]",
             )}
           >
             <Show
               when={selectedOption()}
               fallback={
-                <span class="text-muted-foreground">
+                <span class="text-base-content/50">
                   {props.placeholder || "Select..."}
                 </span>
               }
@@ -136,7 +136,7 @@ export const Dropdown: Component<DropdownProps> = (props) => {
             <FiChevronDown
               size={14}
               class={cn(
-                "text-muted-foreground transition-transform",
+                "text-base-content/50 transition-transform",
                 isOpen() && "rotate-180",
               )}
             />
@@ -157,7 +157,7 @@ export const Dropdown: Component<DropdownProps> = (props) => {
         <div
           class={cn(
             "absolute z-50 mt-1 min-w-[180px] w-full",
-            "bg-base-100 border border-border rounded-xl shadow-xl",
+            "bg-base-100 border border-base-300 rounded-lg",
             "animate-fade-in origin-top-right overflow-hidden",
           )}
         >
@@ -166,7 +166,7 @@ export const Dropdown: Component<DropdownProps> = (props) => {
               {(option) => (
                 <Show
                   when={!option.divider}
-                  fallback={<div class="h-px bg-border my-1" />}
+                  fallback={<div class="h-px bg-base-300 my-1" />}
                 >
                   <button
                     type="button"
@@ -178,12 +178,12 @@ export const Dropdown: Component<DropdownProps> = (props) => {
                         ? "gap-1 px-2 py-0 text-xs h-8"
                         : "gap-2 px-3 py-2 text-sm",
                       option.disabled && "opacity-50 cursor-not-allowed",
-                      !option.disabled && "hover:bg-muted",
+                      !option.disabled && "hover:bg-base-200",
                       option.danger && "text-error hover:bg-error/10",
                     )}
                   >
                     <Show when={option.icon}>
-                      <div class="text-muted-foreground shrink-0">
+                      <div class="text-base-content/50 shrink-0">
                         {option.icon!({ size: 16 })}
                       </div>
                     </Show>
@@ -194,7 +194,7 @@ export const Dropdown: Component<DropdownProps> = (props) => {
                       <Show when={option.description}>
                         <div
                           class={cn(
-                            "text-muted-foreground truncate",
+                            "text-base-content/50 truncate",
                             props.compact ? "text-[10px]" : "text-xs",
                           )}
                         >
@@ -217,7 +217,7 @@ export const Dropdown: Component<DropdownProps> = (props) => {
           <div
             class={cn(
               "fixed z-[100] min-w-[180px]",
-              "bg-base-100 border border-border rounded-xl shadow-xl",
+              "bg-base-100 border border-base-300 rounded-lg",
               "animate-fade-in origin-top-right overflow-hidden",
             )}
             style={fixedMenuStyle()}
@@ -227,7 +227,7 @@ export const Dropdown: Component<DropdownProps> = (props) => {
                 {(option) => (
                   <Show
                     when={!option.divider}
-                    fallback={<div class="h-px bg-border my-1" />}
+                    fallback={<div class="h-px bg-base-300 my-1" />}
                   >
                     <button
                       type="button"
@@ -239,23 +239,23 @@ export const Dropdown: Component<DropdownProps> = (props) => {
                           ? "gap-1 px-2 py-0 text-xs h-8"
                           : "gap-2 px-3 py-2 text-sm",
                         option.disabled && "opacity-50 cursor-not-allowed",
-                        !option.disabled && "hover:bg-muted",
-                        option.danger && "text-error hover:bg-error/10",
-                      )}
-                    >
-                      <Show when={option.icon}>
-                        <div class="text-muted-foreground shrink-0">
-                          {option.icon!({ size: 16 })}
-                        </div>
-                      </Show>
-                      <div class="flex-1 min-w-0">
-                        <div class={cn(option.danger && "text-error")}>
-                          {option.label}
-                        </div>
-                        <Show when={option.description}>
-                          <div
-                            class={cn(
-                              "text-muted-foreground truncate",
+                      !option.disabled && "hover:bg-base-200",
+                      option.danger && "text-error hover:bg-error/10",
+                    )}
+                  >
+                    <Show when={option.icon}>
+                      <div class="text-base-content/50 shrink-0">
+                        {option.icon!({ size: 16 })}
+                      </div>
+                    </Show>
+                    <div class="flex-1 min-w-0">
+                      <div class={cn(option.danger && "text-error")}>
+                        {option.label}
+                      </div>
+                      <Show when={option.description}>
+                        <div
+                          class={cn(
+                            "text-base-content/50 truncate",
                               props.compact ? "text-[10px]" : "text-xs",
                             )}
                           >

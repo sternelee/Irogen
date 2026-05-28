@@ -109,12 +109,12 @@ const SyntaxHighlightedCode: Component<{ code: string; maxLines?: number }> = (p
 
   return (
     <div class="relative">
-      <pre
-        class="overflow-x-auto bg-zinc-100 p-3 text-xs font-mono leading-relaxed border border-black/10"
+        <pre
+        class="overflow-x-auto bg-base-200 p-3 text-xs font-mono leading-relaxed border border-base-content/10"
         innerHTML={highlight(displayCode)}
       />
       <Show when={truncated}>
-        <div class="absolute bottom-1 left-3 text-[10px] text-zinc-400">
+        <div class="absolute bottom-1 left-3 text-[10px] text-base-content/40">
           +{lines.length - maxLines} more
         </div>
       </Show>
@@ -174,13 +174,13 @@ function PermissionCard(props: PermissionCardProps) {
 
   return (
     <Card class={cn(
-      "border-l-4 border-l-amber-500"
+      "border-l-4 border-l-warning"
     )}>
       <CardHeader class="pb-2">
         <div class="flex items-start gap-3">
           {/* Tool Icon */}
           <div class={cn(
-            "shrink-0 p-2.5 border border-amber-500/20 text-amber-600"
+            "shrink-0 p-2.5 border border-warning/20 text-warning"
           )}>
             <Icon size={18} />
           </div>
@@ -192,15 +192,15 @@ function PermissionCard(props: PermissionCardProps) {
               {/* Danger Level Badge */}
               <span class={cn(
                 "inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold border",
-                dangerInfo().level === "low" ? "text-green-600 border-green-600/20" :
-                dangerInfo().level === "medium" ? "text-amber-600 border-amber-600/20" :
-                "text-red-600 border-red-600/20"
+                dangerInfo().level === "low" ? "text-success border-success/20" :
+                dangerInfo().level === "medium" ? "text-warning border-warning/20" :
+                "text-error border-error/20"
               )}>
                 <DangerIcon size={10} />
                 {dangerInfo().label}
               </span>
             </div>
-            <p class="text-xs text-zinc-500 mt-0.5">
+            <p class="text-xs text-base-content/50 mt-0.5">
               Permission request • {new Date(props.permission.created_at).toLocaleTimeString()}
             </p>
           </div>
@@ -210,7 +210,7 @@ function PermissionCard(props: PermissionCardProps) {
       <CardContent class="space-y-3">
         {/* Message/Description */}
         <Show when={props.permission.message}>
-          <div class="text-sm text-zinc-700 bg-zinc-100 p-3">
+          <div class="text-sm text-base-content bg-base-200 p-3">
             <SolidMarkdown children={props.permission.message} />
           </div>
         </Show>
@@ -218,7 +218,7 @@ function PermissionCard(props: PermissionCardProps) {
         {/* Tool Parameters */}
         <Show when={props.permission.tool_params}>
           <div>
-            <div class="mb-1.5 text-xs font-medium text-zinc-500 flex items-center gap-1.5">
+            <div class="mb-1.5 text-xs font-medium text-base-content/50 flex items-center gap-1.5">
               <FiLock size={10} />
               Parameters
             </div>
@@ -233,9 +233,9 @@ function PermissionCard(props: PermissionCardProps) {
               type="checkbox"
               checked={rememberChoice()}
               onChange={(e) => setRememberChoice(e.currentTarget.checked)}
-              class="w-4 h-4 border border-black/20"
+              class="w-4 h-4 border border-base-content/20"
             />
-            <span class="text-xs text-zinc-600">Remember this choice</span>
+            <span class="text-xs text-base-content/60">Remember this choice</span>
           </label>
         </Show>
 
@@ -243,7 +243,7 @@ function PermissionCard(props: PermissionCardProps) {
         <Show when={!props.loading}>
           <div class="flex flex-col sm:flex-row gap-2 pt-1">
             <button
-              class="flex-1 flex items-center justify-center gap-1 border border-green-600 text-green-600 px-3 py-1.5 text-sm font-medium hover:bg-green-600 hover:text-white"
+              class="flex-1 flex items-center justify-center gap-1 border border-success text-success px-3 py-1.5 text-sm font-medium hover:bg-success hover:text-base-100"
               disabled={props.disabled}
               onClick={() => props.onApprove("Approved")}
             >
@@ -254,7 +254,7 @@ function PermissionCard(props: PermissionCardProps) {
 
             <Show when={shouldShowAllowForSession()}>
               <button
-                class="flex-1 border border-black/10 px-3 py-1.5 text-sm font-medium hover:bg-zinc-100"
+                class="flex-1 border border-base-content/10 px-3 py-1.5 text-sm font-medium hover:bg-base-200"
                 disabled={props.disabled}
                 onClick={() => props.onApprove("ApprovedForSession")}
               >
@@ -264,7 +264,7 @@ function PermissionCard(props: PermissionCardProps) {
 
             <Show when={shouldShowAllowAllEdits()}>
               <button
-                class="flex-1 border border-black/10 px-3 py-1.5 text-sm font-medium hover:bg-zinc-100"
+                class="flex-1 border border-base-content/10 px-3 py-1.5 text-sm font-medium hover:bg-base-200"
                 disabled={props.disabled}
                 onClick={() => props.onApprove("Approved")}
               >
@@ -273,7 +273,7 @@ function PermissionCard(props: PermissionCardProps) {
             </Show>
 
             <button
-              class="flex-1 flex items-center justify-center gap-1 border border-red-500 text-red-500 px-3 py-1.5 text-sm font-medium hover:bg-red-500 hover:text-white"
+              class="flex-1 flex items-center justify-center gap-1 border border-error text-error px-3 py-1.5 text-sm font-medium hover:bg-error hover:text-base-100"
               disabled={props.disabled}
               onClick={() => props.onDeny()}
             >
@@ -287,15 +287,15 @@ function PermissionCard(props: PermissionCardProps) {
         {/* Loading State */}
         <Show when={props.loading}>
           <div class="flex items-center justify-center py-4 gap-2">
-            <span class="inline-block w-4 h-4 border-2 border-zinc-300 border-t-zinc-600" />
-            <span class="text-sm text-zinc-500">Waiting for response...</span>
+            <span class="inline-block w-4 h-4 border-2 border-base-content/30 border-t-base-content" />
+            <span class="text-sm text-base-content/50">Waiting for response...</span>
           </div>
         </Show>
 
         {/* Keyboard Hint */}
         <Show when={!props.loading && !props.disabled}>
-          <div class="text-xs text-zinc-300 text-center">
-            Press <span class="border border-zinc-300 px-1 text-[10px]">Y</span> or <span class="border border-zinc-300 px-1 text-[10px]">N</span>
+          <div class="text-xs text-base-content/30 text-center">
+            Press <span class="border border-base-content/30 px-1 text-[10px]">Y</span> or <span class="border border-base-content/30 px-1 text-[10px]">N</span>
           </div>
         </Show>
       </CardContent>
@@ -318,8 +318,8 @@ interface PermissionListProps {
 export function PermissionList(props: PermissionListProps) {
   if (props.permissions.length === 0) {
     return (
-      <div class="flex flex-col items-center justify-center py-12 text-zinc-400">
-        <div class="p-4 border border-black/10 mb-4">
+      <div class="flex flex-col items-center justify-center py-12 text-base-content/40">
+        <div class="p-4 border border-base-content/10 mb-4">
           <FiShield size={32} />
         </div>
         <p class="text-sm">No pending permissions</p>
@@ -379,23 +379,23 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
 
   return (
     <div class={cn(
-      "bg-amber-50 border border-amber-200",
+      "bg-warning/10 border border-warning/20",
       "px-4 py-3 max-w-[85%] sm:max-w-[80%]"
     )}>
       {/* Header */}
       <div class="flex items-center gap-2 mb-2">
-        <div class="border border-amber-200 p-1.5 text-amber-600">
+        <div class="border border-warning/20 p-1.5 text-warning">
           <FiShield size={14} />
         </div>
         <div class="flex-1 min-w-0">
           <div class="font-medium text-sm">Permission Required</div>
-          <div class="text-xs text-zinc-500 truncate">{props.toolName}</div>
+          <div class="text-xs text-base-content/50 truncate">{props.toolName}</div>
         </div>
         <span class={cn(
           "inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold border",
-          dangerInfo().level === "low" ? "text-green-600 border-green-600/20" :
-          dangerInfo().level === "medium" ? "text-amber-600 border-amber-600/20" :
-          "text-red-600 border-red-600/20"
+          dangerInfo().level === "low" ? "text-success border-success/20" :
+          dangerInfo().level === "medium" ? "text-warning border-warning/20" :
+          "text-error border-error/20"
         )}>
           <DangerIcon size={8} />
           {dangerInfo().label}
@@ -404,7 +404,7 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
 
       {/* Message */}
       <Show when={props.message}>
-        <div class="mb-2 text-sm text-zinc-700">
+        <div class="mb-2 text-sm text-base-content">
           <SolidMarkdown children={props.message} />
         </div>
       </Show>
@@ -412,11 +412,11 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
       {/* Tool Parameters */}
       <Show when={props.toolParams}>
         <div class="mb-2">
-          <div class="text-[10px] font-medium text-zinc-400 mb-1 flex items-center gap-1">
+          <div class="text-[10px] font-medium text-base-content/40 mb-1 flex items-center gap-1">
             <FiLock size={8} />
             Parameters
           </div>
-          <pre class="overflow-x-auto border border-black/10 bg-zinc-100 p-2 text-[11px] font-mono max-h-24">
+          <pre class="overflow-x-auto border border-base-content/10 bg-base-200 p-2 text-[11px] font-mono max-h-24">
             {formatToolInput(props.toolParams)}
           </pre>
         </div>
@@ -426,7 +426,7 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
       <Show when={!props.disabled}>
         <div class="flex flex-wrap gap-2">
           <button
-            class="flex-1 min-w-[80px] flex items-center justify-center gap-1 border border-green-600 text-green-600 px-2 py-1.5 text-sm font-medium hover:bg-green-600 hover:text-white"
+            class="flex-1 min-w-[80px] flex items-center justify-center gap-1 border border-success text-success px-2 py-1.5 text-sm font-medium hover:bg-success hover:text-base-100"
             onClick={() => props.onApprove("Approved")}
           >
             <FiCheck class="w-3 h-3 mr-1" />
@@ -436,7 +436,7 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
 
           <Show when={showAllowForSession()}>
             <button
-              class="flex-1 min-w-[80px] border border-black/10 px-2 py-1.5 text-sm font-medium hover:bg-zinc-100"
+              class="flex-1 min-w-[80px] border border-base-content/10 px-2 py-1.5 text-sm font-medium hover:bg-base-200"
               onClick={() => props.onApprove("ApprovedForSession")}
             >
               Session
@@ -444,7 +444,7 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
           </Show>
 
           <button
-            class="flex-1 min-w-[80px] flex items-center justify-center gap-1 border border-red-500 text-red-500 px-2 py-1.5 text-sm font-medium hover:bg-red-500 hover:text-white"
+            class="flex-1 min-w-[80px] flex items-center justify-center gap-1 border border-error text-error px-2 py-1.5 text-sm font-medium hover:bg-error hover:text-base-100"
             onClick={props.onDeny}
           >
             <FiX class="w-3 h-3 mr-1" />
@@ -455,8 +455,8 @@ export const PermissionMessage: Component<PermissionMessageProps> = (props) => {
       </Show>
 
       <Show when={props.disabled}>
-        <div class="flex items-center justify-center py-2 gap-2 text-zinc-400">
-          <span class="inline-block w-4 h-4 border-2 border-zinc-300 border-t-zinc-600" />
+        <div class="flex items-center justify-center py-2 gap-2 text-base-content/40">
+          <span class="inline-block w-4 h-4 border-2 border-base-content/30 border-t-base-content" />
           <span class="text-xs">Waiting...</span>
         </div>
       </Show>
@@ -478,17 +478,17 @@ export interface UserQuestionMessageProps {
 
 export const UserQuestionMessage: Component<UserQuestionMessageProps> = (props) => {
   return (
-    <div class="bg-blue-50 border border-blue-200 px-4 py-3 max-w-[85%] sm:max-w-[80%]">
+    <div class="bg-info/10 border border-info/20 px-4 py-3 max-w-[85%] sm:max-w-[80%]">
       {/* Header */}
       <div class="flex items-center gap-2 mb-2">
-        <div class="border border-blue-200 p-1.5 text-blue-600">
+        <div class="border border-info/20 p-1.5 text-info">
           <FiLoader size={14} />
         </div>
         <div class="font-medium text-sm">Question</div>
       </div>
 
       {/* Question */}
-      <div class="mb-3 text-sm text-zinc-700">
+      <div class="mb-3 text-sm text-base-content">
         <SolidMarkdown children={props.question} />
       </div>
 
@@ -497,10 +497,10 @@ export const UserQuestionMessage: Component<UserQuestionMessageProps> = (props) 
         <div class="flex flex-col gap-2">
           {props.options.map((option, index) => (
             <button
-              class="w-full flex items-center gap-2 border border-black/10 px-3 py-2 text-sm hover:bg-zinc-100 justify-start text-left"
+              class="w-full flex items-center gap-2 border border-base-content/10 px-3 py-2 text-sm hover:bg-base-200 justify-start text-left"
               onClick={() => props.onSelect(option)}
             >
-              <span class="mr-2 text-zinc-400 font-medium">
+              <span class="mr-2 text-base-content/40 font-medium">
                 {String.fromCharCode(65 + index)}.
               </span>
               <span class="truncate">{option}</span>
@@ -510,8 +510,8 @@ export const UserQuestionMessage: Component<UserQuestionMessageProps> = (props) 
       </Show>
 
       <Show when={props.disabled}>
-        <div class="flex items-center justify-center py-2 gap-2 text-zinc-400">
-          <span class="inline-block w-4 h-4 border-2 border-zinc-300 border-t-zinc-600" />
+        <div class="flex items-center justify-center py-2 gap-2 text-base-content/40">
+          <span class="inline-block w-4 h-4 border-2 border-base-content/30 border-t-base-content" />
           <span class="text-xs">Waiting for response...</span>
         </div>
       </Show>

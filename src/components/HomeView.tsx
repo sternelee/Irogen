@@ -26,11 +26,11 @@ export const HomeView: Component = () => {
   };
 
   return (
-    <div class="flex h-full flex-col bg-background">
-      <header class="flex items-center gap-4 px-6 py-5 border-b border-black/10">
+    <div class="flex h-full flex-col bg-base-100">
+      <header class="flex items-center gap-4 px-6 py-5 border-b border-base-content/10">
         <button
           type="button"
-          class="text-zinc-500 hover:text-foreground md:hidden"
+          class="text-base-content/50 hover:text-base-content md:hidden"
           onClick={() => navigationStore.setSidebarOpen(true)}
           aria-label="Open menu"
         >
@@ -39,10 +39,10 @@ export const HomeView: Component = () => {
           </svg>
         </button>
         <div>
-          <h1 class="text-xl font-bold text-foreground">
+          <h1 class="text-xl font-bold text-base-content">
             {t("home.welcomeTitle")}
           </h1>
-          <p class="text-sm text-zinc-500">
+          <p class="text-sm text-base-content/50">
             {t("home.welcomeDescription")}
           </p>
         </div>
@@ -52,34 +52,34 @@ export const HomeView: Component = () => {
         <div class="max-w-2xl mx-auto space-y-8">
           {/* Quick Actions */}
           <section>
-            <h2 class="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest mb-3">
+            <h2 class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest mb-3">
               {t("home.quickActions")}
             </h2>
             <div class="grid grid-cols-2 gap-2">
               <button
-                class="flex items-center gap-3 p-4 border border-black/10 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                class="flex items-center gap-3 p-4 border border-base-content/10 text-left hover:bg-base-200/50"
                 onClick={() => sessionStore.openNewSessionModal()}
               >
-                <span class="text-zinc-400">+</span>
+                <span class="text-base-content/40">+</span>
                 <div>
-                  <div class="text-sm font-medium text-foreground">
+                  <div class="text-sm font-medium text-base-content">
                     {t("home.startNewSession")}
                   </div>
-                  <div class="text-xs text-zinc-500">
+                  <div class="text-xs text-base-content/50">
                     {t("home.startNewSessionDesc")}
                   </div>
                 </div>
               </button>
               <button
-                class="flex items-center gap-3 p-4 border border-black/10 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                class="flex items-center gap-3 p-4 border border-base-content/10 text-left hover:bg-base-200/50"
                 onClick={() => navigationStore.setActiveView("devices")}
               >
-                <FiServer size={16} class="text-zinc-400" />
+                <FiServer size={16} class="text-base-content/40" />
                 <div>
-                  <div class="text-sm font-medium text-foreground">
+                  <div class="text-sm font-medium text-base-content">
                     {t("home.connectToHost")}
                   </div>
-                  <div class="text-xs text-zinc-500">
+                  <div class="text-xs text-base-content/50">
                     {t("home.connectToHostDesc")}
                   </div>
                 </div>
@@ -89,37 +89,37 @@ export const HomeView: Component = () => {
 
           {/* Recent Sessions */}
           <section>
-            <h2 class="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest mb-3">
+            <h2 class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest mb-3">
               {t("home.recentSessions")}
             </h2>
-            <div class="border border-black/10">
+            <div class="border border-base-content/10">
               {getRecentSessions().length === 0 ? (
                 <div class="py-12 text-center">
-                  <FiActivity size={24} class="text-zinc-300 dark:text-zinc-600 mx-auto mb-2" />
-                  <p class="text-sm text-zinc-500">{t("home.noRecentSessions")}</p>
+                  <FiActivity size={24} class="text-base-content/20 mx-auto mb-2" />
+                  <p class="text-sm text-base-content/50">{t("home.noRecentSessions")}</p>
                 </div>
               ) : (
                 <For each={getRecentSessions()}>
                   {(session) => (
-                    <div class="flex items-center justify-between px-4 py-3 border-b border-black/5 hover:bg-zinc-50 dark:hover:bg-zinc-900">
+                    <div class="flex items-center justify-between px-4 py-3 border-b border-base-content/5 hover:bg-base-200/50">
                       <div class="flex items-center gap-3 min-w-0">
                         <span
                           class={cn(
                             "w-2 h-2 rounded-full shrink-0",
-                            session.active ? "bg-green-500" : "bg-zinc-300 dark:bg-zinc-600",
+                            session.active ? "bg-success" : "bg-base-content/20",
                           )}
                         />
                         <div class="min-w-0">
-                          <div class="text-sm font-medium text-foreground truncate">
+                          <div class="text-sm font-medium text-base-content truncate">
                             {session.projectPath.split("/").pop() || t("common.unknownProject")}
                           </div>
-                          <div class="text-xs text-zinc-500">
+                          <div class="text-xs text-base-content/50">
                             {session.agentType} &middot; {session.mode === "local" ? t("common.local") : t("common.remote")}
                           </div>
                         </div>
                       </div>
                       <button
-                        class="text-xs text-zinc-500 hover:text-foreground px-2 py-1 border border-black/10"
+                        class="text-xs text-base-content/50 hover:text-base-content px-2 py-1 border border-base-content/10"
                         onClick={() => handleResumeSession(session.sessionId)}
                       >
                         {t("home.resume")}

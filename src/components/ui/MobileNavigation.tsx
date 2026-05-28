@@ -166,7 +166,7 @@ export function MobileNavigation(props: MobileNavigationProps) {
   return (
     <>
       {/* Top Status Bar - Mobile First with Safe Area */}
-      <div class="sticky top-0 z-40 flex min-h-10 items-center justify-between border-b border-border bg-background px-4 mobile-safe-top">
+      <div class="sticky top-0 z-40 flex min-h-10 items-center justify-between border-b border-base-content/10 bg-base-100 px-4 mobile-safe-top">
         <div class="flex items-center">
           <div class="flex items-center space-x-2">
             <Button
@@ -277,7 +277,7 @@ export function MobileNavigation(props: MobileNavigationProps) {
 
       {/* Bottom Navigation for Mobile Portrait */}
       <Show when={showBottomNav()}>
-        <div class="fixed bottom-0 left-0 right-0 bg-background border-t border-border z-50 safe-area-bottom">
+        <div class="fixed bottom-0 left-0 right-0 bg-base-100 border-t border-base-content/10 z-50 safe-area-bottom">
           <div class="flex items-center justify-around py-2">
             <For each={navItems}>
               {(item) => (

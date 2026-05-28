@@ -80,16 +80,16 @@ const ThreadItem: Component<ThreadItemProps> = (props) => {
   return (
     <div
       class={cn(
-        "flex items-center gap-2 px-2 py-1.5 border-b border-black/5",
+        "flex items-center gap-2 px-2 py-1.5 border-b border-base-content/5",
         props.isActive
-          ? "bg-base-200 text-foreground"
-          : "text-zinc-500 hover:text-foreground hover:bg-base-200/50",
+          ? "bg-base-200 text-base-content"
+          : "text-base-content/50 hover:text-base-content hover:bg-base-200/50",
       )}
     >
       <span
         class={cn(
           "w-2 h-2 rounded-full shrink-0",
-          props.session.active ? "bg-green-500" : "bg-zinc-300 dark:bg-zinc-600",
+          props.session.active ? "bg-success" : "bg-base-content/20",
         )}
       />
       <button
@@ -102,7 +102,7 @@ const ThreadItem: Component<ThreadItemProps> = (props) => {
       <Show when={props.session.active}>
         <button
           type="button"
-          class="text-zinc-400 hover:text-yellow-600"
+          class="text-base-content/40 hover:text-warning"
           onClick={(event) => {
             event.stopPropagation();
             props.onStop();
@@ -115,7 +115,7 @@ const ThreadItem: Component<ThreadItemProps> = (props) => {
       </Show>
       <button
         type="button"
-        class="text-zinc-400 hover:text-red-500"
+          class="text-base-content/40 hover:text-error"
         onClick={(event) => {
           event.stopPropagation();
           props.onArchive();
@@ -166,7 +166,7 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
   };
 
   return (
-    <div class="border border-black/10 dark:border-white/10">
+      <div class="border border-base-content/10 dark:border-white/10">
       <div
         class="flex w-full items-center justify-between gap-2 px-2 py-2 hover:bg-base-200/50 cursor-pointer"
         onClick={() => setIsCollapsed(c => !c)}
@@ -181,19 +181,19 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
         aria-expanded={!isCollapsed()}
       >
         <div class="flex items-center gap-2 min-w-0">
-          <FiFolder size={12} class="text-zinc-400 shrink-0" />
+          <FiFolder size={12} class="text-base-content/40 shrink-0" />
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
-              <span class="text-xs font-semibold text-foreground truncate">
+              <span class="text-xs font-semibold text-base-content truncate">
                 {props.group?.projectName ?? ""}
               </span>
               <Show when={activeCount() > 0}>
-                <span class="text-[10px] font-medium text-green-600 dark:text-green-400">
+                <span class="text-[10px] font-medium text-success">
                   {activeCount()}
                 </span>
               </Show>
             </div>
-            <div class="text-[10px] text-zinc-400 truncate">
+            <div class="text-[10px] text-base-content/40 truncate">
               {props.group?.projectPath ?? ""}
             </div>
           </div>
@@ -202,7 +202,7 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
           <Show when={props.group?.sessions?.length}>
             <button
               type="button"
-              class="text-zinc-400 hover:text-foreground p-1"
+              class="text-base-content/40 hover:text-base-content p-1"
               onClick={(e) => {
                 e.stopPropagation();
                 handleNewThreadClick();
@@ -216,7 +216,7 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
           <FiChevronDown
             size={11}
             class={cn(
-              "text-zinc-400",
+              "text-base-content/40",
               isCollapsed() && "-rotate-90"
             )}
           />
@@ -256,16 +256,16 @@ const ConnectionBadge: Component = () => {
   const isReconnecting = () => connectionState() === "reconnecting";
 
   return (
-    <div class="flex items-center gap-2 px-2 py-1.5 border-t border-black/10">
+    <div class="flex items-center gap-2 px-2 py-1.5 border-t border-base-content/10">
       <span
         class={cn(
           "w-2 h-2 rounded-full",
-          isConnected() && "bg-green-500",
-          isReconnecting() && "bg-yellow-500",
-          !isConnected() && !isReconnecting() && "bg-zinc-300",
+          isConnected() && "bg-success",
+          isReconnecting() && "bg-warning",
+          !isConnected() && !isReconnecting() && "bg-base-content/20",
         )}
       />
-      <span class="text-[11px] text-zinc-500">
+      <span class="text-[11px] text-base-content/50">
         {isConnected()
           ? t("sidebar.connected")
           : isReconnecting()
@@ -298,15 +298,15 @@ const NavItemButton: Component<NavItemButtonProps> = (props) => {
       onClick={props.onClick}
       class={cn(
         "flex w-full items-center gap-3 px-3 py-2 text-sm font-medium border-l-2",
-        props.isActive
-          ? "border-l-primary bg-base-200 text-foreground"
-          : "border-l-transparent text-zinc-500 hover:text-foreground hover:bg-base-200/50",
+           props.isActive
+          ? "border-l-primary bg-base-200 text-base-content"
+          : "border-l-transparent text-base-content/50 hover:text-base-content hover:bg-base-200/50",
       )}
     >
       <Icon
         size={16}
         class={cn(
-          props.isActive ? "text-primary" : "text-zinc-400",
+          props.isActive ? "text-primary" : "text-base-content/40",
         )}
       />
       <span class="flex-1 text-left">{props.item.label()}</span>
@@ -375,18 +375,18 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
   };
 
   return (
-    <aside class="flex h-full w-full flex-col bg-base-100 border-r border-black/10">
+    <aside class="flex h-full w-full flex-col bg-base-100 border-r border-base-content/10">
       {/* Header */}
-      <div class="flex items-center justify-between px-4 py-3 pt-safe border-b border-black/10">
+      <div class="flex items-center justify-between px-4 py-3 pt-safe border-b border-base-content/10">
         <div class="flex items-center gap-3">
           <div class="flex h-8 w-8 items-center justify-center bg-black dark:bg-white text-white dark:text-black text-sm font-bold">
             P
           </div>
           <div>
-            <h1 class="text-sm font-bold text-foreground leading-none">
+            <h1 class="text-sm font-bold text-base-content leading-none">
               Acpx
             </h1>
-            <p class="text-[10px] text-zinc-500 mt-0.5 uppercase tracking-wider">
+            <p class="text-[10px] text-base-content/50 mt-0.5 uppercase tracking-wider">
               Agent Control
             </p>
           </div>
@@ -394,7 +394,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
         {/* Mobile close button */}
         <button
           type="button"
-          class="md:hidden h-8 w-8 flex items-center justify-center text-zinc-500 hover:text-foreground border border-black/10"
+          class="md:hidden h-8 w-8 flex items-center justify-center text-base-content/50 hover:text-base-content border border-base-content/10"
           onClick={props.onToggle}
           aria-label="Close sidebar"
         >
@@ -405,7 +405,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
       {/* Navigation */}
       <div class="flex-1 overflow-y-auto py-2">
         <div class="px-3 py-2">
-          <span class="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest">
+          <span class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest">
             Navigation
           </span>
         </div>
@@ -422,14 +422,14 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
         <div class="mt-4">
           <div class="flex items-center justify-between px-3 py-2">
             <div class="flex items-center gap-2">
-              <FiMessageSquare size={11} class="text-zinc-400" />
-              <span class="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest">
+              <FiMessageSquare size={11} class="text-base-content/40" />
+              <span class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest">
                 Threads
               </span>
             </div>
             <button
               type="button"
-              class="text-zinc-400 hover:text-foreground p-1"
+              class="text-base-content/40 hover:text-base-content p-1"
               onClick={() => sessionStore.openNewSessionModal()}
               title="New thread"
               aria-label="New thread"
@@ -441,7 +441,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
             when={threadGroups().length > 0}
             fallback={
               <div class="px-3 py-6 text-center">
-                <p class="text-xs text-zinc-500">
+                <p class="text-xs text-base-content/50">
                   No threads yet
                 </p>
               </div>
@@ -466,18 +466,18 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
         <Show when={sessions().length > 0}>
           <div class="mt-4">
             <div class="px-3 py-2">
-              <span class="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest">
+              <span class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest">
                 Library
               </span>
             </div>
             <button
               type="button"
-              class="flex w-full items-center gap-2 px-3 py-2 text-sm text-zinc-500 hover:text-foreground hover:bg-base-200/50"
+              class="flex w-full items-center gap-2 px-3 py-2 text-sm text-base-content/50 hover:text-base-content hover:bg-base-200/50"
               onClick={() => handleNavClick("sessions")}
             >
               <FiList size={14} />
               <span class="flex-1 text-left">{t("sidebar.sessions")}</span>
-              <span class="text-xs text-zinc-400">{sessions().length}</span>
+              <span class="text-xs text-base-content/40">{sessions().length}</span>
             </button>
           </div>
         </Show>
