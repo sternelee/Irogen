@@ -1,6 +1,6 @@
 {
   "name": "irogen",
-  "version": "0.6.1",
+  "version": "0.8.0",
   "private": true,
   "dependencies": {
     "@kobalte/core": "^0.13.11",

@@ -125,7 +125,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               <div>
                 <p class="text-sm font-medium text-foreground">Acpx</p>
                 <p class="text-xs text-zinc-500">Multi-agent local/remote management platform</p>
-                <p class="text-xs text-zinc-400 font-mono mt-1">v0.6.1</p>
+                <p class="text-xs text-zinc-400 font-mono mt-1">v0.8.0</p>
               </div>
               <button
                 class="text-xs text-red-500 border border-red-500/20 px-3 py-1.5 hover:bg-red-500 hover:text-white"
