@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Acpx",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "identifier": "com.irogen.dev",
   "build": {
     "frontendDist": "../dist",
@@ -41,6 +41,14 @@
     "targets": "all",
     "iOS": {
       "developmentTeam": "HUJ467VC3N"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM1MTgxNTQ5NzlCODVEQzMKUldURFhiaDVTUlVZTlkyWFVIS0tWZXEzYmlTL3c2ODFMRFVUb2JVTmFOcmZDYVdxUWM3ZGIvc2sK",
+      "endpoints": [
+        "https://api.github.com/repos/sternelee/Irogen/releases/latest"
+      ]
     }
   }
 }

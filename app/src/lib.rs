@@ -4581,7 +4581,7 @@ pub fn run() {
     {
         builder = builder
             .plugin(tauri_plugin_shell::init())
-            // .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_updater::Builder::new().build())
             .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
                 let _ = app
                     .get_webview_window("main")
