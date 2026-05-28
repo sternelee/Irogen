@@ -558,6 +558,7 @@ export const createSessionStore = () => {
 
       setConnectionState("connected");
       setTargetControlSessionId(connectionSessionId);
+      setSessionTicket("");
       addConnectedHost({
         controlSessionId: connectionSessionId,
         hostname: "Remote Host",
@@ -659,6 +660,11 @@ export const createSessionStore = () => {
   };
 
   const handleRemoteSpawn = async () => {
+    if (state.isStartingAgent) {
+      notificationStore.info("Session spawn already in progress...", "Please Wait");
+      return;
+    }
+
     const controlSessionId = state.targetControlSessionId;
     if (!controlSessionId) {
       notificationStore.error("No remote connection selected", "Error");
@@ -726,6 +732,10 @@ export const createSessionStore = () => {
           "[handleRemoteSpawn] Failed to refresh session list:",
           listError,
         );
+        notificationStore.warning(
+          "Session spawned but could not refresh the session list. Please restart the app or switch views to see the new session.",
+          "Spawn Session",
+        );
       }
 
       closeNewSessionModal();
@@ -744,11 +754,27 @@ export const createSessionStore = () => {
   };
 
   const handleCreateSession = async () => {
+    if (state.isConnecting) {
+      notificationStore.info("Connection already in progress...", "Please Wait");
+      return;
+    }
+
+    if (state.isStartingAgent) {
+      notificationStore.info("Session spawn already in progress...", "Please Wait");
+      return;
+    }
+
     if (state.newSessionMode === "remote") {
+      // If user entered a ticket, always connect (even if an old targetControlSessionId exists)
+      if (state.sessionTicket.trim()) {
+        return handleRemoteConnect();
+      }
+      // No ticket but have an existing connection — spawn directly
       if (state.targetControlSessionId) {
         return handleRemoteSpawn();
       }
-      return handleRemoteConnect();
+      setConnectionError("Please enter a session ticket or select an existing connection");
+      return;
     }
 
     if (!state.newSessionPath.trim()) {

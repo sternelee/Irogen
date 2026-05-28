@@ -1123,6 +1123,9 @@ async fn connect_to_peer(
                                                     }
                                                 }
 
+                                                // Include request_id so frontend can match responses
+                                                normalized["request_id"] = serde_json::Value::String(response.request_id.clone());
+
                                                 // Emit directory listing to frontend
                                                 let _ = app_handle_clone.emit(
                                                     &format!("remote-directory-listing-{}", session_id_clone),

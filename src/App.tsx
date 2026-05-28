@@ -210,7 +210,7 @@ export default function App() {
     if (lower.includes("cline")) return "cline";
     if (lower === "pi" || lower.startsWith("pi_")) return "pi";
     if (lower.includes("qwen")) return "qwen";
-    if (lower.includes("open")) return "opencode";
+    if (lower.includes("opencode") || lower.includes("open_code")) return "opencode";
     if (lower.includes("gemini")) return "gemini";
     if (lower.includes("codex")) return "codex";
     return "claude";

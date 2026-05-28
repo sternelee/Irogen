@@ -68,11 +68,20 @@ export const NewSessionModal: Component = () => {
 
   onMount(async () => {
     // Listen for remote directory listing responses
-    unlistenDirListing = await listen<{ entries: RemoteDirEntry[] }>(
+    unlistenDirListing = await listen<{
+      entries: RemoteDirEntry[];
+      request_id?: string;
+    }>(
       "remote-directory-listing",
       (event) => {
         const requestId = currentRequestId();
         if (!requestId) return;
+
+        // Ignore stale responses for older requests
+        const responseRequestId = event.payload.request_id;
+        if (responseRequestId && responseRequestId !== requestId) {
+          return;
+        }
 
         const entries = event.payload.entries || [];
         const toName = (e: string | RemoteDirEntry) => {
@@ -186,13 +195,14 @@ export const NewSessionModal: Component = () => {
 
   const getPathQueryParts = (path: string) => {
     // Only start directory suggestions once user starts typing nested paths.
-    if (!path.includes("/")) {
+    const trimmed = path.trim();
+    if (!trimmed.includes("/")) {
       return null;
     }
 
-    const lastSlashIndex = path.lastIndexOf("/");
-    const dirToList = path.slice(0, lastSlashIndex + 1) || "/";
-    const partialName = path.slice(lastSlashIndex + 1);
+    const lastSlashIndex = trimmed.lastIndexOf("/");
+    const dirToList = trimmed.slice(0, lastSlashIndex + 1);
+    const partialName = trimmed.slice(lastSlashIndex + 1);
     return { dirToList, partialName };
   };
 
@@ -232,13 +242,13 @@ export const NewSessionModal: Component = () => {
 
   const pathComboboxItems = createMemo(() => {
     const query = getPathQueryParts(sessionStore.state.newSessionPath);
-    const directoryItems = dirEntries().map((e) => {
-      const basePath = query?.dirToList || "";
-      return {
-        value: basePath + e.name,
-        label: e.name,
-      };
-    });
+    // Only show directory items when we have a valid query context
+    const directoryItems = query
+      ? dirEntries().map((e) => ({
+          value: query.dirToList + e.name,
+          label: e.name,
+        }))
+      : [];
 
     if (directoryItems.length > 0) {
       return directoryItems;
@@ -265,12 +275,10 @@ export const NewSessionModal: Component = () => {
   createEffect(() => {
     if (!isMobile() || !sessionStore.state.isNewSessionModalOpen) return;
 
-    if (sessionStore.state.newSessionMode !== "remote") {
-      sessionStore.setNewSessionMode("remote");
-      sessionStore.setConnectionError(null);
-    }
-
-    if (!sessionStore.state.targetControlSessionId) {
+    if (
+      sessionStore.state.newSessionMode === "remote" &&
+      !sessionStore.state.targetControlSessionId
+    ) {
       const connections = remoteConnections();
       if (connections.length > 0) {
         sessionStore.setTargetControlSessionId(connections[0].controlSessionId);
@@ -560,26 +568,16 @@ export const NewSessionModal: Component = () => {
                     sessionStore.setNewSessionAgent(nextAgent);
                   }}
                 >
-                  <Show
-                    when={
-                      sessionStore.state.newSessionMode === "local" &&
-                      isMobile()
-                    }
-                    fallback={
                       <>
-                        <option value="claude">Claude Code</option>
-                        <option value="codex">Codex</option>
-                        <option value="cursor">Cursor</option>
-                        <option value="cline">Cline</option>
-                        <option value="pi">Pi</option>
-                        <option value="qwen">Qwen Code</option>
-                        <option value="opencode">OpenCode</option>
-                        <option value="gemini">Gemini CLI</option>
-                      </>
-                    }
-                  >
-                    <option value="">{t("newSession.selectAgent")}</option>
-                  </Show>
+                      <option value="claude">Claude Code</option>
+                      <option value="codex">Codex</option>
+                      <option value="cursor">Cursor</option>
+                      <option value="cline">Cline</option>
+                      <option value="pi">Pi</option>
+                      <option value="qwen">Qwen Code</option>
+                      <option value="opencode">OpenCode</option>
+                      <option value="gemini">Gemini CLI</option>
+                    </>
                 </Select>
               </div>
 
