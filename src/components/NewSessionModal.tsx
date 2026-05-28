@@ -39,7 +39,7 @@ import { Textarea } from "./ui/primitives";
 interface DirEntry {
   name: string;
   path: string;
-  is_dir: boolean;
+  isDir: boolean;
 }
 
 interface RemoteDirEntry {
@@ -88,7 +88,7 @@ export const NewSessionModal: Component = () => {
           .map((e) => ({
             name: toName(e),
             path: "", // Remote doesn't provide full path
-            is_dir: true,
+            isDir: true,
           }))
           .filter((e) => e.name && !e.name.startsWith("."));
         setRawDirEntries(dirs);
@@ -172,7 +172,7 @@ export const NewSessionModal: Component = () => {
         const entries = await invoke<DirEntry[]>("list_directory", {
           path: dirToList,
         });
-        const dirs = entries.filter((e) => e.is_dir && !e.name.startsWith("."));
+        const dirs = entries.filter((e) => e.isDir && !e.name.startsWith("."));
         const filtered = filterDirEntriesByPartial(dirs, partialName);
         setRawDirEntries(dirs);
         setDirEntries(filtered);

@@ -10,6 +10,8 @@ export type ThemeType =
   | "black"
   | "abyss"
   | "luxury"
+  | "caramellatte"
+  | "lofi"
   | "synthwave";
 export type LanguageType = "en" | "zh-CN" | "zh-TW" | "ja" | "ko";
 export type FontSizeType = "small" | "medium" | "large" | "extra-large";
@@ -66,6 +68,8 @@ const normalizeTheme = (theme: unknown): ThemeType => {
     case "black":
     case "abyss":
     case "luxury":
+    case "caramellatte":
+    case "lofi":
     case "synthwave":
       return theme;
     default:
@@ -115,7 +119,12 @@ if (typeof document !== "undefined") {
     document.documentElement.setAttribute("data-theme", currentSettings.theme);
 
     // Apply font size class to body
-    document.body.classList.remove("text-sm", "text-base", "text-lg", "text-xl");
+    document.body.classList.remove(
+      "text-sm",
+      "text-base",
+      "text-lg",
+      "text-xl",
+    );
     const fontSizeClass = {
       small: "text-sm",
       medium: "text-base",

@@ -28,6 +28,8 @@ export function SettingsModal(props: SettingsModalProps) {
     { value: "abyss", label: t("theme.abyss") as string },
     { value: "luxury", label: t("theme.luxury") as string },
     { value: "synthwave", label: t("theme.synthwave") as string },
+    { value: "caramellatte", label: "Caramel Latte" },
+    { value: "lofi", label: "Lofi" },
   ];
 
   return (

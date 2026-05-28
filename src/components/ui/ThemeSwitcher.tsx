@@ -2,7 +2,11 @@ import { createSignal, onMount, For, Show } from "solid-js";
 import { cn } from "~/lib/utils";
 import { FiChevronDown } from "solid-icons/fi";
 import { i18nStore } from "../../stores/i18nStore";
-import { settingsStore, type LanguageType, type ThemeType } from "../../stores/settingsStore";
+import {
+  settingsStore,
+  type LanguageType,
+  type ThemeType,
+} from "../../stores/settingsStore";
 
 interface ThemeSwitcherProps {
   class?: string;
@@ -20,6 +24,8 @@ const themes = [
   { id: "synthwave", name: "Synthwave" },
   { id: "abyss", name: "Abyss" },
   { id: "luxury", name: "Luxury" },
+  { id: "caramellatte", name: "Caramel Latte" },
+  { id: "lofi", name: "Lofi" },
 ];
 
 export function ThemeSwitcher(props: ThemeSwitcherProps) {
@@ -79,7 +85,7 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
       <Show when={isOpen()}>
         <div
           class={cn(
-            "absolute right-0 mt-2 w-48 bg-base-100 rounded-xl border border-border shadow-xl overflow-hidden z-50",
+            "absolute right-0 mt-2 w-56 bg-base-100 rounded-xl border border-border shadow-xl overflow-hidden z-50",
             "animate-fade-in origin-top-right",
           )}
         >

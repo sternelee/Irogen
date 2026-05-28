@@ -6,6 +6,8 @@
     black,
     synthwave,
     abyss,
+    caramellatte,
+    lofi,
     luxury;
 }
 
@@ -869,7 +871,9 @@ textarea:focus {
   }
 
   .keyboard-visible .mobile-keyboard-adjust {
-    bottom: calc(4rem + env(safe-area-inset-bottom, 0px) + var(--keyboard-height, 0px));
+    bottom: calc(
+      4rem + env(safe-area-inset-bottom, 0px) + var(--keyboard-height, 0px)
+    );
   }
 
   @media (min-width: 768px) {
@@ -1177,7 +1181,8 @@ textarea:focus {
 }
 
 @keyframes glow-pulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgba(var(--primary-rgb, 59, 130, 246), 0.1);
   }
   50% {
@@ -1186,7 +1191,8 @@ textarea:focus {
 }
 
 @keyframes pulse-slow {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateX(-100%);
   }
   50% {
