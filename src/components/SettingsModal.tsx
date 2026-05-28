@@ -87,7 +87,7 @@ export function SettingsModal(props: SettingsModalProps) {
             </Select>
           </div>
 
-          <div class="flex items-center justify-between rounded-lg border border-border p-3">
+          <div class="flex items-center justify-between rounded-lg border border-base-300 p-3">
             <Label>{t("settings.animations")}</Label>
             <Switch
               checked={settingsStore.get().enableAnimations}

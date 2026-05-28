@@ -94,7 +94,7 @@ export const PermissionModeSwitcher: Component<PermissionModeSwitcherProps> = (
         role="button"
         class={cn(
           "btn btn-ghost btn-xs rounded-lg flex items-center gap-1.5 h-8 px-2",
-          "border border-border/50 hover:border-border",
+          "border border-base-300/50 hover:border-base-300",
           "text-base-content/70 hover:text-base-content",
           props.disabled && "opacity-50 pointer-events-none",
         )}
@@ -113,7 +113,7 @@ export const PermissionModeSwitcher: Component<PermissionModeSwitcherProps> = (
       <ul
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         tabIndex={0}
-        class="dropdown-content menu menu-sm z-[100] mt-1 w-64 rounded-xl border border-border bg-base-100 p-1.5 shadow-xl"
+        class="dropdown-content menu menu-sm z-[100] mt-1 w-64 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-xl"
       >
         <li class="menu-title px-2 py-1">
           <span class="text-[10px] uppercase tracking-wider text-base-content/40 font-semibold">

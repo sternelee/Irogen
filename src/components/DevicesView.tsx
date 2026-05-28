@@ -51,12 +51,12 @@ export const DevicesView: Component = () => {
   };
 
   return (
-    <div class="flex h-full flex-col overflow-y-auto bg-background p-4 sm:p-8">
+    <div class="flex h-full flex-col overflow-y-auto bg-base-100 p-4 sm:p-8">
       <div class="mx-auto w-full max-w-4xl space-y-8">
         <header class="flex items-start sm:items-center gap-3">
           <button
             type="button"
-            class="h-10 w-10 md:hidden shrink-0 -ml-2 border border-black/10 flex items-center justify-center text-zinc-500 hover:text-foreground hover:border-zinc-400"
+            class="h-10 w-10 md:hidden shrink-0 -ml-2 border border-base-content/10 flex items-center justify-center text-base-content/50 hover:text-base-content hover:border-base-content/40"
             onClick={() => navigationStore.setSidebarOpen(true)}
             aria-label="Open menu"
           >
@@ -71,24 +71,24 @@ export const DevicesView: Component = () => {
             </svg>
           </button>
           <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{t("devices.title")}</h1>
-            <p class="mt-1 text-sm text-zinc-500">{t("devices.desc")}</p>
+            <h1 class="text-2xl font-bold tracking-tight text-base-content sm:text-3xl">{t("devices.title")}</h1>
+            <p class="mt-1 text-sm text-base-content/50">{t("devices.desc")}</p>
           </div>
         </header>
 
         {/* Local Daemon Status */}
         <section>
-          <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">{t("devices.localEnv")}</h2>
-          <div class="flex items-center justify-between border border-black/10 p-4 sm:p-5">
+          <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-widest text-base-content/40">{t("devices.localEnv")}</h2>
+          <div class="flex items-center justify-between border border-base-content/10 p-4 sm:p-5">
             <div class="flex items-center gap-4">
-              <div class="flex h-12 w-12 items-center justify-center border border-black/10 text-zinc-400">
+              <div class="flex h-12 w-12 items-center justify-center border border-base-content/10 text-base-content/40">
                 <FiTerminal size={24} />
               </div>
               <div>
-                <h3 class="font-semibold text-foreground">{t("devices.localDaemon")}</h3>
+                <h3 class="font-semibold text-base-content">{t("devices.localDaemon")}</h3>
                 <div class="flex items-center gap-2 mt-1">
-                  <span class="h-2.5 w-2.5 bg-green-500" />
-                  <span class="text-sm text-zinc-500 font-medium">{t("devices.running")}</span>
+                  <span class="h-2.5 w-2.5 bg-success" />
+                  <span class="text-sm text-base-content/50 font-medium">{t("devices.running")}</span>
                 </div>
               </div>
             </div>
@@ -97,13 +97,13 @@ export const DevicesView: Component = () => {
 
         {/* Add New Connection */}
         <section>
-          <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">{t("devices.addNew")}</h2>
-          <div class="border border-black/10 p-4 sm:p-5 flex flex-col gap-4 sm:flex-row sm:items-end">
+          <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-widest text-base-content/40">{t("devices.addNew")}</h2>
+          <div class="border border-base-content/10 p-4 sm:p-5 flex flex-col gap-4 sm:flex-row sm:items-end">
             <div class="flex-1 space-y-2">
-              <label class="text-sm font-medium text-foreground">{t("devices.sessionTicket")}</label>
+              <label class="text-sm font-medium text-base-content">{t("devices.sessionTicket")}</label>
               <input
                 type="text"
-                class="w-full border border-black/10 bg-background px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-zinc-400"
+                class="w-full border border-base-content/10 bg-base-100 px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-base-content/40"
                 placeholder={t("devices.ticketPlaceholder")}
                 value={ticketInput()}
                 onInput={(e) => setTicketInput(e.currentTarget.value)}
@@ -113,12 +113,12 @@ export const DevicesView: Component = () => {
               />
             </div>
             <button
-              class="border border-black/10 px-6 py-2.5 min-w-[120px] text-sm font-medium text-foreground hover:bg-zinc-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              class="border border-base-content/10 px-6 py-2.5 min-w-[120px] text-sm font-medium text-base-content hover:bg-base-200 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!ticketInput() || isConnecting()}
               onClick={() => handleConnect(ticketInput())}
             >
               {isConnecting() ? (
-                <span class="inline-block w-4 h-4 border-2 border-zinc-300 border-t-zinc-600" />
+                <span class="inline-block w-4 h-4 border-2 border-base-content/30 border-t-base-content/60" />
               ) : (
                 <>
                   <FiPlus size={18} class="inline mr-2" />{t("action.connect")}
@@ -130,39 +130,39 @@ export const DevicesView: Component = () => {
 
         {/* Active Remote Hosts */}
         <section>
-          <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">{t("devices.activeHosts")}</h2>
-          <div class="border border-black/10 overflow-hidden">
+          <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-widest text-base-content/40">{t("devices.activeHosts")}</h2>
+          <div class="border border-base-content/10 overflow-hidden">
             <Show
               when={connectedHosts().length > 0}
               fallback={
                 <div class="flex flex-col items-center justify-center py-10 px-4 text-center">
-                  <div class="mb-3 flex h-12 w-12 items-center justify-center border border-black/10 text-zinc-400">
+                  <div class="mb-3 flex h-12 w-12 items-center justify-center border border-base-content/10 text-base-content/40">
                     <FiServer size={24} />
                   </div>
-                  <p class="text-sm text-zinc-500 font-medium">{t("devices.noActiveHosts")}</p>
+                  <p class="text-sm text-base-content/50 font-medium">{t("devices.noActiveHosts")}</p>
                 </div>
               }
             >
               <div>
                 <For each={connectedHosts()}>
                   {(host) => (
-                    <div class="flex items-center justify-between p-4 sm:p-5 border-b border-black/10 last:border-b-0">
+                    <div class="flex items-center justify-between p-4 sm:p-5 border-b border-base-content/10 last:border-b-0">
                       <div class="flex items-center gap-4">
-                        <div class="flex h-10 w-10 items-center justify-center border border-black/10 text-zinc-400">
+                        <div class="flex h-10 w-10 items-center justify-center border border-base-content/10 text-base-content/40">
                           <FiGlobe size={20} />
                         </div>
                         <div>
-                          <h3 class="font-medium text-sm text-foreground">
+                          <h3 class="font-medium text-sm text-base-content">
                             {host.hostname}
                           </h3>
-                          <p class="mt-0.5 text-xs text-zinc-500 font-mono">
+                          <p class="mt-0.5 text-xs text-base-content/50 font-mono">
                             ID: {host.controlSessionId.slice(0, 8)}...
                           </p>
                         </div>
                       </div>
                       <div class="flex items-center gap-3">
-                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-green-600 border border-green-600/20">
-                          <span class="h-1.5 w-1.5 bg-green-500" />{t("devices.connected")}</span>
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-success border border-success/20">
+                          <span class="h-1.5 w-1.5 bg-success" />{t("devices.connected")}</span>
                       </div>
                     </div>
                   )}
@@ -176,9 +176,9 @@ export const DevicesView: Component = () => {
         <Show when={history().length > 0}>
           <section>
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">{t("devices.savedDevices")}</h2>
+              <h2 class="text-[10px] font-semibold uppercase tracking-widest text-base-content/40">{t("devices.savedDevices")}</h2>
               <button
-                class="text-xs text-red-500 border border-red-500/20 px-3 py-1.5 hover:bg-red-500 hover:text-white"
+                class="text-xs text-error border border-error/20 px-3 py-1.5 hover:bg-error hover:text-error-content"
                 onClick={handleClearHistory}
               >
                 <FiTrash2 size={12} class="inline mr-1" />
@@ -192,29 +192,29 @@ export const DevicesView: Component = () => {
                     ticket.includes(h.controlSessionId),
                   );
                   return (
-                    <div class="flex flex-col gap-3 border border-black/10 p-4">
+                    <div class="flex flex-col gap-3 border border-base-content/10 p-4">
                       <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                          <div class="flex h-8 w-8 items-center justify-center border border-black/10 text-zinc-400">
+                          <div class="flex h-8 w-8 items-center justify-center border border-base-content/10 text-base-content/40">
                             <FiWifi size={16} />
                           </div>
                           <div>
-                            <p class="font-medium text-sm text-foreground">
+                            <p class="font-medium text-sm text-base-content">
                               Machine {getTicketDisplayId(ticket)}
                             </p>
-                            <p class="text-[10px] text-zinc-500 font-mono truncate max-w-[120px]">
+                            <p class="text-[10px] text-base-content/50 font-mono truncate max-w-[120px]">
                               {ticket}
                             </p>
                           </div>
                         </div>
                         <Show when={!isActive}>
                           <button
-                            class="border border-black/10 px-3 py-1 text-xs font-medium hover:bg-zinc-100"
+                            class="border border-base-content/10 px-3 py-1 text-xs font-medium hover:bg-base-200"
                             onClick={() => handleConnect(ticket)}
                           >{t("action.connect")}</button>
                         </Show>
                         <Show when={isActive}>
-                          <span class="text-xs font-semibold text-green-600">{t("devices.active")}</span>
+                          <span class="text-xs font-semibold text-success">{t("devices.active")}</span>
                         </Show>
                       </div>
                     </div>

@@ -132,10 +132,10 @@ export function KeyboardAwareContainer(props: KeyboardAwareContainerProps) {
             transition: "opacity 0.1s ease-out",
           }}
         >
-          <div class="rounded-full bg-background p-3 shadow-lg">
+          <div class="rounded-full bg-base-100 p-3 shadow-lg">
             <div class="text-center">
               <div class="mb-1 text-2xl">⬇️</div>
-              <div class="text-xs text-muted-foreground/70">
+              <div class="text-xs text-base-content/50/70">
                 {pullDistance() >= pullToHideThreshold
                   ? "Release to hide keyboard"
                   : "Pull to hide keyboard"}
@@ -153,10 +153,10 @@ export function KeyboardAwareContainer(props: KeyboardAwareContainerProps) {
 
       <Show when={keyboardVisible() && props.preserveContent}>
         <div
-          class="absolute bottom-0 left-0 right-0 bg-background/80 backdrop-blur-sm"
+          class="absolute bottom-0 left-0 right-0 bg-base-100/80 backdrop-blur-sm"
           style={{ height: `${keyboardHeight()}px` }}
         >
-          <div class="flex h-full items-center justify-center text-sm text-muted-foreground/60">
+          <div class="flex h-full items-center justify-center text-sm text-base-content/50/60">
             Keyboard active - swipe down to hide
           </div>
         </div>
@@ -197,7 +197,7 @@ export function KeyboardAwareInput(props: KeyboardAwareInputProps) {
 
       <div class="relative">
         <Show when={props.icon}>
-          <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground/50">
+          <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-base-content/50/50">
             <span>{props.icon}</span>
           </div>
         </Show>

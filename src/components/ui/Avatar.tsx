@@ -43,7 +43,7 @@ const sizeClasses: Record<AvatarSize, string> = {
 
 const statusClasses: Record<AvatarStatus, string> = {
   online: "bg-success",
-  offline: "bg-muted-foreground",
+  offline: "bg-base-200-foreground",
   away: "bg-warning",
   busy: "bg-error",
   none: "",

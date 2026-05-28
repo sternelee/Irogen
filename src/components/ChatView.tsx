@@ -144,7 +144,7 @@ const VirtualMessageRow = (props: VirtualMessageRowProps) => {
 // Skeleton loader for streaming messages
 const MessageSkeleton: Component = () => (
   <div class="flex flex-col gap-3 max-w-[90%]">
-    <div class="inline-block bg-base-200 border border-black/10 px-4 py-3">
+    <div class="inline-block bg-base-200 border border-base-content/10 px-4 py-3">
       <div class="flex flex-col gap-2">
         <div class="h-4 bg-base-300 w-3/4" />
         <div class="h-4 bg-base-300 w-1/2" />
@@ -1690,7 +1690,7 @@ export function ChatView(props: ChatViewProps) {
     };
 
     return (
-      <div class="flex h-full flex-col min-h-0 bg-background">
+      <div class="flex h-full flex-col min-h-0 bg-base-100">
         <div class="flex flex-col h-full min-w-0 flex-1">
           {/* Header */}
           <ChatHeader
@@ -1856,7 +1856,7 @@ export function ChatView(props: ChatViewProps) {
                 setUnseenMessageCount(0);
                 scrollToBottom("smooth");
               }}
-              class="fixed bottom-28 right-4 sm:right-6 z-30 flex items-center gap-1.5 px-3 py-2 bg-background border border-black/10 text-xs font-medium"
+              class="fixed bottom-28 right-4 sm:right-6 z-30 flex items-center gap-1.5 px-3 py-2 bg-base-100 border border-base-content/10 text-xs font-medium"
               aria-label="Scroll to bottom"
               title={
                 unseenMessageCount() > 0
@@ -1896,8 +1896,8 @@ export function ChatView(props: ChatViewProps) {
           <Show
             when={isActive()}
             fallback={
-              <div class="flex items-center justify-center gap-3 px-4 py-4 border-t border-border/50 bg-muted/30">
-                <div class="flex items-center gap-2 text-sm text-muted-foreground">
+              <div class="flex items-center justify-center gap-3 px-4 py-4 border-t border-base-300/50 bg-base-200/30">
+                <div class="flex items-center gap-2 text-sm text-base-content/50">
                   <FiAlertTriangle size={16} class="text-warning" />
                   <span>Session inactive. Connection might be lost.</span>
                 </div>

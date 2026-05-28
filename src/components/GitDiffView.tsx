@@ -261,7 +261,7 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
   return (
     <div class={`flex flex-col h-full bg-base-200 ${props.class || ""}`}>
       {/* Header */}
-      <div class="flex-none border-b border-border/50 bg-base-200/80 backdrop-blur-sm p-2 sm:p-3">
+      <div class="flex-none border-b border-base-300/50 bg-base-200/80 backdrop-blur-sm p-2 sm:p-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-1.5 sm:gap-2">
             <GitBranchIcon />
@@ -340,7 +340,7 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
                 <For each={getStagedFiles()}>
                   {(entry) => (
                     <div
-                      class="flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded hover:bg-muted cursor-pointer text-xs sm:text-sm"
+                      class="flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded hover:bg-base-200 cursor-pointer text-xs sm:text-sm"
                       onClick={() => loadDiff(entry.from)}
                     >
                       <span
@@ -368,7 +368,7 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
                 <For each={getModifiedFiles()}>
                   {(entry) => (
                     <div
-                      class="flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded hover:bg-muted cursor-pointer text-xs sm:text-sm"
+                      class="flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded hover:bg-base-200 cursor-pointer text-xs sm:text-sm"
                       onClick={() => loadDiff(entry.from)}
                     >
                       <span
@@ -399,7 +399,7 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
                 <For each={getUntrackedFiles()}>
                   {(entry) => (
                     <div
-                      class="flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded hover:bg-muted cursor-pointer text-xs sm:text-sm"
+                      class="flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded hover:bg-base-200 cursor-pointer text-xs sm:text-sm"
                       onClick={() => loadDiff(entry.from)}
                     >
                       <span class="inline-flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-md bg-base-content/6 text-xs sm:text-sm font-bold text-base-content/45 ring-1 ring-base-content/10">
@@ -457,7 +457,7 @@ export const GitDiffView: Component<GitDiffViewProps> = (props) => {
               <Show
                 when={state.currentDiff?.diff.trim()}
                 fallback={
-                  <div class="mt-2 rounded-lg border border-border p-2.5 text-xs text-foreground/60">
+                  <div class="mt-2 rounded-lg border border-base-300 p-2.5 text-xs text-base-content/60">
                     No diff content available for this file.
                   </div>
                 }

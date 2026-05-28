@@ -42,13 +42,13 @@ export const WorkspaceShell: Component = () => {
       <Show when={rightPanelView() !== "none"}>
         <button
           type="button"
-          class="fixed inset-0 z-40 bg-black/30"
+          class="fixed inset-0 z-40 bg-base-content/30"
           onClick={closeRightPanel}
           aria-label="Close tools panel"
         />
-        <aside class="fixed top-0 bottom-0 right-0 z-50 w-full sm:w-120 bg-background border-l border-black/10 flex flex-col">
-          <div class="flex items-center justify-between px-4 py-3 border-b border-black/10">
-            <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
+        <aside class="fixed top-0 bottom-0 right-0 z-50 w-full sm:w-120 bg-base-100 border-l border-base-content/10 flex flex-col">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-base-content/10">
+            <div class="flex items-center gap-2 text-sm font-semibold text-base-content">
               <Show when={rightPanelView() === "file"}>
                 <FiFolder size={14} />
                 <span>Files</span>
@@ -64,7 +64,7 @@ export const WorkspaceShell: Component = () => {
             </div>
             <button
               type="button"
-              class="text-zinc-400 hover:text-foreground"
+              class="text-base-content/40 hover:text-base-content"
               onClick={closeRightPanel}
               title="Close"
             >

@@ -244,7 +244,7 @@ export function MobileNavigation(props: MobileNavigationProps) {
 
       {/* Status Panel Dropdown */}
       <Show when={showStatusPanel()}>
-        <div class="bg-background border-b border-border px-4 py-3 animate-slide-down">
+        <div class="bg-base-100 border-b border-base-300 px-4 py-3 animate-slide-down">
           <div class="flex items-center justify-between">
             <div class="text-sm">
               <div class="font-medium">Network Status</div>
@@ -264,7 +264,7 @@ export function MobileNavigation(props: MobileNavigationProps) {
                       class={`w-1 h-3 mx-px rounded-sm ${
                         level <= props.networkStrength
                           ? "bg-success/80"
-                          : "bg-muted"
+                          : "bg-base-200"
                       }`}
                     />
                   )}
@@ -288,7 +288,7 @@ export function MobileNavigation(props: MobileNavigationProps) {
                       ? "text-primary bg-primary/10"
                       : item.disabled
                         ? "text-muted cursor-not-allowed"
-                        : "text-foreground hover:bg-muted"
+                        : "text-base-content hover:bg-base-200"
                   }`}
                   onClick={() => handleNavItemClick(item)}
                   disabled={item.disabled}

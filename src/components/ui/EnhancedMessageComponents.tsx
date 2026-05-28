@@ -67,44 +67,44 @@ const statusConfig = {
   started: {
     icon: FiLoader,
     label: "Started",
-    iconClass: "text-blue-500",
+    iconClass: "text-info",
     badgeClass:
-      "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20",
+      "bg-info/10 text-info dark:text-info border border-info/20",
     animate: true,
     spinnerClass: "animate-spin",
   },
   in_progress: {
     icon: FiPlay,
     label: "Running",
-    iconClass: "text-amber-500",
+    iconClass: "text-warning",
     badgeClass:
-      "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
+      "bg-warning/10 text-warning dark:text-warning border border-warning/20",
     animate: true,
     spinnerClass: "animate-pulse",
   },
   completed: {
     icon: FiCheckCircle,
     label: "Completed",
-    iconClass: "text-emerald-500",
+    iconClass: "text-success",
     badgeClass:
-      "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
+      "bg-success/10 text-success dark:text-success border border-success/20",
     animate: false,
     spinnerClass: "",
   },
   failed: {
     icon: FiAlertCircle,
     label: "Failed",
-    iconClass: "text-red-500",
+    iconClass: "text-error",
     badgeClass:
-      "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20",
+      "bg-error/10 text-error dark:text-error border border-error/20",
     animate: false,
     spinnerClass: "",
   },
   cancelled: {
     icon: FiX,
     label: "Cancelled",
-    iconClass: "text-gray-400",
-    badgeClass: "bg-gray-500/10 text-gray-500 border border-gray-500/20",
+    iconClass: "text-base-content/40",
+    badgeClass: "bg-base-content/50/10 text-base-content/50 border border-base-content/50/20",
     animate: false,
     spinnerClass: "",
   },
@@ -152,11 +152,11 @@ const SyntaxHighlightedOutput: Component<{ output: string }> = (props) => {
       try {
         const formatted = JSON.stringify(JSON.parse(output), null, 2);
         return formatted
-          .replace(/(".*?")\s*:/g, '<span class="text-blue-400">$1</span>:')
-          .replace(/:\s*(".*?")/g, ': <span class="text-emerald-400">$1</span>')
+          .replace(/(".*?")\s*:/g, '<span class="text-info">$1</span>:')
+          .replace(/:\s*(".*?")/g, ': <span class="text-success">$1</span>')
           .replace(
             /:\s*(true|false)/g,
-            ': <span class="text-amber-400">$1</span>',
+            ': <span class="text-warning">$1</span>',
           )
           .replace(/:\s*(\d+)/g, ': <span class="text-violet-400">$1</span>');
       } catch {
@@ -167,15 +167,15 @@ const SyntaxHighlightedOutput: Component<{ output: string }> = (props) => {
     return output
       .replace(
         /\b(error|failed|failure)\b/gi,
-        '<span class="text-red-400 font-medium">$1</span>',
+        '<span class="text-error font-medium">$1</span>',
       )
       .replace(
         /\b(success|completed|done|ok)\b/gi,
-        '<span class="text-emerald-400 font-medium">$1</span>',
+        '<span class="text-success font-medium">$1</span>',
       )
       .replace(
         /\b(warning|warn)\b/gi,
-        '<span class="text-amber-400 font-medium">$1</span>',
+        '<span class="text-warning font-medium">$1</span>',
       );
   });
 
@@ -184,22 +184,22 @@ const SyntaxHighlightedOutput: Component<{ output: string }> = (props) => {
       <pre
         class={cn(
           "text-xs font-mono p-3 overflow-x-auto whitespace-pre-wrap break-all max-h-64 rounded-lg",
-          outputType() === "error" && "bg-red-500/5 border border-red-500/20",
+          outputType() === "error" && "bg-error/5 border border-error/20",
           outputType() === "success" &&
-            "bg-emerald-500/5 border border-emerald-500/20",
-          outputType() === "plain" && "bg-muted/50",
-          outputType() === "json" && "bg-blue-500/5 border border-blue-500/20",
+            "bg-success/5 border border-success/20",
+          outputType() === "plain" && "bg-base-200/50",
+          outputType() === "json" && "bg-info/5 border border-info/20",
         )}
         innerHTML={highlightedOutput()}
       />
       <button
         type="button"
         onClick={handleCopy}
-        class="absolute top-2 right-2 p-1.5 bg-background/80 hover:bg-background rounded-md opacity-0 group-hover:opacity-100 transition-opacity border border-border/50"
+        class="absolute top-2 right-2 p-1.5 bg-base-100/80 hover:bg-base-100 rounded-md opacity-0 group-hover:opacity-100 transition-opacity border border-base-300/50"
         title="Copy output"
       >
         <Show when={copied()} fallback={<FiCopy size={12} />}>
-          <FiCheck size={12} class="text-emerald-500" />
+          <FiCheck size={12} class="text-success" />
         </Show>
       </button>
     </div>
@@ -229,11 +229,11 @@ export const ToolCallItem: Component<ToolCallItemProps> = (props) => {
       class={cn(
         "rounded-xl border overflow-hidden transition-all duration-200",
         props.toolCall.status === "in_progress" &&
-          "border-amber-500/30 bg-amber-500/5",
-        props.toolCall.status === "failed" && "border-red-500/30 bg-red-500/5",
-        props.toolCall.status === "completed" && "border-border bg-muted/20",
+          "border-warning/30 bg-warning/5",
+        props.toolCall.status === "failed" && "border-error/30 bg-error/5",
+        props.toolCall.status === "completed" && "border-base-300 bg-base-200/20",
         props.toolCall.status === "started" &&
-          "border-blue-500/30 bg-blue-500/5",
+          "border-info/30 bg-info/5",
         props.class,
       )}
     >
@@ -241,7 +241,7 @@ export const ToolCallItem: Component<ToolCallItemProps> = (props) => {
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded())}
-        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left"
+        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-base-200/30 transition-colors text-left"
       >
         {/* Animated Status Icon */}
         <div class={cn("shrink-0", config().iconClass)}>
@@ -250,15 +250,15 @@ export const ToolCallItem: Component<ToolCallItemProps> = (props) => {
 
         {/* Tool Icon & Name */}
         <div class="flex items-center gap-2 flex-1 min-w-0">
-          <div class="p-1.5 rounded-lg bg-background/80 border border-border/50">
-            <FiTool size={14} class="text-muted-foreground" />
+          <div class="p-1.5 rounded-lg bg-base-100/80 border border-base-300/50">
+            <FiTool size={14} class="text-base-content/50" />
           </div>
           <div class="min-w-0">
             <span class="font-semibold text-sm truncate block">
               {props.toolCall.toolName}
             </span>
             <Show when={hasOutput()}>
-              <span class="text-[10px] text-muted-foreground truncate">
+              <span class="text-[10px] text-base-content/50 truncate">
                 {truncateMiddle(
                   normalizeMultiline(props.toolCall.output || ""),
                   50,
@@ -281,7 +281,7 @@ export const ToolCallItem: Component<ToolCallItemProps> = (props) => {
 
         {/* Expand/Collapse */}
         <Show when={hasOutput()}>
-          <div class="shrink-0 text-muted-foreground">
+          <div class="shrink-0 text-base-content/50">
             <Show when={isExpanded()} fallback={<FiChevronRight size={16} />}>
               <FiChevronDown size={16} />
             </Show>
@@ -291,16 +291,16 @@ export const ToolCallItem: Component<ToolCallItemProps> = (props) => {
 
       {/* Collapsible Output */}
       <Show when={isExpanded() && hasOutput()}>
-        <div class="border-t border-border/50">
-          <div class="px-4 py-2 bg-muted/20 border-b border-border/50 flex items-center justify-between">
-            <div class="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div class="border-t border-base-300/50">
+          <div class="px-4 py-2 bg-base-200/20 border-b border-base-300/50 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-[11px] text-base-content/50">
               <FiTerminal size={12} />
               <span class="font-medium uppercase tracking-wide">Output</span>
               <span class="text-[10px] opacity-60">
                 {normalizeMultiline(props.toolCall.output || "").length} chars
               </span>
             </div>
-            <div class="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <div class="flex items-center gap-1 text-[10px] text-base-content/50">
               <FiClock size={10} />
               {formatTimestamp(props.toolCall.timestamp)}
             </div>
@@ -335,15 +335,15 @@ export const ToolCallList: Component<ToolCallListProps> = (props) => {
     <div class={cn("flex flex-col gap-2", props.class)}>
       {/* Summary header */}
       <Show when={props.toolCalls.length > 1}>
-        <div class="flex items-center gap-2 text-[11px] text-muted-foreground px-1">
+        <div class="flex items-center gap-2 text-[11px] text-base-content/50 px-1">
           <span class="font-medium">{props.toolCalls.length} tools used</span>
           <Show when={completedCount() > 0}>
-            <span class="text-emerald-600 dark:text-emerald-400">
+            <span class="text-success dark:text-success">
               · {completedCount()} completed
             </span>
           </Show>
           <Show when={inProgressCount() > 0}>
-            <span class="text-amber-600 dark:text-amber-400 animate-pulse">
+            <span class="text-warning dark:text-warning animate-pulse">
               · {inProgressCount()} running
             </span>
           </Show>
@@ -385,7 +385,7 @@ const parseThinkingSteps = (
 
 const ThinkingCursor: Component = () => (
   <span class="inline-flex ml-1">
-    <span class="animate-pulse inline-block h-4 w-0.5 bg-blue-400" />
+    <span class="animate-pulse inline-block h-4 w-0.5 bg-info" />
   </span>
 );
 
@@ -404,7 +404,7 @@ export const ReasoningBlock: Component<ReasoningBlockProps> = (props) => {
     <Show when={props.thinking}>
       <div
         class={cn(
-          "rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-purple-500/5 overflow-hidden",
+          "rounded-xl border border-info/20 bg-gradient-to-br from-blue-500/5 to-purple-500/5 overflow-hidden",
           props.class,
         )}
       >
@@ -412,32 +412,32 @@ export const ReasoningBlock: Component<ReasoningBlockProps> = (props) => {
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded())}
-          class="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/20 transition-colors"
+          class="w-full flex items-center gap-3 px-4 py-3 hover:bg-base-200/20 transition-colors"
         >
           {/* Animated Brain Icon */}
           <div class="relative">
-            <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/30 flex items-center justify-center">
+            <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-info/30 flex items-center justify-center">
               <span class="text-sm">🧠</span>
             </div>
             <Show when={props.isStreaming}>
-              <div class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-blue-500 animate-ping" />
-              <div class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-blue-500" />
+              <div class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-info animate-ping" />
+              <div class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-info" />
             </Show>
           </div>
 
           <div class="flex-1 text-left">
             <div class="flex items-center gap-2">
-              <span class="inline-flex items-center rounded-lg bg-blue-500/15 px-2.5 py-1 text-sm font-semibold text-blue-600 dark:text-blue-400 border border-blue-500/20">
+              <span class="inline-flex items-center rounded-lg bg-info/15 px-2.5 py-1 text-sm font-semibold text-info dark:text-info border border-info/20">
                 Thinking
               </span>
               <Show when={stepCount() > 1}>
-                <span class="text-[11px] text-muted-foreground">
+                <span class="text-[11px] text-base-content/50">
                   {stepCount()} steps
                 </span>
               </Show>
             </div>
             <Show when={props.isStreaming}>
-              <span class="text-[11px] text-muted-foreground/60 mt-0.5 block">
+              <span class="text-[11px] text-base-content/50/60 mt-0.5 block">
                 Reasoning in progress...
               </span>
             </Show>
@@ -445,24 +445,24 @@ export const ReasoningBlock: Component<ReasoningBlockProps> = (props) => {
 
           {/* Streaming Indicator */}
           <Show when={props.isStreaming}>
-            <div class="flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
+            <div class="flex items-center gap-1 px-2 py-1 rounded-full bg-info/10 border border-info/20">
               <div
-                class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce"
+                class="w-1.5 h-1.5 rounded-full bg-info animate-bounce"
                 style={{ "animation-delay": "0ms" }}
               />
               <div
-                class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce"
+                class="w-1.5 h-1.5 rounded-full bg-info animate-bounce"
                 style={{ "animation-delay": "150ms" }}
               />
               <div
-                class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce"
+                class="w-1.5 h-1.5 rounded-full bg-info animate-bounce"
                 style={{ "animation-delay": "300ms" }}
               />
             </div>
           </Show>
 
           {/* Expand/Collapse */}
-          <div class="text-muted-foreground">
+          <div class="text-base-content/50">
             <Show when={isExpanded()} fallback={<FiChevronRight size={18} />}>
               <FiChevronDown size={18} />
             </Show>
@@ -471,26 +471,26 @@ export const ReasoningBlock: Component<ReasoningBlockProps> = (props) => {
 
         {/* Content */}
         <Show when={isExpanded()}>
-          <div class="border-t border-blue-500/10">
+          <div class="border-t border-info/10">
             <div class="p-4 space-y-1 max-h-96 overflow-y-auto">
               <For each={steps()}>
                 {(item, index) => (
                   <div
                     class={cn(
-                      "flex items-start gap-3 py-1 px-2 rounded-lg transition-colors hover:bg-muted/30",
+                      "flex items-start gap-3 py-1 px-2 rounded-lg transition-colors hover:bg-base-200/30",
                       item.indent > 0 && "ml-4",
                     )}
                   >
                     {/* Step indicator */}
-                    <div class="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mt-0.5">
-                      <span class="text-[10px] font-medium text-blue-500">
+                    <div class="shrink-0 w-6 h-6 rounded-full bg-info/10 border border-info/20 flex items-center justify-center mt-0.5">
+                      <span class="text-[10px] font-medium text-info">
                         {index() + 1}
                       </span>
                     </div>
 
                     {/* Step content */}
                     <div class="flex-1 min-w-0">
-                      <p class="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                      <p class="text-sm text-base-content/50 leading-relaxed whitespace-pre-wrap">
                         {item.step}
                         <Show
                           when={
@@ -507,7 +507,7 @@ export const ReasoningBlock: Component<ReasoningBlockProps> = (props) => {
 
               {/* Fallback for unparsed content */}
               <Show when={steps().length === 0 && props.thinking}>
-                <pre class="text-sm font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                <pre class="text-sm font-mono text-base-content/50 whitespace-pre-wrap leading-relaxed">
                   {normalizeMultiline(props.thinking || "")}
                   <Show when={props.isStreaming}>
                     <ThinkingCursor />
@@ -542,9 +542,9 @@ const LineNumber: Component<{
   <span
     class={cn(
       "inline-block w-10 text-right pr-3 select-none text-[11px] font-mono",
-      props.type === "added" && "text-emerald-500/60 bg-emerald-500/5",
-      props.type === "removed" && "text-red-500/60 bg-red-500/5",
-      props.type === "unchanged" && "text-muted-foreground/40",
+      props.type === "added" && "text-success/60 bg-success/5",
+      props.type === "removed" && "text-error/60 bg-error/5",
+      props.type === "unchanged" && "text-base-content/50/40",
     )}
   >
     {props.num}
@@ -613,25 +613,25 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
   return (
     <div
       class={cn(
-        "rounded-xl border border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-orange-500/5 overflow-hidden",
+        "rounded-xl border border-warning/20 bg-gradient-to-br from-amber-500/5 to-orange-500/5 overflow-hidden",
         props.class,
       )}
     >
       {/* Header */}
-      <div class="flex items-center gap-3 px-4 py-3 bg-muted/30 border-b border-border/50">
+      <div class="flex items-center gap-3 px-4 py-3 bg-base-200/30 border-b border-base-300/50">
         {/* File Icon */}
-        <div class="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-          <FiEdit3 size={16} class="text-amber-600 dark:text-amber-400" />
+        <div class="p-2 rounded-lg bg-warning/10 border border-warning/20">
+          <FiEdit3 size={16} class="text-warning dark:text-warning" />
         </div>
 
         {/* File Path */}
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
-            <FiFile size={12} class="text-muted-foreground shrink-0" />
+            <FiFile size={12} class="text-base-content/50 shrink-0" />
             <span class="font-semibold text-sm truncate">{fileName()}</span>
           </div>
           <Show when={fileDir() !== "."}>
-            <span class="text-[11px] text-muted-foreground truncate block">
+            <span class="text-[11px] text-base-content/50 truncate block">
               {fileDir()}
             </span>
           </Show>
@@ -639,11 +639,11 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
 
         {/* Stats */}
         <div class="flex items-center gap-3 text-[11px]">
-          <span class="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+          <span class="flex items-center gap-1 text-success dark:text-success">
             <FiPlus size={12} />
             {stats().added}
           </span>
-          <span class="flex items-center gap-1 text-red-600 dark:text-red-400">
+          <span class="flex items-center gap-1 text-error dark:text-error">
             <FiMinus size={12} />
             {stats().removed}
           </span>
@@ -658,7 +658,7 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
               "px-2 py-1 rounded text-[11px] font-medium transition-colors",
               viewMode() === "unified"
                 ? "bg-primary text-primary-contrast"
-                : "hover:bg-muted",
+                : "hover:bg-base-200",
             )}
           >
             Unified
@@ -670,7 +670,7 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
               "px-2 py-1 rounded text-[11px] font-medium transition-colors",
               viewMode() === "split"
                 ? "bg-primary text-primary-contrast"
-                : "hover:bg-muted",
+                : "hover:bg-base-200",
             )}
           >
             Split
@@ -678,7 +678,7 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded())}
-            class="p-1.5 hover:bg-muted rounded transition-colors"
+            class="p-1.5 hover:bg-base-200 rounded transition-colors"
           >
             <Show when={isExpanded()} fallback={<FiMaximize2 size={14} />}>
               <FiMinimize2 size={14} />
@@ -689,7 +689,7 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
 
       {/* Diff Content */}
       <Show when={isExpanded()}>
-        <div class="border-t border-border/50">
+        <div class="border-t border-base-300/50">
           {/* Diff View */}
           <div class="overflow-x-auto">
             <Show
@@ -697,8 +697,8 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
               fallback={
                 // Split view placeholder
                 <div class="flex">
-                  <div class="flex-1 border-r border-border/50">
-                    <div class="px-3 py-1.5 bg-red-500/10 border-b border-border/50 text-[11px] font-medium text-red-600 dark:text-red-400">
+                  <div class="flex-1 border-r border-base-300/50">
+                    <div class="px-3 py-1.5 bg-error/10 border-b border-base-300/50 text-[11px] font-medium text-error dark:text-error">
                       - Old
                     </div>
                     <For each={diffLines().filter((l) => l.type !== "added")}>
@@ -706,7 +706,7 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
                         <div
                           class={cn(
                             "flex font-mono text-xs",
-                            line.type === "removed" && "bg-red-500/10",
+                            line.type === "removed" && "bg-error/10",
                           )}
                         >
                           <LineNumber num={0} type={line.type} />
@@ -714,7 +714,7 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
                             class={cn(
                               "flex-1 px-2 py-0.5 whitespace-pre",
                               line.type === "removed" &&
-                                "text-red-600 dark:text-red-400",
+                                "text-error dark:text-error",
                             )}
                           >
                             {line.type === "removed" ? "- " : "  "}
@@ -725,7 +725,7 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
                     </For>
                   </div>
                   <div class="flex-1">
-                    <div class="px-3 py-1.5 bg-emerald-500/10 border-b border-border/50 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                    <div class="px-3 py-1.5 bg-success/10 border-b border-base-300/50 text-[11px] font-medium text-success dark:text-success">
                       + New
                     </div>
                     <For each={diffLines().filter((l) => l.type !== "removed")}>
@@ -733,7 +733,7 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
                         <div
                           class={cn(
                             "flex font-mono text-xs",
-                            line.type === "added" && "bg-emerald-500/10",
+                            line.type === "added" && "bg-success/10",
                           )}
                         >
                           <LineNumber num={0} type={line.type} />
@@ -741,7 +741,7 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
                             class={cn(
                               "flex-1 px-2 py-0.5 whitespace-pre",
                               line.type === "added" &&
-                                "text-emerald-600 dark:text-emerald-400",
+                                "text-success dark:text-success",
                             )}
                           >
                             {line.type === "added" ? "+ " : "  "}
@@ -761,8 +761,8 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
                     <div
                       class={cn(
                         "flex",
-                        line.type === "added" && "bg-emerald-500/10",
-                        line.type === "removed" && "bg-red-500/10",
+                        line.type === "added" && "bg-success/10",
+                        line.type === "removed" && "bg-error/10",
                       )}
                     >
                       <LineNumber num={index() + 1} type={line.type} />
@@ -770,9 +770,9 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
                         class={cn(
                           "flex-1 px-2 py-0.5 whitespace-pre",
                           line.type === "added" &&
-                            "text-emerald-600 dark:text-emerald-400",
+                            "text-success dark:text-success",
                           line.type === "removed" &&
-                            "text-red-600 dark:text-red-400",
+                            "text-error dark:text-error",
                         )}
                       >
                         {line.type === "added"
@@ -791,11 +791,11 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
 
           {/* Action Buttons */}
           <Show when={props.onAccept || props.onReject}>
-            <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-border/50 bg-muted/20">
+            <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-base-300/50 bg-base-200/20">
               <button
                 type="button"
                 onClick={props.onReject}
-                class="px-4 py-2 rounded-lg text-sm font-medium border border-red-500/30 text-red-600 hover:bg-red-500/10 transition-colors flex items-center gap-2"
+                class="px-4 py-2 rounded-lg text-sm font-medium border border-error/30 text-error hover:bg-error/10 transition-colors flex items-center gap-2"
               >
                 <FiX size={14} />
                 Reject
@@ -803,7 +803,7 @@ export const FileEditDiff: Component<FileEditDiffProps> = (props) => {
               <button
                 type="button"
                 onClick={props.onAccept}
-                class="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors flex items-center gap-2"
+                class="px-4 py-2 rounded-lg text-sm font-medium bg-success text-success-content hover:bg-success transition-colors flex items-center gap-2"
               >
                 <FiCheck size={14} />
                 Accept
@@ -843,24 +843,24 @@ export const TerminalOutput: Component<TerminalOutputProps> = (props) => {
   const statusConfig = createMemo(() => {
     if (props.exitCode === 0) {
       return {
-        bg: "bg-emerald-500/10",
-        border: "border-emerald-500/30",
-        text: "text-emerald-600 dark:text-emerald-400",
+        bg: "bg-success/10",
+        border: "border-success/30",
+        text: "text-success dark:text-success",
         label: "Success",
       };
     }
     if (props.exitCode !== undefined) {
       return {
-        bg: "bg-red-500/10",
-        border: "border-red-500/30",
-        text: "text-red-600 dark:text-red-400",
+        bg: "bg-error/10",
+        border: "border-error/30",
+        text: "text-error dark:text-error",
         label: "Failed",
       };
     }
     return {
-      bg: "bg-muted",
-      border: "border-border",
-      text: "text-muted-foreground",
+      bg: "bg-base-200",
+      border: "border-base-300",
+      text: "text-base-content/50",
       label: "Output",
     };
   });
@@ -877,12 +877,12 @@ export const TerminalOutput: Component<TerminalOutputProps> = (props) => {
       {/* Header */}
       <div
         class={cn(
-          "flex items-center gap-3 px-4 py-2.5 border-b border-border/50",
+          "flex items-center gap-3 px-4 py-2.5 border-b border-base-300/50",
           statusConfig().bg,
         )}
       >
         <div class="flex items-center gap-2">
-          <FiTerminal size={16} class="text-muted-foreground" />
+          <FiTerminal size={16} class="text-base-content/50" />
           <span class="font-semibold text-sm truncate">
             {props.command || "Terminal"}
           </span>
@@ -908,8 +908,8 @@ export const TerminalOutput: Component<TerminalOutputProps> = (props) => {
         {/* Streaming Indicator */}
         <Show when={props.isStreaming}>
           <div class="flex items-center gap-1">
-            <div class="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
-            <span class="text-[10px] text-muted-foreground">streaming</span>
+            <div class="w-2 h-2 rounded-full bg-info animate-ping" />
+            <span class="text-[10px] text-base-content/50">streaming</span>
           </div>
         </Show>
 
@@ -917,7 +917,7 @@ export const TerminalOutput: Component<TerminalOutputProps> = (props) => {
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded())}
-          class="p-1.5 hover:bg-muted rounded transition-colors"
+          class="p-1.5 hover:bg-base-200 rounded transition-colors"
         >
           <Show when={isExpanded()} fallback={<FiChevronRight size={14} />}>
             <FiChevronDown size={14} />
@@ -926,18 +926,18 @@ export const TerminalOutput: Component<TerminalOutputProps> = (props) => {
         <button
           type="button"
           onClick={handleCopy}
-          class="p-1.5 hover:bg-muted rounded transition-colors"
+          class="p-1.5 hover:bg-base-200 rounded transition-colors"
           title="Copy output"
         >
           <Show when={copied()} fallback={<FiCopy size={14} />}>
-            <FiCheck size={14} class="text-emerald-500" />
+            <FiCheck size={14} class="text-success" />
           </Show>
         </button>
       </div>
 
       {/* Output */}
       <Show when={isExpanded()}>
-        <pre class="p-4 text-xs font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-80">
+        <pre class="p-4 text-xs font-mono text-base-content/50 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-80">
           {normalizeOutput()}
           <Show when={props.isStreaming}>
             <span class="inline-block ml-1 animate-pulse">▊</span>
@@ -971,13 +971,13 @@ export const EmptyState: Component<EmptyStateProps> = (props) => {
       )}
     >
       <Show when={props.icon}>
-        <div class="text-muted-foreground/50">{props.icon!({ size: 48 })}</div>
+        <div class="text-base-content/50/50">{props.icon!({ size: 48 })}</div>
       </Show>
       <Show when={props.title}>
         <h3 class="text-lg font-semibold">{props.title}</h3>
       </Show>
       <Show when={props.description}>
-        <p class="text-sm text-muted-foreground max-w-sm">
+        <p class="text-sm text-base-content/50 max-w-sm">
           {props.description}
         </p>
       </Show>

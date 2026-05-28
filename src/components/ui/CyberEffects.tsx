@@ -189,7 +189,7 @@ export function ModernToggle(props: {
 }
 
 export function SubtleBackground() {
-  return <div class="fixed inset-0 pointer-events-none z-0 bg-background" />;
+  return <div class="fixed inset-0 pointer-events-none z-0 bg-base-100" />;
 }
 
 export function ModernBackground() {

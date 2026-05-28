@@ -62,7 +62,7 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
         onClick={() => setIsOpen(!isOpen())}
         class={cn(
           "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors",
-          "hover:bg-muted text-sm font-medium",
+          "hover:bg-base-200 text-sm font-medium",
         )}
       >
         <div class="bg-base-100 group-hover:border-base-content/20 border-base-content/10 grid shrink-0 grid-cols-2 gap-0.5 rounded-md border p-1 transition-colors">
@@ -85,12 +85,12 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
       <Show when={isOpen()}>
         <div
           class={cn(
-            "absolute right-0 mt-2 w-56 bg-base-100 rounded-xl border border-border shadow-xl overflow-hidden z-50",
+            "absolute right-0 mt-2 w-56 bg-base-100 rounded-xl border border-base-300 shadow-xl overflow-hidden z-50",
             "animate-fade-in origin-top-right",
           )}
         >
           <div class="p-2">
-            <div class="text-xs font-semibold text-muted-foreground px-3 py-2 uppercase tracking-wide">
+            <div class="text-xs font-semibold text-base-content/50 px-3 py-2 uppercase tracking-wide">
               Choose Theme
             </div>
             <div class="space-y-1">
@@ -104,7 +104,7 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
                       "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
                       currentTheme() === theme.id
                         ? "bg-primary/10 text-primary"
-                        : "hover:bg-muted",
+                        : "hover:bg-base-200",
                     )}
                   >
                     <div class="w-5 h-5 rounded-full flex items-center justify-center">

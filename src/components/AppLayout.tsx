@@ -81,7 +81,7 @@ export const AppLayout: Component = () => {
   };
 
   return (
-    <div class="flex h-full bg-background">
+    <div class="flex h-full bg-base-100">
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog
         open={shortcutsDialogOpen()}
@@ -90,8 +90,8 @@ export const AppLayout: Component = () => {
 
       {/* History loading overlay */}
       <Show when={sessionStore.state.isHistoryLoading}>
-        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60">
-          <div class="bg-background border border-black/10 px-6 py-4">
+        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-base-content/60">
+          <div class="bg-base-100 border border-base-content/10 px-6 py-4">
             <SpinnerWithLabel text={i18nStore.t("common.loadingHistory")} size="lg" variant="primary" />
           </div>
         </div>
@@ -101,7 +101,7 @@ export const AppLayout: Component = () => {
       <Show when={navigationStore.state.sidebarOpen && isMobile()}>
         <button
           type="button"
-          class="fixed inset-0 z-40 bg-black/50 md:hidden"
+          class="fixed inset-0 z-40 bg-base-content/50 md:hidden"
           onClick={() => navigationStore.setSidebarOpen(false)}
           aria-label="Close sidebar"
         />

@@ -92,10 +92,10 @@ const SyntaxHighlightedCode: Component<{ code: string; maxLines?: number }> = (p
       const formatted = JSON.stringify(parsed, null, 2);
       return formatted
         .replace(/"([^"]+)":/g, '<span class="text-violet-600 font-semibold">"$1"</span>:')
-        .replace(/: "([^"]+)"/g, ': <span class="text-blue-600">"$1"</span>')
-        .replace(/: (\d+)/g, ': <span class="text-orange-600">$1</span>')
-        .replace(/: (true|false)/g, ': <span class="text-amber-600">$1</span>')
-        .replace(/: (null)/g, ': <span class="text-zinc-400">$1</span>');
+        .replace(/: "([^"]+)"/g, ': <span class="text-info">"$1"</span>')
+        .replace(/: (\d+)/g, ': <span class="text-warning">$1</span>')
+        .replace(/: (true|false)/g, ': <span class="text-warning">$1</span>')
+        .replace(/: (null)/g, ': <span class="text-base-content/40">$1</span>');
     } catch {
       return code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }

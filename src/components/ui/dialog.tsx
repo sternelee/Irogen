@@ -94,7 +94,7 @@ export function Dialog(props: DialogProps) {
         >
           {/* Enhanced Overlay - blur + dim */}
           <div
-            class="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
+            class="absolute inset-0 bg-base-content/60 backdrop-blur-sm animate-fade-in"
             onClick={props.onClose}
             aria-hidden="true"
           />

@@ -74,7 +74,7 @@ export const TabList: Component<TabListProps> = (props) => {
   return (
     <div
       class={cn(
-        "flex items-center gap-1 p-1 bg-muted/50 rounded-xl",
+        "flex items-center gap-1 p-1 bg-base-200/50 rounded-xl",
         "overflow-x-auto",
         props.class
       )}
@@ -93,8 +93,8 @@ export const TabList: Component<TabListProps> = (props) => {
                 "text-sm font-medium transition-all duration-200",
                 "whitespace-nowrap",
                 isActive()
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
+                  ? "bg-base-100 text-base-content shadow-sm"
+                  : "text-base-content/50 hover:text-base-content",
                 tab.disabled && "opacity-50 cursor-not-allowed"
               )}
             >
@@ -158,7 +158,7 @@ export const PillTabs: Component<PillTabsProps> = (props) => {
                 "text-sm font-medium transition-all duration-200",
                 isActive()
                   ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  : "bg-base-200 text-base-content/50 hover:bg-base-200/80"
               )}
             >
               {tab.label}
@@ -168,7 +168,7 @@ export const PillTabs: Component<PillTabsProps> = (props) => {
                     "px-1.5 py-0.5 text-xs rounded-full",
                     isActive()
                       ? "bg-primary-foreground/20"
-                      : "bg-muted-foreground/20"
+                      : "bg-base-200-foreground/20"
                   )}
                 >
                   {tab.count}

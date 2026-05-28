@@ -276,7 +276,7 @@ const SystemMessageContent: Component<{
           </For>
           <button
             type="button"
-            class="border border-black/10 px-3 py-1.5 text-sm w-full hover:bg-base-200"
+            class="border border-base-content/10 px-3 py-1.5 text-sm w-full hover:bg-base-200"
             onClick={() => props.onToggleFileBrowser?.()}
           >
             Open File Panel
@@ -377,14 +377,14 @@ const SystemMessageContent: Component<{
           <div class="flex flex-wrap gap-2">
             <button
               type="button"
-              class="border border-black/10 px-2 py-1 text-xs hover:bg-base-200"
+              class="border border-base-content/10 px-2 py-1 text-xs hover:bg-base-200"
               onClick={() => copyText(card.terminalId)}
             >
               Copy ID
             </button>
             <button
               type="button"
-              class="border border-black/10 px-2 py-1 text-xs hover:bg-base-200"
+              class="border border-base-content/10 px-2 py-1 text-xs hover:bg-base-200"
               onClick={() => props.onQuote?.(`terminal:${card.terminalId}`)}
             >
               Insert
@@ -392,7 +392,7 @@ const SystemMessageContent: Component<{
             <Show when={props.onTerminalAction}>
               <button
                 type="button"
-                class="border border-black/10 px-2 py-1 text-xs hover:bg-base-200"
+                class="border border-base-content/10 px-2 py-1 text-xs hover:bg-base-200"
                 onClick={() =>
                   props.onTerminalAction?.(card.terminalId, "attach")
                 }
@@ -401,7 +401,7 @@ const SystemMessageContent: Component<{
               </button>
               <button
                 type="button"
-                class="border border-black/10 px-2 py-1 text-xs hover:bg-base-200"
+                class="border border-base-content/10 px-2 py-1 text-xs hover:bg-base-200"
                 onClick={() =>
                   props.onTerminalAction?.(card.terminalId, "status")
                 }
@@ -475,7 +475,7 @@ const SystemMessageContent: Component<{
         <Show
           when={isTerminalOutput()}
           fallback={
-            <div class="inline-block bg-base-200 border border-black/10 px-4 py-3">
+            <div class="inline-block bg-base-200 border border-base-content/10 px-4 py-3">
               <div class="text-sm leading-relaxed text-base-content/70 whitespace-pre-wrap break-words">
                 <SolidMarkdown
                   children={normalizeEscapedLineBreaks(props.content)}
@@ -643,7 +643,7 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
         <button
           type="button"
           onClick={quoteMessage}
-          class="p-2 bg-background border border-black/10 hover:bg-base-200"
+          class="p-2 bg-base-100 border border-base-content/10 hover:bg-base-200"
           title="Quote"
           aria-label="Quote"
         >
@@ -652,7 +652,7 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
         <button
           type="button"
           onClick={copyMessage}
-          class="p-2 bg-background border border-black/10 hover:bg-base-200"
+          class="p-2 bg-base-100 border border-base-content/10 hover:bg-base-200"
           title="Copy"
           aria-label="Copy"
         >

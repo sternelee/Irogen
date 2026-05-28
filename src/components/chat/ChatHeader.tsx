@@ -51,22 +51,22 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
     if (!host) return null;
     switch (host.status) {
       case "online":
-        return "bg-green-500";
+        return "bg-success";
       case "reconnecting":
-        return "bg-yellow-500";
+        return "bg-warning";
       case "offline":
-        return "bg-red-500";
+        return "bg-error";
       default:
-        return "bg-zinc-400";
+        return "bg-base-content/40";
     }
   });
 
   const statusColor = createMemo(() => {
     const sess = session();
-    if (!sess?.active) return "bg-zinc-400";
+    if (!sess?.active) return "bg-base-content/40";
     const routerState = sessionEventRouter.getStreamingState(props.sessionId);
-    if (routerState?.isStreaming) return "bg-blue-500";
-    return "bg-green-500";
+    if (routerState?.isStreaming) return "bg-info";
+    return "bg-success";
   });
 
   const statusText = createMemo(() => {
@@ -84,13 +84,13 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
   });
 
   return (
-    <header class="z-20 flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-black/10 px-4 py-3 sm:min-h-14">
+    <header class="z-20 flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-base-content/10 px-4 py-3 sm:min-h-14">
       {/* Left: Sidebar toggle (mobile) + Session info */}
       <div class="flex items-center gap-3 min-w-0 flex-1">
         {/* Sidebar toggle button */}
         <button
           type="button"
-          class="h-11 w-11 border border-black/10 flex items-center justify-center text-zinc-500 hover:text-foreground hover:border-zinc-400 shrink-0"
+          class="h-11 w-11 border border-base-content/10 flex items-center justify-center text-base-content/50 hover:text-base-content hover:border-base-content/40 shrink-0"
           onClick={props.onToggleSidebar}
           aria-label="Toggle sidebar"
         >
@@ -101,14 +101,14 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
         <Show when={props.agentType}>
           <div class="flex items-center gap-3 min-w-0">
             {/* Agent icon */}
-            <div class="hidden sm:flex h-9 w-9 items-center justify-center border border-black/10 shrink-0">
-              <FiTerminal size={17} class="text-zinc-600" />
+            <div class="hidden sm:flex h-9 w-9 items-center justify-center border border-base-content/10 shrink-0">
+              <FiTerminal size={17} class="text-base-content/60" />
             </div>
 
             {/* Session details */}
             <div class="min-w-0">
               <div class="flex items-center gap-2">
-                <span class="font-semibold text-sm truncate max-w-[100px] sm:max-w-[180px] text-foreground">
+                <span class="font-semibold text-sm truncate max-w-[100px] sm:max-w-[180px] text-base-content">
                   {props.agentType?.charAt(0).toUpperCase() +
                     (props.agentType?.slice(1) || "")}
                 </span>
@@ -117,10 +117,10 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
                   class={cn(
                     "inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider shrink-0",
                     statusText() === "Online" &&
-                      "bg-green-500/10 text-green-600",
+                      "bg-success/10 text-success",
                     statusText() === "Streaming" &&
-                      "bg-blue-500/10 text-blue-600",
-                    statusText() === "Offline" && "bg-zinc-200 text-zinc-600",
+                      "bg-info/10 text-info",
+                    statusText() === "Offline" && "bg-base-200 text-base-content/60",
                   )}
                 >
                   <span class={cn("h-1.5 w-1.5", statusColor())} />
@@ -128,7 +128,7 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
                 </span>
               </div>
               <Show when={projectName()}>
-                <span class="text-[11px] text-zinc-500 truncate block max-w-[140px] sm:max-w-[220px] font-mono">
+                <span class="text-[11px] text-base-content/50 truncate block max-w-[140px] sm:max-w-[220px] font-mono">
                   {projectName()}
                 </span>
               </Show>
@@ -137,10 +137,10 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
                   <span
                     class={cn(
                       "h-1.5 w-1.5 shrink-0",
-                      hostStatusDot() ?? "bg-zinc-400",
+                      hostStatusDot() ?? "bg-base-content/40",
                     )}
                   />
-                  <span class="text-[11px] text-zinc-500 font-medium truncate max-w-[120px] sm:max-w-[180px]">
+                  <span class="text-[11px] text-base-content/50 font-medium truncate max-w-[120px] sm:max-w-[180px]">
                     {hostName()}
                   </span>
                 </span>
@@ -154,7 +154,7 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
       <div class="flex items-center gap-1.5">
         {/* Mobile agent indicator */}
         <Show when={!props.agentType}>
-          <span class="text-sm font-medium text-zinc-500 mr-2">Chat</span>
+          <span class="text-sm font-medium text-base-content/50 mr-2">Chat</span>
         </Show>
 
         {/* Permission mode switcher */}
@@ -173,8 +173,8 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
             class={cn(
               "h-11 w-11 flex items-center justify-center border",
               props.rightPanelView === "file"
-                ? "text-zinc-900 border-zinc-900 dark:text-white dark:border-white"
-                : "text-zinc-500 border-black/10 hover:border-zinc-400",
+                ? "text-base-content border-base-content dark:text-base-content dark:border-white"
+                : "text-base-content/50 border-base-content/10 hover:border-base-content/40",
             )}
             onClick={props.onToggleFileBrowser}
             title="Files"
@@ -190,8 +190,8 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
             class={cn(
               "h-11 w-11 flex items-center justify-center border",
               props.rightPanelView === "git"
-                ? "text-zinc-900 border-zinc-900 dark:text-white dark:border-white"
-                : "text-zinc-500 border-black/10 hover:border-zinc-400",
+                ? "text-base-content border-base-content dark:text-base-content dark:border-white"
+                : "text-base-content/50 border-base-content/10 hover:border-base-content/40",
             )}
             onClick={props.onToggleGitPanel}
             title="Git"

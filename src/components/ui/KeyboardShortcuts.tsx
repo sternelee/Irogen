@@ -140,7 +140,7 @@ export const KeyboardShortcutsDialog: Component<KeyboardShortcutsDialogProps> = 
       <Portal>
         {/* Backdrop */}
         <div
-          class="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm"
+          class="fixed inset-0 z-[100] bg-base-content/50 backdrop-blur-sm"
           onClick={props.onClose}
         />
 

@@ -339,7 +339,7 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
 
         <Show when={historySessions().length > 0}>
           <div class="space-y-2">
-            <Label class="text-xs text-muted-foreground">
+            <Label class="text-xs text-base-content/50">
               Available Sessions ({historySessions().length})
             </Label>
             <div class="max-h-64 overflow-y-auto space-y-1">
@@ -360,19 +360,19 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
                           fallback={
                             <FiChevronRight
                               size={14}
-                              class="text-muted-foreground shrink-0"
+                              class="text-base-content/50 shrink-0"
                             />
                           }
                         >
                           <FiChevronDown
                             size={14}
-                            class="text-muted-foreground shrink-0"
+                            class="text-base-content/50 shrink-0"
                           />
                         </Show>
                       </Show>
                       <FiClock
                         size={12}
-                        class="text-muted-foreground shrink-0"
+                        class="text-base-content/50 shrink-0"
                       />
                       <span class="text-xs font-semibold text-base-content/70">
                         {node.label}
@@ -396,13 +396,13 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
                               <div class="flex items-start gap-2">
                                 <FiFolder
                                   size={12}
-                                  class="mt-0.5 text-muted-foreground shrink-0"
+                                  class="mt-0.5 text-base-content/50 shrink-0"
                                 />
                                 <div class="flex-1 min-w-0">
                                   <div class="font-medium text-xs truncate">
                                     {child.label}
                                   </div>
-                                  <div class="text-xs text-muted-foreground/60 font-mono truncate mt-0.5">
+                                  <div class="text-xs text-base-content/50/60 font-mono truncate mt-0.5">
                                     {child.path}
                                   </div>
                                 </div>
@@ -426,7 +426,7 @@ export const HistorySelectionModal: Component<HistorySelectionModalProps> = (
             projectPath().trim()
           }
         >
-          <div class="text-center py-8 text-muted-foreground">
+          <div class="text-center py-8 text-base-content/50">
             <FiClock class="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p class="text-sm">No history sessions found for this project</p>
           </div>

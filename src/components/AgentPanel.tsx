@@ -61,13 +61,13 @@ const AdditionalProjects: Component<AdditionalProjectsProps> = (props) => {
   };
 
   return (
-    <div class="flex items-center gap-2 px-3 py-2 border-b border-black/10 dark:border-white/10 bg-base-200/50">
-      <span class="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+    <div class="flex items-center gap-2 px-3 py-2 border-b border-base-content/10 dark:border-base-content/10 bg-base-200/50">
+      <span class="text-[10px] font-semibold text-base-content/50 dark:text-base-content/40 uppercase tracking-wider">
         Projects
       </span>
 
       {/* Main project tag */}
-      <span class="inline-flex items-center gap-1 text-xs font-medium text-zinc-700 dark:text-zinc-300">
+      <span class="inline-flex items-center gap-1 text-xs font-medium text-base-content/70 dark:text-base-content/30">
         <FiFolder size={10} />
         {props.projectPath.split("/").pop() || props.projectPath}
       </span>
@@ -75,12 +75,12 @@ const AdditionalProjects: Component<AdditionalProjectsProps> = (props) => {
       {/* Additional project tags */}
       <For each={props.additionalProjectPaths}>
         {(path) => (
-          <span class="inline-flex items-center gap-1 text-xs text-zinc-600 dark:text-zinc-400">
-            <span class="w-3 h-px bg-zinc-300 dark:bg-zinc-600" />
+          <span class="inline-flex items-center gap-1 text-xs text-base-content/60 dark:text-base-content/40">
+            <span class="w-3 h-px bg-base-content/20 dark:bg-base-content/60" />
             <span class="truncate max-w-[100px]">{path.split("/").pop() || path}</span>
             <button
               type="button"
-              class="text-zinc-400 hover:text-red-500"
+              class="text-base-content/40 hover:text-error"
               onClick={() => props.onRemoveProject(path)}
               aria-label="Remove project"
             >
@@ -96,7 +96,7 @@ const AdditionalProjects: Component<AdditionalProjectsProps> = (props) => {
         fallback={
           <button
             type="button"
-            class="text-xs text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+            class="text-xs text-base-content/50 hover:text-base-content/70 dark:text-base-content/40 dark:hover:text-base-content/20"
             onClick={() => setIsAdding(true)}
           >
             + Add
@@ -106,7 +106,7 @@ const AdditionalProjects: Component<AdditionalProjectsProps> = (props) => {
         <div class="flex items-center gap-1">
           <input
             type="text"
-            class="text-xs bg-transparent border border-black/20 dark:border-white/20 px-2 py-0.5 w-32 focus:outline-none focus:border-zinc-400"
+            class="text-xs bg-transparent border border-base-content/20 dark:border-base-content/20 px-2 py-0.5 w-32 focus:outline-none focus:border-base-content/40"
             placeholder="/path/to/project"
             value={newPath()}
             onInput={(e) => setNewPath(e.currentTarget.value)}
@@ -115,14 +115,14 @@ const AdditionalProjects: Component<AdditionalProjectsProps> = (props) => {
           />
           <button
             type="button"
-            class="text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white"
+            class="text-xs font-medium text-base-content/70 dark:text-base-content/30 hover:text-black dark:hover:text-base-content"
             onClick={handleAdd}
           >
             Add
           </button>
           <button
             type="button"
-            class="text-xs text-zinc-400 hover:text-zinc-600"
+            class="text-xs text-base-content/40 hover:text-base-content/60"
             onClick={() => {
               setIsAdding(false);
               setNewPath("");
@@ -150,7 +150,7 @@ interface TabBarProps {
 
 const TabBar: Component<TabBarProps> = (props) => {
   return (
-    <div class="flex items-center border-b border-black/10 dark:border-white/10 bg-base-100">
+    <div class="flex items-center border-b border-base-content/10 dark:border-base-content/10 bg-base-100">
       <For each={props.tabs}>
         {(tab) => {
           const isActive = () => props.activeTabId === tab.sessionId;
@@ -158,10 +158,10 @@ const TabBar: Component<TabBarProps> = (props) => {
             <button
               type="button"
               class={cn(
-                "flex items-center gap-2 px-3 py-2 text-xs font-medium border-r border-black/10 dark:border-white/10",
+                "flex items-center gap-2 px-3 py-2 text-xs font-medium border-r border-base-content/10 dark:border-base-content/10",
                 isActive()
-                  ? "bg-background text-foreground border-b-2 border-b-background"
-                  : "text-zinc-500 hover:text-foreground hover:bg-base-200",
+                  ? "bg-base-100 text-base-content border-b-2 border-b-background"
+                  : "text-base-content/50 hover:text-base-content hover:bg-base-200",
               )}
               onClick={() => props.onSelectTab(tab.sessionId)}
             >
@@ -169,15 +169,15 @@ const TabBar: Component<TabBarProps> = (props) => {
                 class={cn(
                   "w-1.5 h-1.5 rounded-full",
                   tab.session.active
-                    ? "bg-green-500"
-                    : "bg-zinc-300 dark:bg-zinc-600",
+                    ? "bg-success"
+                    : "bg-base-content/20 dark:bg-base-content/60",
                 )}
               />
               <span class="capitalize">{tab.session.agentType}</span>
               <Show when={!isActive()}>
                 <button
                   type="button"
-                  class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
+                  class="text-base-content/40 hover:text-base-content/70 dark:hover:text-base-content/30"
                   onClick={(e) => {
                     e.stopPropagation();
                     props.onCloseTab(tab.sessionId);
@@ -193,7 +193,7 @@ const TabBar: Component<TabBarProps> = (props) => {
       </For>
       <button
         type="button"
-        class="px-3 py-2 text-zinc-400 hover:text-foreground"
+        class="px-3 py-2 text-base-content/40 hover:text-base-content"
         onClick={props.onNewTab}
         title="New thread"
         aria-label="New thread"
@@ -249,7 +249,7 @@ export const AgentPanel: Component<AgentPanelProps> = (props) => {
   };
 
   return (
-    <div class={cn("flex flex-col h-full bg-background", props.class)}>
+    <div class={cn("flex flex-col h-full bg-base-100", props.class)}>
       <Show
         when={tabs().length > 0}
         fallback={<EmptyState onNewTab={handleNewTab} />}
@@ -298,16 +298,16 @@ export const AgentPanel: Component<AgentPanelProps> = (props) => {
 const EmptyState: Component<{ onNewTab: () => void }> = (props) => {
   return (
     <div class="flex flex-col items-center justify-center h-full text-center p-6">
-      <FiMessageSquare size={32} class="text-zinc-300 dark:text-zinc-600 mb-4" />
-      <p class="text-sm font-medium text-foreground mb-1">
+      <FiMessageSquare size={32} class="text-base-content/30 dark:text-base-content/60 mb-4" />
+      <p class="text-sm font-medium text-base-content mb-1">
         No active threads
       </p>
-      <p class="text-xs text-muted-foreground mb-4 max-w-xs">
+      <p class="text-xs text-base-content/50 mb-4 max-w-xs">
         Start a new session to run agents in parallel
       </p>
       <button
         type="button"
-        class="text-xs font-medium text-foreground hover:text-zinc-700 dark:hover:text-zinc-300 border border-black/10 dark:border-white/20 px-3 py-1.5"
+        class="text-xs font-medium text-base-content hover:text-base-content/70 dark:hover:text-base-content/30 border border-base-content/10 dark:border-base-content/20 px-3 py-1.5"
         onClick={props.onNewTab}
       >
         New Thread

@@ -73,7 +73,7 @@ export const DateSeparator: Component<{ date: string }> = (props) => {
   return (
     <div class="flex items-center gap-4 py-4">
       <div class="flex-1 h-px bg-border" />
-      <span class="text-xs font-medium text-muted-foreground px-2">
+      <span class="text-xs font-medium text-base-content/50 px-2">
         {props.date}
       </span>
       <div class="flex-1 h-px bg-border" />
@@ -113,7 +113,7 @@ export const MessageList: Component<MessageListProps> = (props) => {
           <div class="text-center max-w-sm">
             <div class="text-6xl mb-4">💬</div>
             <h3 class="text-lg font-semibold mb-2">No messages yet</h3>
-            <p class="text-sm text-muted-foreground">
+            <p class="text-sm text-base-content/50">
               Start a conversation by sending a message below
             </p>
           </div>
@@ -156,7 +156,7 @@ export const ScrollToBottomButton: Component<ScrollToBottomButtonProps> = (props
         class={cn(
           "fixed bottom-24 right-6 z-10",
           "flex items-center gap-2 px-3 py-2",
-          "bg-base-100 border border-border rounded-full",
+          "bg-base-100 border border-base-300 rounded-full",
           "shadow-lg hover:shadow-xl",
           "transition-all duration-200 hover:scale-105",
           "text-sm font-medium",

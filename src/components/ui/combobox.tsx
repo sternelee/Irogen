@@ -111,7 +111,7 @@ const LegacyCombobox: Component<LegacyComboboxProps> = (props) => {
             }
           }}
           onBlur={() => setIsFocused(false)}
-          class="flex size-full rounded-md bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 ml-3"
+          class="flex size-full rounded-md bg-transparent py-2 text-sm outline-none placeholder:text-base-content/50 disabled:cursor-not-allowed disabled:opacity-50 ml-3"
           {...rest}
         />
         <ComboboxPrimitive.Trigger class="size-3 opacity-50 inline-flex items-center justify-center">
@@ -133,7 +133,7 @@ const LegacyCombobox: Component<LegacyComboboxProps> = (props) => {
         </ComboboxPrimitive.Trigger>
       </ComboboxPrimitive.Control>
       <ComboboxPrimitive.Portal>
-        <ComboboxPrimitive.Content class="relative z-[1000] min-w-32 max-h-[min(40vh,18rem)] overflow-y-auto overflow-x-hidden rounded-md border border-border bg-base-100 text-popover-foreground shadow-lg animate-in fade-in-80">
+        <ComboboxPrimitive.Content class="relative z-[1000] min-w-32 max-h-[min(40vh,18rem)] overflow-y-auto overflow-x-hidden rounded-md border border-base-300 bg-base-100 text-base-content shadow-lg animate-in fade-in-80">
           <ComboboxPrimitive.Listbox class="m-0 p-1" />
         </ComboboxPrimitive.Content>
       </ComboboxPrimitive.Portal>
@@ -211,7 +211,7 @@ const ComboboxSection = <T extends ValidComponent = "li">(
   return (
     <ComboboxPrimitive.Section
       class={cn(
-        "overflow-hidden p-1 px-2 py-1.5 text-xs font-medium text-muted-foreground ",
+        "overflow-hidden p-1 px-2 py-1.5 text-xs font-medium text-base-content/50 ",
         local.class,
       )}
       {...others}
@@ -250,7 +250,7 @@ const ComboboxInput = <T extends ValidComponent = "input">(
   return (
     <ComboboxPrimitive.Input
       class={cn(
-        "flex size-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
+        "flex size-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-base-content/50 disabled:cursor-not-allowed disabled:opacity-50",
         local.class,
       )}
       {...others}
@@ -313,7 +313,7 @@ const ComboboxContent = <T extends ValidComponent = "div">(
     <ComboboxPrimitive.Portal>
       <ComboboxPrimitive.Content
         class={cn(
-          "relative z-[1000] min-w-32 max-h-[min(40vh,18rem)] overflow-y-auto overflow-x-hidden rounded-md border border-border bg-base-100 text-popover-foreground shadow-lg animate-in fade-in-80",
+          "relative z-[1000] min-w-32 max-h-[min(40vh,18rem)] overflow-y-auto overflow-x-hidden rounded-md border border-base-300 bg-base-100 text-base-content shadow-lg animate-in fade-in-80",
           local.class,
         )}
         {...others}

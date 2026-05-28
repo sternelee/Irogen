@@ -64,7 +64,7 @@ export const ShikiCodeBlock: Component<ShikiCodeBlockProps> = (props) => {
       fallback={
         <code
           class={cn(
-            "px-1.5 py-0.5 rounded-md bg-muted/80 text-[13px] font-mono",
+            "px-1.5 py-0.5 rounded-md bg-base-200/80 text-[13px] font-mono",
             props.class
           )}
           innerHTML={highlighted() || escapeHtml(props.code)}
@@ -73,7 +73,7 @@ export const ShikiCodeBlock: Component<ShikiCodeBlockProps> = (props) => {
     >
       <div
         class={cn(
-          "relative min-w-0 w-full rounded-xl overflow-hidden border border-border/50",
+          "relative min-w-0 w-full rounded-xl overflow-hidden border border-base-300/50",
           "bg-[#070707]", // Pierre dark background
           props.class
         )}

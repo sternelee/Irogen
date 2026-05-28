@@ -39,7 +39,7 @@ export interface CircularProgressProps {
 // ============================================================================
 
 const indicatorVariantClasses: Record<ProgressVariant, string> = {
-  default: "bg-muted-foreground",
+  default: "bg-base-200-foreground",
   primary: "bg-primary",
   success: "bg-success",
   warning: "bg-warning",
@@ -70,7 +70,7 @@ export const Progress: Component<ProgressProps> = (props) => {
       <Show when={props.showLabel || props.label}>
         <div class="flex justify-between items-center mb-1">
           <Show when={props.label}>
-            <span class="text-xs text-muted-foreground">{props.label}</span>
+            <span class="text-xs text-base-content/50">{props.label}</span>
           </Show>
           <Show when={props.showLabel}>
             <span class="text-xs font-medium">{Math.round(percentage())}%</span>
@@ -79,7 +79,7 @@ export const Progress: Component<ProgressProps> = (props) => {
       </Show>
       <div
         class={cn(
-          "w-full rounded-full overflow-hidden bg-muted",
+          "w-full rounded-full overflow-hidden bg-base-200",
           sizeClasses[size]
         )}
       >

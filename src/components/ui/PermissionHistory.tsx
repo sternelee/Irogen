@@ -129,7 +129,7 @@ const PermissionHistoryItem: Component<PermissionHistoryItemProps> = (props) => 
   return (
     <div
       class={cn(
-        "rounded-xl border border-border/50 bg-base-100/60 p-3 transition-colors hover:bg-base-100",
+        "rounded-xl border border-base-300/50 bg-base-100/60 p-3 transition-colors hover:bg-base-100",
         props.entry.status === "Denied" && "border-error/20",
         props.entry.status === "Approved" && "border-success/20",
       )}
@@ -262,7 +262,7 @@ export const PermissionHistory: Component<PermissionHistoryProps> = (props) => {
   return (
     <div class={cn("flex flex-col h-full", props.class)}>
       {/* Header */}
-      <div class="flex items-center justify-between px-4 py-3 border-b border-border/50 shrink-0">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-base-300/50 shrink-0">
         <div>
           <h3 class="text-sm font-semibold text-base-content">Permission History</h3>
           <p class="text-[11px] text-base-content/50 mt-0.5">
@@ -289,7 +289,7 @@ export const PermissionHistory: Component<PermissionHistoryProps> = (props) => {
 
       {/* Session-allowed tools summary */}
       <Show when={sessionTools().length > 0}>
-        <div class="px-4 py-2.5 border-b border-border/50 bg-info/5 shrink-0">
+        <div class="px-4 py-2.5 border-b border-base-300/50 bg-info/5 shrink-0">
           <div class="flex items-center gap-1.5 text-[11px] text-info font-medium mb-1.5">
             <FiShield size={11} />
             Session Auto-Approved Tools

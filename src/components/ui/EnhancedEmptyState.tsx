@@ -94,21 +94,21 @@ export const EnhancedEmptyState: Component<EnhancedEmptyStateProps> = (
       <h3 class="text-lg font-semibold tracking-tight mb-2">{props.title}</h3>
 
       {/* Description */}
-      <p class="text-sm text-muted-foreground max-w-xs mb-6 leading-relaxed">
+      <p class="text-sm text-base-content/50 max-w-xs mb-6 leading-relaxed">
         {props.description}
       </p>
 
       {/* Tips Section */}
       <Show when={props.tips && props.tips.length > 0}>
         <div class="mb-6 w-full max-w-sm">
-          <div class="rounded-xl bg-muted/30 border border-border/50 p-4 text-left">
-            <p class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">
+          <div class="rounded-xl bg-base-200/30 border border-base-300/50 p-4 text-left">
+            <p class="text-[10px] font-semibold uppercase tracking-widest text-base-content/50/60 mb-2">
               Quick Tips
             </p>
             <ul class="space-y-2">
               <For each={props.tips}>
                 {(tip) => (
-                  <li class="flex items-start gap-2 text-xs text-muted-foreground">
+                  <li class="flex items-start gap-2 text-xs text-base-content/50">
                     <span class="text-primary mt-0.5">•</span>
                     <span>{tip}</span>
                   </li>
@@ -133,7 +133,7 @@ export const EnhancedEmptyState: Component<EnhancedEmptyStateProps> = (
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
                   index() === 0
                     ? "bg-primary text-primary-contrast shadow-lg shadow-primary/20 hover:shadow-xl"
-                    : "bg-muted/50 hover:bg-muted border border-border",
+                    : "bg-base-200/50 hover:bg-base-200 border border-base-300",
                 )}
               >
                 <Show when={action.icon}>

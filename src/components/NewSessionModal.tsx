@@ -405,14 +405,14 @@ export const NewSessionModal: Component = () => {
           >
             <div
               role="tablist"
-              class="flex p-1 border border-black/10 mb-5"
+              class="flex p-1 border border-base-content/10 mb-5"
             >
               <button
                 role="tab"
                 class={`flex-1 flex items-center justify-center gap-2 py-1.5 px-3 text-sm font-medium ${
                   sessionStore.state.newSessionMode === "local"
-                    ? "bg-zinc-900 text-white"
-                    : "text-zinc-500 hover:text-foreground"
+                    ? "bg-primary text-primary-content"
+                    : "text-base-content/50 hover:text-base-content"
                 }`}
                 onClick={() => {
                   sessionStore.setNewSessionMode("local");
@@ -424,8 +424,8 @@ export const NewSessionModal: Component = () => {
                 role="tab"
                 class={`flex-1 flex items-center justify-center gap-2 py-1.5 px-3 text-sm font-medium ${
                   sessionStore.state.newSessionMode === "remote"
-                    ? "bg-zinc-900 text-white"
-                    : "text-zinc-500 hover:text-foreground"
+                    ? "bg-primary text-primary-content"
+                    : "text-base-content/50 hover:text-base-content"
                 }`}
                 onClick={() => {
                   sessionStore.setNewSessionMode("remote");
@@ -671,7 +671,7 @@ export const NewSessionModal: Component = () => {
                   placeholder={t("newSession.projectPath")}
                   class="font-mono text-sm"
                 />
-                <p class="text-xs text-zinc-500">{t("newSession.typeToAutocomplete")}</p>
+                <p class="text-xs text-base-content/50">{t("newSession.typeToAutocomplete")}</p>
               </div>
             </Show>
 
@@ -679,7 +679,7 @@ export const NewSessionModal: Component = () => {
               <div class="space-y-3">
                 <button
                   type="button"
-                  class="flex items-center gap-2 w-full py-2 text-sm text-zinc-500 hover:text-foreground border-t border-black/10 mt-2 pt-3"
+                  class="flex items-center gap-2 w-full py-2 text-sm text-base-content/50 hover:text-base-content border-t border-base-content/10 mt-2 pt-3"
                   onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded())}
                 >
                   <span
@@ -695,14 +695,14 @@ export const NewSessionModal: Component = () => {
                       <Label for="agent-args" class="text-xs">{t("newSession.agentArgs")}</Label>
                       <Textarea
                         id="agent-args"
-                        class="min-h-[80px] text-sm font-mono border border-black/10"
+                        class="min-h-[80px] text-sm font-mono border border-base-content/10"
                         placeholder={agentArgsConfig().placeholder}
                         value={sessionStore.state.newSessionArgs}
                         onInput={(e) => {
                           sessionStore.setNewSessionArgs(e.currentTarget.value);
                         }}
                       />
-                      <p class="text-xs text-zinc-500">
+                      <p class="text-xs text-base-content/50">
                         {agentArgsConfig().hint}
                       </p>
                     </div>
@@ -711,7 +711,7 @@ export const NewSessionModal: Component = () => {
                     <Label for="mcp-servers" class="text-xs">{t("newSession.mcpServers")}</Label>
                     <Textarea
                       id="mcp-servers"
-                      class="min-h-[120px] text-xs font-mono border border-black/10"
+                      class="min-h-[120px] text-xs font-mono border border-base-content/10"
                       placeholder='[{"type":"stdio","name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}]'
                       value={sessionStore.state.newSessionMcpServers}
                       onInput={(e) => {
@@ -720,7 +720,7 @@ export const NewSessionModal: Component = () => {
                         );
                       }}
                     />
-                    <p class="text-xs text-zinc-500">{t("newSession.mcpServersHint")}</p>
+                    <p class="text-xs text-base-content/50">{t("newSession.mcpServersHint")}</p>
                   </div>
                 </Show>
               </div>

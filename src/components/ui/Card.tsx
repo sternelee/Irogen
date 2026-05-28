@@ -40,9 +40,9 @@ export interface CardFooterProps {
 // ============================================================================
 
 const variantClasses = {
-  default: "bg-base-100 border border-border/50",
-  bordered: "bg-base-100 border-2 border-border",
-  elevated: "bg-base-100 shadow-lg shadow-base-content/5 border border-border/30",
+  default: "bg-base-100 border border-base-300/50",
+  bordered: "bg-base-100 border-2 border-base-300",
+  elevated: "bg-base-100 shadow-lg shadow-base-content/5 border border-base-300/30",
   ghost: "bg-transparent border-transparent",
 };
 
@@ -87,7 +87,7 @@ export const CardHeader: Component<CardHeaderProps> = (props) => {
           <h3 class="text-lg font-semibold">{props.title}</h3>
         </Show>
         <Show when={props.description}>
-          <p class="text-sm text-muted-foreground mt-1">{props.description}</p>
+          <p class="text-sm text-base-content/50 mt-1">{props.description}</p>
         </Show>
       </div>
       <Show when={props.action}>
@@ -113,7 +113,7 @@ export const CardFooter: Component<CardFooterProps> = (props) => {
   return (
     <div
       class={cn(
-        "flex items-center justify-end gap-2 mt-4 pt-4 border-t border-border",
+        "flex items-center justify-end gap-2 mt-4 pt-4 border-t border-base-300",
         props.class,
       )}
     >
@@ -148,7 +148,7 @@ export interface CardDescriptionProps {
 
 export const CardDescription: Component<CardDescriptionProps> = (props) => {
   return (
-    <p class={cn("text-sm text-muted-foreground", props.class)}>
+    <p class={cn("text-sm text-base-content/50", props.class)}>
       {props.children}
     </p>
   );

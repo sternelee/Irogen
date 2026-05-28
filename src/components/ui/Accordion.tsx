@@ -58,7 +58,7 @@ export const Accordion: Component<AccordionProps> = (props) => {
         const isOpen = () => openItems().has(item.id);
 
         return (
-          <div class="rounded-xl border border-border overflow-hidden">
+          <div class="rounded-xl border border-base-300 overflow-hidden">
             {/* Header */}
             <button
               type="button"
@@ -66,7 +66,7 @@ export const Accordion: Component<AccordionProps> = (props) => {
               disabled={item.disabled}
               class={cn(
                 "w-full flex items-center justify-between px-4 py-3",
-                "bg-muted/30 hover:bg-muted/50 transition-colors",
+                "bg-base-200/30 hover:bg-base-200/50 transition-colors",
                 "text-left text-sm font-medium",
                 item.disabled && "opacity-50 cursor-not-allowed"
               )}
@@ -75,7 +75,7 @@ export const Accordion: Component<AccordionProps> = (props) => {
               <FiChevronDown
                 size={16}
                 class={cn(
-                  "text-muted-foreground transition-transform duration-200",
+                  "text-base-content/50 transition-transform duration-200",
                   isOpen() && "rotate-180"
                 )}
               />
@@ -83,7 +83,7 @@ export const Accordion: Component<AccordionProps> = (props) => {
 
             {/* Content */}
             <Show when={isOpen()}>
-              <div class="px-4 py-3 border-t border-border bg-background/50 animate-fade-in">
+              <div class="px-4 py-3 border-t border-base-300 bg-base-100/50 animate-fade-in">
                 {item.content}
               </div>
             </Show>
@@ -121,14 +121,14 @@ export interface CollapsibleProps {
 
 export const Collapsible: Component<CollapsibleProps> = (props) => {
   return (
-    <div class={cn("rounded-xl border border-border overflow-hidden", props.class)}>
+    <div class={cn("rounded-xl border border-base-300 overflow-hidden", props.class)}>
       {/* Header */}
       <button
         type="button"
         onClick={() => props.onOpenChange(!props.open)}
         class={cn(
           "w-full flex items-center justify-between px-4 py-3",
-          "bg-muted/30 hover:bg-muted/50 transition-colors",
+          "bg-base-200/30 hover:bg-base-200/50 transition-colors",
           "text-left"
         )}
       >
@@ -136,7 +136,7 @@ export const Collapsible: Component<CollapsibleProps> = (props) => {
         <FiChevronDown
           size={16}
           class={cn(
-            "text-muted-foreground transition-transform duration-200",
+            "text-base-content/50 transition-transform duration-200",
             props.open && "rotate-180"
           )}
         />
@@ -144,7 +144,7 @@ export const Collapsible: Component<CollapsibleProps> = (props) => {
 
       {/* Content */}
       <Show when={props.open}>
-        <div class="px-4 py-3 border-t border-border bg-background/50 animate-fade-in">
+        <div class="px-4 py-3 border-t border-base-300 bg-base-100/50 animate-fade-in">
           {props.children}
         </div>
       </Show>

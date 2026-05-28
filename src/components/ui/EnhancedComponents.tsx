@@ -31,9 +31,9 @@ export function EnhancedCard(props: EnhancedCardProps) {
       case "featured":
         return "bg-gradient-to-br from-primary/10 to-secondary/10";
       case "minimal":
-        return "border-border bg-muted/30";
+        return "border-base-300 bg-base-200/30";
       default:
-        return "bg-background shadow-lg";
+        return "bg-base-100 shadow-lg";
     }
   };
 
@@ -163,7 +163,7 @@ export function EnhancedInput(props: EnhancedInputProps) {
       </Show>
       <div class="relative">
         <Show when={props.icon}>
-          <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground/50">
+          <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-base-content/50/50">
             <span>{props.icon}</span>
           </div>
         </Show>
@@ -278,7 +278,7 @@ export function PullToRefresh(props: PullToRefreshProps) {
       style={{ transform: `translateY(${Math.min(pullDistance(), threshold)}px)` }}
     >
       <Show when={pullDistance() > 0 || isRefreshing()}>
-        <div class="absolute left-0 right-0 top-0 flex justify-center bg-background py-4">
+        <div class="absolute left-0 right-0 top-0 flex justify-center bg-base-100 py-4">
           <Show
             when={isRefreshing()}
             fallback={

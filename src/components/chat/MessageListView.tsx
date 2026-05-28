@@ -78,11 +78,11 @@ const groupMessagesByDate = (messages: ChatMessage[]): DateGroup[] => {
 
 const DateSeparator: Component<{ date: string }> = (props) => (
   <div class="flex items-center gap-3 py-4">
-    <div class="flex-1 h-px bg-black/10" />
-    <span class="text-[11px] font-medium text-zinc-400 px-2">
+    <div class="flex-1 h-px bg-base-content/10" />
+    <span class="text-[11px] font-medium text-base-content/40 px-2">
       {props.date}
     </span>
-    <div class="flex-1 h-px bg-black/10" />
+    <div class="flex-1 h-px bg-base-content/10" />
   </div>
 );
 
@@ -103,8 +103,8 @@ const ChatEmptyState: Component<ChatEmptyStateProps> = (props) => {
     <div class="flex flex-col items-center justify-center min-h-[400px] px-4 sm:px-6 text-center">
       {/* Agent Avatar */}
       <div class="relative mb-6">
-        <div class="w-20 h-20 sm:w-24 sm:h-24 border border-black/10 flex items-center justify-center">
-          <FiTerminal size={36} class="text-zinc-600 sm:w-10 sm:h-10" />
+        <div class="w-20 h-20 sm:w-24 sm:h-24 border border-base-content/10 flex items-center justify-center">
+          <FiTerminal size={36} class="text-base-content/60 sm:w-10 sm:h-10" />
         </div>
       </div>
 
@@ -114,16 +114,16 @@ const ChatEmptyState: Component<ChatEmptyStateProps> = (props) => {
       </h3>
 
       {/* Description */}
-      <p class="text-sm text-zinc-500 max-w-md mb-6 leading-relaxed">
+      <p class="text-sm text-base-content/50 max-w-md mb-6 leading-relaxed">
         Send a message to start chatting with{" "}
-        <span class="font-medium text-foreground">
+        <span class="font-medium text-base-content">
           {props.agentType || "your AI agent"}
         </span>
       </p>
 
       {/* Conversation Starters */}
       <div class="mb-8 w-full max-w-md">
-        <p class="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-4">
+        <p class="text-[10px] font-semibold uppercase tracking-widest text-base-content/40 mb-4">
           Try asking
         </p>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -131,14 +131,14 @@ const ChatEmptyState: Component<ChatEmptyStateProps> = (props) => {
             <button
               type="button"
               onClick={() => props.onSuggestionClick?.(starter.text)}
-              class="group flex items-center gap-3 px-4 py-3 border border-black/10 hover:border-zinc-400 text-left"
+              class="group flex items-center gap-3 px-4 py-3 border border-base-content/10 hover:border-base-content/40 text-left"
             >
-              <div class="w-10 h-10 border border-black/10 flex items-center justify-center">
-                <starter.icon size={18} class="text-zinc-600" />
+              <div class="w-10 h-10 border border-base-content/10 flex items-center justify-center">
+                <starter.icon size={18} class="text-base-content/60" />
               </div>
               <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium truncate">{starter.text}</p>
-                <p class="text-[10px] text-zinc-500">
+                <p class="text-[10px] text-base-content/50">
                   {starter.hint}
                 </p>
               </div>
@@ -148,17 +148,17 @@ const ChatEmptyState: Component<ChatEmptyStateProps> = (props) => {
       </div>
 
       {/* Keyboard Shortcut Hint */}
-      <div class="flex items-center gap-3 px-4 py-2 border border-black/10">
+      <div class="flex items-center gap-3 px-4 py-2 border border-base-content/10">
         <div class="flex items-center gap-1">
-          <span class="border border-black/10 px-1.5 py-0.5 text-xs">Enter</span>
-          <span class="text-xs text-zinc-500">to send</span>
+          <span class="border border-base-content/10 px-1.5 py-0.5 text-xs">Enter</span>
+          <span class="text-xs text-base-content/50">to send</span>
         </div>
-        <div class="w-px h-4 bg-black/10" />
+        <div class="w-px h-4 bg-base-content/10" />
         <div class="flex items-center gap-1">
-          <span class="border border-black/10 px-1.5 py-0.5 text-xs">Shift</span>
-          <span class="text-xs text-zinc-500">+</span>
-          <span class="border border-black/10 px-1.5 py-0.5 text-xs">Enter</span>
-          <span class="text-xs text-zinc-500">new line</span>
+          <span class="border border-base-content/10 px-1.5 py-0.5 text-xs">Shift</span>
+          <span class="text-xs text-base-content/50">+</span>
+          <span class="border border-base-content/10 px-1.5 py-0.5 text-xs">Enter</span>
+          <span class="text-xs text-base-content/50">new line</span>
         </div>
       </div>
     </div>
@@ -176,10 +176,10 @@ const ScrollToBottomButton: Component<ScrollToBottomButtonProps> = (props) => (
     <button
       type="button"
       onClick={props.onClick}
-      class="fixed bottom-24 right-4 sm:right-6 z-30 flex items-center gap-2 px-3 py-2 bg-white border border-black/10 text-xs font-medium"
+      class="fixed bottom-24 right-4 sm:right-6 z-30 flex items-center gap-2 px-3 py-2 bg-white border border-base-content/10 text-xs font-medium"
     >
       <Show when={(props.unreadCount || 0) > 0}>
-        <span class="bg-zinc-900 text-white h-5 w-5 flex items-center justify-center text-[10px] font-bold">
+        <span class="bg-primary text-primary-content h-5 w-5 flex items-center justify-center text-[10px] font-bold">
           {props.unreadCount}
         </span>
       </Show>
@@ -232,10 +232,10 @@ export const MessageListView: Component<MessageListViewProps> = (props) => {
   return (
     <div class="relative flex-1 min-h-0 flex flex-col">
       <Show when={props.isLoading}>
-        <div class="absolute inset-0 flex items-center justify-center bg-white/80 z-20">
+        <div class="absolute inset-0 flex items-center justify-center bg-base-100/80 z-20">
           <div class="flex flex-col items-center gap-3">
-            <span class="inline-block w-6 h-6 border-2 border-zinc-300 border-t-zinc-600" />
-            <span class="text-xs font-medium text-zinc-500">
+            <span class="inline-block w-6 h-6 border-2 border-base-content/30 border-t-base-content/60" />
+            <span class="text-xs font-medium text-base-content/50">
               Loading messages...
             </span>
           </div>
