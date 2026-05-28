@@ -79,8 +79,9 @@ export interface BackendSessionMetadata {
   machine_id: string;
 }
 
-export const normalizeAgentType = (type: string): AgentType => {
-  const lower = type.toLowerCase();
+export const normalizeAgentType = (type: string | undefined | null): AgentType => {
+  const lower = (type ?? "").toLowerCase();
+  if (!lower) return "claude";
   if (lower === "claudecode" || lower === "claude-code") return "claude";
   if (lower === "opencode") return "opencode";
   if (lower === "cursor-agent") return "cursor";

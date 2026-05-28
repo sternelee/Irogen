@@ -203,8 +203,9 @@ export default function App() {
     });
   };
 
-  const parseAgentType = (agentTypeStr: string): AgentType => {
-    const lower = agentTypeStr.toLowerCase().replace(/-/g, "_");
+  const parseAgentType = (agentTypeStr: string | undefined): AgentType => {
+    const lower = (agentTypeStr ?? "").toLowerCase().replace(/-/g, "_");
+    if (!lower) return "claude";
     if (lower.includes("claude")) return "claude";
     if (lower.includes("cursor")) return "cursor";
     if (lower.includes("cline")) return "cline";
