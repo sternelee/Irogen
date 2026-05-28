@@ -1038,9 +1038,13 @@ impl QuicMessageServer {
                     return Ok(None);
                 }
             }
-            match MessageSerializer::deserialize_from_network(&payload) {
+            match Message::from_bytes(&payload) {
                 Ok(message) => Ok(Some(message)),
-                Err(e) => Err(e),
+                Err(e) => Err(anyhow::anyhow!("Message decode failed: payload_len={}, payload_hex=[{}], error={}",
+                    payload.len(),
+                    payload.iter().take(16).map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" "),
+                    e
+                )),
             }
         })
         .await;
