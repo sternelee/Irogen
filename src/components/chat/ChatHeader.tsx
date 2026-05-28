@@ -9,7 +9,6 @@ import { FiTerminal, FiSettings, FiSidebar, FiShield } from "solid-icons/fi";
 import { sessionStore, type PermissionMode } from "../../stores/sessionStore";
 import { sessionEventRouter } from "../../stores/sessionEventRouter";
 import { navigationStore } from "../../stores/navigationStore";
-import { Button } from "../ui/primitives";
 import { PermissionModeSwitcher } from "../ui/PermissionModeSwitcher";
 import { cn } from "~/lib/utils";
 
@@ -86,7 +85,7 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
         {/* Sidebar toggle button */}
         <button
           type="button"
-          class="h-9 w-9 border border-black/10 flex items-center justify-center text-zinc-500 hover:text-foreground hover:border-zinc-400 shrink-0"
+          class="h-11 w-11 border border-black/10 flex items-center justify-center text-zinc-500 hover:text-foreground hover:border-zinc-400 shrink-0"
           onClick={props.onToggleSidebar}
           aria-label="Toggle sidebar"
         >
@@ -167,28 +166,28 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
           <button
             type="button"
             class={cn(
-              "h-8 w-8 flex items-center justify-center",
+              "h-11 w-11 flex items-center justify-center",
               "border",
               props.isPermissionsOpen
-                ? "text-zinc-900 border-zinc-900"
+                ? "text-zinc-900 border-zinc-900 dark:text-white dark:border-white"
                 : "text-zinc-500 border-black/10 hover:border-zinc-400",
             )}
             onClick={props.onTogglePermissions}
             title="Permission history"
           >
-            <FiShield size={14} />
+            <FiShield size={16} />
           </button>
         </Show>
 
         {/* Settings */}
-        <Button
-          variant="ghost"
-          size="icon"
-          class="h-9 w-9 border border-black/10 text-zinc-500 hover:text-foreground hover:border-zinc-400"
+        <button
+          type="button"
+          class="h-11 w-11 border border-black/10 flex items-center justify-center text-zinc-500 hover:text-foreground hover:border-zinc-400"
           onClick={() => navigationStore.setActiveView("settings")}
+          aria-label="Settings"
         >
           <FiSettings size={17} />
-        </Button>
+        </button>
       </div>
     </header>
   );

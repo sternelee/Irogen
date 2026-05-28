@@ -130,8 +130,8 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
       if (e.key === "Tab" || e.key === "Enter") { e.preventDefault(); const item = mentionSuggestions()[activeMentionIndex()]; if (item) props.onSelectMention?.(item.path); return; }
       if (e.key === "Escape") { e.preventDefault(); props.onDismissMentions?.(); return; }
     }
-    const shouldSend = e.key === "Enter" && (e.shiftKey || e.metaKey || e.ctrlKey);
-    if (shouldSend) {
+    // Standard chat shortcut: Enter sends, Shift+Enter inserts newline
+    if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
       e.preventDefault();
       if (props.isStreaming && props.onInterrupt) {
         props.onInterrupt();
@@ -200,10 +200,15 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
         <Show when={props.attachments && props.attachments.length > 0}>
           <div class="flex flex-wrap gap-2 px-3 pt-2">
             {props.attachments!.map((file) => (
-              <div class="flex items-center gap-2 px-2 py-1 bg-zinc-100 dark:bg-zinc-800 text-xs border border-black/10">
+              <div class="flex items-center gap-2 px-2 py-1 bg-base-200 text-xs border border-black/10">
                 <span class="truncate max-w-[120px]">{file.name}</span>
-                <button type="button" class="text-zinc-400 hover:text-red-500" onClick={() => props.onAttach?.([])}>
-                  <FiX size={10} />
+                <button
+                  type="button"
+                  class="p-1 text-base-content/40 hover:text-red-500"
+                  onClick={() => props.onAttach?.([])}
+                  aria-label="Remove attachment"
+                >
+                  <FiX size={14} />
                 </button>
               </div>
             ))}

@@ -143,30 +143,16 @@ const VirtualMessageRow = (props: VirtualMessageRowProps) => {
 
 // Skeleton loader for streaming messages
 const MessageSkeleton: Component = () => (
-  <div class="flex flex-col gap-3 max-w-[90%] animate-fade-in">
-    <div class="inline-block rounded-2xl rounded-bl-md bg-muted/40 border border-border/50 px-4 py-3">
+  <div class="flex flex-col gap-3 max-w-[90%]">
+    <div class="inline-block bg-base-200 border border-black/10 px-4 py-3">
       <div class="flex flex-col gap-2">
-        <div class="h-4 bg-muted/60 rounded animate-skeleton-pulse w-3/4" />
-        <div
-          class="h-4 bg-muted/60 rounded animate-skeleton-pulse w-1/2"
-          style="animation-delay: 200ms;"
-        />
+        <div class="h-4 bg-base-300 w-3/4" />
+        <div class="h-4 bg-base-300 w-1/2" />
       </div>
     </div>
-    {/* Typing indicator dots */}
+    {/* Typing indicator */}
     <div class="flex items-center gap-1.5 pl-4">
-      <span
-        class="w-2 h-2 bg-primary/50 rounded-full animate-bounce-dot"
-        style="animation-delay: 0ms;"
-      />
-      <span
-        class="w-2 h-2 bg-primary/50 rounded-full animate-bounce-dot"
-        style="animation-delay: 150ms;"
-      />
-      <span
-        class="w-2 h-2 bg-primary/50 rounded-full animate-bounce-dot"
-        style="animation-delay: 300ms;"
-      />
+      <span class="text-xs text-base-content/40">Streaming...</span>
     </div>
   </div>
 );
@@ -1728,9 +1714,9 @@ export function ChatView(props: ChatViewProps) {
               }`}
             >
               <span
-                class={`h-2 w-2 shrink-0 rounded-full ${
+                class={`h-2 w-2 shrink-0 ${
                   connectedHost()?.status === "reconnecting" || isReconnecting()
-                    ? "animate-pulse bg-warning"
+                    ? "bg-warning"
                     : "bg-error"
                 }`}
               />
@@ -1747,7 +1733,7 @@ export function ChatView(props: ChatViewProps) {
               >
                 <button
                   type="button"
-                  class="btn btn-xs btn-ghost rounded-lg px-2.5 font-semibold"
+                  class="btn btn-xs btn-ghost px-2.5 font-semibold"
                   onClick={handleReconnect}
                 >
                   Reconnect
@@ -1787,7 +1773,6 @@ export function ChatView(props: ChatViewProps) {
                 <Virtualizer
                   scrollRef={messageScrollEl()}
                   data={messages()}
-                  itemSize={120}
                   bufferSize={400}
                 >
                   {(message: ReturnType<typeof messages>[number]) => (
@@ -1870,7 +1855,7 @@ export function ChatView(props: ChatViewProps) {
                 setUnseenMessageCount(0);
                 scrollToBottom("smooth");
               }}
-              class="fixed bottom-28 right-4 sm:right-6 z-30 flex items-center gap-1.5 px-3 py-2 rounded-full bg-background border border-border/50 shadow-lg backdrop-blur-md hover:shadow-xl hover:scale-105 active:scale-95 transition-all duration-200 animate-scroll-btn-in text-xs font-medium"
+              class="fixed bottom-28 right-4 sm:right-6 z-30 flex items-center gap-1.5 px-3 py-2 bg-background border border-black/10 text-xs font-medium"
               aria-label="Scroll to bottom"
               title={
                 unseenMessageCount() > 0
@@ -1912,12 +1897,12 @@ export function ChatView(props: ChatViewProps) {
             fallback={
               <div class="flex items-center justify-center gap-3 px-4 py-4 border-t border-border/50 bg-muted/30">
                 <div class="flex items-center gap-2 text-sm text-muted-foreground">
-                  <FiAlertTriangle size={16} class="text-yellow-500" />
+                  <FiAlertTriangle size={16} class="text-warning" />
                   <span>Session inactive. Connection might be lost.</span>
                 </div>
                 <button
                   type="button"
-                  class="btn btn-sm btn-outline rounded-xl"
+                  class="btn btn-sm btn-outline"
                   onClick={handleReconnect}
                   disabled={isReconnecting()}
                 >

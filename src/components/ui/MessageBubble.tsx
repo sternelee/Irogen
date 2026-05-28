@@ -8,7 +8,7 @@ import { type Component, For, Show, createMemo, createSignal } from "solid-js";
 import { Portal } from "solid-js/web";
 import { cn } from "~/lib/utils";
 import { createClipboard } from "@solid-primitives/clipboard";
-import { FiCopy, FiMessageSquare } from "solid-icons/fi";
+import { FiCopy, FiMessageSquare, FiMoreHorizontal } from "solid-icons/fi";
 import { SolidMarkdown } from "solid-markdown";
 import type { ChatMessage, SystemCard, ToolCall } from "~/stores/chatStore";
 import { isMobile } from "~/stores/deviceStore";
@@ -20,6 +20,30 @@ import {
   FileEditDiff,
 } from "./EnhancedMessageComponents";
 import { ShikiCodeBlock } from "./ShikiCodeBlock";
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function formatTimestamp(ts: number | undefined): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const now = new Date();
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  const timeStr = d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (isToday) return timeStr;
+  const dateStr = d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+  return `${dateStr} ${timeStr}`;
+}
 
 // ============================================================================
 // Types
@@ -48,12 +72,17 @@ const UserMessage: Component<{ content: string; timestamp?: number }> = (
   props,
 ) => {
   return (
-    <div class="flex justify-end">
-      <div class="inline-block max-w-[85%] sm:max-w-[75%] bg-zinc-900 px-4 py-3">
-        <div class="prose prose-sm max-w-none text-[14px] leading-relaxed text-white">
+    <div class="flex flex-col items-end gap-1">
+      <div class="inline-block max-w-[85%] sm:max-w-[75%] bg-zinc-900 dark:bg-zinc-100 px-4 py-3">
+        <div class="prose prose-sm max-w-none text-[14px] leading-relaxed text-white dark:text-zinc-900">
           <SolidMarkdown children={props.content} />
         </div>
       </div>
+      <Show when={props.timestamp}>
+        <span class="text-[10px] text-base-content/40 px-1">
+          {formatTimestamp(props.timestamp)}
+        </span>
+      </Show>
     </div>
   );
 };
@@ -71,7 +100,7 @@ interface AssistantMessageProps {
 }
 
 const StreamingCursor: Component = () => (
-  <span class="inline-block ml-0.5 w-2 h-4 bg-zinc-400 align-middle" />
+  <span class="inline-block ml-0.5 w-2 h-4 bg-base-content/40 align-middle" />
 );
 
 const AssistantMessage: Component<AssistantMessageProps> = (props) => {
@@ -118,6 +147,13 @@ const AssistantMessage: Component<AssistantMessageProps> = (props) => {
           <ToolCallList toolCalls={props.toolCalls!} />
         </div>
       </Show>
+
+      {/* Timestamp */}
+      <Show when={props.timestamp}>
+        <span class="text-[10px] text-base-content/40 px-1">
+          {formatTimestamp(props.timestamp)}
+        </span>
+      </Show>
     </div>
   );
 };
@@ -143,7 +179,7 @@ interface SystemMessageProps {
 
 const SystemMessage: Component<SystemMessageProps> = (props) => {
   return (
-    <div class="flex flex-col gap-2 max-w-[85%] sm:max-w-[75%]">
+    <div class="flex flex-col gap-1 max-w-[85%] sm:max-w-[75%]">
       <SystemMessageContent
         content={props.content}
         systemCard={props.systemCard}
@@ -154,6 +190,11 @@ const SystemMessage: Component<SystemMessageProps> = (props) => {
         onApplyEditReview={props.onApplyEditReview}
         onTerminalAction={props.onTerminalAction}
       />
+      <Show when={props.timestamp}>
+        <span class="text-[10px] text-base-content/40 px-1">
+          {formatTimestamp(props.timestamp)}
+        </span>
+      </Show>
     </div>
   );
 };
@@ -205,7 +246,7 @@ const SystemMessageContent: Component<{
               <div class="flex items-center gap-2 border border-blue-500/15 px-3 py-2">
                 <button
                   type="button"
-                  class="flex-1 text-left text-sm font-mono text-zinc-700 hover:text-blue-600"
+                  class="flex-1 text-left text-sm font-mono text-base-content/80 hover:text-blue-600"
                   onClick={() => {
                     if (props.onOpenFileLocation) {
                       props.onOpenFileLocation(loc.path, loc.line);
@@ -218,12 +259,12 @@ const SystemMessageContent: Component<{
                 >
                   {loc.path}
                   <Show when={loc.line !== undefined}>
-                    <span class="ml-1 text-zinc-400">:{loc.line}</span>
+                    <span class="ml-1 text-base-content/40">:{loc.line}</span>
                   </Show>
                 </button>
                 <button
                   type="button"
-                  class="border border-black/10 px-2 py-1 text-xs hover:bg-zinc-100"
+                  class="border border-black/10 px-2 py-1 text-xs hover:bg-base-200"
                   onClick={() =>
                     copyText(`${loc.path}${loc.line ? `:${loc.line}` : ""}`)
                   }
@@ -235,7 +276,7 @@ const SystemMessageContent: Component<{
           </For>
           <button
             type="button"
-            class="border border-black/10 px-3 py-1.5 text-sm w-full hover:bg-zinc-100"
+            class="border border-black/10 px-3 py-1.5 text-sm w-full hover:bg-base-200"
             onClick={() => props.onToggleFileBrowser?.()}
           >
             Open File Panel
@@ -271,7 +312,7 @@ const SystemMessageContent: Component<{
 
       return (
         <div class="border border-black/10 p-3 space-y-2">
-          <div class="inline-flex items-center px-2 py-0.5 text-xs font-semibold text-zinc-600 border border-black/10">
+          <div class="inline-flex items-center px-2 py-0.5 text-xs font-semibold text-base-content/60 border border-black/10">
             TODO List
           </div>
           <div class="space-y-1">
@@ -296,7 +337,7 @@ const SystemMessageContent: Component<{
                       }
                     />
                     <span
-                      class={`text-sm ${checked() ? "line-through text-zinc-400" : ""}`}
+                      class={`text-sm ${checked() ? "line-through text-base-content/40" : ""}`}
                     >
                       {entry.content}
                     </span>
@@ -308,7 +349,7 @@ const SystemMessageContent: Component<{
           <Show when={props.onSyncTodoList}>
             <button
               type="button"
-              class="border border-black/10 px-3 py-1.5 text-sm w-full hover:bg-zinc-100"
+              class="border border-black/10 px-3 py-1.5 text-sm w-full hover:bg-base-200"
               onClick={syncTodoToAgent}
             >
               Sync to Agent
@@ -320,15 +361,15 @@ const SystemMessageContent: Component<{
 
     if (card.type === "terminal") {
       return (
-        <div class="border border-zinc-300 p-3 space-y-2">
-          <div class="inline-flex items-center px-2 py-0.5 text-xs font-semibold text-zinc-600 border border-zinc-300">
+        <div class="border border-black/20 p-3 space-y-2">
+          <div class="inline-flex items-center px-2 py-0.5 text-xs font-semibold text-base-content/60 border border-black/20">
             Terminal
           </div>
-          <div class="border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-700">
+          <div class="border border-black/10 bg-base-200 px-3 py-2.5 text-sm text-base-content/80">
             <div class="font-mono break-all">
               {card.terminalId || "unknown"}
             </div>
-            <div class="mt-1 text-zinc-500">
+            <div class="mt-1 text-base-content/50">
               {card.mode || "interactive/background"}{" "}
               {card.status ? `· ${card.status}` : ""}
             </div>
@@ -336,14 +377,14 @@ const SystemMessageContent: Component<{
           <div class="flex flex-wrap gap-2">
             <button
               type="button"
-              class="border border-black/10 px-2 py-1 text-xs hover:bg-zinc-100"
+              class="border border-black/10 px-2 py-1 text-xs hover:bg-base-200"
               onClick={() => copyText(card.terminalId)}
             >
               Copy ID
             </button>
             <button
               type="button"
-              class="border border-black/10 px-2 py-1 text-xs hover:bg-zinc-100"
+              class="border border-black/10 px-2 py-1 text-xs hover:bg-base-200"
               onClick={() => props.onQuote?.(`terminal:${card.terminalId}`)}
             >
               Insert
@@ -351,7 +392,7 @@ const SystemMessageContent: Component<{
             <Show when={props.onTerminalAction}>
               <button
                 type="button"
-                class="border border-black/10 px-2 py-1 text-xs hover:bg-zinc-100"
+                class="border border-black/10 px-2 py-1 text-xs hover:bg-base-200"
                 onClick={() =>
                   props.onTerminalAction?.(card.terminalId, "attach")
                 }
@@ -360,7 +401,7 @@ const SystemMessageContent: Component<{
               </button>
               <button
                 type="button"
-                class="border border-black/10 px-2 py-1 text-xs hover:bg-zinc-100"
+                class="border border-black/10 px-2 py-1 text-xs hover:bg-base-200"
                 onClick={() =>
                   props.onTerminalAction?.(card.terminalId, "status")
                 }
@@ -434,8 +475,8 @@ const SystemMessageContent: Component<{
         <Show
           when={isTerminalOutput()}
           fallback={
-            <div class="inline-block bg-zinc-100 border border-black/10 px-4 py-3">
-              <div class="text-sm leading-relaxed text-zinc-600 whitespace-pre-wrap break-words">
+            <div class="inline-block bg-base-200 border border-black/10 px-4 py-3">
+              <div class="text-sm leading-relaxed text-base-content/70 whitespace-pre-wrap break-words">
                 <SolidMarkdown
                   children={normalizeEscapedLineBreaks(props.content)}
                 />
@@ -446,8 +487,8 @@ const SystemMessageContent: Component<{
           <Show
             when={parseTerminalOutput()}
             fallback={
-              <div class="inline-block bg-zinc-100 border border-black/10 px-4 py-3">
-                <div class="text-sm leading-relaxed text-zinc-600 whitespace-pre-wrap break-words">
+              <div class="inline-block bg-base-200 border border-black/10 px-4 py-3">
+                <div class="text-sm leading-relaxed text-base-content/70 whitespace-pre-wrap break-words">
                   <SolidMarkdown
                     children={normalizeEscapedLineBreaks(props.content)}
                   />
@@ -475,17 +516,17 @@ const SystemMessageContent: Component<{
                   <button
                     type="button"
                     onClick={() => setToolOutputExpanded(!toolOutputExpanded())}
-                    class="inline-flex items-center gap-2 hover:bg-zinc-100 px-2 py-1 -ml-2"
+                    class="inline-flex items-center gap-2 hover:bg-base-200 px-2 py-1 -ml-2"
                   >
                     <span class="inline-flex items-center bg-blue-500/10 px-2 py-0.5 font-mono text-xs text-blue-600">
                       [{parsed().toolName}]
                     </span>
-                    <span class="text-zinc-500">
+                    <span class="text-base-content/50">
                       {toolOutputExpanded() ? "▼" : "▶"}
                     </span>
                   </button>
                   <Show when={toolOutputExpanded() && parsed().output}>
-                    <pre class="mt-2 text-xs text-zinc-500 whitespace-pre-wrap break-all">
+                    <pre class="mt-2 text-xs text-base-content/50 whitespace-pre-wrap break-all">
                       {normalizeEscapedLineBreaks(parsed().output || "")}
                     </pre>
                   </Show>
@@ -597,25 +638,37 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
         </Show>
       </div>
 
-      {/* Hover Actions */}
-      <div class="absolute -top-2 right-2 flex items-center gap-1 opacity-0 group-hover/bubble:opacity-100">
+      {/* Desktop hover actions */}
+      <div class="absolute -top-2 right-2 hidden sm:flex items-center gap-1 opacity-0 group-hover/bubble:opacity-100">
         <button
           type="button"
           onClick={quoteMessage}
-          class="p-1.5 bg-white border border-black/10 hover:bg-zinc-100"
+          class="p-2 bg-background border border-black/10 hover:bg-base-200"
           title="Quote"
           aria-label="Quote"
         >
-          <FiMessageSquare size={12} />
+          <FiMessageSquare size={14} />
         </button>
         <button
           type="button"
           onClick={copyMessage}
-          class="p-1.5 bg-white border border-black/10 hover:bg-zinc-100"
+          class="p-2 bg-background border border-black/10 hover:bg-base-200"
           title="Copy"
           aria-label="Copy"
         >
-          <FiCopy size={12} />
+          <FiCopy size={14} />
+        </button>
+      </div>
+
+      {/* Mobile action trigger */}
+      <div class="flex sm:hidden absolute -top-1 right-0">
+        <button
+          type="button"
+          onClick={() => setShowActions(true)}
+          class="p-2 text-base-content/40 hover:text-base-content"
+          aria-label="Message actions"
+        >
+          <FiMoreHorizontal size={16} />
         </button>
       </div>
 
@@ -628,12 +681,12 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
               class="fixed inset-0 bg-black/50 -z-10"
               onClick={closeActions}
             />
-            <div class="w-full max-w-sm border-t border-black/10 bg-white p-4 mb-safe">
+            <div class="w-full max-w-sm border-t border-black/10 bg-background p-4 mb-safe">
               <div class="space-y-1">
                 <Show when={isUser()}>
                   <button
                     type="button"
-                    class="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-100"
+                    class="block w-full text-left px-3 py-3 text-sm hover:bg-base-200"
                     onClick={resendMessage}
                   >
                     Resend
@@ -641,7 +694,7 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
                 </Show>
                 <button
                   type="button"
-                  class="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-100"
+                  class="block w-full text-left px-3 py-3 text-sm hover:bg-base-200"
                   onClick={quoteMessage}
                 >
                   Quote to input
@@ -649,7 +702,7 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
                 <Show when={!isUser() && firstCodeBlock()}>
                   <button
                     type="button"
-                    class="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-100"
+                    class="block w-full text-left px-3 py-3 text-sm hover:bg-base-200"
                     onClick={copyCodeBlock}
                   >
                     Copy code block
@@ -657,7 +710,7 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
                 </Show>
                 <button
                   type="button"
-                  class="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-100"
+                  class="block w-full text-left px-3 py-3 text-sm hover:bg-base-200"
                   onClick={copyMessage}
                 >
                   Copy
