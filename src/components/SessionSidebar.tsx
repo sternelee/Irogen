@@ -82,8 +82,8 @@ const ThreadItem: Component<ThreadItemProps> = (props) => {
       class={cn(
         "flex items-center gap-2 px-2 py-1.5 border-b border-black/5",
         props.isActive
-          ? "bg-zinc-100 dark:bg-zinc-800 text-foreground"
-          : "text-zinc-500 hover:text-foreground hover:bg-zinc-50 dark:hover:bg-zinc-900",
+          ? "bg-base-200 text-foreground"
+          : "text-zinc-500 hover:text-foreground hover:bg-base-200/50",
       )}
     >
       <span
@@ -169,7 +169,7 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
     <div class="border border-black/10 dark:border-white/10">
       <button
         type="button"
-        class="flex w-full items-center justify-between gap-2 px-2 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+        class="flex w-full items-center justify-between gap-2 px-2 py-2 hover:bg-base-200/50"
         onClick={() => setIsCollapsed(c => !c)}
       >
         <div class="flex items-center gap-2 min-w-0">
@@ -288,8 +288,8 @@ const NavItemButton: Component<NavItemButtonProps> = (props) => {
       class={cn(
         "flex w-full items-center gap-3 px-3 py-2 text-sm font-medium border-l-2",
         props.isActive
-          ? "border-l-primary bg-zinc-100 dark:bg-zinc-800 text-foreground"
-          : "border-l-transparent text-zinc-500 hover:text-foreground hover:bg-zinc-50 dark:hover:bg-zinc-900",
+          ? "border-l-primary bg-base-200 text-foreground"
+          : "border-l-transparent text-zinc-500 hover:text-foreground hover:bg-base-200/50",
       )}
     >
       <Icon
@@ -364,9 +364,9 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
   };
 
   return (
-    <aside class="flex h-full w-full flex-col bg-zinc-50 dark:bg-zinc-950 border-r border-black/10">
+    <aside class="flex h-full w-full flex-col bg-base-100 border-r border-black/10">
       {/* Header */}
-      <div class="flex items-center justify-between px-4 py-3 border-b border-black/10">
+      <div class="flex items-center justify-between px-4 py-3 pt-safe border-b border-black/10">
         <div class="flex items-center gap-3">
           <div class="flex h-8 w-8 items-center justify-center bg-black dark:bg-white text-white dark:text-black text-sm font-bold">
             P
@@ -380,6 +380,15 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
             </p>
           </div>
         </div>
+        {/* Mobile close button */}
+        <button
+          type="button"
+          class="md:hidden h-8 w-8 flex items-center justify-center text-zinc-500 hover:text-foreground border border-black/10"
+          onClick={props.onToggle}
+          aria-label="Close sidebar"
+        >
+          <FiX size={16} />
+        </button>
       </div>
 
       {/* Navigation */}
@@ -452,7 +461,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
             </div>
             <button
               type="button"
-              class="flex w-full items-center gap-2 px-3 py-2 text-sm text-zinc-500 hover:text-foreground hover:bg-zinc-50 dark:hover:bg-zinc-900"
+              class="flex w-full items-center gap-2 px-3 py-2 text-sm text-zinc-500 hover:text-foreground hover:bg-base-200/50"
               onClick={() => handleNavClick("sessions")}
             >
               <FiList size={14} />

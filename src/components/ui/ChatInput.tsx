@@ -19,8 +19,6 @@ import {
   FiPlus,
   FiX,
   FiFolder,
-  FiGitBranch,
-  FiSettings,
   FiCheck,
 } from "solid-icons/fi";
 import { FaSolidStopCircle } from "solid-icons/fa";
@@ -259,42 +257,12 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
           </button>
         </div>
 
-        {/* Bottom Toolbar */}
-        <div class="flex items-center px-2 pb-2 gap-1 border-t border-black/5">
-          <button
-            type="button"
-            class={cn(
-              "px-2 py-1 text-xs",
-              showSettings() ? "bg-zinc-100 dark:bg-zinc-800 text-foreground" : "text-zinc-500 hover:text-foreground",
-            )}
-            onClick={() => setShowSettings(!showSettings())}
-          >
-            <FiSettings size={12} />
-          </button>
-          <button
-            type="button"
-            class={cn(
-              "px-2 py-1 text-xs",
-              props.rightPanelView === "file" ? "bg-zinc-100 dark:bg-zinc-800 text-foreground" : "text-zinc-500 hover:text-foreground",
-            )}
-            onClick={() => props.onToggleFileBrowser?.()}
-          >
-            <FiFolder size={12} />
-          </button>
-          <button
-            type="button"
-            class={cn(
-              "px-2 py-1 text-xs",
-              props.rightPanelView === "git" ? "bg-zinc-100 dark:bg-zinc-800 text-foreground" : "text-zinc-500 hover:text-foreground",
-            )}
-            onClick={() => props.onToggleGitPanel?.()}
-          >
-            <FiGitBranch size={12} />
-          </button>
-          <Show when={props.isStreaming}>
-            <span class="ml-2 text-xs text-zinc-500">Thinking...</span>
-          </Show>
-        </div>
+        {/* Streaming indicator */}
+        <Show when={props.isStreaming}>
+          <div class="flex items-center px-2 pb-2 gap-1 border-t border-black/5">
+            <span class="text-xs text-zinc-500">Thinking...</span>
+          </div>
+        </Show>
       </div>
 
       {/* Settings Dropdown */}

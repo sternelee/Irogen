@@ -33,8 +33,8 @@ export const WorkspaceShell: Component = () => {
         <AgentPanel class="flex-1" />
       </div>
 
-      {/* Right Panel Toggle Buttons */}
-      <div class="fixed top-4 right-4 z-30 flex items-center gap-1 bg-background border border-black/10">
+      {/* Right Panel Toggle Buttons - aligned with Project header */}
+      <div class="fixed top-14 right-4 z-30 flex items-center gap-1 bg-background border border-black/10">
         <button
           type="button"
           class={cn(

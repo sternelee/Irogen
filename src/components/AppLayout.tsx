@@ -114,6 +114,7 @@ export const AppLayout: Component = () => {
           "transform transition-transform duration-200 md:translate-x-0",
           navigationStore.state.sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
+        style={{ "padding-top": "env(safe-area-inset-top, 0px)" }}
       >
         <SessionSidebar
           isOpen={navigationStore.state.sidebarOpen}

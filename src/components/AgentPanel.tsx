@@ -61,7 +61,7 @@ const AdditionalProjects: Component<AdditionalProjectsProps> = (props) => {
   };
 
   return (
-    <div class="flex items-center gap-2 px-3 py-2 border-b border-black/10 dark:border-white/10 bg-zinc-100 dark:bg-zinc-900">
+    <div class="flex items-center gap-2 px-3 py-2 border-b border-black/10 dark:border-white/10 bg-base-200/50">
       <span class="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
         Projects
       </span>
@@ -150,7 +150,7 @@ interface TabBarProps {
 
 const TabBar: Component<TabBarProps> = (props) => {
   return (
-    <div class="flex items-center border-b border-black/10 dark:border-white/10 bg-zinc-50 dark:bg-zinc-950">
+    <div class="flex items-center border-b border-black/10 dark:border-white/10 bg-base-100">
       <For each={props.tabs}>
         {(tab) => {
           const isActive = () => props.activeTabId === tab.sessionId;
@@ -161,7 +161,7 @@ const TabBar: Component<TabBarProps> = (props) => {
                 "flex items-center gap-2 px-3 py-2 text-xs font-medium border-r border-black/10 dark:border-white/10",
                 isActive()
                   ? "bg-background text-foreground border-b-2 border-b-background"
-                  : "text-zinc-500 hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-900",
+                  : "text-zinc-500 hover:text-foreground hover:bg-base-200",
               )}
               onClick={() => props.onSelectTab(tab.sessionId)}
             >
