@@ -373,7 +373,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
           </div>
           <div>
             <h1 class="text-sm font-bold text-foreground leading-none">
-              Irogen
+              Acpx
             </h1>
             <p class="text-[10px] text-zinc-500 mt-0.5 uppercase tracking-wider">
               Agent Control

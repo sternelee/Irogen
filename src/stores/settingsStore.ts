@@ -204,7 +204,7 @@ export const settingsStore = {
 export const translations = {
   en: {
     // UI Labels
-    "app.title": "Irogen - P2P Agent",
+    "app.title": "Acpx - P2P Agent",
     "connection.title": "Agent Connection",
     "settings.title": "Settings",
     "hosts.title": "Hosts",
@@ -221,7 +221,7 @@ export const translations = {
     "connection.status.failed": "Connection Failed",
 
     // Settings
-    "settings.description": "Customize your Irogen experience",
+    "settings.description": "Customize your Acpx experience",
     "settings.appearance": "Appearance",
     "settings.theme": "Theme",
     "settings.language": "Language",
@@ -241,7 +241,7 @@ export const translations = {
 
     // Setup Guide
     "setupGuide.title": "Setup Guide",
-    "setupGuide.settingsDesc": "Learn how to set up Irogen on your devices",
+    "setupGuide.settingsDesc": "Learn how to set up Acpx on your devices",
     "setupGuide.open": "Open Setup Guide",
 
     // Themes
@@ -276,7 +276,7 @@ export const translations = {
   },
   "zh-CN": {
     // UI Labels
-    "app.title": "Irogen - P2P 终端",
+    "app.title": "Acpx - P2P 终端",
     "connection.title": "终端连接",
     "settings.title": "设置",
     "hosts.title": "主机",
@@ -292,7 +292,7 @@ export const translations = {
     "connection.status.failed": "连接失败",
 
     // Settings
-    "settings.description": "自定义您的 Irogen 体验",
+    "settings.description": "自定义您的 Acpx 体验",
     "settings.appearance": "外观",
     "settings.theme": "主题",
     "settings.language": "语言",
@@ -309,7 +309,7 @@ export const translations = {
 
     // Setup Guide
     "setupGuide.title": "设置指南",
-    "setupGuide.settingsDesc": "了解如何在您的设备上设置 Irogen",
+    "setupGuide.settingsDesc": "了解如何在您的设备上设置 Acpx",
     "setupGuide.open": "打开设置指南",
     "settings.maxHistory": "最大历史条目",
     "settings.networkTimeout": "网络超时 (毫秒)",

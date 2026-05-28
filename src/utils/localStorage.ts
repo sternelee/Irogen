@@ -1,5 +1,5 @@
 /**
- * localStorage utilities for Irogen tickets
+ * localStorage utilities for Acpx tickets
  */
 
 const STORAGE_KEY_LAST_TICKET = "irogen_last_ticket";

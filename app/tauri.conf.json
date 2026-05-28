@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Irogen",
+  "productName": "Acpx",
   "version": "0.6.1",
   "identifier": "com.irogen.dev",
   "build": {
@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "Irogen - Remote Agent Platform",
+        "title": "Acpx - Remote Agent Platform",
         "width": 960,
         "height": 640,
         "resizable": true,
