@@ -65,18 +65,18 @@ export interface ConnectedHostMetadata {
 }
 
 export interface BackendSessionMetadata {
-  session_id: string;
-  agent_type: string;
-  project_path: string;
-  started_at: number;
+  sessionId: string;
+  agentType: string;
+  projectPath: string;
+  startedAt: number;
   active: boolean;
-  controlled_by_remote: boolean;
+  controlledByRemote: boolean;
   hostname: string;
   os: string;
-  agent_version?: string;
-  current_dir: string;
-  git_branch?: string;
-  machine_id: string;
+  agentVersion?: string;
+  currentDir: string;
+  gitBranch?: string;
+  machineId: string;
 }
 
 export const normalizeAgentType = (type: string | undefined | null): AgentType => {
@@ -96,19 +96,19 @@ export const mapBackendSessionMetadata = (
   mode: SessionMode,
   controlSessionId?: string,
 ): AgentSessionMetadata => ({
-  sessionId: session.session_id,
-  agentType: normalizeAgentType(session.agent_type),
-  projectPath: session.project_path,
+  sessionId: session.sessionId,
+  agentType: normalizeAgentType(session.agentType),
+  projectPath: session.projectPath,
   additionalProjectPaths: [], // 跨项目线程：附加项目列表
-  startedAt: session.started_at,
+  startedAt: session.startedAt,
   active: session.active,
-  controlledByRemote: session.controlled_by_remote,
+  controlledByRemote: session.controlledByRemote,
   hostname: session.hostname,
   os: session.os,
-  agentVersion: session.agent_version,
-  currentDir: session.current_dir,
-  gitBranch: session.git_branch,
-  machineId: session.machine_id,
+  agentVersion: session.agentVersion,
+  currentDir: session.currentDir,
+  gitBranch: session.gitBranch,
+  machineId: session.machineId,
   mode,
   controlSessionId,
   lastReceivedSequence: 0,
@@ -582,7 +582,7 @@ export const createSessionStore = () => {
           updateConnectedHost(connectionSessionId, {
             hostname: s.hostname || "Remote Host",
             os: s.os || "Connected via ticket",
-            machineId: s.machine_id || connectionSessionId,
+            machineId: s.machineId || connectionSessionId,
             status: s.active ? "online" : "offline",
           });
           addSession(
@@ -710,7 +710,7 @@ export const createSessionStore = () => {
         let newSessionId: string | null = null;
         for (const s of remoteSessions) {
           // Only add sessions that don't already exist
-          if (!state.sessions[s.session_id]) {
+          if (!state.sessions[s.sessionId]) {
             const mapped = mapBackendSessionMetadata(
               s,
               "remote",
@@ -718,8 +718,8 @@ export const createSessionStore = () => {
             );
             addSession(mapped);
             // Track the new session if it was just created
-            if (!existingSessionIds.has(s.session_id)) {
-              newSessionId = s.session_id;
+            if (!existingSessionIds.has(s.sessionId)) {
+              newSessionId = s.sessionId;
             }
           }
         }

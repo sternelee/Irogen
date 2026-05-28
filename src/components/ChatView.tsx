@@ -288,7 +288,7 @@ export function ChatView(props: ChatViewProps) {
 
             // Find our session in the list
             const remoteSession = remoteSessions.find(
-              (s) => s.session_id === props.sessionId,
+              (s) => s.sessionId === props.sessionId,
             );
 
             if (remoteSession) {
