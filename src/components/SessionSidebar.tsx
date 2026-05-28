@@ -167,10 +167,18 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
 
   return (
     <div class="border border-black/10 dark:border-white/10">
-      <button
-        type="button"
-        class="flex w-full items-center justify-between gap-2 px-2 py-2 hover:bg-base-200/50"
+      <div
+        class="flex w-full items-center justify-between gap-2 px-2 py-2 hover:bg-base-200/50 cursor-pointer"
         onClick={() => setIsCollapsed(c => !c)}
+        role="button"
+        tabindex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsCollapsed(c => !c);
+          }
+        }}
+        aria-expanded={!isCollapsed()}
       >
         <div class="flex items-center gap-2 min-w-0">
           <FiFolder size={12} class="text-zinc-400 shrink-0" />
@@ -195,7 +203,10 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
             <button
               type="button"
               class="text-zinc-400 hover:text-foreground p-1"
-              onClick={handleNewThreadClick}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNewThreadClick();
+              }}
               title="New thread"
               aria-label="New thread in this project"
             >
@@ -210,7 +221,7 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
             )}
           />
         </div>
-      </button>
+      </div>
       <Show when={!isCollapsed()}>
         <div>
           <For each={props.group?.sessions ?? []}>

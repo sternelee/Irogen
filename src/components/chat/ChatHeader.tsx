@@ -5,10 +5,14 @@
  */
 
 import { type Component, Show, createMemo } from "solid-js";
-import { FiTerminal, FiSettings, FiSidebar, FiShield } from "solid-icons/fi";
+import {
+  FiTerminal,
+  FiSidebar,
+  FiFolder,
+  FiGitBranch,
+} from "solid-icons/fi";
 import { sessionStore, type PermissionMode } from "../../stores/sessionStore";
 import { sessionEventRouter } from "../../stores/sessionEventRouter";
-import { navigationStore } from "../../stores/navigationStore";
 import { PermissionModeSwitcher } from "../ui/PermissionModeSwitcher";
 import { cn } from "~/lib/utils";
 
@@ -18,9 +22,10 @@ interface ChatHeaderProps {
   agentType?: string;
   sessionMode?: "remote" | "local";
   projectPath?: string;
-  onTogglePermissions?: () => void;
-  isPermissionsOpen?: boolean;
   onPermissionModeChange?: (mode: PermissionMode) => void;
+  rightPanelView?: "none" | "file" | "git" | "permissions";
+  onToggleFileBrowser?: () => void;
+  onToggleGitPanel?: () => void;
 }
 
 export const ChatHeader: Component<ChatHeaderProps> = (props) => {
@@ -161,33 +166,39 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
           />
         </Show>
 
-        {/* Permission history toggle */}
-        <Show when={props.agentType && props.onTogglePermissions}>
+        {/* File browser toggle */}
+        <Show when={props.agentType && props.onToggleFileBrowser}>
           <button
             type="button"
             class={cn(
-              "h-11 w-11 flex items-center justify-center",
-              "border",
-              props.isPermissionsOpen
+              "h-11 w-11 flex items-center justify-center border",
+              props.rightPanelView === "file"
                 ? "text-zinc-900 border-zinc-900 dark:text-white dark:border-white"
                 : "text-zinc-500 border-black/10 hover:border-zinc-400",
             )}
-            onClick={props.onTogglePermissions}
-            title="Permission history"
+            onClick={props.onToggleFileBrowser}
+            title="Files"
           >
-            <FiShield size={16} />
+            <FiFolder size={16} />
           </button>
         </Show>
 
-        {/* Settings */}
-        <button
-          type="button"
-          class="h-11 w-11 border border-black/10 flex items-center justify-center text-zinc-500 hover:text-foreground hover:border-zinc-400"
-          onClick={() => navigationStore.setActiveView("settings")}
-          aria-label="Settings"
-        >
-          <FiSettings size={17} />
-        </button>
+        {/* Git toggle */}
+        <Show when={props.agentType && props.onToggleGitPanel}>
+          <button
+            type="button"
+            class={cn(
+              "h-11 w-11 flex items-center justify-center border",
+              props.rightPanelView === "git"
+                ? "text-zinc-900 border-zinc-900 dark:text-white dark:border-white"
+                : "text-zinc-500 border-black/10 hover:border-zinc-400",
+            )}
+            onClick={props.onToggleGitPanel}
+            title="Git"
+          >
+            <FiGitBranch size={16} />
+          </button>
+        </Show>
       </div>
     </header>
   );

@@ -67,10 +67,11 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               </div>
               <div class="flex items-center justify-between px-4 py-3 border-b border-black/5">
                 <div>
-                  <p class="text-sm font-medium text-foreground">{t("settings.fontSize")}</p>
+                  <label for="font-size-select" class="text-sm font-medium text-foreground">{t("settings.fontSize")}</label>
                   <p class="text-xs text-zinc-500">{t("settings.fontSizeDesc")}</p>
                 </div>
                 <select
+                  id="font-size-select"
                   class="border border-black/10 px-2 py-1 text-sm bg-background focus:outline-none focus:border-zinc-400"
                   value={settingsStore.get().fontSize}
                   onChange={(e) => settingsStore.setFontSize(e.currentTarget.value as FontSizeType)}
@@ -91,8 +92,10 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                     class="peer sr-only"
                     checked={settingsStore.get().enableAnimations}
                     onChange={() => settingsStore.toggleAnimations()}
+                    role="switch"
+                    aria-checked={settingsStore.get().enableAnimations}
                   />
-                  <div class="h-5 w-9 bg-zinc-200 peer-checked:bg-zinc-400"></div>
+                  <div class="h-5 w-9 bg-zinc-200 peer-checked:bg-zinc-400" aria-hidden="true"></div>
                 </label>
               </div>
             </div>

@@ -10,8 +10,7 @@ import { FileBrowserView } from "./FileBrowserView";
 import { GitDiffView } from "./GitDiffView";
 import { PermissionHistory } from "./ui/PermissionHistory";
 import { sessionStore } from "../stores/sessionStore";
-import { FiFolder, FiGitBranch, FiX, FiShield } from "solid-icons/fi";
-import { cn } from "~/lib/utils";
+import { FiX, FiFolder, FiGitBranch, FiShield } from "solid-icons/fi";
 
 export const WorkspaceShell: Component = () => {
   const [rightPanelView, setRightPanelView] = createSignal<
@@ -30,50 +29,13 @@ export const WorkspaceShell: Component = () => {
     <>
       {/* Main Content - AgentPanel handles multi-tab */}
       <div class="flex-1 flex min-h-0">
-        <AgentPanel class="flex-1" />
-      </div>
-
-      {/* Right Panel Toggle Buttons - aligned with Project header */}
-      <div class="fixed top-14 right-4 z-30 flex items-center gap-1 bg-background border border-black/10">
-        <button
-          type="button"
-          class={cn(
-            "px-3 py-1.5 text-xs font-medium border-r border-black/10",
-            rightPanelView() === "file"
-              ? "bg-zinc-100 dark:bg-zinc-800 text-foreground"
-              : "text-zinc-500 hover:text-foreground",
-          )}
-          onClick={() => toggleRightPanel("file")}
-          title="Files"
-        >
-          <FiFolder size={14} />
-        </button>
-        <button
-          type="button"
-          class={cn(
-            "px-3 py-1.5 text-xs font-medium border-r border-black/10",
-            rightPanelView() === "git"
-              ? "bg-zinc-100 dark:bg-zinc-800 text-foreground"
-              : "text-zinc-500 hover:text-foreground",
-          )}
-          onClick={() => toggleRightPanel("git")}
-          title="Git"
-        >
-          <FiGitBranch size={14} />
-        </button>
-        <button
-          type="button"
-          class={cn(
-            "px-3 py-1.5 text-xs font-medium",
-            rightPanelView() === "permissions"
-              ? "bg-zinc-100 dark:bg-zinc-800 text-foreground"
-              : "text-zinc-500 hover:text-foreground",
-          )}
-          onClick={() => toggleRightPanel("permissions")}
-          title="Permissions"
-        >
-          <FiShield size={14} />
-        </button>
+        <AgentPanel
+          class="flex-1"
+          rightPanelView={rightPanelView()}
+          onToggleFileBrowser={() => toggleRightPanel("file")}
+          onToggleGitPanel={() => toggleRightPanel("git")}
+          onTogglePermissions={() => toggleRightPanel("permissions")}
+        />
       </div>
 
       {/* Right Panel (Tools) */}

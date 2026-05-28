@@ -1699,9 +1699,10 @@ export function ChatView(props: ChatViewProps) {
             sessionMode={props.sessionMode}
             projectPath={props.projectPath}
             onToggleSidebar={props.onToggleSidebar}
-            onTogglePermissions={() => toggleRightPanel("permissions")}
-            isPermissionsOpen={rightPanelView() === "permissions"}
             onPermissionModeChange={handlePermissionModeChange}
+            rightPanelView={rightPanelView()}
+            onToggleFileBrowser={() => toggleRightPanel("file")}
+            onToggleGitPanel={() => toggleRightPanel("git")}
           />
 
           {/* Disconnect / Reconnecting Banner */}
@@ -1756,7 +1757,7 @@ export function ChatView(props: ChatViewProps) {
             onScroll={updateScrollState}
             onKeyDown={handleContainerKeyDown}
             tabIndex={0}
-            class="flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-32 sm:pb-24 overflow-x-hidden focus:outline-none"
+            class="flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-32 sm:pb-24 overflow-x-hidden focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none"
             aria-label="Chat messages"
           >
             <Show

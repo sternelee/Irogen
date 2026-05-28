@@ -210,6 +210,10 @@ const TabBar: Component<TabBarProps> = (props) => {
 
 interface AgentPanelProps {
   class?: string;
+  rightPanelView?: "none" | "file" | "git" | "permissions";
+  onToggleFileBrowser?: () => void;
+  onToggleGitPanel?: () => void;
+  onTogglePermissions?: () => void;
 }
 
 export const AgentPanel: Component<AgentPanelProps> = (props) => {
@@ -273,6 +277,10 @@ export const AgentPanel: Component<AgentPanelProps> = (props) => {
                   agentType={tab().session.agentType}
                   projectPath={tab().session.projectPath}
                   sessionMode={tab().session.mode}
+                  rightPanelView={props.rightPanelView}
+                  onToggleFileBrowser={props.onToggleFileBrowser}
+                  onToggleGitPanel={props.onToggleGitPanel}
+                  onTogglePermissions={props.onTogglePermissions}
                 />
               </div>
             </>

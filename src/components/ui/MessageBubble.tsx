@@ -678,8 +678,9 @@ export const MessageBubble: Component<MessageBubbleProps> = (props) => {
           <div class="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
             <button
               type="button"
-              class="fixed inset-0 bg-black/50 -z-10"
+              class="absolute inset-0 bg-black/50"
               onClick={closeActions}
+              aria-label="Close action menu"
             />
             <div class="w-full max-w-sm border-t border-black/10 bg-background p-4 mb-safe">
               <div class="space-y-1">

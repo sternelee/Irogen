@@ -145,7 +145,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   createEffect(() => { slashSuggestions(); setActiveSlashIndex(0); });
 
   return (
-    <div class={cn("flex flex-col px-4 py-3 bg-background border-t border-black/10", props.class)}>
+    <div class={cn("relative flex flex-col px-4 py-3 bg-background border-t border-black/10", props.class)}>
       {/* Mention/Slash Suggestions */}
       <Show when={showMentionSuggestions()}>
         <div class="absolute left-0 right-0 bottom-full z-50 mb-2 border border-black/10 bg-background max-h-48 overflow-y-auto">
@@ -191,8 +191,8 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
 
       {/* Input Container */}
       <div class={cn(
-        "flex flex-col border border-black/10",
-        focused() ? "border-zinc-400" : "",
+        "flex flex-col border border-black/10 dark:border-white/10",
+        focused() ? "border-zinc-400 dark:border-zinc-500" : "",
       )}>
         {/* Attachments */}
         <Show when={props.attachments && props.attachments.length > 0}>
@@ -203,8 +203,11 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
                 <button
                   type="button"
                   class="p-1 text-base-content/40 hover:text-red-500"
-                  onClick={() => props.onAttach?.([])}
-                  aria-label="Remove attachment"
+                  onClick={() => {
+                    const remaining = props.attachments?.filter((a) => a.name !== file.name) ?? [];
+                    props.onAttach?.(remaining);
+                  }}
+                  aria-label={`Remove attachment ${file.name}`}
                 >
                   <FiX size={14} />
                 </button>
@@ -235,6 +238,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             class="flex-1 px-2 py-2 bg-transparent border-none outline-none resize-none text-sm min-h-[40px] placeholder:text-zinc-400 text-foreground"
             disabled={props.disabled}
             rows={1}
+            aria-label="Chat input"
           />
           <button
             type="button"
