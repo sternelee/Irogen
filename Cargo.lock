@@ -6670,7 +6670,6 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
- "tyzen",
  "url",
  "uuid",
 ]

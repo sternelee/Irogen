@@ -29,10 +29,9 @@ mod tcp_forwarding;
 use shared::AgentManager;
 use shared::{
     AgentControlAction, AgentPermissionMode, AgentPermissionResponse, AgentType,
-    CommunicationManager, DirEntry, Event, EventListener, EventType, FileBrowserAction,
-    FileBrowserEntry, GitAction, MESSAGE_PROTOCOL_VERSION, MentionCandidate,
-    Message as IrogenMessage, MessageBuilder, MessagePayload, QuicMessageClientHandle,
-    SystemAction, TcpDataType, TcpForwardingAction, TcpForwardingType,
+    CommunicationManager, Event, EventListener, EventType, FileBrowserAction, GitAction,
+    MESSAGE_PROTOCOL_VERSION, Message as IrogenMessage, MessageBuilder, MessagePayload,
+    QuicMessageClientHandle, SystemAction, TcpDataType, TcpForwardingAction, TcpForwardingType,
 };
 
 use crate::tcp_forwarding::TcpForwardingManager;
@@ -349,7 +348,7 @@ struct GitDiffResponse {
 #[serde(rename_all = "camelCase")]
 struct FileBrowserListResponse {
     success: bool,
-    entries: Vec<FileBrowserEntry>,
+    entries: Vec<FileBrowserEntryDto>,
     error: Option<String>,
 }
 
@@ -360,6 +359,221 @@ struct FileBrowserReadResponse {
     path: String,
     content: Option<String>,
     error: Option<String>,
+}
+
+// DTO types for shared types (tyzen::Type removed from shared to fix Windows CLI builds)
+#[derive(Serialize, Deserialize, tyzen::Type, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+enum AgentTypeDto {
+    ClaudeCode,
+    OpenCode,
+    Codex,
+    Cursor,
+    Gemini,
+    Cline,
+    Pi,
+    QwenCode,
+}
+
+impl From<shared::AgentType> for AgentTypeDto {
+    fn from(agent_type: shared::AgentType) -> Self {
+        match agent_type {
+            shared::AgentType::ClaudeCode => Self::ClaudeCode,
+            shared::AgentType::OpenCode => Self::OpenCode,
+            shared::AgentType::Codex => Self::Codex,
+            shared::AgentType::Cursor => Self::Cursor,
+            shared::AgentType::Gemini => Self::Gemini,
+            shared::AgentType::Cline => Self::Cline,
+            shared::AgentType::Pi => Self::Pi,
+            shared::AgentType::QwenCode => Self::QwenCode,
+        }
+    }
+}
+
+#[derive(Serialize, tyzen::Type)]
+#[serde(rename_all = "camelCase")]
+struct DirEntryDto {
+    name: String,
+    path: String,
+    is_dir: bool,
+}
+
+impl From<shared::DirEntry> for DirEntryDto {
+    fn from(entry: shared::DirEntry) -> Self {
+        Self {
+            name: entry.name,
+            path: entry.path,
+            is_dir: entry.is_dir,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, tyzen::Type)]
+#[serde(rename_all = "camelCase")]
+struct FileBrowserEntryDto {
+    name: String,
+    path: String,
+    is_dir: bool,
+    size: u64,
+}
+
+impl From<shared::FileBrowserEntry> for FileBrowserEntryDto {
+    fn from(entry: shared::FileBrowserEntry) -> Self {
+        Self {
+            name: entry.name,
+            path: entry.path,
+            is_dir: entry.is_dir,
+            size: entry.size,
+        }
+    }
+}
+
+#[derive(Serialize, tyzen::Type)]
+#[serde(rename_all = "camelCase")]
+struct MentionCandidateDto {
+    name: String,
+    path: String,
+}
+
+impl From<shared::MentionCandidate> for MentionCandidateDto {
+    fn from(candidate: shared::MentionCandidate) -> Self {
+        Self {
+            name: candidate.name,
+            path: candidate.path,
+        }
+    }
+}
+
+#[derive(Serialize, tyzen::Type)]
+#[serde(rename_all = "camelCase")]
+struct LoadAverageDto {
+    one: f64,
+    five: f64,
+    fifteen: f64,
+}
+
+impl From<shared::LoadAverage> for LoadAverageDto {
+    fn from(la: shared::LoadAverage) -> Self {
+        Self {
+            one: la.one,
+            five: la.five,
+            fifteen: la.fifteen,
+        }
+    }
+}
+
+#[derive(Serialize, tyzen::Type)]
+#[serde(rename_all = "camelCase")]
+struct NetworkStatsDto {
+    bytes_received: u64,
+    bytes_sent: u64,
+    packets_received: u64,
+    packets_sent: u64,
+}
+
+impl From<shared::NetworkStats> for NetworkStatsDto {
+    fn from(ns: shared::NetworkStats) -> Self {
+        Self {
+            bytes_received: ns.bytes_received,
+            bytes_sent: ns.bytes_sent,
+            packets_received: ns.packets_received,
+            packets_sent: ns.packets_sent,
+        }
+    }
+}
+
+#[derive(Serialize, tyzen::Type)]
+#[serde(rename_all = "camelCase")]
+struct SystemStatsDto {
+    cpu_usage: f32,
+    memory_usage: f32,
+    total_memory: u64,
+    used_memory: u64,
+    disk_usage: f32,
+    total_disk: u64,
+    used_disk: u64,
+    uptime: u64,
+    load_avg: Option<LoadAverageDto>,
+    network_stats: Option<NetworkStatsDto>,
+    timestamp: u64,
+}
+
+impl From<shared::SystemStats> for SystemStatsDto {
+    fn from(s: shared::SystemStats) -> Self {
+        Self {
+            cpu_usage: s.cpu_usage,
+            memory_usage: s.memory_usage,
+            total_memory: s.total_memory,
+            used_memory: s.used_memory,
+            disk_usage: s.disk_usage,
+            total_disk: s.total_disk,
+            used_disk: s.used_disk,
+            uptime: s.uptime,
+            load_avg: s.load_avg.map(Into::into),
+            network_stats: s.network_stats.map(Into::into),
+            timestamp: s.timestamp,
+        }
+    }
+}
+
+#[derive(Serialize, tyzen::Type)]
+#[serde(rename_all = "camelCase")]
+struct AgentSessionMetadataDto {
+    session_id: String,
+    agent_type: AgentTypeDto,
+    project_path: String,
+    started_at: u64,
+    active: bool,
+    controlled_by_remote: bool,
+    hostname: String,
+    os: String,
+    agent_version: Option<String>,
+    current_dir: String,
+    git_branch: Option<String>,
+    machine_id: String,
+}
+
+impl From<shared::AgentSessionMetadata> for AgentSessionMetadataDto {
+    fn from(m: shared::AgentSessionMetadata) -> Self {
+        Self {
+            session_id: m.session_id,
+            agent_type: m.agent_type.into(),
+            project_path: m.project_path,
+            started_at: m.started_at,
+            active: m.active,
+            controlled_by_remote: m.controlled_by_remote,
+            hostname: m.hostname,
+            os: m.os,
+            agent_version: m.agent_version,
+            current_dir: m.current_dir,
+            git_branch: m.git_branch,
+            machine_id: m.machine_id,
+        }
+    }
+}
+
+#[derive(Serialize, tyzen::Type)]
+#[serde(rename_all = "camelCase")]
+struct AgentHistoryEntryDto {
+    agent_type: AgentTypeDto,
+    session_id: String,
+    title: Option<String>,
+    updated_at: Option<String>,
+    cwd: Option<String>,
+    meta: Option<serde_json::Value>,
+}
+
+impl From<shared::AgentHistoryEntry> for AgentHistoryEntryDto {
+    fn from(e: shared::AgentHistoryEntry) -> Self {
+        Self {
+            agent_type: e.agent_type.into(),
+            session_id: e.session_id,
+            title: e.title,
+            updated_at: e.updated_at,
+            cwd: e.cwd,
+            meta: e.meta.map(|v| serde_json::to_value(v).unwrap_or_default()),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, tyzen::Type)]
@@ -1794,8 +2008,10 @@ async fn get_node_info(state: State<'_, AppState>) -> Result<String, String> {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tyzen::command]
 #[tauri::command]
-async fn get_local_system_stats() -> Result<shared::SystemStats, String> {
-    shared::collect_system_stats().map_err(|e| e.to_string())
+async fn get_local_system_stats() -> Result<SystemStatsDto, String> {
+    shared::collect_system_stats()
+        .map(|s| s.into())
+        .map_err(|e| e.to_string())
 }
 
 /// Get remote system stats via P2P
@@ -1804,7 +2020,7 @@ async fn get_local_system_stats() -> Result<shared::SystemStats, String> {
 async fn get_remote_system_stats(
     control_session_id: String,
     state: State<'_, AppState>,
-) -> Result<shared::SystemStats, String> {
+) -> Result<SystemStatsDto, String> {
     let session = get_control_connection_session(&state, &control_session_id).await?;
     let quic_client = {
         let client_guard = state.quic_client.read().await;
@@ -1835,7 +2051,7 @@ async fn get_remote_system_stats(
 
     match response_msg.payload {
         shared::MessagePayload::SystemInfo(msg) => match msg.action {
-            shared::SystemInfoAction::SystemStatsResponse(stats) => Ok(*stats),
+            shared::SystemInfoAction::SystemStatsResponse(stats) => Ok((*stats).into()),
             _ => Err("Unexpected response type".to_string()),
         },
         _ => Err("Invalid response payload".to_string()),
@@ -1855,8 +2071,8 @@ async fn parse_session_ticket(ticket: String) -> Result<String, String> {
 
 #[tyzen::command]
 #[tauri::command]
-async fn list_directory(path: String) -> Result<Vec<DirEntry>, String> {
-    shared::list_directory(&path)
+async fn list_directory(path: String) -> Result<Vec<DirEntryDto>, String> {
+    shared::list_directory(&path).map(|v| v.into_iter().map(Into::into).collect())
 }
 
 #[tyzen::command]
@@ -1865,8 +2081,9 @@ async fn list_mention_candidates(
     base_path: String,
     query: String,
     limit: Option<usize>,
-) -> Result<Vec<MentionCandidate>, String> {
+) -> Result<Vec<MentionCandidateDto>, String> {
     shared::list_mention_candidates(&base_path, &query, limit)
+        .map(|v| v.into_iter().map(Into::into).collect())
 }
 
 #[tyzen::command]
@@ -1875,7 +2092,7 @@ async fn file_browser_list(path: String) -> FileBrowserListResponse {
     match shared::file_browser_list(&path) {
         Ok(entries) => FileBrowserListResponse {
             success: true,
-            entries,
+            entries: entries.into_iter().map(Into::into).collect(),
             error: None,
         },
         Err(error) => FileBrowserListResponse {
@@ -2381,7 +2598,7 @@ async fn list_remote_mention_candidates(
     query: String,
     limit: Option<usize>,
     state: State<'_, AppState>,
-) -> Result<Vec<MentionCandidate>, String> {
+) -> Result<Vec<MentionCandidateDto>, String> {
     let session = {
         let sessions = state.sessions.read().await;
         sessions
@@ -2426,7 +2643,8 @@ async fn list_remote_mention_candidates(
         .get("candidates")
         .cloned()
         .unwrap_or(serde_json::Value::Array(Vec::new()));
-    serde_json::from_value::<Vec<MentionCandidate>>(value)
+    serde_json::from_value::<Vec<shared::MentionCandidate>>(value)
+        .map(|v| v.into_iter().map(Into::into).collect())
         .map_err(|e| format!("Invalid mention candidates payload: {}", e))
 }
 
@@ -3057,7 +3275,7 @@ async fn remote_spawn_session(
 async fn remote_list_agents(
     control_session_id: Option<String>,
     state: State<'_, AppState>,
-) -> Result<Vec<shared::message_protocol::AgentSessionMetadata>, String> {
+) -> Result<Vec<AgentSessionMetadataDto>, String> {
     let connection_id = if let Some(cs_id) = control_session_id {
         let sessions = state.sessions.read().await;
         sessions
@@ -3107,7 +3325,7 @@ async fn remote_list_agents(
     if let Ok(metadata) =
         serde_json::from_str::<Vec<shared::message_protocol::AgentSessionMetadata>>(&data)
     {
-        return Ok(metadata);
+        return Ok(metadata.into_iter().map(Into::into).collect());
     }
 
     // Backward-compatibility guard: old CLI may return session_id[] instead of metadata[]
@@ -3708,7 +3926,7 @@ async fn local_stop_agent(session_id: String, state: State<'_, AppState>) -> Res
 #[tauri::command(rename_all = "camelCase")]
 async fn local_list_agents(
     state: State<'_, AppState>,
-) -> Result<Vec<shared::message_protocol::AgentSessionMetadata>, String> {
+) -> Result<Vec<AgentSessionMetadataDto>, String> {
     let agent_manager_guard = state.agent_manager.read().await;
     let manager = match agent_manager_guard.as_ref() {
         Some(m) => m.clone(),
@@ -3716,7 +3934,12 @@ async fn local_list_agents(
     };
 
     // Get all session metadata including project_path
-    Ok(manager.get_all_session_metadata().await)
+    Ok(manager
+        .get_all_session_metadata()
+        .await
+        .into_iter()
+        .map(Into::into)
+        .collect())
 }
 
 /// Get pending permission requests for a local agent session
@@ -3906,7 +4129,7 @@ async fn local_list_agent_history(
     agent_type_str: String,
     project_path: String,
     state: State<'_, AppState>,
-) -> Result<Vec<shared::message_protocol::AgentHistoryEntry>, String> {
+) -> Result<Vec<AgentHistoryEntryDto>, String> {
     let agent_type = match agent_type_str.as_str() {
         "claude" | "claudecode" | "claude-code" => AgentType::ClaudeCode,
         "opencode" | "open" | "openai" => AgentType::OpenCode,
@@ -3953,6 +4176,7 @@ async fn local_list_agent_history(
     manager
         .list_agent_history(agent_type, working_dir, home_dir)
         .await
+        .map(|v| v.into_iter().map(Into::into).collect())
         .map_err(|e| format!("Failed to list agent history: {}", e))
 }
 
@@ -4333,7 +4557,10 @@ pub fn run() {
     // Generate TypeScript bindings for Tauri commands
     #[cfg(debug_assertions)]
     if let Err(e) = tyzen_tauri::generate("../src/generated/tauri-bindings.ts") {
-        eprintln!("[tyzen] warning: failed to generate TypeScript bindings: {}", e);
+        eprintln!(
+            "[tyzen] warning: failed to generate TypeScript bindings: {}",
+            e
+        );
     }
 
     let mut builder = tauri::Builder::default()

@@ -368,7 +368,7 @@ pub enum SystemInfoAction {
 }
 
 /// 系统运行状态
-#[derive(Debug, Clone, Serialize, Deserialize, tyzen::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemStats {
     /// CPU 使用率 (0-100)
     pub cpu_usage: f32,
@@ -395,7 +395,7 @@ pub struct SystemStats {
 }
 
 /// 负载平均值
-#[derive(Debug, Clone, Serialize, Deserialize, tyzen::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadAverage {
     pub one: f64,
     pub five: f64,
@@ -403,7 +403,7 @@ pub struct LoadAverage {
 }
 
 /// 网络统计
-#[derive(Debug, Clone, Serialize, Deserialize, tyzen::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkStats {
     /// 接收的字节数
     pub bytes_received: u64,
@@ -525,7 +525,7 @@ pub struct UserInfo {
 // ============================================================================
 
 /// AI Agent 类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, tyzen::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AgentType {
     /// Claude Agent (Anthropic) — ACP
     ClaudeCode,
@@ -546,7 +546,7 @@ pub enum AgentType {
 }
 
 /// AI Agent 会话元数据
-#[derive(Debug, Clone, Serialize, Deserialize, tyzen::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentSessionMetadata {
     /// 会话 ID
     pub session_id: String,
@@ -590,7 +590,7 @@ pub enum AgentSessionAction {
 }
 
 /// External agent history entry (ACP session list)
-#[derive(Debug, Clone, Serialize, Deserialize, tyzen::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentHistoryEntry {
     pub agent_type: AgentType,
     pub session_id: String,

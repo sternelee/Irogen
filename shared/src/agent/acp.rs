@@ -1662,7 +1662,9 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
 
     let active_turn = Arc::new(RwLock::new(None::<String>));
     let tool_name_map = Arc::new(Mutex::new(HashMap::<String, String>::new()));
-    let terminals = Arc::new(Mutex::new(HashMap::<acp::schema::TerminalId, TerminalState>::new()));
+    let terminals = Arc::new(Mutex::new(
+        HashMap::<acp::schema::TerminalId, TerminalState>::new(),
+    ));
 
     let client = AcpClientHandler {
         session_id: params.session_id.clone(),
@@ -2129,9 +2131,11 @@ fn add_resource_block_from_path(blocks: &mut Vec<acp::schema::ContentBlock>, pat
     if let Ok(content) = std::fs::read_to_string(path) {
         let text_resource =
             acp::schema::TextResourceContents::new(content, uri.clone()).mime_type(Some(mime_type));
-        blocks.push(acp::schema::ContentBlock::Resource(acp::schema::EmbeddedResource::new(
-            acp::schema::EmbeddedResourceResource::TextResourceContents(text_resource),
-        )));
+        blocks.push(acp::schema::ContentBlock::Resource(
+            acp::schema::EmbeddedResource::new(
+                acp::schema::EmbeddedResourceResource::TextResourceContents(text_resource),
+            ),
+        ));
     } else {
         blocks.push(acp::schema::ContentBlock::ResourceLink(
             acp::schema::ResourceLink::new(name.to_string(), uri).mime_type(Some(mime_type)),
@@ -2525,7 +2529,9 @@ impl AcpClientHandler {
                 format!("[resource:{}]", link.uri)
             }
             acp::schema::ContentBlock::Resource(resource) => match &resource.resource {
-                acp::schema::EmbeddedResourceResource::TextResourceContents(text) => text.text.clone(),
+                acp::schema::EmbeddedResourceResource::TextResourceContents(text) => {
+                    text.text.clone()
+                }
                 acp::schema::EmbeddedResourceResource::BlobResourceContents(blob) => {
                     format!("[blob:{} bytes]", blob.blob.len())
                 }
@@ -2543,7 +2549,8 @@ impl AcpClientHandler {
             .find(|option| {
                 matches!(
                     option.kind,
-                    acp::schema::PermissionOptionKind::AllowOnce | acp::schema::PermissionOptionKind::AllowAlways
+                    acp::schema::PermissionOptionKind::AllowOnce
+                        | acp::schema::PermissionOptionKind::AllowAlways
                 )
             })
             .or_else(|| options.first());
@@ -2729,18 +2736,18 @@ impl AcpClientHandler {
                     .iter()
                     .find(|opt| matches!(opt.kind, acp::schema::PermissionOptionKind::AllowOnce))
                     .or_else(|| {
-                        args.options
-                            .iter()
-                            .find(|opt| matches!(opt.kind, acp::schema::PermissionOptionKind::AllowAlways))
+                        args.options.iter().find(|opt| {
+                            matches!(opt.kind, acp::schema::PermissionOptionKind::AllowAlways)
+                        })
                     }),
                 ApprovalDecision::ApprovedForSession => args
                     .options
                     .iter()
                     .find(|opt| matches!(opt.kind, acp::schema::PermissionOptionKind::AllowAlways))
                     .or_else(|| {
-                        args.options
-                            .iter()
-                            .find(|opt| matches!(opt.kind, acp::schema::PermissionOptionKind::AllowOnce))
+                        args.options.iter().find(|opt| {
+                            matches!(opt.kind, acp::schema::PermissionOptionKind::AllowOnce)
+                        })
                     }),
                 ApprovalDecision::Abort => None,
             };
@@ -2812,7 +2819,10 @@ impl AcpClientHandler {
         }
     }
 
-    async fn handle_session_notification(&self, args: acp::schema::SessionNotification) -> acp::Result<()> {
+    async fn handle_session_notification(
+        &self,
+        args: acp::schema::SessionNotification,
+    ) -> acp::Result<()> {
         // Check if we should suppress updates during drain
         if self.suppress_session_updates.load(Ordering::SeqCst) {
             debug!("Suppressing session update for session {}", self.session_id);
@@ -2874,7 +2884,8 @@ impl AcpClientHandler {
                 }
 
                 match tool_call.status {
-                    acp::schema::ToolCallStatus::Pending | acp::schema::ToolCallStatus::InProgress => {
+                    acp::schema::ToolCallStatus::Pending
+                    | acp::schema::ToolCallStatus::InProgress => {
                         if let Some(raw_input) = tool_call.raw_input {
                             self.emit_event(AgentEvent::ToolInputUpdated {
                                 session_id: self.session_id.clone(),
@@ -3145,12 +3156,20 @@ impl AcpClientHandler {
     }
 
     #[allow(dead_code)]
-    async fn handle_ext_method(&self, _args: acp::schema::ExtRequest) -> acp::Result<acp::schema::ExtResponse> {
-        Ok(acp::schema::ExtResponse::new(serde_json::from_str("null").unwrap()))
+    async fn handle_ext_method(
+        &self,
+        _args: acp::schema::ExtRequest,
+    ) -> acp::Result<acp::schema::ExtResponse> {
+        Ok(acp::schema::ExtResponse::new(
+            serde_json::from_str("null").unwrap(),
+        ))
     }
 
     #[allow(dead_code)]
-    async fn handle_ext_notification(&self, _args: acp::schema::ExtNotification) -> acp::Result<()> {
+    async fn handle_ext_notification(
+        &self,
+        _args: acp::schema::ExtNotification,
+    ) -> acp::Result<()> {
         Ok(())
     }
 }

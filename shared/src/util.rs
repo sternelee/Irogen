@@ -4,14 +4,14 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
-#[derive(Debug, Serialize, Deserialize, tyzen::Type)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DirEntry {
     pub name: String,
     pub path: String,
     pub is_dir: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, tyzen::Type)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct FileBrowserEntry {
     pub name: String,
@@ -20,7 +20,7 @@ pub struct FileBrowserEntry {
     pub size: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, tyzen::Type)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MentionCandidate {
     pub name: String,
