@@ -1411,7 +1411,49 @@ export function ChatView(props: ChatViewProps) {
       );
       if (textarea) textarea.style.height = "auto";
 
-      if (content.startsWith("/")) {
+      if (content.startsWith("!")) {
+        // Shell command execution - bypass agent, execute directly on host
+        const shellCommand = content.slice(1).trim();
+        if (!shellCommand) return;
+
+        chatStore.addMessage(sessionId, {
+          role: "user",
+          content: `!${shellCommand}`,
+        });
+
+        try {
+          const session = sessionStore.getSession(sessionId);
+          const result = await invoke<{
+            success: boolean;
+            stdout: string;
+            stderr: string;
+            exitCode: number | null;
+          }>("shell_exec", {
+            command: shellCommand,
+            controlSessionId: session?.controlSessionId ?? null,
+            cwd: session?.currentDir ?? null,
+            mode: props.sessionMode ?? "remote",
+          });
+
+          const output = result.stdout || result.stderr;
+          const exitInfo = result.exitCode !== null ? ` (exit ${result.exitCode})` : "";
+          chatStore.addMessage(sessionId, {
+            role: "system",
+            content: `[shell] ${shellCommand}${exitInfo}\n${output || "(no output)"}`,
+          });
+          setIsStreaming(false);
+        } catch (error) {
+          const errorMsg =
+            error instanceof Error ? error.message : "Shell command failed";
+          notificationStore.error(errorMsg, "Shell Error");
+          chatStore.addMessage(sessionId, {
+            role: "system",
+            content: `[shell] ${shellCommand}\nError: ${errorMsg}`,
+          });
+          setIsStreaming(false);
+        }
+        return;
+      } else if (content.startsWith("/")) {
         // Slash commands - send directly to agent based on session mode
         chatStore.addMessage(sessionId, {
           role: "user",

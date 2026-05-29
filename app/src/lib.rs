@@ -3035,6 +3035,99 @@ async fn send_slash_command(
     Ok("command_sent".to_string())
 }
 
+/// Execute a shell command directly on the connected host (bypasses agent)
+/// Used for `!command` prefix in chat input
+#[tyzen::command]
+#[tauri::command(rename_all = "camelCase")]
+async fn shell_exec(
+    command: String,
+    control_session_id: Option<String>,
+    cwd: Option<String>,
+    mode: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<ShellExecResultDto, String> {
+    // Local mode: execute directly on this machine
+    if mode.as_deref() == Some("local") || control_session_id.is_none() && mode.as_deref() != Some("remote") {
+        return shared::exec_local(&command, cwd.as_deref())
+            .await
+            .map(|r| ShellExecResultDto {
+                success: r.success,
+                stdout: r.stdout,
+                stderr: r.stderr,
+                exit_code: r.exit_code,
+            });
+    }
+
+    // Remote mode: send via QUIC to CLI
+    let connection_id = if let Some(cs_id) = control_session_id {
+        let sessions = state.sessions.read().await;
+        sessions
+            .get(&cs_id)
+            .map(|s| s.connection_id.clone())
+            .ok_or_else(|| format!("Control session not found: {}", cs_id))?
+    } else {
+        let sessions = state.sessions.read().await;
+        if let Some(first_session) = sessions.values().next() {
+            first_session.connection_id.clone()
+        } else {
+            return Err("No active connection available".to_string());
+        }
+    };
+
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let shell_message = IrogenMessage::new(
+        shared::MessageType::ShellExec,
+        "app".to_string(),
+        shared::MessagePayload::ShellExec(shared::ShellExecMessage {
+            action: shared::ShellExecAction::Execute {
+                command: command.clone(),
+                cwd,
+                timeout_secs: Some(30),
+            },
+            request_id: Some(request_id.clone()),
+        }),
+    )
+    .requires_response();
+
+    let response = send_message_via_client_with_response(
+        &state,
+        &connection_id,
+        shell_message,
+        &request_id,
+        "shell exec",
+        30,
+    )
+    .await?;
+
+    if !response.success {
+        return Err(response
+            .message
+            .unwrap_or_else(|| "Shell command failed".to_string()));
+    }
+
+    let data = response
+        .data
+        .ok_or_else(|| "Missing shell exec response data".to_string())?;
+
+    let result: serde_json::Value =
+        serde_json::from_str(&data).map_err(|e| format!("Invalid shell exec response: {}", e))?;
+
+    Ok(ShellExecResultDto {
+        success: result["success"].as_bool().unwrap_or(false),
+        stdout: result["stdout"].as_str().unwrap_or("").to_string(),
+        stderr: result["stderr"].as_str().unwrap_or("").to_string(),
+        exit_code: result["exitCode"].as_i64().map(|v| v as i32),
+    })
+}
+
+#[derive(Serialize, tyzen::Type)]
+struct ShellExecResultDto {
+    success: bool,
+    stdout: String,
+    stderr: String,
+    exit_code: Option<i32>,
+}
+
 /// Send agent control message to remote session
 #[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
@@ -4629,6 +4722,7 @@ pub fn run() {
             send_tcp_data,
             // AI Agent Commands
             send_slash_command,
+            shell_exec,
             remote_spawn_session,
             remote_list_agents,
             remote_stop_agent,

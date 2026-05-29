@@ -61,6 +61,8 @@ pub enum MessageType {
     Notification = 0x18,
     /// 斜杠命令消息（转发给 AI Agent 的命令）
     SlashCommand = 0x19,
+    /// Shell 命令直接执行消息
+    ShellExec = 0x1a,
 }
 
 impl TryFrom<u8> for MessageType {
@@ -85,6 +87,7 @@ impl TryFrom<u8> for MessageType {
             0x17 => Ok(MessageType::RemoteSpawn),
             0x18 => Ok(MessageType::Notification),
             0x19 => Ok(MessageType::SlashCommand),
+            0x1a => Ok(MessageType::ShellExec),
             _ => Err(anyhow::anyhow!("Invalid message type: {}", value)),
         }
     }
@@ -288,6 +291,8 @@ pub enum MessagePayload {
     Notification(NotificationMessage),
     /// 斜杠命令载荷
     SlashCommand(SlashCommandMessage),
+    /// Shell 命令直接执行载荷
+    ShellExec(ShellExecMessage),
 }
 
 /// 心跳消息
@@ -947,6 +952,34 @@ pub enum RemoteSpawnAction {
     ListAvailableAgents,
     /// 停止远程 CLI 上的 agent 会话
     StopSession { session_id: String },
+}
+
+/// Shell 命令直接执行消息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShellExecMessage {
+    pub action: ShellExecAction,
+    pub request_id: Option<String>,
+}
+
+/// Shell 命令执行动作
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ShellExecAction {
+    /// 执行 shell 命令
+    Execute {
+        command: String,
+        /// 工作目录（可选）
+        cwd: Option<String>,
+        /// 超时时间（秒，默认 30）
+        #[serde(default)]
+        timeout_secs: Option<u64>,
+    },
+    /// 命令执行结果
+    ExecResult {
+        success: bool,
+        stdout: String,
+        stderr: String,
+        exit_code: Option<i32>,
+    },
 }
 
 /// 推送通知消息
@@ -1628,6 +1661,18 @@ impl MessageBuilder {
         let payload = MessagePayload::RemoteSpawn(RemoteSpawnMessage { action, request_id });
         Message::new(MessageType::RemoteSpawn, sender_id, payload)
             .with_priority(MessagePriority::High)
+            .requires_response()
+    }
+
+    /// 创建 Shell 命令直接执行消息
+    pub fn shell_exec(
+        sender_id: String,
+        action: ShellExecAction,
+        request_id: Option<String>,
+    ) -> Message {
+        let payload = MessagePayload::ShellExec(ShellExecMessage { action, request_id });
+        Message::new(MessageType::ShellExec, sender_id, payload)
+            .with_priority(MessagePriority::Normal)
             .requires_response()
     }
 

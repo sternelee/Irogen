@@ -4,12 +4,16 @@ pub mod agent;
 pub mod event_manager;
 pub mod message_protocol;
 pub mod quic_server;
+#[cfg(feature = "std")]
+pub mod shell;
 pub mod stats;
 pub mod util;
 
 pub use event_manager::*;
 pub use message_protocol::*;
 pub use quic_server::*;
+#[cfg(feature = "std")]
+pub use shell::*;
 pub use stats::*;
 pub use util::*;
 

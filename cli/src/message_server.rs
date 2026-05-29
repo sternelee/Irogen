@@ -10,9 +10,9 @@ use shared::{
     AgentSessionMetadata, AgentType, AvailableTools, CommunicationManager, FileBrowserAction,
     GitAction, MESSAGE_PROTOCOL_VERSION, Message, MessageBuilder, MessageHandler, MessagePayload,
     MessageType, NotificationData, NotificationType, OSInfo, PackageManager, QuicMessageServer,
-    QuicMessageServerConfig, RemoteSpawnAction, ResponseMessage, ShellInfo, SystemAction,
-    SystemInfo, SystemInfoAction, TcpDataType, TcpForwardingAction, TcpForwardingType,
-    TcpStreamHandler, Tool, UserInfo,
+    QuicMessageServerConfig, RemoteSpawnAction, ResponseMessage, ShellExecAction, ShellInfo,
+    SystemAction, SystemInfo, SystemInfoAction, TcpDataType, TcpForwardingAction,
+    TcpForwardingType, TcpStreamHandler, Tool, UserInfo,
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -398,6 +398,12 @@ impl CliMessageServer {
         ));
         self.communication_manager
             .register_message_handler(agent_permission_handler)
+            .await;
+
+        // 注册 Shell 命令直接执行处理器
+        let shell_exec_handler = Arc::new(ShellExecMessageHandler::new());
+        self.communication_manager
+            .register_message_handler(shell_exec_handler)
             .await;
 
         info!("All message handlers registered successfully");
@@ -3094,6 +3100,71 @@ impl MessageHandler for AgentPermissionMessageHandler {
 
     fn supported_message_types(&self) -> Vec<MessageType> {
         vec![MessageType::AgentPermission]
+    }
+}
+
+// ============================================================================
+// Shell Exec Message Handler
+// ============================================================================
+
+/// Shell 命令直接执行处理器
+pub struct ShellExecMessageHandler;
+
+impl ShellExecMessageHandler {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait::async_trait]
+impl MessageHandler for ShellExecMessageHandler {
+    async fn handle_message(&self, message: &Message) -> Result<Option<Message>> {
+        if let MessagePayload::ShellExec(shell_msg) = &message.payload {
+            if let ShellExecAction::Execute {
+                command,
+                cwd,
+                ..
+            } = &shell_msg.action
+            {
+                let request_id = shell_msg
+                    .request_id
+                    .clone()
+                    .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+                let result = shared::exec_local(command, cwd.as_deref()).await;
+
+                let json = match result {
+                    Ok(r) => serde_json::json!({
+                        "success": r.success,
+                        "stdout": r.stdout,
+                        "stderr": r.stderr,
+                        "exitCode": r.exit_code
+                    }),
+                    Err(e) => serde_json::json!({
+                        "success": false,
+                        "stdout": "",
+                        "stderr": e,
+                        "exitCode": null
+                    }),
+                };
+
+                Ok(Some(MessageBuilder::response(
+                    "cli".to_string(),
+                    request_id,
+                    true,
+                    Some(json),
+                    None,
+                )))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn supported_message_types(&self) -> Vec<MessageType> {
+        vec![MessageType::ShellExec]
     }
 }
 
