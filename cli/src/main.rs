@@ -9,6 +9,15 @@ use tracing::{info, warn};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
+/// Stable path to the daemon PID file.
+///
+/// Uses the OS temp directory rather than a CWD-relative path so that
+/// `irogen host --daemon` and `irogen stop` agree on the location regardless
+/// of the directory each command is launched from.
+fn pid_file_path() -> std::path::PathBuf {
+    std::env::temp_dir().join("irogen.pid")
+}
+
 /// Generate a string representation of a QR code for the given ticket.
 fn generate_qr_string(ticket: &str) -> String {
     use fast_qr::{ECL, QRBuilder};
@@ -174,7 +183,7 @@ async fn run_host(
     if daemon {
         // 检查是否已有守护进程在运行
         #[cfg(unix)]
-        if let Ok(pid_str) = std::fs::read_to_string("irogen.pid") {
+        if let Ok(pid_str) = std::fs::read_to_string(pid_file_path()) {
             if let Ok(pid) = pid_str.trim().parse::<i32>() {
                 unsafe {
                     if libc::kill(pid, 0) == 0 {
@@ -195,10 +204,11 @@ async fn run_host(
 
         // 写入 PID 文件
         let pid = std::process::id();
-        if let Err(e) = std::fs::write("irogen.pid", pid.to_string()) {
+        let pid_path = pid_file_path();
+        if let Err(e) = std::fs::write(&pid_path, pid.to_string()) {
             warn!("Failed to write PID file: {}", e);
         } else {
-            info!("Daemon PID written to irogen.pid: {}", pid);
+            info!("Daemon PID written to {}: {}", pid_path.display(), pid);
         }
     }
 
@@ -232,7 +242,7 @@ async fn run_host(
     }
 
     // 清理 PID 文件
-    std::fs::remove_file("irogen.pid").ok();
+    std::fs::remove_file(pid_file_path()).ok();
 
     Ok(())
 }
@@ -351,7 +361,7 @@ async fn wait_for_shutdown_signal() {
 /// Stop a running daemon process
 #[cfg(unix)]
 fn run_stop() -> Result<()> {
-    let pid_file = std::path::PathBuf::from("irogen.pid");
+    let pid_file = pid_file_path();
     if !pid_file.exists() {
         return Err(anyhow::anyhow!("No PID file found. Is the daemon running?"));
     }

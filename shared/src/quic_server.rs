@@ -743,6 +743,21 @@ impl QuicMessageServer {
                     pending_data[3],
                 ]) as usize;
 
+                // 防护：拒绝超大帧长，避免恶意/损坏的长度前缀导致 pending_data
+                // 无限增长造成内存耗尽 (DoS)。
+                const MAX_FRAME_SIZE: usize = 16 * 1024 * 1024; // 16 MiB
+                if length > MAX_FRAME_SIZE {
+                    error!(
+                        "message-stream abort: connection_id={}, frame length {} exceeds max {} bytes",
+                        connection_id, length, MAX_FRAME_SIZE
+                    );
+                    return Err(anyhow::anyhow!(
+                        "Frame length {} exceeds max message size {}",
+                        length,
+                        MAX_FRAME_SIZE
+                    ));
+                }
+
                 if pending_data.len() < 4 + length {
                     // 半包，继续读取
                     break;
@@ -1040,9 +1055,15 @@ impl QuicMessageServer {
             }
             match Message::from_bytes(&payload) {
                 Ok(message) => Ok(Some(message)),
-                Err(e) => Err(anyhow::anyhow!("Message decode failed: payload_len={}, payload_hex=[{}], error={}",
+                Err(e) => Err(anyhow::anyhow!(
+                    "Message decode failed: payload_len={}, payload_hex=[{}], error={}",
                     payload.len(),
-                    payload.iter().take(16).map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" "),
+                    payload
+                        .iter()
+                        .take(16)
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<Vec<_>>()
+                        .join(" "),
                     e
                 )),
             }
@@ -1458,8 +1479,10 @@ pub struct QuicMessageClientHandle {
     endpoint: Arc<Endpoint>,
     /// 重连参数
     connection_params: Arc<RwLock<Option<ConnectionParams>>>,
-    /// 健康监控取消令牌
-    health_cancel: CancellationToken,
+    /// 健康监控取消令牌（可替换：每次启动监控时换入新令牌，取消旧监控）
+    health_cancel: Arc<std::sync::Mutex<CancellationToken>>,
+    /// 单飞保护：保证任一时刻最多只有一个重连流程在进行
+    reconnect_in_progress: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl QuicMessageClient {
@@ -2076,7 +2099,8 @@ impl QuicMessageClientHandle {
             message_tx,
             endpoint,
             connection_params: Arc::new(RwLock::new(None)),
-            health_cancel: CancellationToken::new(),
+            health_cancel: Arc::new(std::sync::Mutex::new(CancellationToken::new())),
+            reconnect_in_progress: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
@@ -2129,7 +2153,7 @@ impl QuicMessageClientHandle {
     /// 断开与服务器的连接
     pub async fn disconnect_from_server(&self, connection_id: &str) -> Result<()> {
         // 停止健康监控
-        self.health_cancel.cancel();
+        self.health_cancel.lock().unwrap().cancel();
         let mut client = self.client.lock().await;
         client.disconnect_from_server(connection_id).await
     }
@@ -2172,15 +2196,22 @@ impl QuicMessageClientHandle {
 
     /// 启动连接健康监控：定期心跳探测，检测断连后自动重连
     fn start_health_monitor(&self) {
-        // 取消旧的监控
-        self.health_cancel.cancel();
+        // 换入一个全新的取消令牌，并取消上一个监控任务。
+        // 注意：不能用已取消令牌的 child_token（会立即处于取消态），
+        // 因此每次都创建独立的新令牌再替换。
+        let health_cancel = {
+            let mut guard = self.health_cancel.lock().unwrap();
+            guard.cancel();
+            let fresh = CancellationToken::new();
+            *guard = fresh.clone();
+            fresh
+        };
 
         let server_connections = self.server_connections.clone();
         let connection_params = self.connection_params.clone();
         let endpoint = self.endpoint.clone();
         let message_tx = self.message_tx.clone();
-        // 为新的监控创建 child token
-        let health_cancel = self.health_cancel.child_token();
+        let reconnect_in_progress = self.reconnect_in_progress.clone();
 
         tokio::spawn(async move {
             let mut heartbeat_seq: u64 = 0;
@@ -2253,6 +2284,7 @@ impl QuicMessageClientHandle {
                                                 &endpoint, &server_connections,
                                                 &connection_params, &message_tx,
                                                 &mut consecutive_failures,
+                                                &reconnect_in_progress, &health_cancel,
                                             ).await;
                                         }
                                     }
@@ -2266,6 +2298,7 @@ impl QuicMessageClientHandle {
                                     &endpoint, &server_connections,
                                     &connection_params, &message_tx,
                                     &mut consecutive_failures,
+                                    &reconnect_in_progress, &health_cancel,
                                 ).await;
                             }
                         }
@@ -2301,7 +2334,28 @@ impl QuicMessageClientHandle {
         connection_params: &Arc<RwLock<Option<ConnectionParams>>>,
         message_tx: &broadcast::Sender<Message>,
         consecutive_failures: &mut u32,
+        reconnect_in_progress: &std::sync::atomic::AtomicBool,
+        cancel: &CancellationToken,
     ) {
+        use std::sync::atomic::Ordering;
+
+        // 单飞保护：若已有重连在进行，直接返回，避免并发重连互相覆盖连接状态
+        if reconnect_in_progress
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            debug!("Reconnect already in progress, skipping");
+            return;
+        }
+        // 保证函数任何返回路径都会复位标志
+        struct Guard<'a>(&'a std::sync::atomic::AtomicBool);
+        impl Drop for Guard<'_> {
+            fn drop(&mut self) {
+                self.0.store(false, std::sync::atomic::Ordering::Release);
+            }
+        }
+        let _guard = Guard(reconnect_in_progress);
+
         let params = connection_params.read().await.clone();
         let Some(params) = params else {
             return;
@@ -2317,7 +2371,20 @@ impl QuicMessageClientHandle {
             MessageBuilder::heartbeat("system".to_string(), 0, "reconnecting".to_string());
         let _ = message_tx.send(reconnecting);
 
-        tokio::time::sleep(delay).await;
+        // 可被取消打断的退避等待：监控被替换/断开时尽快退出
+        tokio::select! {
+            _ = tokio::time::sleep(delay) => {}
+            _ = cancel.cancelled() => {
+                info!("Reconnect cancelled during backoff");
+                return;
+            }
+        }
+
+        // 退避后再次确认监控仍然有效，避免对已废弃的连接进行重连
+        if cancel.is_cancelled() {
+            info!("Reconnect cancelled before connect");
+            return;
+        }
 
         // 尝试连接，带 30 秒超时
         let connect_result = tokio::time::timeout(
@@ -2328,6 +2395,12 @@ impl QuicMessageClientHandle {
 
         match connect_result {
             Ok(Ok(new_connection)) => {
+                // 连接期间监控可能已被替换；若已取消则丢弃此连接
+                if cancel.is_cancelled() {
+                    info!("Reconnect succeeded but monitor was cancelled, dropping connection");
+                    new_connection.close(0u32.into(), b"stale reconnect");
+                    return;
+                }
                 info!("Reconnected successfully");
                 *consecutive_failures = 0;
 

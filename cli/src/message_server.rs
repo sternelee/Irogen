@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 use shared::{
     AgentControlAction, AgentPermissionMessageInner, AgentPermissionMode, AgentSessionAction,
     AgentSessionMetadata, AgentType, AvailableTools, CommunicationManager, FileBrowserAction,
-    GitAction, MESSAGE_PROTOCOL_VERSION, Message, MessageBuilder, MessageHandler, MessagePayload,
-    MessageType, NotificationData, NotificationType, OSInfo, PackageManager, QuicMessageServer,
-    QuicMessageServerConfig, RemoteSpawnAction, ResponseMessage, ShellExecAction, ShellInfo,
-    SystemAction, SystemInfo, SystemInfoAction, TcpDataType, TcpForwardingAction,
-    TcpForwardingType, TcpStreamHandler, Tool, UserInfo,
+    GitAction, MESSAGE_PROTOCOL_VERSION, MESSAGE_SCHEMA_FINGERPRINT, Message, MessageBuilder,
+    MessageHandler, MessagePayload, MessageType, NotificationData, NotificationType, OSInfo,
+    PackageManager, QuicMessageServer, QuicMessageServerConfig, RemoteSpawnAction, ResponseMessage,
+    ShellExecAction, ShellInfo, SystemAction, SystemInfo, SystemInfoAction, TcpDataType,
+    TcpForwardingAction, TcpForwardingType, TcpStreamHandler, Tool, UserInfo,
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -528,7 +528,8 @@ impl MessageHandler for SystemControlMessageHandler {
                             "uptime": status.uptime,
                             "active_tcp_sessions": status.active_tcp_sessions,
                             "memory_usage": status.memory_usage,
-                            "message_protocol_version": MESSAGE_PROTOCOL_VERSION
+                            "message_protocol_version": MESSAGE_PROTOCOL_VERSION,
+                            "message_schema_fingerprint": MESSAGE_SCHEMA_FINGERPRINT
                         });
                         return Ok(Some(message.create_response(MessagePayload::Response(
                             ResponseMessage {
@@ -3120,12 +3121,7 @@ impl ShellExecMessageHandler {
 impl MessageHandler for ShellExecMessageHandler {
     async fn handle_message(&self, message: &Message) -> Result<Option<Message>> {
         if let MessagePayload::ShellExec(shell_msg) = &message.payload {
-            if let ShellExecAction::Execute {
-                command,
-                cwd,
-                ..
-            } = &shell_msg.action
-            {
+            if let ShellExecAction::Execute { command, cwd, .. } = &shell_msg.action {
                 let request_id = shell_msg
                     .request_id
                     .clone()

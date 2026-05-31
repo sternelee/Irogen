@@ -57,8 +57,11 @@ pub struct CompletedAcpPermissionEntry {
 }
 
 /// ACP Permission Handler - wraps PermissionHandler for ACP integration
+///
+/// `inner` is shared behind an `Arc<RwLock<_>>` so that session-level approvals
+/// persist across clones and across `&self` mutations (e.g. `resolve`).
 pub struct AcpPermissionHandler {
-    inner: PermissionHandler,
+    inner: Arc<RwLock<PermissionHandler>>,
     pending: Arc<RwLock<HashMap<String, AcpPermissionEntry>>>,
     completed: Arc<RwLock<HashMap<String, CompletedAcpPermissionEntry>>>,
 }
@@ -67,43 +70,45 @@ impl AcpPermissionHandler {
     /// Create a new ACP permission handler with the given mode
     pub fn new(mode: PermissionMode) -> Self {
         Self {
-            inner: PermissionHandler::new(mode),
+            inner: Arc::new(RwLock::new(PermissionHandler::new(mode))),
             pending: Arc::new(RwLock::new(HashMap::new())),
             completed: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     /// Get the current permission mode
-    pub fn mode(&self) -> PermissionMode {
-        self.inner.mode()
+    pub async fn mode(&self) -> PermissionMode {
+        self.inner.read().await.mode()
     }
 
     /// Set the permission mode
-    pub fn set_mode(&mut self, mode: PermissionMode) {
-        self.inner.set_mode(mode);
+    pub async fn set_mode(&self, mode: PermissionMode) {
+        self.inner.write().await.set_mode(mode);
     }
 
     /// Check if a tool should be auto-approved
-    pub fn should_auto_approve(
+    pub async fn should_auto_approve(
         &self,
         tool_name: &str,
         tool_call_id: &str,
     ) -> Option<ApprovalDecision> {
         self.inner
+            .read()
+            .await
             .should_auto_approve(tool_name, tool_call_id)
             .map(|d| d.decision)
     }
 
     /// Check auto-approval and return appropriate permission option
     /// Returns None if manual approval is needed
-    pub fn handle_permission_request(
+    pub async fn handle_permission_request(
         &self,
         tool_name: &str,
         tool_call_id: &str,
         options: &[PermissionOption],
     ) -> Option<PermissionOption> {
         // Check if should auto-approve
-        if let Some(decision) = self.should_auto_approve(tool_name, tool_call_id) {
+        if let Some(decision) = self.should_auto_approve(tool_name, tool_call_id).await {
             match decision {
                 ApprovalDecision::Approved | ApprovalDecision::ApprovedForSession => {
                     // Find AllowOnce or AllowAlways option
@@ -174,11 +179,11 @@ impl AcpPermissionHandler {
         completed_map.insert(request_id.to_string(), completed);
 
         // If approved for session, add to allowed tools
-        if approved {
-            if let Some(ApprovalDecision::ApprovedForSession) = decision {
-                let mut inner = self.inner.clone();
-                inner.add_allowed_tool(entry.tool_name.clone());
-            }
+        if approved && matches!(decision, Some(ApprovalDecision::ApprovedForSession)) {
+            self.inner
+                .write()
+                .await
+                .add_allowed_tool(entry.tool_name.clone());
         }
 
         Ok(())
@@ -198,9 +203,13 @@ impl AcpPermissionHandler {
 
     /// Get the permission state
     pub async fn get_state(&self) -> AcpPermissionState {
+        let allowed_tools = {
+            let handler = self.inner.read().await;
+            handler.allowed_tools().iter().cloned().collect()
+        };
         AcpPermissionState {
-            mode: self.mode(),
-            allowed_tools: self.inner.allowed_tools().iter().cloned().collect(),
+            mode: self.mode().await,
+            allowed_tools,
             pending_requests: self.get_pending().await,
             completed_requests: self.get_completed().await,
         }
@@ -224,7 +233,7 @@ mod tests {
     #[tokio::test]
     async fn test_acp_permission_handler_creation() {
         let handler = AcpPermissionHandler::new(PermissionMode::AlwaysAsk);
-        assert_eq!(handler.mode(), PermissionMode::AlwaysAsk);
+        assert_eq!(handler.mode().await, PermissionMode::AlwaysAsk);
     }
 
     #[tokio::test]
@@ -234,7 +243,40 @@ mod tests {
         assert!(
             handler
                 .should_auto_approve("change_title", "tool-123")
+                .await
                 .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_acp_approved_for_session_persists() {
+        let handler = AcpPermissionHandler::new(PermissionMode::AlwaysAsk);
+
+        let entry = AcpPermissionEntry {
+            request_id: "req-session".to_string(),
+            tool_name: "bash".to_string(),
+            input: None,
+            options: vec![],
+            created_at: 1234567890,
+        };
+        handler.add_request(entry).await;
+
+        handler
+            .resolve(
+                "req-session",
+                true,
+                Some(ApprovalDecision::ApprovedForSession),
+                None,
+            )
+            .await
+            .unwrap();
+
+        // The session-level approval must be persisted on the shared handler,
+        // not on a discarded clone.
+        let state = handler.get_state().await;
+        assert!(
+            state.allowed_tools.contains(&"bash".to_string()),
+            "ApprovedForSession should persist the tool into allowed_tools"
         );
     }
 

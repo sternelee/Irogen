@@ -17,6 +17,7 @@ import { ToastContainer } from "./components/ToastContainer";
 
 // Stores
 import { sessionStore } from "./stores/sessionStore";
+import { sessionEventRouter } from "./stores/sessionEventRouter";
 import { notificationStore } from "./stores/notificationStore";
 import { initializeDeviceDetection } from "./stores/deviceStore";
 import { navigationStore } from "./stores/navigationStore";
@@ -63,6 +64,17 @@ export default function App() {
 
     // Listen for agent session creation events
     setupEventListeners();
+
+    // Release the global event-router Tauri listeners on hard reload / HMR /
+    // window close so we don't accumulate duplicate listeners across reloads.
+    const handleBeforeUnload = () => {
+      void sessionEventRouter.cleanup();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    onCleanup(() => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      void sessionEventRouter.cleanup();
+    });
   });
 
   const setupEventListeners = async () => {

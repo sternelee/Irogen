@@ -30,8 +30,9 @@ use shared::AgentManager;
 use shared::{
     AgentControlAction, AgentPermissionMode, AgentPermissionResponse, AgentType,
     CommunicationManager, Event, EventListener, EventType, FileBrowserAction, GitAction,
-    MESSAGE_PROTOCOL_VERSION, Message as IrogenMessage, MessageBuilder, MessagePayload,
-    QuicMessageClientHandle, SystemAction, TcpDataType, TcpForwardingAction, TcpForwardingType,
+    MESSAGE_PROTOCOL_VERSION, MESSAGE_SCHEMA_FINGERPRINT, Message as IrogenMessage, MessageBuilder,
+    MessagePayload, QuicMessageClientHandle, SystemAction, TcpDataType, TcpForwardingAction,
+    TcpForwardingType,
 };
 
 use crate::tcp_forwarding::TcpForwardingManager;
@@ -777,37 +778,42 @@ async fn connect_to_peer(
 
     // Check if there's already a session to the same node.
     // Reuse only if the existing control connection still passes readiness/protocol checks.
-    {
+    //
+    // Collect the candidate while briefly holding the read lock, then release it
+    // *before* running the (potentially multi-second) network probe so we don't
+    // block all other session readers/writers for the duration of the probe.
+    let reuse_candidate: Option<(String, String)> = {
         let sessions = state.sessions.read().await;
-        for (existing_session_id, session) in sessions.iter() {
+        sessions.iter().find_map(|(existing_session_id, session)| {
             if session.node_id == node_id_str {
                 {
                     let mut last_activity = session.last_activity.lock().unwrap();
                     *last_activity = Instant::now();
                 }
+                Some((existing_session_id.clone(), session.connection_id.clone()))
+            } else {
+                None
+            }
+        })
+    };
 
-                match probe_control_connection(&state, &session.connection_id, existing_session_id)
-                    .await
-                {
-                    Ok(()) => {
-                        tracing::info!(
-                            "Reusing existing session {} for node {}",
-                            existing_session_id,
-                            node_id_str
-                        );
-                        return Ok(existing_session_id.clone());
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Existing session {} failed readiness probe and will be recreated: {}",
-                            existing_session_id,
-                            e
-                        );
-                        stale_session_to_remove =
-                            Some((existing_session_id.clone(), session.connection_id.clone()));
-                        break;
-                    }
-                }
+    if let Some((existing_session_id, connection_id)) = reuse_candidate {
+        match probe_control_connection(&state, &connection_id, &existing_session_id).await {
+            Ok(()) => {
+                tracing::info!(
+                    "Reusing existing session {} for node {}",
+                    existing_session_id,
+                    node_id_str
+                );
+                return Ok(existing_session_id);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Existing session {} failed readiness probe and will be recreated: {}",
+                    existing_session_id,
+                    e
+                );
+                stale_session_to_remove = Some((existing_session_id, connection_id));
             }
         }
     }
@@ -1867,15 +1873,19 @@ async fn probe_control_connection(
         .await
         {
             Ok(resp) if resp.success => {
-                let remote_protocol_version = resp
+                let parsed = resp
                     .data
                     .as_deref()
-                    .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-                    .and_then(|json| {
-                        json.get("message_protocol_version")
-                            .and_then(|v| v.as_u64())
-                            .map(|v| v as u8)
-                    });
+                    .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok());
+                let remote_protocol_version = parsed.as_ref().and_then(|json| {
+                    json.get("message_protocol_version")
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as u8)
+                });
+                let remote_schema_fingerprint = parsed.as_ref().and_then(|json| {
+                    json.get("message_schema_fingerprint")
+                        .and_then(|v| v.as_u64())
+                });
 
                 if remote_protocol_version != Some(MESSAGE_PROTOCOL_VERSION) {
                     probe_err = format!(
@@ -1883,6 +1893,18 @@ async fn probe_control_connection(
                         MESSAGE_PROTOCOL_VERSION,
                         remote_protocol_version
                             .map(|v| v.to_string())
+                            .unwrap_or_else(|| "<missing>".to_string())
+                    );
+                } else if remote_schema_fingerprint.is_some()
+                    && remote_schema_fingerprint != Some(MESSAGE_SCHEMA_FINGERPRINT)
+                {
+                    // Same protocol version but the wire schema drifted. Reject to
+                    // avoid silent (de)serialization corruption across builds.
+                    probe_err = format!(
+                        "Remote CLI schema mismatch. Expected fingerprint {:#x}, got {}.",
+                        MESSAGE_SCHEMA_FINGERPRINT,
+                        remote_schema_fingerprint
+                            .map(|v| format!("{:#x}", v))
                             .unwrap_or_else(|| "<missing>".to_string())
                     );
                 } else {
@@ -3047,7 +3069,9 @@ async fn shell_exec(
     state: State<'_, AppState>,
 ) -> Result<ShellExecResultDto, String> {
     // Local mode: execute directly on this machine
-    if mode.as_deref() == Some("local") || control_session_id.is_none() && mode.as_deref() != Some("remote") {
+    if mode.as_deref() == Some("local")
+        || control_session_id.is_none() && mode.as_deref() != Some("remote")
+    {
         return shared::exec_local(&command, cwd.as_deref())
             .await
             .map(|r| ShellExecResultDto {

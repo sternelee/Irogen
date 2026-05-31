@@ -408,6 +408,16 @@ export const createSessionStore = () => {
   };
 
   const setActiveSession = (sessionId: string | null) => {
+    // Guard against pointing the active session at an id that no longer exists
+    // (e.g. a session removed by a backend disconnect before its cleanup event
+    // was processed). getActiveSession already tolerates a stale id, but we
+    // avoid persisting a dangling reference here.
+    if (sessionId !== null && !state.sessions[sessionId]) {
+      console.warn(
+        `setActiveSession: session ${sessionId} does not exist, ignoring`,
+      );
+      return;
+    }
     setState("activeSessionId", sessionId);
   };
 

@@ -47,7 +47,12 @@ pub async fn exec_local(command: &str, cwd: Option<&str>) -> Result<ShellExecRes
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             let exit_code = output.status.code();
             let success = output.status.success();
-            Ok(ShellExecResult { success, stdout, stderr, exit_code })
+            Ok(ShellExecResult {
+                success,
+                stdout,
+                stderr,
+                exit_code,
+            })
         }
         Ok(Err(e)) => Err(format!("Failed to execute command: {}", e)),
         Err(_) => Err(format!("Command timed out after {}s", timeout.as_secs())),

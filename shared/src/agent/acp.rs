@@ -823,14 +823,10 @@ impl AcpStreamingSession {
         approve_for_session: bool,
         reason: Option<String>,
     ) -> std::result::Result<(), String> {
-        if approved && approve_for_session {
-            if let Some(tool_name) = self.pending_tool_names.write().await.remove(&request_id) {
-                let mut handler = self.permission_handler.write().await;
-                handler.add_allowed_tool(tool_name);
-            }
-        } else {
-            let _ = self.pending_tool_names.write().await.remove(&request_id);
-        }
+        // Take the tool name out of the pending set (it is being resolved now),
+        // but defer persisting any session-level approval until the manager has
+        // acknowledged the response, so local and manager state stay consistent.
+        let resolved_tool_name = self.pending_tool_names.write().await.remove(&request_id);
 
         debug!(
             "ACP permission response for session {}: request_id={}, approved={}",
@@ -848,9 +844,21 @@ impl AcpStreamingSession {
             })
             .map_err(|_| String::from(AcpError::CommandChannelClosed))?;
 
+        // Only commit the session-level approval once the manager confirms the
+        // response succeeded. If the channel closed or the manager returned an
+        // error, we must not leave the tool whitelisted locally.
         response_rx
             .await
-            .map_err(|_| "Permission response channel closed".to_string())?
+            .map_err(|_| "Permission response channel closed".to_string())??;
+
+        if let Some(tool_name) = resolved_tool_name.filter(|_| approved && approve_for_session) {
+            self.permission_handler
+                .write()
+                .await
+                .add_allowed_tool(tool_name);
+        }
+
+        Ok(())
     }
 
     /// Gracefully shut down the ACP session
@@ -2514,9 +2522,15 @@ impl AcpClientHandler {
                 buffer.pop_front();
             }
         }
+        // A send error only means there are currently no live broadcast
+        // subscribers; the event is already durably stored in `event_buffer`
+        // and recoverable via `drain_event_buffer`, so this is not data loss.
         let _ = self.event_sender.send(event);
 
-        // Increment processed counter after event is emitted
+        // The event has been durably buffered and dispatched, so it counts as
+        // processed regardless of whether a live subscriber received it. This
+        // counter is compared against `session_update_count` to detect when a
+        // turn has fully drained.
         self.processed_update_count.fetch_add(1, Ordering::SeqCst);
     }
 

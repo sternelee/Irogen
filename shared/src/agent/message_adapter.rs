@@ -11,6 +11,42 @@ use crate::message_protocol::{
 };
 
 use super::events::AgentEvent;
+use tracing::debug;
+
+/// Parse a string as JSON, falling back to representing it as a raw JSON string
+/// value when it is not valid JSON. Avoids silently dropping tool input/output
+/// payloads that happen not to be JSON-encoded.
+fn parse_json_or_raw(raw: &str) -> serde_json::Value {
+    match serde_json::from_str(raw) {
+        Ok(v) => v,
+        Err(e) => {
+            debug!(
+                "message_adapter: payload is not valid JSON ({}), passing through as raw string",
+                e
+            );
+            serde_json::Value::String(raw.to_string())
+        }
+    }
+}
+
+/// Extract a human-readable content string from a `TurnCompleted` result.
+///
+/// The result may be a JSON object containing a `content` field, a plain JSON
+/// string, or arbitrary (non-JSON) text. In every case we return the most
+/// complete representation we can rather than dropping the payload.
+fn extract_turn_content(result: &Option<String>) -> Option<String> {
+    let raw = result.as_ref()?;
+    match serde_json::from_str::<serde_json::Value>(raw) {
+        Ok(serde_json::Value::Object(obj)) => obj
+            .get("content")
+            .and_then(|c| c.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| Some(raw.clone())),
+        Ok(serde_json::Value::String(s)) => Some(s),
+        Ok(_) => Some(raw.clone()),
+        Err(_) => Some(raw.clone()),
+    }
+}
 
 /// Convert an AgentEvent to a JSON value for frontend consumption
 ///
@@ -43,16 +79,7 @@ pub fn event_to_message_content(
         }),
 
         AgentEvent::TurnCompleted { session_id, result } => {
-            let content = result.as_ref().and_then(|s| {
-                let v: serde_json::Value = serde_json::from_str(s).ok()?;
-                if let Some(obj) = v.as_object() {
-                    obj.get("content")
-                        .and_then(|c| c.as_str())
-                        .map(|s| s.to_string())
-                } else {
-                    None
-                }
-            });
+            let content = extract_turn_content(result);
             serde_json::json!({
                 "type": "turn_completed",
                 "sessionId": session_id,
@@ -79,8 +106,8 @@ pub fn event_to_message_content(
         } => {
             let input_json = input
                 .as_ref()
-                .and_then(|s| serde_json::from_str(s).ok())
-                .unwrap_or(serde_json::json!({}));
+                .map(|s| parse_json_or_raw(s))
+                .unwrap_or_else(|| serde_json::json!({}));
             serde_json::json!({
                 "type": "tool_started",
                 "sessionId": session_id,
@@ -98,8 +125,8 @@ pub fn event_to_message_content(
         } => {
             let input_json = input
                 .as_ref()
-                .and_then(|s| serde_json::from_str(s).ok())
-                .unwrap_or(serde_json::json!({}));
+                .map(|s| parse_json_or_raw(s))
+                .unwrap_or_else(|| serde_json::json!({}));
             serde_json::json!({
                 "type": "tool_input_updated",
                 "sessionId": session_id,
@@ -117,7 +144,7 @@ pub fn event_to_message_content(
             error,
         } => {
             let output_json: Option<serde_json::Value> =
-                output.as_ref().and_then(|s| serde_json::from_str(s).ok());
+                output.as_ref().map(|s| parse_json_or_raw(s));
             serde_json::json!({
                 "type": "tool_completed",
                 "sessionId": session_id,
@@ -136,7 +163,7 @@ pub fn event_to_message_content(
             message,
         } => {
             let input_json: Option<serde_json::Value> =
-                input.as_ref().and_then(|s| serde_json::from_str(s).ok());
+                input.as_ref().map(|s| parse_json_or_raw(s));
             serde_json::json!({
                 "type": "approval_request",
                 "sessionId": session_id,
@@ -267,16 +294,7 @@ pub fn event_to_agent_message_content(
         },
 
         AgentEvent::TurnCompleted { result, .. } => {
-            let content = result.as_ref().and_then(|s| {
-                let v: serde_json::Value = serde_json::from_str(s).ok()?;
-                if let Some(obj) = v.as_object() {
-                    obj.get("content")
-                        .and_then(|c| c.as_str())
-                        .map(|s| s.to_string())
-                } else {
-                    None
-                }
-            });
+            let content = extract_turn_content(result);
             AgentMessageContent::TurnCompleted { content }
         }
 

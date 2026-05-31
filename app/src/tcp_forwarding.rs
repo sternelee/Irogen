@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{RwLock, broadcast, mpsc};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -63,6 +64,9 @@ pub struct TcpForwardingManager {
     cli_endpoint_id: Arc<RwLock<Option<String>>>,
     /// Shutdown senders for each session's TCP listener
     shutdown_senders: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<()>>>>,
+    /// Cancellation token for each session, used to tear down the listener and
+    /// all in-flight per-connection forwarding tasks when a session is stopped.
+    session_tokens: Arc<RwLock<HashMap<String, CancellationToken>>>,
 }
 
 impl Default for TcpForwardingManager {
@@ -75,6 +79,7 @@ impl Default for TcpForwardingManager {
             quic_client: None,
             cli_endpoint_id: Arc::new(RwLock::new(None)),
             shutdown_senders: Arc::new(RwLock::new(HashMap::new())),
+            session_tokens: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -338,11 +343,20 @@ impl TcpForwardingManager {
         let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel();
         let session_id_clone = session_id.clone();
 
+        // Create a cancellation token for this session so that stopping the
+        // session tears down both the listener and every in-flight connection.
+        let session_token = CancellationToken::new();
+        {
+            let mut tokens = self.session_tokens.write().await;
+            tokens.insert(session_id.clone(), session_token.clone());
+        }
+
         // 获取共享资源的克隆
         let tcp_connections_clone = self.tcp_connections.clone();
         let message_tx_clone = self.message_tx.clone();
         let quic_client_clone = self.quic_client.clone();
         let cli_endpoint_id_clone = self.cli_endpoint_id.clone();
+        let listener_token = session_token.clone();
 
         tokio::spawn(async move {
             let listener = match TcpListener::bind(local_addr).await {
@@ -373,6 +387,7 @@ impl TcpForwardingManager {
                                 let message_tx_for_task = message_tx_clone.clone();
                                 let quic_client_for_task = quic_client_clone.clone();
                                 let cli_endpoint_id_for_task = cli_endpoint_id_clone.clone();
+                                let connection_token = listener_token.child_token();
 
                                 tokio::spawn(async move {
                                     if let Err(e) = handle_connection(
@@ -382,6 +397,7 @@ impl TcpForwardingManager {
                                         message_tx_for_task,
                                         quic_client_for_task,
                                         cli_endpoint_id_for_task,
+                                        connection_token,
                                     )
                                     .await
                                     {
@@ -401,6 +417,13 @@ impl TcpForwardingManager {
                         );
                         break;
                     }
+                    _ = listener_token.cancelled() => {
+                        info!(
+                            "TCP listener cancelled for session {}",
+                            session_id_clone
+                        );
+                        break;
+                    }
                 }
             }
         });
@@ -414,6 +437,15 @@ impl TcpForwardingManager {
         &self,
         session_id: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // 取消该会话的 cancellation token，停止 listener 并终止所有在途连接转发任务
+        {
+            let mut tokens = self.session_tokens.write().await;
+            if let Some(token) = tokens.remove(session_id) {
+                token.cancel();
+                info!("Cancellation token fired for TCP session: {}", session_id);
+            }
+        }
+
         // 发送 shutdown 信号给 listener
         {
             let mut shutdown_senders = self.shutdown_senders.write().await;
@@ -424,6 +456,12 @@ impl TcpForwardingManager {
                     session_id
                 );
             }
+        }
+
+        // 清理该会话遗留的连接条目（兜底，正常情况下连接任务会自行清理）
+        {
+            let mut connections = self.tcp_connections.write().await;
+            connections.retain(|_, conn| conn.session_id != session_id);
         }
 
         // 从会话列表中移除
@@ -527,6 +565,7 @@ async fn handle_connection(
     _message_tx: broadcast::Sender<TcpMessageRequest>, // 保留用于兼容性，但不再使用
     quic_client: Option<StdArc<QuicMessageClientHandle>>,
     cli_endpoint_id: Arc<RwLock<Option<String>>>,
+    cancel_token: CancellationToken,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let connection_id = Uuid::new_v4().to_string();
     let peer_addr = stream.peer_addr().ok();
@@ -639,10 +678,13 @@ async fn handle_connection(
         }
     };
 
-    // 运行双向转发，任一方向结束则停止
+    // 运行双向转发，任一方向结束或会话被取消则停止
     tokio::select! {
         _ = tcp_to_p2p => {},
         _ = p2p_to_tcp => {},
+        _ = cancel_token.cancelled() => {
+            info!("TCP connection {} cancelled by session shutdown", connection_id);
+        },
     }
 
     // 清理连接

@@ -8,8 +8,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::{RwLock, mpsc};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// Type alias for the complex listeners map type to reduce complexity
 type ListenerMap = Arc<RwLock<HashMap<EventType, Vec<Arc<dyn EventListener>>>>>;
@@ -86,7 +87,13 @@ pub struct EventManager {
     listeners: ListenerMap,
     event_tx: mpsc::UnboundedSender<Event>,
     event_rx: Arc<RwLock<Option<mpsc::UnboundedReceiver<Event>>>>,
+    /// Approximate number of events queued but not yet processed. Used to detect
+    /// unbounded backlog growth caused by a slow listener.
+    pending_depth: Arc<AtomicUsize>,
 }
+
+/// Warn (rate-limited by power-of-two steps) once the backlog crosses this size.
+const EVENT_BACKLOG_WARN_THRESHOLD: usize = 10_000;
 
 impl EventManager {
     pub fn new() -> Self {
@@ -96,6 +103,7 @@ impl EventManager {
             listeners: Arc::new(RwLock::new(HashMap::new())),
             event_tx,
             event_rx: Arc::new(RwLock::new(Some(event_rx))),
+            pending_depth: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -123,6 +131,16 @@ impl EventManager {
             return Err(anyhow::anyhow!("Failed to publish event: {}", e));
         }
 
+        // Track approximate backlog depth and warn if it grows unbounded, which
+        // indicates a slow/blocked listener starving the event loop.
+        let depth = self.pending_depth.fetch_add(1, Ordering::Relaxed) + 1;
+        if depth >= EVENT_BACKLOG_WARN_THRESHOLD && depth.is_power_of_two() {
+            warn!(
+                "Event backlog is large ({} pending); a listener may be slow or blocked",
+                depth
+            );
+        }
+
         Ok(())
     }
 
@@ -138,9 +156,11 @@ impl EventManager {
         };
 
         let listeners = self.listeners.clone();
+        let pending_depth = self.pending_depth.clone();
 
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
+                pending_depth.fetch_sub(1, Ordering::Relaxed);
                 debug!(
                     "Processing event: {:?} from {}",
                     event.event_type, event.source

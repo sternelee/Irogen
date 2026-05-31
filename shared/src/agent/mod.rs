@@ -714,22 +714,32 @@ impl AgentManager {
 
     /// Stop an agent session
     ///
-    /// This method gracefully shuts down the session and removes metadata.
+    /// This method gracefully shuts down the session and removes both the
+    /// session entry and its metadata, releasing the broadcast sender,
+    /// background tasks and child process held by the session.
     pub async fn stop_session(&self, session_id: &str) -> Result<()> {
-        let sessions = self.sessions.read().await;
+        // Remove the session from the registry first so no new subscribers or
+        // messages can reach it, then shut it down. Dropping the Arc here (once
+        // all other holders release it) tears down the broadcast channel and
+        // associated runtime tasks.
+        let session = {
+            let mut sessions = self.sessions.write().await;
+            sessions.remove(session_id)
+        };
 
-        if let Some(session) = sessions.get(session_id) {
+        if let Some(session) = session {
             debug!("Shutting down session: {}", session_id);
 
-            session
+            let shutdown_result = session
                 .shutdown()
                 .await
-                .map_err(|e| anyhow!("Failed to shutdown session {}: {}", session_id, e))?;
+                .map_err(|e| anyhow!("Failed to shutdown session {}: {}", session_id, e));
 
-            // Remove metadata
-            drop(sessions);
-            let mut metadata_map = self.session_metadata.write().await;
-            metadata_map.remove(session_id);
+            // Always remove metadata, even if graceful shutdown reported an
+            // error, to avoid leaking stale session state.
+            self.session_metadata.write().await.remove(session_id);
+
+            shutdown_result?;
 
             info!("✅ Session shut down: {}", session_id);
             Ok(())
