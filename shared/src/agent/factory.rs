@@ -81,6 +81,7 @@ fn agent_key(agent_type: AgentType) -> &'static str {
         AgentType::Gemini => "gemini",
         AgentType::Cline => "cline",
         AgentType::Pi => "pi",
+        AgentType::Omp => "omp",
         AgentType::QwenCode => "qwen-code",
     }
 }
@@ -608,6 +609,60 @@ impl Agent for PiAgent {
     }
 }
 
+/// Oh-My-Pi (omp) CLI Agent (ACP built-in)
+/// `omp` ships with native ACP support via the `omp acp` subcommand.
+/// Install: `bun install -g @oh-my-pi/pi-coding-agent`
+pub struct OmpAgent;
+
+impl Agent for OmpAgent {
+    fn agent_type(&self) -> AgentType {
+        AgentType::Omp
+    }
+
+    fn command(&self) -> &str {
+        "omp"
+    }
+
+    fn default_args(&self) -> Vec<String> {
+        vec!["acp".to_string()]
+    }
+
+    fn check_available(&self) -> Result<AgentAvailability> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        let available = output.status.success();
+        let version = if available {
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            None
+        };
+
+        Ok(AgentAvailability {
+            available,
+            version,
+            executable: self.command().to_string(),
+        })
+    }
+
+    fn get_version(&self) -> Result<String> {
+        let output = Command::new(self.command())
+            .arg("--version")
+            .env("PATH", get_extended_path())
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!(
+                "Failed to get omp version. Install with: bun install -g @oh-my-pi/pi-coding-agent"
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
 /// Qwen Code CLI Agent (ACP compatible)
 pub struct QwenCodeAgent;
 
@@ -677,6 +732,7 @@ impl AgentFactory {
             AgentType::Gemini => Box::new(GeminiAgent),
             AgentType::Cline => Box::new(ClineAgent),
             AgentType::Pi => Box::new(PiAgent),
+            AgentType::Omp => Box::new(OmpAgent),
             AgentType::QwenCode => Box::new(QwenCodeAgent),
         }
     }
@@ -741,6 +797,9 @@ impl AgentFactory {
         }
         if available.contains_key(&AgentType::Pi) {
             return Some(AgentType::Pi);
+        }
+        if available.contains_key(&AgentType::Omp) {
+            return Some(AgentType::Omp);
         }
         if available.contains_key(&AgentType::QwenCode) {
             return Some(AgentType::QwenCode);

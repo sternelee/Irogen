@@ -360,6 +360,10 @@ impl AgentManager {
                                 error_msg += " Install Qwen Code CLI so 'qwen acp' is available, or pass an explicit --binary-path.";
                                 return Err(anyhow!(error_msg));
                             }
+                            AgentType::Omp => {
+                                error_msg += " Install omp with `bun install -g @oh-my-pi/pi-coding-agent` (see https://omp.sh), or pass an explicit --binary-path.";
+                                return Err(anyhow!(error_msg));
+                            }
                         }
 
                         return Err(anyhow!(error_msg));
@@ -387,6 +391,9 @@ impl AgentManager {
                             .unwrap_or_else(|_| Ok(false))?,
                         AgentType::Cline => false,
                         AgentType::Pi => task::spawn_blocking(|| try_install_pi_acp())
+                            .await
+                            .unwrap_or_else(|_| Ok(false))?,
+                        AgentType::Omp => task::spawn_blocking(|| try_install_omp())
                             .await
                             .unwrap_or_else(|_| Ok(false))?,
                         AgentType::QwenCode => false,
@@ -574,6 +581,9 @@ impl AgentManager {
                             }
                             AgentType::Pi => {
                                 error_msg += " Install pi-acp with `npm install -g pi-acp` (see https://github.com/svkozak/pi-acp), or pass an explicit --binary-path.";
+                            }
+                            AgentType::Omp => {
+                                error_msg += " Install omp with `bun install -g @oh-my-pi/pi-coding-agent` (see https://omp.sh), or pass an explicit --binary-path.";
                             }
                             AgentType::QwenCode => {
                                 error_msg += " Install Qwen Code CLI so 'qwen acp' is available, or pass an explicit --binary-path.";
@@ -1038,6 +1048,42 @@ fn try_install_codex_acp() -> Result<bool> {
 
 fn try_install_pi_acp() -> Result<bool> {
     try_install_package("pi-acp", "pi-acp (svkozak/pi-acp)")
+}
+
+fn try_install_omp() -> Result<bool> {
+    // omp ships its own binary; recommended install is `bun install -g`.
+    // try_install_package falls back to pnpm/npm/bun/yarn but the recommended
+    // path for @oh-my-pi/pi-coding-agent is bun.
+    let mut ok = false;
+    for (tool, args) in [
+        ("bun", &["add", "-g", "@oh-my-pi/pi-coding-agent"][..]),
+        ("npm", &["install", "-g", "@oh-my-pi/pi-coding-agent"][..]),
+        ("pnpm", &["add", "-g", "@oh-my-pi/pi-coding-agent"][..]),
+        ("yarn", &["global", "add", "@oh-my-pi/pi-coding-agent"][..]),
+    ] {
+        if !command_exists(tool) {
+            continue;
+        }
+        info!("Attempting to install omp via {}...", tool);
+        let output = std::process::Command::new(tool)
+            .args(args)
+            .env("PATH", get_extended_path())
+            .output();
+        if let Ok(out) = output {
+            if out.status.success() {
+                info!("omp installed successfully via {}", tool);
+                ok = true;
+                break;
+            } else {
+                warn!(
+                    "Installer {} failed: {}",
+                    tool,
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+        }
+    }
+    Ok(ok)
 }
 
 fn try_install_gemini_cli() -> Result<bool> {

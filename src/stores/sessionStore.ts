@@ -32,6 +32,7 @@ export type AgentType =
   | "gemini"
   | "cline"
   | "pi"
+  | "omp"
   | "qwen";
 
 export type SessionMode = "remote" | "local";

@@ -345,6 +345,13 @@ export const NewSessionModal: Component = () => {
             'e.g. --model default or ["--model","default"]',
           hint: "Passed to Pi ACP process (`pi acp`). Supports JSON array or space-separated args.",
         };
+      case "omp":
+        return {
+          supported: true,
+          placeholder:
+            'e.g. --model sonnet or ["--model","sonnet"]',
+          hint: "Passed to omp ACP process (`omp acp`). Supports JSON array or space-separated args.",
+        };
       case "qwen":
         return {
           supported: true,
@@ -569,6 +576,7 @@ export const NewSessionModal: Component = () => {
                   { id: "opencode", label: "OpenCode", color: "bg-[#059669] text-white" },
                   { id: "gemini", label: "Gemini CLI", color: "bg-[#8b5cf6] text-white" },
                   { id: "pi", label: "Pi", color: "bg-black dark:bg-white dark:text-black text-white" },
+                  { id: "omp", label: "omp", color: "bg-gradient-to-br from-orange-500 to-pink-500 text-white" },
                   { id: "qwen", label: "Qwen Code", color: "bg-[#ec4899] text-white" },
                   { id: "cline", label: "Cline", color: "bg-[#f59e0b] text-black" },
                 ].map((agent) => (

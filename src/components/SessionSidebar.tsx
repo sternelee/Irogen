@@ -48,6 +48,8 @@ const AGENT_COLORS: Record<string, string> = {
   gemini: "bg-info text-info-content",
   codex: "bg-success text-success-content",
   opencode: "bg-warning text-warning-content",
+  pi: "bg-neutral text-neutral-content",
+  omp: "bg-gradient-to-br from-orange-500 to-pink-500 text-white",
   default: "bg-accent text-accent-content",
 };
 

@@ -373,6 +373,7 @@ enum AgentTypeDto {
     Gemini,
     Cline,
     Pi,
+    Omp,
     QwenCode,
 }
 
@@ -386,6 +387,7 @@ impl From<shared::AgentType> for AgentTypeDto {
             shared::AgentType::Gemini => Self::Gemini,
             shared::AgentType::Cline => Self::Cline,
             shared::AgentType::Pi => Self::Pi,
+            shared::AgentType::Omp => Self::Omp,
             shared::AgentType::QwenCode => Self::QwenCode,
         }
     }
@@ -3287,6 +3289,7 @@ async fn remote_spawn_session(
         "gemini" | "gemini-cli" => AgentType::Gemini,
         "cline" => AgentType::Cline,
         "pi" => AgentType::Pi,
+        "omp" | "oh-my-pi" => AgentType::Omp,
         "qwen" | "qwen-code" | "qwen_code" => AgentType::QwenCode,
         _ => return Err(format!("Unknown agent type: {}", agent_type)),
     };
@@ -3733,6 +3736,9 @@ async fn install_acp_package_local(agent_type: String) -> Result<String, String>
         "pi" => {
             return Err("Pi does not support ACP auto-install in Irogen".to_string());
         }
+        "omp" | "oh-my-pi" => {
+            return Err("Omp does not support ACP auto-install in Irogen".to_string());
+        }
         "qwen" | "qwen-code" | "qwen_code" => {
             return Err("Qwen Code does not support ACP auto-install in Irogen".to_string());
         }
@@ -3846,6 +3852,7 @@ async fn local_start_agent(
         "gemini" | "gemini-cli" => AgentType::Gemini,
         "cline" => AgentType::Cline,
         "pi" => AgentType::Pi,
+        "omp" | "oh-my-pi" => AgentType::Omp,
         "qwen" | "qwen-code" | "qwen_code" => AgentType::QwenCode,
         _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
     };
@@ -4264,6 +4271,7 @@ async fn local_list_agent_history(
         "gemini" | "gemini-cli" => AgentType::Gemini,
         "cline" => AgentType::Cline,
         "pi" => AgentType::Pi,
+        "omp" | "oh-my-pi" => AgentType::Omp,
         "qwen" | "qwen-code" | "qwen_code" => AgentType::QwenCode,
         _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
     };
@@ -4328,6 +4336,7 @@ async fn local_load_agent_history(
         "gemini" | "gemini-cli" => AgentType::Gemini,
         "cline" => AgentType::Cline,
         "pi" => AgentType::Pi,
+        "omp" | "oh-my-pi" => AgentType::Omp,
         "qwen" | "qwen-code" | "qwen_code" => AgentType::QwenCode,
         _ => return Err(format!("Unknown agent type: {}", agent_type_str)),
     };

@@ -546,6 +546,8 @@ pub enum AgentType {
     Cline,
     /// Pi CLI — ACP
     Pi,
+    /// Oh-My-Pi (omp) CLI — ACP (built-in)
+    Omp,
     /// Qwen Code CLI — ACP
     QwenCode,
 }
