@@ -84,6 +84,8 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: "home", label: () => t("sidebar.home") as string, icon: FiHome },
   { id: "devices", label: () => t("sidebar.devices") as string, icon: FiMonitor },
+];
+const FOOTER_NAV_ITEMS: NavItem[] = [
   { id: "settings", label: () => t("sidebar.settings") as string, icon: FiSettings },
 ];
 
@@ -612,6 +614,20 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
 
       {/* Footer */}
       <div class="mt-auto">
+        {/* Footer nav items (Settings, etc.) — desktop only, always at the bottom */}
+        <div class="hidden md:block border-t border-base-content/10">
+          <For each={FOOTER_NAV_ITEMS}>
+            {(item) => (
+              <NavItemButton
+                item={item}
+                isActive={activeView() === item.id}
+                onClick={() => handleNavClick(item.id)}
+                collapsed={collapsed()}
+              />
+            )}
+          </For>
+        </div>
+
         {/* Collapse toggle — desktop only */}
         <button
           type="button"
