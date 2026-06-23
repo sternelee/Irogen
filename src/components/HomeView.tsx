@@ -101,7 +101,7 @@ export const HomeView: Component = () => {
             </h2>
             <div class="grid grid-cols-1 gap-2">
               <button
-                class="card card-bordered bg-base-100 flex-row items-center gap-3 p-4 text-left hover:bg-base-200/50 hover:border-base-content/30 transition-all duration-150"
+                class="card card-bordered bg-base-100 flex-row items-center gap-3 p-4 text-left hover:bg-base-200/50 hover:border-base-content/30 transition-all duration-150 focus-ring"
                 onClick={() => sessionStore.openNewSessionModal()}
               >
                 <span class="text-base-content/40">+</span>

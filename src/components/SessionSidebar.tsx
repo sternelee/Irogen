@@ -196,7 +196,7 @@ const SessionItem: Component<{
   return (
     <div
       class={cn(
-        "group flex items-start gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-150",
+        "group flex items-start gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-150 focus-ring",
         props.isActive
           ? "bg-base-200"
           : "hover:bg-base-200/50",
@@ -263,6 +263,7 @@ const SessionItem: Component<{
             class="p-1 rounded text-base-content/30 hover:text-warning transition-colors"
             onClick={(e) => { e.stopPropagation(); props.onStop(); }}
             title="Stop"
+            aria-label="Stop session"
           >
             <FiStopCircle size={11} />
           </button>
@@ -272,6 +273,7 @@ const SessionItem: Component<{
           class="p-1 rounded text-base-content/30 hover:text-error transition-colors"
           onClick={(e) => { e.stopPropagation(); props.onArchive(); }}
           title="Close"
+          aria-label="Archive session"
         >
           <FiX size={11} />
         </button>
@@ -313,7 +315,7 @@ const ProjectGroup: Component<{
     <div class="rounded-lg border border-base-content/5 overflow-hidden">
       {/* Group header */}
       <div
-        class="flex items-center gap-2 px-3 py-2 cursor-pointer select-none hover:bg-base-200/30 transition-colors"
+        class="flex items-center gap-2 px-3 py-2 cursor-pointer select-none hover:bg-base-200/30 transition-colors focus-ring"
         onClick={() => setCollapsed((c) => !c)}
         role="button"
         tabIndex={0}
@@ -542,6 +544,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
             class="p-1 rounded text-base-content/30 hover:text-base-content hover:bg-base-200 transition-colors"
             onClick={() => sessionStore.openNewSessionModal()}
             title="New session"
+            aria-label="Create new session"
           >
             <FiPlus size={13} />
           </button>
@@ -637,6 +640,7 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
           )}
           onClick={props.onCollapseToggle}
           title={collapsed() ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={collapsed() ? "Expand sidebar" : "Collapse sidebar"}
         >
           <svg
             class={cn("w-4 h-4 transition-transform duration-200", collapsed() && "rotate-180")}

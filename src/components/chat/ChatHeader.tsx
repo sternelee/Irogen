@@ -222,6 +222,7 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
                   : "text-base-content/30 hover:text-base-content hover:bg-base-200",
               )}
               title="Files"
+              aria-label="Toggle file browser"
             >
               <FiFolder size={14} />
             </button>
@@ -237,6 +238,7 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
                   : "text-base-content/30 hover:text-base-content hover:bg-base-200",
               )}
               title="Git"
+              aria-label="Toggle git panel"
             >
               <FiGitBranch size={14} />
             </button>

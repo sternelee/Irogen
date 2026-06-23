@@ -166,7 +166,7 @@ export const SessionsView: Component = () => {
                   const isActive = activeSessionId() === session.sessionId;
                   return (
                     <div
-                      class="flex flex-col sm:flex-row sm:items-center justify-between p-4 border-b border-base-content/10 last:border-b-0 cursor-pointer hover:bg-base-200/30 transition-colors duration-150"
+                      class="flex flex-col sm:flex-row sm:items-center justify-between p-4 border-b border-base-content/10 last:border-b-0 cursor-pointer hover:bg-base-200/30 transition-colors duration-150 focus-ring"
                       onClick={() => handleResumeSession(session.sessionId)}
                     >
                       <div class="flex items-start sm:items-center gap-4 min-w-0">

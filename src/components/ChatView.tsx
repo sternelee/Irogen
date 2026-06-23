@@ -26,6 +26,7 @@ import {
 import { sessionEventRouter } from "../stores/sessionEventRouter";
 import type { AcpEvent } from "../types/acpEvents";
 import { isMobile } from "../stores/deviceStore";
+import { t } from "../stores/i18nStore";
 import type { ChatMessage } from "../stores/chatStore";
 import type { SlashCommandItem } from "../stores/chatStore";
 import type { SystemCard } from "../stores/chatStore";
@@ -328,8 +329,8 @@ export function ChatView(props: ChatViewProps) {
           }
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Reconnect failed";
-        notificationStore.error(msg, "Reconnect Failed");
+        const msg = err instanceof Error ? err.message : t("chat.reconnectFailedMsg") as string;
+        notificationStore.error(msg, t("chat.reconnectFailed") as string);
       } finally {
         setIsReconnecting(false);
       }

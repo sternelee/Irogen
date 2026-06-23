@@ -17,10 +17,25 @@
 @layer base {
   * {
     @apply border-base-content/20;
-    scrollbar-width: none;
+  }
+  /* Thin styled scrollbar — visible on hover, fades otherwise */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--bc) / 0.25) transparent;
   }
   *::-webkit-scrollbar {
-    display: none;
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--bc) / 0.2);
+    border-radius: 4px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--bc) / 0.4);
   }
   body {
     @apply bg-base-100 text-base-content;
@@ -30,23 +45,24 @@
   }
 }
 
-input:focus,
-textarea:focus {
-  outline: none !important;
+/* Accessibility: keep visible focus rings on form controls (WCAG 2.4.7) */
+input:focus-visible,
+textarea:focus-visible,
+.input:focus-visible,
+.textarea:focus-visible,
+.select:focus-visible {
+  outline: 2px solid hsl(var(--p));
+  outline-offset: 2px;
 }
 
-/* DaisyUI form controls: remove hover/focus outline */
-.input:hover,
-.input:focus,
-.input:focus-visible,
-.textarea:hover,
-.textarea:focus,
-.textarea:focus-visible,
-.select:hover,
-.select:focus,
-.select:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
+/* Reusable focus ring utility for custom interactive elements (cards, list rows) */
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  outline: 2px solid hsl(var(--p));
+  outline-offset: 2px;
+  border-radius: inherit;
 }
 
 @layer utilities {
