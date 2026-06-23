@@ -1,12 +1,23 @@
 /**
  * SessionSidebar Component
  *
- * Zed-inspired: hard lines, high contrast, no gradients/shadows/animations.
+ * LobeHub-inspired redesign:
+ * - Search bar for filtering sessions
+ * - Agent avatar with colored initial + status dot
+ * - Sessions grouped by project with unread badges
+ * - Last message preview text
+ * - Clean nav items with active indicators
+ * - Smooth hover transitions
  */
 
-import { Show, For, type Component, createMemo, createSignal } from "solid-js";
 import {
-  FiActivity,
+  Show,
+  For,
+  type Component,
+  createMemo,
+  createSignal,
+} from "solid-js";
+import {
   FiSettings,
   FiChevronDown,
   FiFolder,
@@ -17,16 +28,48 @@ import {
   FiPlus,
   FiStopCircle,
   FiX,
+  FiSearch,
 } from "solid-icons/fi";
 import {
   navigationStore,
   type NavigationView,
 } from "../stores/navigationStore";
 import { sessionStore } from "../stores/sessionStore";
+import { chatStore } from "../stores/chatStore";
 import type { AgentSessionMetadata } from "../stores/sessionStore";
 import { cn } from "~/lib/utils";
-
 import { t } from "../stores/i18nStore";
+
+// ============================================================================
+// Agent Avatar Helpers
+// ============================================================================
+
+const AGENT_COLORS: Record<string, string> = {
+  claude: "bg-primary text-primary-content",
+  gemini: "bg-info text-info-content",
+  codex: "bg-success text-success-content",
+  opencode: "bg-warning text-warning-content",
+  default: "bg-accent text-accent-content",
+};
+
+function agentColor(agentType: string): string {
+  return AGENT_COLORS[agentType.toLowerCase()] || AGENT_COLORS.default;
+}
+
+function agentInitial(agentType: string): string {
+  return agentType.charAt(0).toUpperCase();
+}
+
+function formatRelativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
 
 // ============================================================================
 // Navigation Items
@@ -35,22 +78,13 @@ import { t } from "../stores/i18nStore";
 interface NavItem {
   id: NavigationView;
   label: () => string;
-  icon: typeof FiActivity;
-  description?: string;
+  icon: typeof FiHome;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { id: "home", label: () => t("sidebar.home") as string, icon: FiHome },
-  {
-    id: "devices",
-    label: () => t("sidebar.devices") as string,
-    icon: FiMonitor,
-  },
-  {
-    id: "settings",
-    label: () => t("sidebar.settings") as string,
-    icon: FiSettings,
-  },
+  { id: "devices", label: () => t("sidebar.devices") as string, icon: FiMonitor },
+  { id: "settings", label: () => t("sidebar.settings") as string, icon: FiSettings },
 ];
 
 // ============================================================================
@@ -65,168 +99,244 @@ interface ThreadGroup {
 }
 
 // ============================================================================
-// Thread Item Component
+// Search Bar
 // ============================================================================
 
-interface ThreadItemProps {
-  session: AgentSessionMetadata;
-  isActive: boolean;
-  onSelect: () => void;
-  onStop: () => void;
-  onArchive: () => void;
-}
-
-const ThreadItem: Component<ThreadItemProps> = (props) => {
+const SearchBar: Component<{
+  value: string;
+  onInput: (v: string) => void;
+}> = (props) => {
   return (
-    <div
-      class={cn(
-        "flex items-center gap-2 px-2 py-1.5 border-b border-base-content/5",
-        props.isActive
-          ? "bg-base-200 text-base-content"
-          : "text-base-content/50 hover:text-base-content hover:bg-base-200/50",
-      )}
-    >
-      <span
-        class={cn(
-          "w-2 h-2 rounded-full shrink-0",
-          props.session.active ? "bg-success" : "bg-base-content/20",
-        )}
+    <div class="relative px-3 py-2">
+      <FiSearch
+        size={13}
+        class="absolute left-5 top-1/2 -translate-y-1/2 text-base-content/30 pointer-events-none"
       />
-      <button
-        type="button"
-        class="flex-1 min-w-0 text-left text-xs font-medium truncate capitalize"
-        onClick={props.onSelect}
-      >
-        {props.session.agentType}
-      </button>
-      <Show when={props.session.active}>
+      <input
+        type="text"
+        value={props.value}
+        onInput={(e) => props.onInput(e.currentTarget.value)}
+        placeholder="Search sessions..."
+        class="input input-bordered input-sm w-full pl-8"
+      />
+      <Show when={props.value}>
         <button
           type="button"
-          class="text-base-content/40 hover:text-warning"
-          onClick={(event) => {
-            event.stopPropagation();
-            props.onStop();
-          }}
-          title="Stop"
-          aria-label="Stop thread"
+          class="absolute right-5 top-1/2 -translate-y-1/2 text-base-content/30 hover:text-base-content"
+          onClick={() => props.onInput("")}
         >
-          <FiStopCircle size={11} />
+          <FiX size={12} />
         </button>
       </Show>
-      <button
-        type="button"
-          class="text-base-content/40 hover:text-error"
-        onClick={(event) => {
-          event.stopPropagation();
-          props.onArchive();
-        }}
-        title="Close"
-        aria-label="Close thread"
-      >
-        <FiX size={11} />
-      </button>
     </div>
   );
 };
 
 // ============================================================================
-// Thread Group Component (Collapsible)
+// Nav Item Button
 // ============================================================================
 
-interface ThreadGroupSectionProps {
+const NavItemButton: Component<{
+  item: NavItem;
+  isActive: boolean;
+  onClick: () => void;
+}> = (props) => {
+  const Icon = props.item.icon;
+
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      class={cn(
+        "flex w-full items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-lg transition-all duration-150",
+        props.isActive
+          ? "bg-base-200 text-base-content"
+          : "text-base-content/50 hover:text-base-content hover:bg-base-200/50",
+      )}
+    >
+      <Icon
+        size={16}
+        class={cn(props.isActive ? "text-primary" : "text-base-content/40")}
+      />
+      <span>{props.item.label()}</span>
+    </button>
+  );
+};
+
+// ============================================================================
+// Session Item
+// ============================================================================
+
+const SessionItem: Component<{
+  session: AgentSessionMetadata;
+  isActive: boolean;
+  onSelect: () => void;
+  onStop: () => void;
+  onArchive: () => void;
+}> = (props) => {
+  const unread = createMemo(() => chatStore.getUnreadCount(props.session.sessionId));
+  const lastMessage = createMemo(() => {
+    const msgs = chatStore.getMessages(props.session.sessionId);
+    if (msgs.length === 0) return null;
+    const last = msgs[msgs.length - 1];
+    const text = last.content || "";
+    // Strip markdown formatting for preview
+    return text.replace(/[#*`\[\]]/g, "").substring(0, 60);
+  });
+
+  return (
+    <div
+      class={cn(
+        "group flex items-start gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-150",
+        props.isActive
+          ? "bg-base-200"
+          : "hover:bg-base-200/50",
+      )}
+      onClick={props.onSelect}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === "Enter" && props.onSelect()}
+    >
+      {/* Agent Avatar */}
+      <div class={cn(
+        "w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 mt-0.5",
+        agentColor(props.session.agentType),
+      )}>
+        {agentInitial(props.session.agentType)}
+      </div>
+
+      {/* Content */}
+      <div class="flex-1 min-w-0">
+        {/* Title row */}
+        <div class="flex items-center gap-1.5">
+          <span class={cn(
+            "text-xs font-semibold truncate",
+            props.isActive ? "text-base-content" : "text-base-content/70",
+          )}>
+            {props.session.agentType}
+          </span>
+          <span class={cn(
+            "w-1.5 h-1.5 rounded-full shrink-0",
+            props.session.active ? "bg-success" : "bg-base-content/20",
+          )} />
+          <span class="text-[9px] text-base-content/30 ml-auto shrink-0">
+            {formatRelativeTime(props.session.startedAt)}
+          </span>
+        </div>
+
+        {/* Last message preview */}
+        <Show
+          when={lastMessage()}
+          fallback={
+            <div class="text-[10px] text-base-content/30 italic mt-0.5 truncate">
+              No messages yet
+            </div>
+          }
+        >
+          <div class="text-[10px] text-base-content/40 mt-0.5 truncate leading-relaxed">
+            {lastMessage()}
+          </div>
+        </Show>
+      </div>
+
+      {/* Unread badge */}
+      <Show when={unread() > 0}>
+        <span class="px-1.5 py-0.5 rounded-full bg-primary text-primary-content text-[9px] font-bold min-w-[16px] text-center leading-none mt-1">
+          {unread() > 99 ? "99+" : unread()}
+        </span>
+      </Show>
+
+      {/* Actions (hover) */}
+      <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">
+        <Show when={props.session.active}>
+          <button
+            type="button"
+            class="p-1 rounded text-base-content/30 hover:text-warning transition-colors"
+            onClick={(e) => { e.stopPropagation(); props.onStop(); }}
+            title="Stop"
+          >
+            <FiStopCircle size={11} />
+          </button>
+        </Show>
+        <button
+          type="button"
+          class="p-1 rounded text-base-content/30 hover:text-error transition-colors"
+          onClick={(e) => { e.stopPropagation(); props.onArchive(); }}
+          title="Close"
+        >
+          <FiX size={11} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// Project Group
+// ============================================================================
+
+const ProjectGroup: Component<{
   group: ThreadGroup;
   activeSessionId: string | null;
+  searchQuery: string;
   onSelectThread: (sessionId: string) => void;
   onStopThread: (sessionId: string) => void;
   onArchiveThread: (sessionId: string) => void;
-}
+  onNewThread: () => void;
+}> = (props) => {
+  const [collapsed, setCollapsed] = createSignal(false);
+  const activeCount = () => props.group.sessions.filter((s) => s.active).length;
 
-const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
-  const [isCollapsed, setIsCollapsed] = createSignal(false);
+  // Filter sessions by search
+  const filteredSessions = createMemo(() => {
+    if (!props.searchQuery) return props.group.sessions;
+    const q = props.searchQuery.toLowerCase();
+    return props.group.sessions.filter(
+      (s) =>
+        s.agentType.toLowerCase().includes(q) ||
+        s.projectPath.toLowerCase().includes(q),
+    );
+  });
 
-  const activeCount = () => {
-    const g = props.group;
-    return g?.sessions?.filter(s => s.active).length ?? 0;
-  };
-
-  const handleNewThreadClick = () => {
-    const g = props.group;
-    const first = g?.sessions?.[0];
-    if (first) {
-      const session = first;
-      sessionStore.openNewSessionModal(
-        session.mode || "local",
-        session.controlSessionId,
-        false,
-        session.projectPath,
-        true,
-      );
-      sessionStore.setNewSessionAgent(session.agentType);
-    }
-  };
+  if (filteredSessions().length === 0) return null;
 
   return (
-      <div class="border border-base-content/10 dark:border-base-content/10">
+    <div class="rounded-lg border border-base-content/5 overflow-hidden">
+      {/* Group header */}
       <div
-        class="flex w-full items-center justify-between gap-2 px-2 py-2 hover:bg-base-200/50 cursor-pointer"
-        onClick={() => setIsCollapsed(c => !c)}
+        class="flex items-center gap-2 px-3 py-2 cursor-pointer select-none hover:bg-base-200/30 transition-colors"
+        onClick={() => setCollapsed((c) => !c)}
         role="button"
-        tabindex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setIsCollapsed(c => !c);
-          }
-        }}
-        aria-expanded={!isCollapsed()}
+        tabIndex={0}
+        onKeyDown={(e) => e.key === "Enter" && setCollapsed((c) => !c)}
       >
-        <div class="flex items-center gap-2 min-w-0">
-          <FiFolder size={12} class="text-base-content/40 shrink-0" />
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-semibold text-base-content truncate">
-                {props.group?.projectName ?? ""}
-              </span>
-              <Show when={activeCount() > 0}>
-                <span class="text-[10px] font-medium text-success">
-                  {activeCount()}
-                </span>
-              </Show>
-            </div>
-            <div class="text-[10px] text-base-content/40 truncate">
-              {props.group?.projectPath ?? ""}
-            </div>
-          </div>
-        </div>
-        <div class="flex items-center gap-1">
-          <Show when={props.group?.sessions?.length}>
-            <button
-              type="button"
-              class="text-base-content/40 hover:text-base-content p-1"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleNewThreadClick();
-              }}
-              title="New thread"
-              aria-label="New thread in this project"
-            >
-              <FiPlus size={11} />
-            </button>
-          </Show>
-          <FiChevronDown
-            size={11}
-            class={cn(
-              "text-base-content/40",
-              isCollapsed() && "-rotate-90"
-            )}
-          />
-        </div>
+        <FiChevronDown
+          size={11}
+          class={cn(
+            "text-base-content/30 transition-transform duration-150",
+            collapsed() && "-rotate-90",
+          )}
+        />
+        <FiFolder size={12} class="text-base-content/40 shrink-0" />
+        <span class="text-xs font-semibold text-base-content truncate">
+          {props.group.projectName}
+        </span>
+        <Show when={activeCount() > 0}>
+          <span class="px-1.5 py-0.5 rounded-full bg-success/10 text-success text-[9px] font-medium leading-none">
+            {activeCount()} active
+          </span>
+        </Show>
+        <span class="text-[10px] text-base-content/30 ml-auto">
+          {props.group.sessions.length}
+        </span>
       </div>
-      <Show when={!isCollapsed()}>
-        <div>
-          <For each={props.group?.sessions ?? []}>
+
+      {/* Session list */}
+      <Show when={!collapsed()}>
+        <div class="pb-1">
+          <For each={filteredSessions()}>
             {(session) => (
-              <ThreadItem
+              <SessionItem
                 session={session}
                 isActive={props.activeSessionId === session.sessionId}
                 onSelect={() => props.onSelectThread(session.sessionId)}
@@ -241,13 +351,8 @@ const ThreadGroupSection: Component<ThreadGroupSectionProps> = (props) => {
   );
 };
 
-const getProjectName = (projectPath: string) => {
-  const parts = projectPath.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] || projectPath || "Untitled";
-};
-
 // ============================================================================
-// Connection Status Badge
+// Connection Badge
 // ============================================================================
 
 const ConnectionBadge: Component = () => {
@@ -256,16 +361,16 @@ const ConnectionBadge: Component = () => {
   const isReconnecting = () => connectionState() === "reconnecting";
 
   return (
-    <div class="flex items-center gap-2 px-2 py-1.5 border-t border-base-content/10">
+    <div class="flex items-center gap-2 px-3 py-2 border-t border-base-content/10">
       <span
         class={cn(
-          "w-2 h-2 rounded-full",
+          "w-1.5 h-1.5 rounded-full",
           isConnected() && "bg-success",
-          isReconnecting() && "bg-warning",
+          isReconnecting() && "bg-warning animate-pulse",
           !isConnected() && !isReconnecting() && "bg-base-content/20",
         )}
       />
-      <span class="text-[11px] text-base-content/50">
+      <span class="text-[10px] text-base-content/50">
         {isConnected()
           ? t("sidebar.connected")
           : isReconnecting()
@@ -277,48 +382,7 @@ const ConnectionBadge: Component = () => {
 };
 
 // ============================================================================
-// Nav Item Component
-// ============================================================================
-
-interface NavItemButtonProps {
-  item: NavItem;
-  isActive: boolean;
-  onClick: () => void;
-}
-
-const NavItemButton: Component<NavItemButtonProps> = (props) => {
-  const Icon = props.item.icon;
-  const hasActiveSession =
-    props.item.id === "workspace" &&
-    sessionStore.getActiveSessions().length > 0;
-
-  return (
-    <button
-      type="button"
-      onClick={props.onClick}
-      class={cn(
-        "flex w-full items-center gap-3 px-3 py-2 text-sm font-medium border-l-2",
-           props.isActive
-          ? "border-l-primary bg-base-200 text-base-content"
-          : "border-l-transparent text-base-content/50 hover:text-base-content hover:bg-base-200/50",
-      )}
-    >
-      <Icon
-        size={16}
-        class={cn(
-          props.isActive ? "text-primary" : "text-base-content/40",
-        )}
-      />
-      <span class="flex-1 text-left">{props.item.label()}</span>
-      <Show when={hasActiveSession}>
-        <span class="w-2 h-2 rounded-full bg-primary" />
-      </Show>
-    </button>
-  );
-};
-
-// ============================================================================
-// SessionSidebar Component
+// Sidebar Component
 // ============================================================================
 
 interface SessionSidebarProps {
@@ -326,13 +390,21 @@ interface SessionSidebarProps {
   onToggle: () => void;
 }
 
+const getProjectName = (projectPath: string) => {
+  const parts = projectPath.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || projectPath || "Untitled";
+};
+
 export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
+  const [searchQuery, setSearchQuery] = createSignal("");
+
   const activeView = () => navigationStore.state.activeView;
   const sessions = createMemo(() => sessionStore.getSessions());
   const activeSession = createMemo(() => sessionStore.getActiveSession());
+
+  // Build thread groups
   const threadGroups = createMemo<ThreadGroup[]>(() => {
     const groups = new Map<string, ThreadGroup>();
-
     for (const session of sessions()) {
       const existing = groups.get(session.projectPath);
       if (existing) {
@@ -350,140 +422,162 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
         });
       }
     }
-
     return Array.from(groups.values())
-      .map((group) => ({
-        ...group,
-        sessions: [...group.sessions].sort((a, b) => b.startedAt - a.startedAt),
+      .map((g) => ({
+        ...g,
+        sessions: [...g.sessions].sort((a, b) => b.startedAt - a.startedAt),
       }))
       .sort((a, b) => b.lastStartedAt - a.lastStartedAt);
   });
 
   const handleNavClick = (view: NavigationView) => {
     navigationStore.setActiveView(view);
-    if (window.innerWidth < 768) {
-      props.onToggle();
-    }
+    if (window.innerWidth < 768) props.onToggle();
   };
 
   const openThread = (sessionId: string) => {
     sessionStore.setActiveSession(sessionId);
     navigationStore.setActiveView("workspace");
-    if (window.innerWidth < 768) {
-      props.onToggle();
-    }
+    if (window.innerWidth < 768) props.onToggle();
   };
+
+  const totalActive = createMemo(() => sessions().filter((s) => s.active).length);
+  const totalUnread = createMemo(() => {
+    let count = 0;
+    for (const s of sessions()) {
+      count += chatStore.getUnreadCount(s.sessionId);
+    }
+    return count;
+  });
 
   return (
     <aside class="flex h-full w-full flex-col bg-base-100 border-r border-base-content/10">
       {/* Header */}
-      <div class="flex items-center justify-between px-4 py-3 pt-safe border-b border-base-content/10">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-base-content/10">
         <div class="flex items-center gap-3">
-          <div class="flex h-8 w-8 items-center justify-center bg-black dark:bg-base-content text-white dark:text-black text-sm font-bold">
-            P
+          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content dark:from-primary/80 dark:to-secondary/80 text-sm font-bold shadow-sm">
+            I
           </div>
           <div>
             <h1 class="text-sm font-bold text-base-content leading-none">
-              Acpx
+              Irogen
             </h1>
-            <p class="text-[10px] text-base-content/50 mt-0.5 uppercase tracking-wider">
+            <p class="text-[9px] text-base-content/40 mt-0.5 uppercase tracking-wider font-medium">
               Agent Control
             </p>
           </div>
         </div>
-        {/* Mobile close button */}
         <button
           type="button"
-          class="md:hidden h-8 w-8 flex items-center justify-center text-base-content/50 hover:text-base-content border border-base-content/10"
+          class="md:hidden h-8 w-8 flex items-center justify-center rounded-lg text-base-content/40 hover:text-base-content hover:bg-base-200 transition-colors"
           onClick={props.onToggle}
-          aria-label="Close sidebar"
         >
-          <FiX size={16} />
+          <FiX size={15} />
         </button>
       </div>
 
+      {/* Search */}
+      <SearchBar value={searchQuery()} onInput={setSearchQuery} />
+
       {/* Navigation */}
-      <div class="flex-1 overflow-y-auto py-2">
-        <div class="px-3 py-2">
-          <span class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest">
-            Navigation
-          </span>
-        </div>
-        <nav>
-          {NAV_ITEMS.map((item) => (
+      <div class="px-2 py-1">
+        <For each={NAV_ITEMS}>
+          {(item) => (
             <NavItemButton
               item={item}
               isActive={activeView() === item.id}
               onClick={() => handleNavClick(item.id)}
             />
-          ))}
-        </nav>
+          )}
+        </For>
+      </div>
 
-        <div class="mt-4">
-          <div class="flex items-center justify-between px-3 py-2">
-            <div class="flex items-center gap-2">
-              <FiMessageSquare size={11} class="text-base-content/40" />
-              <span class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest">
-                Threads
+      {/* Sessions section */}
+      <div class="flex-1 overflow-y-auto px-2 pb-2">
+        <div class="flex items-center justify-between px-1 py-2 mt-1">
+          <div class="flex items-center gap-1.5">
+            <FiMessageSquare size={11} class="text-base-content/40" />
+            <span class="text-[10px] font-semibold text-base-content/40 uppercase tracking-wider">
+              Sessions
+            </span>
+            <Show when={totalActive() > 0}>
+              <span class="px-1.5 py-0.5 rounded-full bg-success/10 text-success text-[9px] font-medium leading-none">
+                {totalActive()}
               </span>
-            </div>
-            <button
-              type="button"
-              class="text-base-content/40 hover:text-base-content p-1"
-              onClick={() => sessionStore.openNewSessionModal()}
-              title="New thread"
-              aria-label="New thread"
-            >
-              <FiPlus size={13} />
-            </button>
+            </Show>
+            <Show when={totalUnread() > 0}>
+              <span class="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[9px] font-medium leading-none">
+                {totalUnread()} new
+              </span>
+            </Show>
           </div>
-          <Show
-            when={threadGroups().length > 0}
-            fallback={
-              <div class="px-3 py-6 text-center">
-                <p class="text-xs text-base-content/50">
-                  No threads yet
-                </p>
-              </div>
-            }
+          <button
+            type="button"
+            class="p-1 rounded text-base-content/30 hover:text-base-content hover:bg-base-200 transition-colors"
+            onClick={() => sessionStore.openNewSessionModal()}
+            title="New session"
           >
-            <div class="space-y-2 px-3">
-              <For each={threadGroups()}>
-                {(group) => (
-                  <ThreadGroupSection
-                    group={group}
-                    activeSessionId={activeSession()?.sessionId ?? null}
-                    onSelectThread={openThread}
-                    onStopThread={(sessionId) => void sessionStore.stopSession(sessionId)}
-                    onArchiveThread={(sessionId) => sessionStore.archiveSession(sessionId)}
-                  />
-                )}
-              </For>
-            </div>
-          </Show>
+            <FiPlus size={13} />
+          </button>
         </div>
 
-        <Show when={sessions().length > 0}>
-          <div class="mt-4">
-            <div class="px-3 py-2">
-              <span class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest">
-                Library
-              </span>
+        <Show
+          when={threadGroups().length > 0}
+          fallback={
+            <div class="px-3 py-8 text-center">
+              <div class="w-10 h-10 rounded-xl bg-base-200/50 flex items-center justify-center mx-auto mb-3 text-base-content/20">
+                <FiMessageSquare size={18} />
+              </div>
+              <p class="text-xs text-base-content/40 font-medium">No sessions yet</p>
+              <p class="text-[10px] text-base-content/30 mt-1">
+                Start a new session to begin
+              </p>
             </div>
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 px-3 py-2 text-sm text-base-content/50 hover:text-base-content hover:bg-base-200/50"
-              onClick={() => handleNavClick("sessions")}
-            >
-              <FiList size={14} />
-              <span class="flex-1 text-left">{t("sidebar.sessions")}</span>
-              <span class="text-xs text-base-content/40">{sessions().length}</span>
-            </button>
+          }
+        >
+          <div class="space-y-1.5">
+            <For each={threadGroups()}>
+              {(group) => (
+                <ProjectGroup
+                  group={group}
+                  activeSessionId={activeSession()?.sessionId ?? null}
+                  searchQuery={searchQuery()}
+                  onSelectThread={openThread}
+                  onStopThread={(id) => void sessionStore.stopSession(id)}
+                  onArchiveThread={(id) => sessionStore.archiveSession(id)}
+                  onNewThread={() => {
+                    const first = group.sessions[0];
+                    if (first) {
+                      sessionStore.openNewSessionModal(
+                        first.mode || "local",
+                        first.controlSessionId,
+                        false,
+                        first.projectPath,
+                        true,
+                      );
+                      sessionStore.setNewSessionAgent(first.agentType);
+                    }
+                  }}
+                />
+              )}
+            </For>
           </div>
+        </Show>
+
+        {/* View all sessions */}
+        <Show when={sessions().length > 5}>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 px-3 py-2 mt-1 text-xs text-base-content/40 hover:text-base-content rounded-lg hover:bg-base-200/50 transition-colors"
+            onClick={() => handleNavClick("sessions")}
+          >
+            <FiList size={13} />
+            <span>View all {sessions().length} sessions</span>
+          </button>
         </Show>
       </div>
 
-      {/* Footer - Connection Status */}
+      {/* Footer */}
       <ConnectionBadge />
     </aside>
   );

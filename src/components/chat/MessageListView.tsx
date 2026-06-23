@@ -150,14 +150,14 @@ const ChatEmptyState: Component<ChatEmptyStateProps> = (props) => {
       {/* Keyboard Shortcut Hint */}
       <div class="flex items-center gap-3 px-4 py-2 border border-base-content/10">
         <div class="flex items-center gap-1">
-          <span class="border border-base-content/10 px-1.5 py-0.5 text-xs">Enter</span>
+          <kbd class="kbd kbd-xs">Enter</kbd>
           <span class="text-xs text-base-content/50">to send</span>
         </div>
         <div class="w-px h-4 bg-base-content/10" />
         <div class="flex items-center gap-1">
-          <span class="border border-base-content/10 px-1.5 py-0.5 text-xs">Shift</span>
+          <kbd class="kbd kbd-xs">Shift</kbd>
           <span class="text-xs text-base-content/50">+</span>
-          <span class="border border-base-content/10 px-1.5 py-0.5 text-xs">Enter</span>
+          <kbd class="kbd kbd-xs">Enter</kbd>
           <span class="text-xs text-base-content/50">new line</span>
         </div>
       </div>

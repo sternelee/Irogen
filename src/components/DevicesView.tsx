@@ -56,7 +56,7 @@ export const DevicesView: Component = () => {
         <header class="flex items-start sm:items-center gap-3">
           <button
             type="button"
-            class="h-10 w-10 md:hidden shrink-0 -ml-2 border border-base-content/10 flex items-center justify-center text-base-content/50 hover:text-base-content hover:border-base-content/40"
+            class="btn btn-ghost btn-square md:hidden btn-sm"
             onClick={() => navigationStore.setSidebarOpen(true)}
             aria-label="Open menu"
           >
@@ -79,15 +79,15 @@ export const DevicesView: Component = () => {
         {/* Local Daemon Status */}
         <section>
           <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-widest text-base-content/40">{t("devices.localEnv")}</h2>
-          <div class="flex items-center justify-between border border-base-content/10 p-4 sm:p-5">
+          <div class="card card-bordered bg-base-100 flex-row items-center justify-between p-4 sm:p-5">
             <div class="flex items-center gap-4">
-              <div class="flex h-12 w-12 items-center justify-center border border-base-content/10 text-base-content/40">
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl border border-base-content/10 text-base-content/40">
                 <FiTerminal size={24} />
               </div>
               <div>
                 <h3 class="font-semibold text-base-content">{t("devices.localDaemon")}</h3>
                 <div class="flex items-center gap-2 mt-1">
-                  <span class="h-2.5 w-2.5 bg-success" />
+                  <span class="h-2.5 w-2.5 rounded-full bg-success" />
                   <span class="text-sm text-base-content/50 font-medium">{t("devices.running")}</span>
                 </div>
               </div>
@@ -98,12 +98,12 @@ export const DevicesView: Component = () => {
         {/* Add New Connection */}
         <section>
           <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-widest text-base-content/40">{t("devices.addNew")}</h2>
-          <div class="border border-base-content/10 p-4 sm:p-5 flex flex-col gap-4 sm:flex-row sm:items-end">
+          <div class="card card-bordered bg-base-100 p-4 sm:p-5 flex flex-col gap-4 sm:flex-row sm:items-end">
             <div class="flex-1 space-y-2">
               <label class="text-sm font-medium text-base-content">{t("devices.sessionTicket")}</label>
               <input
                 type="text"
-                class="w-full border border-base-content/10 bg-base-100 px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-base-content/40"
+                class="input input-bordered w-full font-mono text-sm"
                 placeholder={t("devices.ticketPlaceholder")}
                 value={ticketInput()}
                 onInput={(e) => setTicketInput(e.currentTarget.value)}
@@ -113,7 +113,7 @@ export const DevicesView: Component = () => {
               />
             </div>
             <button
-              class="border border-base-content/10 px-6 py-2.5 min-w-[120px] text-sm font-medium text-base-content hover:bg-base-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              class="btn btn-outline min-w-[120px]"
               disabled={!ticketInput() || isConnecting()}
               onClick={() => handleConnect(ticketInput())}
             >
@@ -131,12 +131,12 @@ export const DevicesView: Component = () => {
         {/* Active Remote Hosts */}
         <section>
           <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-widest text-base-content/40">{t("devices.activeHosts")}</h2>
-          <div class="border border-base-content/10 overflow-hidden">
+          <div class="card card-bordered bg-base-100">
             <Show
               when={connectedHosts().length > 0}
               fallback={
                 <div class="flex flex-col items-center justify-center py-10 px-4 text-center">
-                  <div class="mb-3 flex h-12 w-12 items-center justify-center border border-base-content/10 text-base-content/40">
+                  <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-xl border border-base-content/10 text-base-content/40">
                     <FiServer size={24} />
                   </div>
                   <p class="text-sm text-base-content/50 font-medium">{t("devices.noActiveHosts")}</p>
@@ -146,9 +146,9 @@ export const DevicesView: Component = () => {
               <div>
                 <For each={connectedHosts()}>
                   {(host) => (
-                    <div class="flex items-center justify-between p-4 sm:p-5 border-b border-base-content/10 last:border-b-0">
+                    <div class="flex items-center justify-between p-4 sm:p-5 border-b border-base-content/10 last:border-b-0 hover:bg-base-200/30 transition-colors duration-150">
                       <div class="flex items-center gap-4">
-                        <div class="flex h-10 w-10 items-center justify-center border border-base-content/10 text-base-content/40">
+                        <div class="flex h-10 w-10 items-center justify-center rounded-xl border border-base-content/10 text-base-content/40">
                           <FiGlobe size={20} />
                         </div>
                         <div>
@@ -161,8 +161,8 @@ export const DevicesView: Component = () => {
                         </div>
                       </div>
                       <div class="flex items-center gap-3">
-                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-success border border-success/20">
-                          <span class="h-1.5 w-1.5 bg-success" />{t("devices.connected")}</span>
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-success border border-success/20">
+                          <span class="h-1.5 w-1.5 rounded-full bg-success" />{t("devices.connected")}</span>
                       </div>
                     </div>
                   )}
@@ -178,7 +178,7 @@ export const DevicesView: Component = () => {
             <div class="flex items-center justify-between mb-4">
               <h2 class="text-[10px] font-semibold uppercase tracking-widest text-base-content/40">{t("devices.savedDevices")}</h2>
               <button
-                class="text-xs text-error border border-error/20 px-3 py-1.5 hover:bg-error hover:text-error-content"
+                class="text-xs text-error border border-error/20 px-3 py-1.5 rounded-lg hover:bg-error hover:text-error-content transition-all duration-150"
                 onClick={handleClearHistory}
               >
                 <FiTrash2 size={12} class="inline mr-1" />
@@ -192,10 +192,10 @@ export const DevicesView: Component = () => {
                     ticket.includes(h.controlSessionId),
                   );
                   return (
-                    <div class="flex flex-col gap-3 border border-base-content/10 p-4">
+                    <div class="card card-bordered bg-base-100 gap-3 p-4">
                       <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                          <div class="flex h-8 w-8 items-center justify-center border border-base-content/10 text-base-content/40">
+                          <div class="flex h-8 w-8 items-center justify-center rounded-lg border border-base-content/10 text-base-content/40">
                             <FiWifi size={16} />
                           </div>
                           <div>
@@ -209,7 +209,7 @@ export const DevicesView: Component = () => {
                         </div>
                         <Show when={!isActive}>
                           <button
-                            class="border border-base-content/10 px-3 py-1 text-xs font-medium hover:bg-base-200"
+                            class="btn btn-outline btn-xs font-medium"
                             onClick={() => handleConnect(ticket)}
                           >{t("action.connect")}</button>
                         </Show>

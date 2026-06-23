@@ -57,7 +57,7 @@ export const HomeView: Component = () => {
             </h2>
             <div class="grid grid-cols-2 gap-2">
               <button
-                class="flex items-center gap-3 p-4 border border-base-content/10 text-left hover:bg-base-200/50"
+                class="card card-bordered bg-base-100 flex-row items-center gap-3 p-4 text-left hover:bg-base-200/50 hover:border-base-content/30 transition-all duration-150"
                 onClick={() => sessionStore.openNewSessionModal()}
               >
                 <span class="text-base-content/40">+</span>
@@ -71,7 +71,7 @@ export const HomeView: Component = () => {
                 </div>
               </button>
               <button
-                class="flex items-center gap-3 p-4 border border-base-content/10 text-left hover:bg-base-200/50"
+                class="card card-bordered bg-base-100 flex-row items-center gap-3 p-4 text-left hover:bg-base-200/50 hover:border-base-content/30 transition-all duration-150"
                 onClick={() => navigationStore.setActiveView("devices")}
               >
                 <FiServer size={16} class="text-base-content/40" />
@@ -92,7 +92,7 @@ export const HomeView: Component = () => {
             <h2 class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest mb-3">
               {t("home.recentSessions")}
             </h2>
-            <div class="border border-base-content/10">
+            <div class="card card-bordered bg-base-100">
               {getRecentSessions().length === 0 ? (
                 <div class="py-12 text-center">
                   <FiActivity size={24} class="text-base-content/20 mx-auto mb-2" />
@@ -101,7 +101,7 @@ export const HomeView: Component = () => {
               ) : (
                 <For each={getRecentSessions()}>
                   {(session) => (
-                    <div class="flex items-center justify-between px-4 py-3 border-b border-base-content/5 hover:bg-base-200/50">
+                    <div class="flex items-center justify-between px-4 py-3 border-b border-base-content/5 last:border-b-0 hover:bg-base-200/50 transition-colors duration-150">
                       <div class="flex items-center gap-3 min-w-0">
                         <span
                           class={cn(
@@ -119,7 +119,7 @@ export const HomeView: Component = () => {
                         </div>
                       </div>
                       <button
-                        class="text-xs text-base-content/50 hover:text-base-content px-2 py-1 border border-base-content/10"
+                        class="btn btn-ghost btn-xs text-base-content/50 hover:text-base-content"
                         onClick={() => handleResumeSession(session.sessionId)}
                       >
                         {t("home.resume")}

@@ -15,6 +15,7 @@ import {
   onMount,
 } from "solid-js";
 import { getProjectPathHistory } from "../utils/localStorage";
+import { cn } from "~/lib/utils";
 import { FiPlus, FiHome, FiCloud, FiDownload } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -557,28 +558,38 @@ export const NewSessionModal: Component = () => {
           {/* Agent Config (Local or Remote with active connection) */}
           <Show when={showAgentConfig()}>
             <div class="space-y-3">
-              <div class="space-y-1">
+              <div class="space-y-2">
                 <Label for="agent-type" class="text-xs">{t("newSession.agent")}</Label>
-                <Select
-                  id="agent-type"
-                  class="select-sm"
-                  value={sessionStore.state.newSessionAgent}
-                  onChange={(val) => {
-                    const nextAgent = val as AgentType;
-                    sessionStore.setNewSessionAgent(nextAgent);
-                  }}
-                >
-                      <>
-                      <option value="claude">Claude Code</option>
-                      <option value="codex">Codex</option>
-                      <option value="cursor">Cursor</option>
-                      <option value="cline">Cline</option>
-                      <option value="pi">Pi</option>
-                      <option value="qwen">Qwen Code</option>
-                      <option value="opencode">OpenCode</option>
-                      <option value="gemini">Gemini CLI</option>
-                    </>
-                </Select>
+
+                {/* Agent Card Grid */}
+                {[
+                  { id: "claude", label: "Claude Code", color: "bg-[#d97757] text-white" },
+                  { id: "codex", label: "Codex", color: "bg-[#4f46e5] text-white" },
+                  { id: "cursor", label: "Cursor", color: "bg-[#0ea5e9] text-white" },
+                  { id: "opencode", label: "OpenCode", color: "bg-[#059669] text-white" },
+                  { id: "gemini", label: "Gemini CLI", color: "bg-[#8b5cf6] text-white" },
+                  { id: "pi", label: "Pi", color: "bg-black dark:bg-white dark:text-black text-white" },
+                  { id: "qwen", label: "Qwen Code", color: "bg-[#ec4899] text-white" },
+                  { id: "cline", label: "Cline", color: "bg-[#f59e0b] text-black" },
+                ].map((agent) => (
+                  <button
+                    type="button"
+                    onClick={() => sessionStore.setNewSessionAgent(agent.id as AgentType)}
+                    classList={{
+                      "ring-2 ring-primary border-primary": sessionStore.state.newSessionAgent === agent.id,
+                      "border-base-content/10 hover:border-base-content/30": sessionStore.state.newSessionAgent !== agent.id,
+                    }}
+                    class="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl border bg-base-100 transition-all duration-150 text-left"
+                  >
+                    <div class={cn("w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 shadow-sm", agent.color)}>
+                      {agent.label[0]}
+                    </div>
+                    <div>
+                      <div class="text-sm font-semibold text-base-content">{agent.label}</div>
+                      <div class="text-[10px] text-base-content/40">{agent.id}</div>
+                    </div>
+                  </button>
+                ))}
               </div>
 
               {/* ACP Install Button */}
@@ -695,7 +706,7 @@ export const NewSessionModal: Component = () => {
                       <Label for="agent-args" class="text-xs">{t("newSession.agentArgs")}</Label>
                       <Textarea
                         id="agent-args"
-                        class="min-h-[80px] text-sm font-mono border border-base-content/10"
+                        class="textarea textarea-bordered min-h-[80px] text-sm font-mono"
                         placeholder={agentArgsConfig().placeholder}
                         value={sessionStore.state.newSessionArgs}
                         onInput={(e) => {
@@ -711,7 +722,7 @@ export const NewSessionModal: Component = () => {
                     <Label for="mcp-servers" class="text-xs">{t("newSession.mcpServers")}</Label>
                     <Textarea
                       id="mcp-servers"
-                      class="min-h-[120px] text-xs font-mono border border-base-content/10"
+                      class="textarea textarea-bordered min-h-[120px] text-xs font-mono"
                       placeholder='[{"type":"stdio","name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}]'
                       value={sessionStore.state.newSessionMcpServers}
                       onInput={(e) => {

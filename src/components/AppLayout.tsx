@@ -9,6 +9,8 @@ import {
   createEffect,
   createMemo,
   Show,
+  Switch,
+  Match,
   onMount,
   onCleanup,
   type Component,
@@ -60,26 +62,6 @@ export const AppLayout: Component = () => {
     }
   });
 
-  const renderMainContent = () => {
-    switch (activeView()) {
-      case "settings":
-        return <SettingsView />;
-      case "devices":
-      case "hosts":
-      case "proxies":
-        return <DevicesView />;
-      case "sessions":
-        return <SessionsView />;
-      case "workspace":
-      case "chat":
-        return <WorkspaceShell />;
-      case "home":
-      case "dashboard":
-      default:
-        return <HomeView />;
-    }
-  };
-
   return (
     <div class="flex h-full bg-base-100">
       {/* Keyboard Shortcuts Dialog */}
@@ -125,7 +107,14 @@ export const AppLayout: Component = () => {
       {/* Main Content */}
       <div class="flex-1 min-w-0 flex flex-col overflow-hidden">
         <main class="flex-1 flex min-h-0 flex-col min-w-0">
-          {renderMainContent()}
+          {/* Keyed wrapper forces re-mount on view change → animate-fade-in triggers */}
+          <Switch>
+            <Match when={activeView() === "settings"}><div class="flex-1 flex min-h-0 animate-fade-in"><SettingsView /></div></Match>
+            <Match when={activeView() === "devices" || activeView() === "hosts" || activeView() === "proxies"}><div class="flex-1 flex min-h-0 animate-fade-in"><DevicesView /></div></Match>
+            <Match when={activeView() === "sessions"}><div class="flex-1 flex min-h-0 animate-fade-in"><SessionsView /></div></Match>
+            <Match when={activeView() === "workspace" || activeView() === "chat"}><div class="flex-1 flex min-h-0 animate-fade-in"><WorkspaceShell /></div></Match>
+            <Match when={true}><div class="flex-1 flex min-h-0 animate-fade-in"><HomeView /></div></Match>
+          </Switch>
         </main>
       </div>
     </div>

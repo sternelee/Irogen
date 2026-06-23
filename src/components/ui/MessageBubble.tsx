@@ -1,24 +1,39 @@
 /**
- * Message Bubble Components
+ * MessageBubble Component
  *
- * Zed-inspired: hard lines, high contrast, no gradients/shadows/animations.
+ * LobeHub-inspired redesign:
+ * - User: right-aligned primary pill with soft rounded corners
+ * - Assistant: card-style with subtle shadow, header, collapsible thinking,
+ *   animated tool calls, token badges, file ops, terminal embeds
+ * - Hover-reveal actions toolbar
+ * - Smooth transitions throughout
  */
 
-import { type Component, For, Show, createMemo, createSignal } from "solid-js";
-import { Portal } from "solid-js/web";
+import {
+  type Component,
+  Show,
+  For,
+  createSignal,
+  createMemo,
+  Switch,
+  Match,
+} from "solid-js";
 import { cn } from "~/lib/utils";
-import { createClipboard } from "@solid-primitives/clipboard";
-import { FiCopy, FiMessageSquare, FiMoreHorizontal } from "solid-icons/fi";
+import {
+  FiCopy,
+  FiCheck,
+  FiMessageSquare,
+  FiChevronDown,
+  FiChevronRight,
+  FiTool,
+  FiTerminal,
+  FiFile,
+  FiEdit3,
+  FiClock,
+  FiRefreshCw,
+} from "solid-icons/fi";
 import { SolidMarkdown } from "solid-markdown";
 import type { ChatMessage, SystemCard, ToolCall } from "~/stores/chatStore";
-import { isMobile } from "~/stores/deviceStore";
-import { HapticFeedback } from "~/utils/mobile";
-import {
-  ToolCallList,
-  ReasoningBlock,
-  TerminalOutput,
-  FileEditDiff,
-} from "./EnhancedMessageComponents";
 import { ShikiCodeBlock } from "./ShikiCodeBlock";
 
 // ============================================================================
@@ -29,6 +44,12 @@ function formatTimestamp(ts: number | undefined): string {
   if (!ts) return "";
   const d = new Date(ts);
   const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+
+  if (diffMin < 1) return "now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+
   const isToday =
     d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
@@ -45,6 +66,25 @@ function formatTimestamp(ts: number | undefined): string {
   return `${dateStr} ${timeStr}`;
 }
 
+function agentAvatarColor(name: string): string {
+  const colors = [
+    "bg-primary text-primary-content",
+    "bg-secondary text-secondary-content",
+    "bg-accent text-accent-content",
+    "bg-info text-info-content",
+    "bg-success text-success-content",
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function agentInitial(name: string): string {
+  return name.charAt(0).toUpperCase();
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -52,6 +92,7 @@ function formatTimestamp(ts: number | undefined): string {
 export interface MessageBubbleProps {
   message: ChatMessage;
   class?: string;
+  isStreaming?: boolean;
   onQuote?: (content: string) => void;
   onResend?: (content: string) => void;
   onToggleFileBrowser?: () => void;
@@ -65,153 +106,262 @@ export interface MessageBubbleProps {
 }
 
 // ============================================================================
-// User Message Component
+// Status Dot Component (for ToolCall)
 // ============================================================================
 
-const UserMessage: Component<{ content: string; timestamp?: number }> = (
-  props,
-) => {
+const ToolCallStatusDot: Component<{ status: ToolCall["status"] }> = (props) => {
+  const dotClass = createMemo(() => {
+    switch (props.status) {
+      case "started":
+      case "in_progress":
+        return "tool-call-status-dot running";
+      case "completed":
+        return "tool-call-status-dot success";
+      case "failed":
+      case "cancelled":
+        return "tool-call-status-dot error";
+      default:
+        return "tool-call-status-dot pending";
+    }
+  });
+
+  const label = createMemo(() => {
+    switch (props.status) {
+      case "started":
+        return "Starting…";
+      case "in_progress":
+        return "Running…";
+      case "completed":
+        return "Done";
+      case "failed":
+        return "Failed";
+      case "cancelled":
+        return "Cancelled";
+      default:
+        return "Pending";
+    }
+  });
+
   return (
-    <div class="flex flex-col items-end gap-1">
-      <div class="inline-block max-w-[85%] sm:max-w-[75%] bg-primary px-4 py-3">
-        <div class="prose prose-sm max-w-none text-[14px] leading-relaxed text-primary-content">
-          <SolidMarkdown children={props.content} />
-        </div>
-      </div>
-      <Show when={props.timestamp}>
-        <span class="text-[10px] text-base-content/40 px-1">
-          {formatTimestamp(props.timestamp)}
-        </span>
-      </Show>
+    <div class="flex items-center gap-1.5">
+      <span class={dotClass()} />
+      <span class="text-[10px] text-base-content/40">{label()}</span>
     </div>
   );
 };
 
 // ============================================================================
-// Assistant Message Component
+// Tool Call Card
 // ============================================================================
 
-interface AssistantMessageProps {
-  content: string;
-  thinking?: string;
-  toolCalls?: ToolCall[];
-  isStreaming?: boolean;
-  timestamp?: number;
-}
+const ToolCallCard: Component<{
+  toolCall: ToolCall;
+}> = (props) => {
+  const [expanded, setExpanded] = createSignal(false);
+  const isRunning = () =>
+    props.toolCall.status === "started" ||
+    props.toolCall.status === "in_progress";
 
-const StreamingCursor: Component = () => (
-  <span class="inline-block ml-0.5 w-2 h-4 bg-base-content/40 align-middle" />
-);
-
-const AssistantMessage: Component<AssistantMessageProps> = (props) => {
   return (
-    <div class="flex flex-col gap-3 max-w-[90%]">
-      {/* Thinking/Reasoning */}
-      <Show when={props.thinking}>
-        <ReasoningBlock
-          thinking={props.content}
-          isStreaming={props.isStreaming}
+    <div class="tool-call-card">
+      <div
+        class="tool-call-card-header cursor-pointer select-none"
+        onClick={() => props.toolCall.output && setExpanded((v) => !v)}
+      >
+        <FiTool
+          size={12}
+          class={cn(
+            "shrink-0",
+            isRunning() ? "text-warning" : "text-base-content/40",
+          )}
         />
-      </Show>
-
-      {/* Content */}
-      <div class="inline-block px-4 py-3 border border-base-content/10">
-        <div class="prose prose-sm max-w-none text-[14px] leading-relaxed text-base-content">
-          <SolidMarkdown
-            children={props.thinking ? undefined : props.content}
-            components={{
-              code({ inline, class: className, children, ...codeProps }) {
-                const match = /language-(\w+)/.exec(className || "");
-                const codeString = String(children).replace(/\n$/, "");
-                if (inline || !match) {
-                  return (
-                    <code class={className} {...codeProps}>
-                      {children}
-                    </code>
-                  );
-                }
-                return <ShikiCodeBlock code={codeString} language={match[1]} />;
-              },
-            }}
-          />
-          {/* Streaming cursor */}
-          <Show when={props.isStreaming}>
-            <StreamingCursor />
-          </Show>
-        </div>
+        <span class="tool-call-name">{props.toolCall.toolName}</span>
+        <ToolCallStatusDot status={props.toolCall.status} />
+        <Show when={props.toolCall.output}>
+          <span class="ml-auto text-base-content/30">
+            {expanded() ? <FiChevronDown size={12} /> : <FiChevronRight size={12} />}
+          </span>
+        </Show>
       </div>
-
-      {/* Tool Calls */}
-      <Show when={props.toolCalls && props.toolCalls.length > 0}>
-        <div class="mt-1 pt-3 border-t border-base-content/10">
-          <ToolCallList toolCalls={props.toolCalls!} />
+      <Show when={expanded() && props.toolCall.output}>
+        <div class="tool-call-body">
+          <div class="tool-call-output">{props.toolCall.output}</div>
         </div>
       </Show>
-
-      {/* Timestamp */}
-      <Show when={props.timestamp}>
-        <span class="text-[10px] text-base-content/40 px-1">
-          {formatTimestamp(props.timestamp)}
-        </span>
-      </Show>
     </div>
   );
 };
 
 // ============================================================================
-// System Message Component
+// Thinking Block
 // ============================================================================
 
-interface SystemMessageProps {
-  content: string;
-  systemCard?: SystemCard;
-  timestamp?: number;
-  onQuote?: (content: string) => void;
-  onToggleFileBrowser?: () => void;
-  onSyncTodoList?: (content: string) => void;
-  onOpenFileLocation?: (path: string, line?: number) => void;
-  onApplyEditReview?: (path: string, action: "accept" | "reject") => void;
-  onTerminalAction?: (
-    terminalId: string,
-    action: "attach" | "stop" | "status",
-  ) => void;
-}
+const ThinkingBlock: Component<{ content: string }> = (props) => {
+  const [open, setOpen] = createSignal(false);
+  const [animating, setAnimating] = createSignal(false);
 
-const SystemMessage: Component<SystemMessageProps> = (props) => {
+  const toggle = () => {
+    if (open()) {
+      setAnimating(true);
+      setOpen(false);
+      setTimeout(() => setAnimating(false), 300);
+    } else {
+      setOpen(true);
+    }
+  };
+
   return (
-    <div class="flex flex-col gap-1 max-w-[85%] sm:max-w-[75%]">
-      <SystemMessageContent
-        content={props.content}
-        systemCard={props.systemCard}
-        onQuote={props.onQuote}
-        onToggleFileBrowser={props.onToggleFileBrowser}
-        onSyncTodoList={props.onSyncTodoList}
-        onOpenFileLocation={props.onOpenFileLocation}
-        onApplyEditReview={props.onApplyEditReview}
-        onTerminalAction={props.onTerminalAction}
-      />
-      <Show when={props.timestamp}>
-        <span class="text-[10px] text-base-content/40 px-1">
-          {formatTimestamp(props.timestamp)}
+    <div class="thinking-block">
+      <div
+        class="thinking-block-header"
+        onClick={toggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === "Enter" && toggle()}
+      >
+        <span
+          class={cn(
+            "transition-transform duration-200",
+            open() && "rotate-90",
+          )}
+        >
+          <FiChevronRight size={12} />
         </span>
+        <span>Reasoning</span>
+        <Show when={!open()}>
+          <span class="ml-auto text-base-content/30 text-[10px]">
+            {props.content.length} chars
+          </span>
+        </Show>
+      </div>
+      <Show when={open() || animating()}>
+        <div
+          class="thinking-block-content"
+          classList={{
+            "max-h-0 !pb-0": !open() && animating(),
+            "max-h-[600px]": open(),
+          }}
+        >
+          <div class="thinking-block-content-inner">
+            <SolidMarkdown children={props.content} />
+          </div>
+        </div>
       </Show>
     </div>
   );
 };
 
 // ============================================================================
-// System Message Content Parser
+// Token Usage Badge
 // ============================================================================
 
-const normalizeEscapedLineBreaks = (value: string) =>
-  value.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
+const TokenBadge: Component<{
+  inputTokens?: number;
+  outputTokens?: number;
+}> = (props) => {
+  const total = () => (props.inputTokens ?? 0) + (props.outputTokens ?? 0);
+  if (!total()) return null;
 
-const SystemMessageContent: Component<{
-  content: string;
-  systemCard?: SystemCard;
-  onQuote?: (content: string) => void;
-  onToggleFileBrowser?: () => void;
-  onSyncTodoList?: (content: string) => void;
+  return (
+    <span class="token-badge" title={`Input: ${props.inputTokens ?? 0}, Output: ${props.outputTokens ?? 0}`}>
+      <FiClock size={9} />
+      {total().toLocaleString()} tokens
+    </span>
+  );
+};
+
+// ============================================================================
+// File Operation Indicator
+// ============================================================================
+
+const FileOperationIndicator: Component<{
+  path: string;
+  operation: string;
+}> = (props) => {
+  const statusClass = createMemo(() => {
+    const op = props.operation.toLowerCase();
+    if (op === "write" || op === "create") return "created";
+    if (op === "delete") return "deleted";
+    return "modified";
+  });
+
+  return (
+    <div class="file-op-inline">
+      <FiFile class="file-op-icon" />
+      <span class="file-op-path">{props.path}</span>
+      <span class={`file-op-status ${statusClass()}`}>
+        {props.operation}
+      </span>
+    </div>
+  );
+};
+
+// ============================================================================
+// Terminal Embed
+// ============================================================================
+
+const TerminalEmbed: Component<{
+  command: string;
+  output: string;
+  exitCode?: number;
+}> = (props) => {
+  return (
+    <div class="terminal-embed">
+      <div class="terminal-embed-header">
+        <FiTerminal size={10} />
+        <span class="truncate">{props.command}</span>
+        <Show when={props.exitCode !== undefined}>
+          <span
+            class={cn(
+              "ml-auto",
+              props.exitCode === 0 ? "text-success" : "text-error",
+            )}
+          >
+            exit {props.exitCode}
+          </span>
+        </Show>
+      </div>
+      <pre class="terminal-embed-body">{props.output}</pre>
+    </div>
+  );
+};
+
+// ============================================================================
+// Progress Bar (Inline)
+// ============================================================================
+
+const ProgressInline: Component<{
+  operation: string;
+  progress: number;
+  message?: string;
+}> = (props) => {
+  const pct = () => Math.round(props.progress * 100);
+
+  return (
+    <div class="progress-inline">
+      <div class="progress-inline-header">
+        <span class="progress-inline-label">{props.operation}</span>
+        <span class="progress-inline-pct">{pct()}%</span>
+      </div>
+      <div class="progress-inline-bar">
+        <div
+          class="progress-inline-fill"
+          style={{ width: `${pct()}%` }}
+        />
+      </div>
+      <Show when={props.message}>
+        <div class="progress-inline-msg">{props.message}</div>
+      </Show>
+    </div>
+  );
+};
+
+// ============================================================================
+// System Card Renderer
+// ============================================================================
+
+const SystemCardRenderer: Component<{
+  systemCard: SystemCard;
   onOpenFileLocation?: (path: string, line?: number) => void;
   onApplyEditReview?: (path: string, action: "accept" | "reject") => void;
   onTerminalAction?: (
@@ -219,514 +369,367 @@ const SystemMessageContent: Component<{
     action: "attach" | "stop" | "status",
   ) => void;
 }> = (props) => {
-  const [todoStates, setTodoStates] = createSignal<Record<number, boolean>>({});
-  const [toolOutputExpanded, setToolOutputExpanded] = createSignal(false);
-  const [, , write] = createClipboard();
-
-  const copyText = async (text: string) => {
-    try {
-      await write(text);
-    } catch {
-      // ignore clipboard failures
-    }
-  };
-
-  const renderSystemCard = () => {
-    const card = props.systemCard;
-    if (!card) return null;
-
-    if (card.type === "following") {
-      return (
-        <div class="border border-info/20 p-3 space-y-2">
-          <div class="inline-flex items-center px-2 py-0.5 text-xs font-semibold text-info border border-info/20">
-            Following
+  return (
+    <Switch>
+      {/* Following Location */}
+      <Match when={props.systemCard.type === "following" && "locations" in props.systemCard}>
+        <div class="mx-4 my-2 rounded-lg border border-info/20 bg-info/5 p-3">
+          <div class="flex items-center gap-2 mb-2 text-xs font-medium text-base-content/60">
+            <FiFile size={12} />
+            <span>Following</span>
           </div>
-          <For each={card.locations}>
-            {(loc) => (
-              <div class="flex items-center gap-2 border border-base-content/15 px-3 py-2">
-                <button
-                  type="button"
-                    class="flex-1 text-left text-sm font-mono text-base-content/80 hover:text-info"
-                  onClick={() => {
-                    if (props.onOpenFileLocation) {
-                      props.onOpenFileLocation(loc.path, loc.line);
-                    } else {
-                      props.onQuote?.(
-                        `@${loc.path}${loc.line ? `:${loc.line}` : ""}`,
-                      );
-                    }
-                  }}
-                >
-                  {loc.path}
-                  <Show when={loc.line !== undefined}>
-                    <span class="ml-1 text-base-content/40">:{loc.line}</span>
+          <For each={(props.systemCard as any).locations}>
+            {(loc: { path: string; line?: number }) => (
+              <button
+                class="flex items-center gap-2 w-full text-left py-1 px-2 rounded text-xs font-mono text-base-content/50 hover:bg-base-200/50 hover:text-base-content transition-colors"
+                onClick={() => props.onOpenFileLocation?.(loc.path, loc.line)}
+              >
+                <span class="truncate">{loc.path}</span>
+                <Show when={loc.line}>
+                  <span class="text-base-content/30 shrink-0">:{loc.line}</span>
+                </Show>
+              </button>
+            )}
+          </For>
+        </div>
+      </Match>
+
+      {/* Edit Review */}
+      <Match when={props.systemCard.type === "edit_review"}>
+        <div class="mx-4 my-2 rounded-lg border border-warning/20 bg-warning/5 p-3">
+          <div class="flex items-center gap-2 mb-2 text-xs font-medium text-base-content/60">
+            <FiEdit3 size={12} />
+            <span class="truncate">{(props.systemCard as any).path}</span>
+          </div>
+          <div class="flex gap-2">
+            <button
+              class="px-3 py-1 rounded text-xs font-medium bg-success text-success-content hover:brightness-110 transition-all"
+              onClick={() => props.onApplyEditReview?.((props.systemCard as any).path, "accept")}
+            >
+              Accept
+            </button>
+            <button
+              class="px-3 py-1 rounded text-xs font-medium bg-error text-error-content hover:brightness-110 transition-all"
+              onClick={() => props.onApplyEditReview?.((props.systemCard as any).path, "reject")}
+            >
+              Reject
+            </button>
+          </div>
+        </div>
+      </Match>
+
+      {/* TODO List */}
+      <Match when={props.systemCard.type === "todo_list"}>
+        <div class="card card-bordered bg-base-200/50 mx-4 my-2 p-3">
+          <div class="text-xs font-medium text-base-content/60 mb-2">Todo</div>
+          <For each={(props.systemCard as any).entries}>
+            {(entry: { content: string; status: string }) => (
+              <div class="flex items-center gap-2 py-1 text-xs text-base-content/50">
+                <span class={cn(
+                  "w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0",
+                  entry.status === "completed" ? "bg-success border-success" : "border-base-content/30"
+                )}>
+                  <Show when={entry.status === "completed"}>
+                    <FiCheck size={8} class="text-success-content" />
                   </Show>
-                </button>
-                <button
-                  type="button"
-                  class="border border-base-content/10 px-2 py-1 text-xs hover:bg-base-200"
-                  onClick={() =>
-                    copyText(`${loc.path}${loc.line ? `:${loc.line}` : ""}`)
-                  }
-                >
-                  Copy
-                </button>
+                </span>
+                <span classList={{ "line-through text-base-content/30": entry.status === "completed" }}>
+                  {entry.content}
+                </span>
               </div>
             )}
           </For>
-          <button
-            type="button"
-            class="border border-base-content/10 px-3 py-1.5 text-sm w-full hover:bg-base-200"
-            onClick={() => props.onToggleFileBrowser?.()}
-          >
-            Open File Panel
-          </button>
         </div>
-      );
-    }
+      </Match>
 
-    if (card.type === "edit_review") {
-      return (
-        <FileEditDiff
-          path={card.path}
-          oldText={card.oldText}
-          newText={card.newText}
-          onAccept={() => props.onApplyEditReview?.(card.path, "accept")}
-          onReject={() => props.onApplyEditReview?.(card.path, "reject")}
+      {/* Terminal */}
+      <Match when={props.systemCard.type === "terminal"}>
+        <TerminalEmbed
+          command={(props.systemCard as any).terminalId || "terminal"}
+          output=""
         />
-      );
-    }
-
-    if (card.type === "todo_list") {
-      const syncTodoToAgent = () => {
-        const current = todoStates();
-        const lines = card.entries.map((entry, idx) => {
-          const checked =
-            current[idx] !== undefined
-              ? current[idx]
-              : entry.status === "completed";
-          return `- [${checked ? "x" : " "}] ${entry.content}`;
-        });
-        props.onSyncTodoList?.(`TODO update:\n${lines.join("\n")}`);
-      };
-
-      return (
-        <div class="border border-base-content/10 p-3 space-y-2">
-          <div class="inline-flex items-center px-2 py-0.5 text-xs font-semibold text-base-content/60 border border-base-content/10">
-            TODO List
-          </div>
-          <div class="space-y-1">
-            <For each={card.entries}>
-              {(entry, index) => {
-                const initialDone = entry.status === "completed";
-                const checked = () =>
-                  todoStates()[index()] !== undefined
-                    ? todoStates()[index()]!
-                    : initialDone;
-                return (
-                  <label class="flex items-center gap-2.5 px-2.5 py-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      class="w-4 h-4 border border-base-content/20"
-                      checked={checked()}
-                      onChange={(e) =>
-                        setTodoStates((prev) => ({
-                          ...prev,
-                          [index()]: e.currentTarget.checked,
-                        }))
-                      }
-                    />
-                    <span
-                      class={`text-sm ${checked() ? "line-through text-base-content/40" : ""}`}
-                    >
-                      {entry.content}
-                    </span>
-                  </label>
-                );
-              }}
-            </For>
-          </div>
-          <Show when={props.onSyncTodoList}>
-            <button
-              type="button"
-            class="border border-base-content/10 px-3 py-1.5 text-sm w-full hover:bg-base-200"
-              onClick={syncTodoToAgent}
-            >
-              Sync to Agent
-            </button>
-          </Show>
-        </div>
-      );
-    }
-
-    if (card.type === "terminal") {
-      return (
-        <div class="border border-base-content/20 p-3 space-y-2">
-          <div class="inline-flex items-center px-2 py-0.5 text-xs font-semibold text-base-content/60 border border-base-content/20">
-            Terminal
-          </div>
-            <div class="border border-base-content/10 bg-base-200 px-3 py-2.5 text-sm text-base-content/80">
-            <div class="font-mono break-all">
-              {card.terminalId || "unknown"}
-            </div>
-            <div class="mt-1 text-base-content/50">
-              {card.mode || "interactive/background"}{" "}
-              {card.status ? `· ${card.status}` : ""}
-            </div>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <button
-              type="button"
-              class="border border-base-content/10 px-2 py-1 text-xs hover:bg-base-200"
-              onClick={() => copyText(card.terminalId)}
-            >
-              Copy ID
-            </button>
-            <button
-              type="button"
-              class="border border-base-content/10 px-2 py-1 text-xs hover:bg-base-200"
-              onClick={() => props.onQuote?.(`terminal:${card.terminalId}`)}
-            >
-              Insert
-            </button>
-            <Show when={props.onTerminalAction}>
-              <button
-                type="button"
-                class="border border-base-content/10 px-2 py-1 text-xs hover:bg-base-200"
-                onClick={() =>
-                  props.onTerminalAction?.(card.terminalId, "attach")
-                }
-              >
-                Attach
-              </button>
-              <button
-                type="button"
-                class="border border-base-content/10 px-2 py-1 text-xs hover:bg-base-200"
-                onClick={() =>
-                  props.onTerminalAction?.(card.terminalId, "status")
-                }
-              >
-                Status
-              </button>
-              <button
-                type="button"
-                class="border border-error/20 px-2 py-1 text-xs text-error hover:bg-error hover:text-base-100"
-                onClick={() =>
-                  props.onTerminalAction?.(card.terminalId, "stop")
-                }
-              >
-                Stop
-              </button>
-            </Show>
-          </div>
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  // Check if it's a terminal output format
-  const isTerminalOutput = () => {
-    const content = props.content;
-    return (
-      content.includes("[Tool:") ||
-      content.includes("Command completed:") ||
-      content.includes("Command failed:") ||
-      content.includes("Command output:")
-    );
-  };
-
-  // Parse terminal output
-  const parseTerminalOutput = () => {
-    const content = props.content;
-
-    // Tool started/completed/failed pattern
-    const toolMatch = content.match(/\[Tool: (.+?)\](.*)/s);
-    if (toolMatch) {
-      const toolName = toolMatch[1];
-      const rest = toolMatch[2].trim();
-      return {
-        type: "tool",
-        toolName,
-        output: rest,
-      };
-    }
-
-    // Command patterns
-    const cmdMatch = content.match(
-      /(Command completed|Command failed|Command output): (.+)/s,
-    );
-    if (cmdMatch) {
-      return {
-        type: "command",
-        status: cmdMatch[1].replace("Command ", "").toLowerCase(),
-        command: cmdMatch[2],
-      };
-    }
-
-    return null;
-  };
-
-  return (
-    <Show
-      when={props.systemCard}
-      fallback={
-        <Show
-          when={isTerminalOutput()}
-          fallback={
-            <div class="inline-block bg-base-200 border border-base-content/10 px-4 py-3">
-              <div class="text-sm leading-relaxed text-base-content/70 whitespace-pre-wrap break-words">
-                <SolidMarkdown
-                  children={normalizeEscapedLineBreaks(props.content)}
-                />
-              </div>
-            </div>
-          }
-        >
-          <Show
-            when={parseTerminalOutput()}
-            fallback={
-              <div class="inline-block bg-base-200 border border-base-content/10 px-4 py-3">
-                <div class="text-sm leading-relaxed text-base-content/70 whitespace-pre-wrap break-words">
-                  <SolidMarkdown
-                    children={normalizeEscapedLineBreaks(props.content)}
-                  />
-                </div>
-              </div>
-            }
-          >
-            {(parsed) => (
-              <Show
-                when={parsed().type === "tool"}
-                fallback={
-                  <TerminalOutput
-                    output={parsed().command || ""}
-                    exitCode={
-                      parsed().status === "completed"
-                        ? 0
-                        : parsed().status === "failed"
-                          ? 1
-                          : undefined
-                    }
-                  />
-                }
-              >
-                <div class="text-sm">
-                  <button
-                    type="button"
-                    onClick={() => setToolOutputExpanded(!toolOutputExpanded())}
-                    class="inline-flex items-center gap-2 hover:bg-base-200 px-2 py-1 -ml-2"
-                  >
-                    <span class="inline-flex items-center bg-info/10 px-2 py-0.5 font-mono text-xs text-info">
-                      [{parsed().toolName}]
-                    </span>
-                    <span class="text-base-content/50">
-                      {toolOutputExpanded() ? "▼" : "▶"}
-                    </span>
-                  </button>
-                  <Show when={toolOutputExpanded() && parsed().output}>
-                    <pre class="mt-2 text-xs text-base-content/50 whitespace-pre-wrap break-all">
-                      {normalizeEscapedLineBreaks(parsed().output || "")}
-                    </pre>
-                  </Show>
-                </div>
-              </Show>
-            )}
-          </Show>
-        </Show>
-      }
-    >
-      {renderSystemCard()}
-    </Show>
+      </Match>
+    </Switch>
   );
 };
 
 // ============================================================================
-// Main Message Bubble Component
+// User Message
 // ============================================================================
 
-export const MessageBubble: Component<MessageBubbleProps> = (props) => {
-  const message = () => props.message;
-  const isUser = createMemo(() => message().role === "user");
-  const isSystem = createMemo(() => message().role === "system");
-  const [showActions, setShowActions] = createSignal(false);
-  const firstCodeBlock = createMemo(() => {
-    const match = message().content.match(/```(?:\w+)?\n([\s\S]*?)```/);
-    return match?.[1]?.trim() || null;
-  });
+const UserMessage: Component<{
+  content: string;
+  timestamp?: number;
+  isStreaming?: boolean;
+}> = (props) => {
+  return (
+    <div class="chat chat-end animate-fade-in">
+      <Show when={props.timestamp}>
+        <div class="chat-header text-[10px] text-base-content/30 opacity-70">
+          {formatTimestamp(props.timestamp)}
+        </div>
+      </Show>
+      <div class="chat-bubble chat-bubble-primary text-[14px] leading-relaxed p-3.5">
+        <div class="prose prose-sm max-w-none">
+          <SolidMarkdown children={props.content} />
+        </div>
+      </div>
+    </div>
+  );
+};
 
-  const closeActions = () => setShowActions(false);
-  const triggerHaptic = () => {
-    if (isMobile()) {
-      HapticFeedback.selection();
-    }
-  };
+// ============================================================================
+// Assistant Message
+// ============================================================================
 
-  const copyMessage = async () => {
-    triggerHaptic();
+const AssistantMessage: Component<{
+  content: string;
+  thinking?: string;
+  toolCalls?: ToolCall[];
+  isStreaming?: boolean;
+  timestamp?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  systemCard?: SystemCard;
+  onQuote?: (content: string) => void;
+  onResend?: (content: string) => void;
+  onOpenFileLocation?: (path: string, line?: number) => void;
+  onApplyEditReview?: (path: string, action: "accept" | "reject") => void;
+  onTerminalAction?: (
+    terminalId: string,
+    action: "attach" | "stop" | "status",
+  ) => void;
+}> = (props) => {
+  const [copied, setCopied] = createSignal(false);
+
+  const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(message().content);
+      await navigator.clipboard.writeText(props.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
-      // ignore clipboard failures
-    } finally {
-      closeActions();
+      // fallback
     }
   };
 
-  const copyCodeBlock = async () => {
-    const code = firstCodeBlock();
-    if (!code) return;
-    triggerHaptic();
-    try {
-      await navigator.clipboard.writeText(code);
-    } catch {
-      // ignore clipboard failures
-    } finally {
-      closeActions();
-    }
-  };
-
-  const quoteMessage = () => {
-    triggerHaptic();
-    props.onQuote?.(message().content);
-    closeActions();
-  };
-
-  const resendMessage = () => {
-    triggerHaptic();
-    props.onResend?.(message().content);
-    closeActions();
-  };
+  const hasThinking = () => props.thinking && props.thinking.length > 0;
+  const hasToolCalls = () => props.toolCalls && props.toolCalls.length > 0;
+  const hasContent = () => props.content && props.content.length > 0;
+  const hasActions = () => props.onQuote || props.onResend;
 
   return (
-    <div class={cn("group/bubble relative", props.class)}>
-      <div>
-        <Show
-          when={isUser()}
-          fallback={
-            <Show
-              when={isSystem()}
-              fallback={
-                <AssistantMessage
-                  content={message().content}
-                  thinking={message().thinking ? "Thinking..." : undefined}
-                  toolCalls={message().toolCalls}
-                  isStreaming={message().thinking}
-                  timestamp={message().timestamp}
-                />
-              }
-            >
-              <SystemMessage
-                content={message().content}
-                systemCard={message().systemCard}
-                timestamp={message().timestamp}
-                onQuote={props.onQuote}
-                onToggleFileBrowser={props.onToggleFileBrowser}
-                onSyncTodoList={props.onSyncTodoList}
-                onOpenFileLocation={props.onOpenFileLocation}
-                onApplyEditReview={props.onApplyEditReview}
-                onTerminalAction={props.onTerminalAction}
+    <div class="group chat chat-start animate-fade-in">
+      {/*
+      <div class="chat-header">...</div>
+      We put header inside card for richer layout
+      */}
+      <div class="card card-bordered bg-base-100 w-full max-w-[90%] shadow-sm">
+        {/* Header */}
+        <div class="flex items-center gap-2 px-4 pt-3 pb-1">
+          <div class={cn("w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0", agentAvatarColor("AI"))}>
+            {agentInitial("AI")}
+          </div>
+          <span class="text-xs font-semibold text-base-content">AI Assistant</span>
+          <span class="text-[10px] text-base-content/40 ml-auto">
+            {formatTimestamp(props.timestamp)}
+          </span>
+          <Show when={props.inputTokens !== undefined || props.outputTokens !== undefined}>
+            <TokenBadge inputTokens={props.inputTokens} outputTokens={props.outputTokens} />
+          </Show>
+        </div>
+
+        {/* Thinking Block */}
+        <Show when={hasThinking()}>
+          <ThinkingBlock content={props.thinking!} />
+        </Show>
+
+        {/* Tool Calls */}
+        <Show when={hasToolCalls()}>
+          <div class="space-y-1 my-1">
+            <For each={props.toolCalls}>
+              {(toolCall) => <ToolCallCard toolCall={toolCall} />}
+            </For>
+          </div>
+        </Show>
+
+        {/* Text Content */}
+        <Show when={hasContent()}>
+          <div class={cn(
+            "px-4 pb-3 pt-1 text-sm leading-relaxed",
+            props.isStreaming && !hasToolCalls() && "streaming-cursor"
+          )}>
+            <div class="prose prose-sm max-w-none">
+              <SolidMarkdown
+                children={props.content}
+                components={{
+                  code: (codeProps: any) => {
+                    const { children, className } = codeProps;
+                    const isInline = !className;
+                    if (isInline) {
+                      return (
+                        <code class="bg-base-200/70 px-1.5 py-0.5 rounded text-[13px] font-mono text-base-content/80">
+                          {children}
+                        </code>
+                      );
+                    }
+                    const lang = className?.replace("language-", "") || "";
+                    return <ShikiCodeBlock code={String(children)} language={lang} />;
+                  },
+                  pre: (preProps: any) => <>{preProps.children}</>,
+                }}
               />
-            </Show>
-          }
-        >
-          <UserMessage
-            content={message().content}
-            timestamp={message().timestamp}
+            </div>
+          </div>
+        </Show>
+
+        {/* System Card */}
+        <Show when={props.systemCard}>
+          <SystemCardRenderer
+            systemCard={props.systemCard!}
+            onOpenFileLocation={props.onOpenFileLocation}
+            onApplyEditReview={props.onApplyEditReview}
+            onTerminalAction={props.onTerminalAction}
           />
         </Show>
       </div>
 
-      {/* Desktop hover actions */}
-      <div class="absolute -top-2 right-2 hidden sm:flex items-center gap-1 opacity-0 group-hover/bubble:opacity-100">
-        <button
-          type="button"
-          onClick={quoteMessage}
-          class="p-2 bg-base-100 border border-base-content/10 hover:bg-base-200"
-          title="Quote"
-          aria-label="Quote"
+      {/* Actions Bar (Hover Reveal) */}
+      <Show when={hasActions() && !props.isStreaming}>
+        <div
+          class="chat-footer opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center gap-1 px-1"
         >
-          <FiMessageSquare size={14} />
-        </button>
-        <button
-          type="button"
-          onClick={copyMessage}
-          class="p-2 bg-base-100 border border-base-content/10 hover:bg-base-200"
-          title="Copy"
-          aria-label="Copy"
-        >
-          <FiCopy size={14} />
-        </button>
-      </div>
+          {/* Copy */}
+          <button
+            type="button"
+            onClick={handleCopy}
+            title="Copy message"
+            aria-label="Copy message"
+          >
+            <Show
+              when={copied()}
+              fallback={<FiCopy size={13} />}
+            >
+              <FiCheck size={13} class="text-success" />
+            </Show>
+          </button>
 
-      {/* Mobile action trigger */}
-      <div class="flex sm:hidden absolute -top-1 right-0">
-        <button
-          type="button"
-          onClick={() => setShowActions(true)}
-          class="p-2 text-base-content/40 hover:text-base-content"
-          aria-label="Message actions"
-        >
-          <FiMoreHorizontal size={16} />
-        </button>
-      </div>
-
-      {/* Action menu overlay */}
-      <Show when={showActions()}>
-        <Portal>
-          <div class="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+          {/* Quote */}
+          <Show when={props.onQuote}>
             <button
               type="button"
-              class="absolute inset-0 bg-base-content/50"
-              onClick={closeActions}
-              aria-label="Close action menu"
-            />
-            <div class="w-full max-w-sm border-t border-base-content/10 bg-base-100 p-4 mb-safe">
-              <div class="space-y-1">
-                <Show when={isUser()}>
-                  <button
-                    type="button"
-                    class="block w-full text-left px-3 py-3 text-sm hover:bg-base-200"
-                    onClick={resendMessage}
-                  >
-                    Resend
-                  </button>
-                </Show>
-                <button
-                  type="button"
-                  class="block w-full text-left px-3 py-3 text-sm hover:bg-base-200"
-                  onClick={quoteMessage}
-                >
-                  Quote to input
-                </button>
-                <Show when={!isUser() && firstCodeBlock()}>
-                  <button
-                    type="button"
-                    class="block w-full text-left px-3 py-3 text-sm hover:bg-base-200"
-                    onClick={copyCodeBlock}
-                  >
-                    Copy code block
-                  </button>
-                </Show>
-                <button
-                  type="button"
-                  class="block w-full text-left px-3 py-3 text-sm hover:bg-base-200"
-                  onClick={copyMessage}
-                >
-                  Copy
-                </button>
-              </div>
-            </div>
-          </div>
-        </Portal>
+              onClick={() => props.onQuote?.(props.content)}
+              title="Quote and reply"
+              aria-label="Quote message"
+            >
+              <FiMessageSquare size={13} />
+            </button>
+          </Show>
+
+          {/* Resend */}
+          <Show when={props.onResend}>
+            <button
+              type="button"
+              onClick={() => props.onResend?.(props.content)}
+              title="Resend message"
+              aria-label="Resend message"
+            >
+              <FiRefreshCw size={13} />
+            </button>
+          </Show>
+        </div>
       </Show>
     </div>
   );
 };
 
 // ============================================================================
-// Export additional components for reuse
+// Compact File Operation Message (shown standalone)
 // ============================================================================
 
-export { UserMessage, AssistantMessage, SystemMessage };
+export const FileOperationMessage: Component<{
+  path: string;
+  operation: string;
+}> = (props) => {
+  return <FileOperationIndicator path={props.path} operation={props.operation} />;
+};
+
+// ============================================================================
+// Terminal Output Message (shown standalone)
+// ============================================================================
+
+export const TerminalOutputMessage: Component<{
+  command: string;
+  output: string;
+  exitCode?: number;
+}> = (props) => {
+  return <TerminalEmbed command={props.command} output={props.output} exitCode={props.exitCode} />;
+};
+
+// ============================================================================
+// Progress Update Message (shown standalone)
+// ============================================================================
+
+export const ProgressUpdateMessage: Component<{
+  operation: string;
+  progress: number;
+  message?: string;
+}> = (props) => {
+  return <ProgressInline operation={props.operation} progress={props.progress} message={props.message} />;
+};
+
+// ============================================================================
+// Message Skeleton
+// ============================================================================
+
+export const MessageSkeleton: Component = () => (
+  <div class="message-skeleton px-4">
+    <div class="message-skeleton-line w-full" />
+    <div class="message-skeleton-line w-5/6" />
+    <div class="message-skeleton-line w-2/3" />
+  </div>
+);
+
+// ============================================================================
+// Main MessageBubble Component
+// ============================================================================
+
+export const MessageBubble: Component<MessageBubbleProps> = (props) => {
+  const message = () => props.message;
+  const role = () => message().role;
+  const isAssistant = () => role() === "assistant" || role() === "system";
+
+  return (
+    <div
+      class={cn(
+        "flex px-3 sm:px-4",
+        role() === "user" ? "justify-end" : "justify-start",
+        props.class,
+      )}
+    >
+      <Show
+        when={isAssistant()}
+        fallback={
+          <UserMessage
+            content={message().content}
+            timestamp={message().timestamp}
+            isStreaming={props.isStreaming}
+          />
+        }
+      >
+        <AssistantMessage
+          content={message().content}
+          thinking={message().thinking as string | undefined}
+          toolCalls={message().toolCalls}
+          isStreaming={props.isStreaming}
+          timestamp={message().timestamp}
+          systemCard={message().systemCard}
+          onQuote={props.onQuote}
+          onResend={props.onResend}
+          onOpenFileLocation={props.onOpenFileLocation}
+          onApplyEditReview={props.onApplyEditReview}
+          onTerminalAction={props.onTerminalAction}
+        />
+      </Show>
+    </div>
+  );
+};

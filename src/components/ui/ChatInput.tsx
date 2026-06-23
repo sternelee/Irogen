@@ -1,7 +1,12 @@
 /**
  * ChatInput Component
  *
- * Zed-inspired: hard lines, high contrast, no gradients/shadows/animations.
+ * LobeHub-inspired redesign:
+ * - Compact toolbar with inline actions
+ * - Slash command popup with visual hierarchy
+ * - Attachment pills
+ * - Permission mode indicator
+ * - Send/Stop streaming button
  */
 
 import {
@@ -10,6 +15,7 @@ import {
   createSignal,
   createEffect,
   onMount,
+  For,
 } from "solid-js";
 import { cn } from "~/lib/utils";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -19,9 +25,10 @@ import {
   FiPlus,
   FiX,
   FiFolder,
-  FiCheck,
+  FiZap,
+  FiStopCircle,
+  FiChevronDown,
 } from "solid-icons/fi";
-import { FaSolidStopCircle } from "solid-icons/fa";
 
 // ============================================================================
 // Types
@@ -56,16 +63,15 @@ export interface ChatInputProps {
 }
 
 // ============================================================================
-// Chat Input Component
+// ChatInput Component
 // ============================================================================
 
 export const ChatInput: Component<ChatInputProps> = (props) => {
   let textareaRef: HTMLTextAreaElement | undefined;
   const [focused, setFocused] = createSignal(false);
-  const [showSettings, setShowSettings] = createSignal(false);
-  const [activeMentionIndex, setActiveMentionIndex] = createSignal(0);
+  const [showModeMenu, setShowModeMenu] = createSignal(false);
   const [activeSlashIndex, setActiveSlashIndex] = createSignal(0);
-  const mobile = () => isMobile();
+
   const mentionSuggestions = () => props.mentionSuggestions ?? [];
   const hasMentionSuggestions = () => mentionSuggestions().length > 0;
   const slashSuggestions = () => props.slashSuggestions ?? [];
@@ -73,12 +79,15 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   const showMentionSuggestions = () => hasMentionSuggestions() && !hasSlashSuggestions();
   const showSlashSuggestions = () => hasSlashSuggestions();
 
-  const permissionOptions: { value: PermissionMode; label: string; description: string }[] = [
-    { value: "AlwaysAsk", label: "Ask", description: "Approve each action" },
-    { value: "AcceptEdits", label: "Edit", description: "Allow file edits" },
-    { value: "Plan", label: "Plan", description: "Auto-approve planning" },
-    { value: "AutoApprove", label: "Auto", description: "Approve all actions" },
+  const permissionOptions: { value: PermissionMode; label: string; desc: string }[] = [
+    { value: "AlwaysAsk", label: "Ask", desc: "Approve each action" },
+    { value: "AcceptEdits", label: "Edit", desc: "Allow file edits" },
+    { value: "Plan", label: "Plan", desc: "Auto-approve planning" },
+    { value: "AutoApprove", label: "Auto", desc: "Approve all" },
   ];
+
+  const currentMode = () =>
+    permissionOptions.find((o) => o.value === props.permissionMode) ?? permissionOptions[0];
 
   const handleAttach = async () => {
     if (!props.onAttach) return;
@@ -94,8 +103,8 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
         });
         props.onAttach(files);
       }
-    } catch (err) {
-      console.error("Failed to open file dialog:", err);
+    } catch {
+      // dialog cancelled
     }
   };
 
@@ -123,110 +132,128 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
       if (e.key === "Escape") { e.preventDefault(); props.onDismissSlash?.(); return; }
     }
     if (showMentionSuggestions()) {
-      if (e.key === "ArrowDown") { e.preventDefault(); setActiveMentionIndex((prev) => Math.min(prev + 1, mentionSuggestions().length - 1)); return; }
-      if (e.key === "ArrowUp") { e.preventDefault(); setActiveMentionIndex((prev) => Math.max(prev - 1, 0)); return; }
-      if (e.key === "Tab" || e.key === "Enter") { e.preventDefault(); const item = mentionSuggestions()[activeMentionIndex()]; if (item) props.onSelectMention?.(item.path); return; }
+      if (e.key === "ArrowDown") { e.preventDefault(); setActiveSlashIndex((prev) => Math.min(prev + 1, mentionSuggestions().length - 1)); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setActiveSlashIndex((prev) => Math.max(prev - 1, 0)); return; }
+      if (e.key === "Tab" || e.key === "Enter") { e.preventDefault(); const item = mentionSuggestions()[activeSlashIndex()]; if (item) props.onSelectMention?.(item.path); return; }
       if (e.key === "Escape") { e.preventDefault(); props.onDismissMentions?.(); return; }
     }
-    // Standard chat shortcut: Enter sends, Shift+Enter inserts newline
     if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
       e.preventDefault();
       if (props.isStreaming && props.onInterrupt) {
         props.onInterrupt();
-        if (mobile()) setShowSettings(false);
       } else if (props.value.trim()) {
         props.onSubmit();
-        if (mobile()) setShowSettings(false);
       }
     }
   };
 
-  createEffect(() => { mentionSuggestions(); setActiveMentionIndex(0); });
+  createEffect(() => { mentionSuggestions(); setActiveSlashIndex(0); });
   createEffect(() => { slashSuggestions(); setActiveSlashIndex(0); });
 
   return (
-    <div class={cn("relative flex flex-col px-4 py-3 bg-base-100 border-t border-base-content/10", props.class)}>
-      {/* Mention/Slash Suggestions */}
-      <Show when={showMentionSuggestions()}>
-        <div class="absolute left-0 right-0 bottom-full z-50 mb-2 border border-base-content/10 bg-base-100 max-h-48 overflow-y-auto">
-          {mentionSuggestions().map((item, index) => (
-            <button
-              type="button"
-              class={cn(
-                "w-full px-4 py-2 text-left text-sm flex items-center gap-2 border-b border-base-content/5",
-                index === activeMentionIndex() ? "bg-base-200" : "hover:bg-base-200/50",
-              )}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => props.onSelectMention?.(item.path)}
-              onMouseEnter={() => setActiveMentionIndex(index)}
-            >
-              <FiFolder size={12} class="text-base-content/40" />
-              <span class="truncate font-mono text-base-content">{item.path}</span>
-            </button>
-          ))}
-        </div>
-      </Show>
-
+    <div class={cn("relative bg-base-100 border-t border-base-content/10", props.class)}>
+      {/* Slash Suggestions */}
       <Show when={showSlashSuggestions()}>
-        <div class="absolute left-0 right-0 bottom-full z-50 mb-2 border border-base-content/10 bg-base-100 max-h-48 overflow-y-auto">
-          {slashSuggestions().map((item, index) => (
-            <button
-              type="button"
-              class={cn(
-                "w-full px-4 py-2 text-left border-b border-base-content/5",
-                index === activeSlashIndex() ? "bg-base-200" : "hover:bg-base-200/50",
-              )}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => props.onSelectSlash?.(item.value || item.name)}
-              onMouseEnter={() => setActiveSlashIndex(index)}
-            >
-              <span class="text-sm font-bold"><span class="text-base-content/40">/</span>{item.name}</span>
-              <Show when={item.description}>
-                <span class="text-xs text-base-content/50 ml-2">{item.description}</span>
-              </Show>
-            </button>
-          ))}
+        <div class="absolute left-4 right-4 bottom-full z-50 mb-1 rounded-xl border border-base-content/10 bg-base-100 shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+          <For each={slashSuggestions()}>
+            {(item, index) => (
+              <button
+                type="button"
+                class={cn(
+                  "w-full px-4 py-2.5 text-left flex items-center gap-3 transition-colors",
+                  "border-b border-base-content/5 last:border-b-0",
+                  index() === activeSlashIndex() ? "bg-base-200" : "hover:bg-base-200/50",
+                )}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => props.onSelectSlash?.(item.value || item.name)}
+                onMouseEnter={() => setActiveSlashIndex(index())}
+              >
+                <span class="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10 text-primary text-xs font-bold">
+                  /
+                </span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium text-base-content truncate">{item.name}</div>
+                  <Show when={item.description}>
+                    <div class="text-[11px] text-base-content/40 truncate">{item.description}</div>
+                  </Show>
+                </div>
+              </button>
+            )}
+          </For>
         </div>
       </Show>
 
-      {/* Input Container */}
-      <div class={cn(
-        "flex flex-col border border-base-content/10",
-        focused() ? "border-base-content/30" : "",
-      )}>
+      {/* Mention Suggestions */}
+      <Show when={showMentionSuggestions()}>
+        <div class="absolute left-4 right-4 bottom-full z-50 mb-1 rounded-xl border border-base-content/10 bg-base-100 shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+          <For each={mentionSuggestions()}>
+            {(item, index) => (
+              <button
+                type="button"
+                class={cn(
+                  "w-full px-4 py-2.5 text-left flex items-center gap-3 transition-colors",
+                  "border-b border-base-content/5 last:border-b-0",
+                  index() === activeSlashIndex() ? "bg-base-200" : "hover:bg-base-200/50",
+                )}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => props.onSelectMention?.(item.path)}
+                onMouseEnter={() => setActiveSlashIndex(index())}
+              >
+                <span class="flex items-center justify-center w-7 h-7 rounded-lg bg-base-200 text-base-content/40">
+                  <FiFolder size={12} />
+                </span>
+                <span class="text-sm font-mono text-base-content truncate">{item.path}</span>
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      {/* Input Area */}
+      <div class="flex flex-col px-3 py-2.5 gap-2">
         {/* Attachments */}
         <Show when={props.attachments && props.attachments.length > 0}>
-          <div class="flex flex-wrap gap-2 px-3 pt-2">
-            {props.attachments!.map((file) => (
-              <div class="flex items-center gap-2 px-2 py-1 bg-base-200 text-xs border border-base-content/10">
-                <span class="truncate max-w-[120px]">{file.name}</span>
-                <button
-                  type="button"
-                  class="p-1 text-base-content/40 hover:text-error"
-                  onClick={() => {
-                    const remaining = props.attachments?.filter((a) => a.name !== file.name) ?? [];
-                    props.onAttach?.(remaining);
-                  }}
-                  aria-label={`Remove attachment ${file.name}`}
-                >
-                  <FiX size={14} />
-                </button>
-              </div>
-            ))}
+          <div class="flex flex-wrap gap-1.5">
+            <For each={props.attachments}>
+              {(file) => (
+                <div class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-base-200/70 border border-base-content/10 text-xs text-base-content/60">
+                  <FiFolder size={10} />
+                  <span class="truncate max-w-[100px]">{file.name}</span>
+                  <button
+                    type="button"
+                    class="ml-0.5 p-0.5 rounded hover:bg-base-300 text-base-content/30 hover:text-error transition-colors"
+                    onClick={() => {
+                      const remaining = props.attachments?.filter((a) => a.name !== file.name) ?? [];
+                      props.onAttach?.(remaining);
+                    }}
+                  >
+                    <FiX size={12} />
+                  </button>
+                </div>
+              )}
+            </For>
           </div>
         </Show>
 
         {/* Textarea Row */}
-        <div class="flex items-end gap-2 px-2 py-2">
+        <div class="flex items-end gap-1.5 rounded-xl border transition-colors duration-150"
+          classList={{
+            "border-base-content/30": focused(),
+            "border-base-content/10": !focused(),
+          }}
+        >
+          {/* Attach Button */}
           <button
             type="button"
-            class="p-2 text-base-content/40 hover:text-base-content"
+            class="p-2.5 shrink-0 text-base-content/30 hover:text-base-content transition-colors"
             onClick={handleAttach}
             disabled={props.disabled}
             title="Attach files"
           >
             <FiPlus size={16} />
           </button>
+
+          {/* Textarea */}
           <textarea
             ref={textareaRef}
             value={props.value}
@@ -234,99 +261,115 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
             onKeyDown={handleKeyDown}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={props.placeholder || "Type your message..."}
-            class="flex-1 px-2 py-2 bg-transparent border-none outline-none resize-none text-sm min-h-[40px] placeholder:text-base-content/40 text-base-content"
+            placeholder={props.placeholder || "Type a message..."}
+            class="flex-1 py-2.5 bg-transparent border-none outline-none resize-none text-sm leading-relaxed min-h-[40px] max-h-[200px] placeholder:text-base-content/30 text-base-content"
             disabled={props.disabled}
             rows={1}
-            aria-label="Chat input"
           />
+
+          {/* Send / Interrupt Button */}
           <button
             type="button"
             onClick={() => {
               if (props.isStreaming && props.onInterrupt) {
                 props.onInterrupt();
-              } else {
+              } else if (props.value.trim()) {
                 props.onSubmit();
               }
             }}
-            disabled={!props.isStreaming && (!props.value.trim() || props.disabled)}
+            disabled={!props.isStreaming && !props.value.trim() && !props.disabled}
             class={cn(
-              "px-4 py-2 text-sm font-medium border",
+              "p-2.5 shrink-0 rounded-lg transition-all duration-150",
               props.isStreaming
-                ? "border-error text-error hover:bg-error hover:text-base-100"
-                : "border-base-content/10 text-base-content hover:bg-base-200",
+                ? "text-error hover:bg-error/10"
+                : props.value.trim()
+                  ? "text-primary hover:bg-primary/10"
+                  : "text-base-content/20",
             )}
+            title={props.isStreaming ? "Stop streaming" : "Send message"}
           >
-            {props.isStreaming ? <FaSolidStopCircle size={14} /> : <FiSend size={14} />}
+            {props.isStreaming ? <FiStopCircle size={18} /> : <FiSend size={16} />}
           </button>
         </div>
 
-        {/* Streaming indicator */}
-        <Show when={props.isStreaming}>
-          <div class="flex items-center px-2 pb-2 gap-1 border-t border-base-content/5">
-            <span class="text-xs text-base-content/50">Thinking...</span>
-          </div>
-        </Show>
-      </div>
+        {/* Bottom Toolbar */}
+        <div class="flex items-center justify-between px-0.5">
+          {/* Left: Permission mode */}
+          <Show when={props.permissionMode}>
+            <div class="relative">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors"
+                classList={{
+                  "bg-success/10 text-success": props.permissionMode === "AutoApprove",
+                  "bg-warning/10 text-warning": props.permissionMode === "AcceptEdits" || props.permissionMode === "Plan",
+                  "bg-info/10 text-info": props.permissionMode === "AlwaysAsk",
+                }}
+                onClick={() => setShowModeMenu((p) => !p)}
+              >
+                <FiZap size={10} />
+                {currentMode().label}
+                <FiChevronDown size={8} />
+              </button>
 
-      {/* Settings Dropdown */}
-      <Show when={showSettings()}>
-        <div class="mt-2 border border-base-content/10 bg-base-100">
-          <div class="px-3 py-2 border-b border-base-content/10 text-[10px] font-semibold text-base-content/40 uppercase">
-            Permission Mode
-          </div>
-          {permissionOptions.map((option) => (
-            <button
-              type="button"
-              class={cn(
-                "w-full flex items-center justify-between px-4 py-2 text-left border-b border-base-content/5 last:border-b-0",
-                props.permissionMode === option.value ? "bg-base-200" : "hover:bg-base-200/50",
-              )}
-              onClick={() => { props.onPermissionModeChange?.(option.value); setShowSettings(false); }}
-            >
-              <div>
-                <div class="text-sm font-medium">{option.label}</div>
-                <div class="text-xs text-base-content/50">{option.description}</div>
-              </div>
-              <Show when={props.permissionMode === option.value}>
-                <FiCheck size={14} />
+              {/* Mode dropdown */}
+              <Show when={showModeMenu()}>
+                <>
+                  <div class="fixed inset-0 z-40" onClick={() => setShowModeMenu(false)} />
+                  <div class="absolute bottom-full left-0 mb-1 z-50 rounded-lg border border-base-content/10 bg-base-100 shadow-lg overflow-hidden min-w-[140px]">
+                    <For each={permissionOptions}>
+                      {(opt) => (
+                        <button
+                          type="button"
+                          class={cn(
+                            "w-full px-3 py-2 text-left text-xs transition-colors",
+                            "border-b border-base-content/5 last:border-b-0",
+                            opt.value === props.permissionMode
+                              ? "bg-base-200 text-base-content font-semibold"
+                              : "text-base-content/60 hover:bg-base-200/50 hover:text-base-content",
+                          )}
+                          onClick={() => {
+                            props.onPermissionModeChange?.(opt.value);
+                            setShowModeMenu(false);
+                          }}
+                        >
+                          {opt.label}
+                          <div class="text-[10px] text-base-content/40">{opt.desc}</div>
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </>
               </Show>
-            </button>
-          ))}
+            </div>
+          </Show>
+
+          {/* Right: Panel toggles */}
+          <div class="flex items-center gap-1">
+            <Show when={props.onToggleFileBrowser}>
+              <button
+                type="button"
+                onClick={() => props.onToggleFileBrowser?.()}
+                class={cn(
+                  "p-1.5 rounded-md transition-colors",
+                  props.rightPanelView === "file"
+                    ? "text-primary bg-primary/10"
+                    : "text-base-content/30 hover:text-base-content hover:bg-base-200",
+                )}
+                title="File browser"
+              >
+                <FiFolder size={13} />
+              </button>
+            </Show>
+            <span class="flex gap-0.5 items-center">
+              <span class="network-bar" />
+              <span class="network-bar" />
+              <span class="network-bar" />
+              <span class="network-bar" />
+            </span>
+          </div>
         </div>
-      </Show>
-    </div>
-  );
-};
-
-// ============================================================================
-// Prompt Suggestions Component
-// ============================================================================
-
-export interface PromptSuggestion {
-  id: string;
-  label: string;
-  prompt: string;
-}
-
-export interface PromptSuggestionsProps {
-  suggestions: PromptSuggestion[];
-  onSelect: (prompt: string) => void;
-  class?: string;
-}
-
-export const PromptSuggestions: Component<PromptSuggestionsProps> = (props) => {
-  return (
-    <div class={cn("flex flex-wrap gap-2 px-3 pb-2", props.class)}>
-      {props.suggestions.map((suggestion) => (
-        <button
-          type="button"
-          onClick={() => props.onSelect(suggestion.prompt)}
-          class="px-3 py-1.5 text-xs text-base-content/50 border border-base-content/10 hover:bg-base-200/50"
-        >
-          {suggestion.label}
-        </button>
-      ))}
+      </div>
     </div>
   );
 };

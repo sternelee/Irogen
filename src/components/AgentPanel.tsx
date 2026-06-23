@@ -307,7 +307,7 @@ const EmptyState: Component<{ onNewTab: () => void }> = (props) => {
       </p>
       <button
         type="button"
-        class="text-xs font-medium text-base-content hover:text-base-content/70 dark:hover:text-base-content/30 border border-base-content/10 dark:border-base-content/20 px-3 py-1.5"
+        class="btn btn-outline btn-xs text-base-content hover:text-base-content/70"
         onClick={props.onNewTab}
       >
         New Thread
