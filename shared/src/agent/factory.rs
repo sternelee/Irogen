@@ -553,7 +553,10 @@ impl Agent for ClineAgent {
     }
 }
 
-/// Pi CLI Agent (ACP compatible)
+/// Pi CLI Agent (ACP compatible via svkozak/pi-acp)
+/// The pi coding agent CLI itself does not speak ACP; we use the
+/// svkozak/pi-acp adapter (npm: pi-acp) which wraps `pi --mode rpc` and
+/// exposes ACP JSON-RPC 2.0 over stdio.
 pub struct PiAgent;
 
 impl Agent for PiAgent {
@@ -562,11 +565,11 @@ impl Agent for PiAgent {
     }
 
     fn command(&self) -> &str {
-        "pi"
+        "pi-acp"
     }
 
     fn default_args(&self) -> Vec<String> {
-        vec!["acp".to_string()]
+        vec![]
     }
 
     fn check_available(&self) -> Result<AgentAvailability> {
@@ -597,7 +600,7 @@ impl Agent for PiAgent {
 
         if !output.status.success() {
             return Err(anyhow::anyhow!(
-                "Failed to get Pi CLI version. Ensure 'pi' is installed."
+                "Failed to get pi-acp version. Install with: npm install -g pi-acp"
             ));
         }
 

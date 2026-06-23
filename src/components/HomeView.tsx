@@ -183,11 +183,14 @@ export const HomeView: Component = () => {
               <Show
                 when={connectedHosts().length > 0}
                 fallback={
-                  <div class="flex flex-col items-center justify-center py-10 px-4 text-center">
-                    <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-xl border border-base-content/10 text-base-content/40">
-                      <FiServer size={24} />
+                  <div class="flex flex-col items-center justify-center py-16 px-4 text-center">
+                    <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-base-200/60 text-base-content/30 shadow-sm">
+                      <FiServer size={28} />
                     </div>
-                    <p class="text-sm text-base-content/50 font-medium">{t("devices.noActiveHosts")}</p>
+                    <p class="text-sm text-base-content/60 font-medium">{t("devices.noActiveHosts")}</p>
+                    <p class="text-xs text-base-content/40 mt-1 max-w-xs">
+                      {t("devices.noActiveHostsDesc")}
+                    </p>
                   </div>
                 }
               >

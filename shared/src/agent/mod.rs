@@ -353,7 +353,7 @@ impl AgentManager {
                                 return Err(anyhow!(error_msg));
                             }
                             AgentType::Pi => {
-                                error_msg += " Install Pi CLI so 'pi acp' is available, or pass an explicit --binary-path.";
+                                error_msg += " Install pi-acp with `npm install -g pi-acp` (see https://github.com/svkozak/pi-acp), or pass an explicit --binary-path.";
                                 return Err(anyhow!(error_msg));
                             }
                             AgentType::QwenCode => {
@@ -386,7 +386,9 @@ impl AgentManager {
                             .await
                             .unwrap_or_else(|_| Ok(false))?,
                         AgentType::Cline => false,
-                        AgentType::Pi => false,
+                        AgentType::Pi => task::spawn_blocking(|| try_install_pi_acp())
+                            .await
+                            .unwrap_or_else(|_| Ok(false))?,
                         AgentType::QwenCode => false,
                     };
 
@@ -571,7 +573,7 @@ impl AgentManager {
                                 error_msg += " Install Cline CLI so 'cline acp' is available, or pass an explicit --binary-path.";
                             }
                             AgentType::Pi => {
-                                error_msg += " Install Pi CLI so 'pi acp' is available, or pass an explicit --binary-path.";
+                                error_msg += " Install pi-acp with `npm install -g pi-acp` (see https://github.com/svkozak/pi-acp), or pass an explicit --binary-path.";
                             }
                             AgentType::QwenCode => {
                                 error_msg += " Install Qwen Code CLI so 'qwen acp' is available, or pass an explicit --binary-path.";
@@ -1032,6 +1034,10 @@ fn try_install_claude_acp() -> Result<bool> {
 
 fn try_install_codex_acp() -> Result<bool> {
     try_install_package("@zed-industries/codex-acp", "Codex ACP")
+}
+
+fn try_install_pi_acp() -> Result<bool> {
+    try_install_package("pi-acp", "pi-acp (svkozak/pi-acp)")
 }
 
 fn try_install_gemini_cli() -> Result<bool> {

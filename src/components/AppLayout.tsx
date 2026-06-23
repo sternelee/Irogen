@@ -16,6 +16,7 @@ import {
   type Component,
 } from "solid-js";
 import { SessionSidebar } from "./SessionSidebar";
+import { MobileBottomTabBar } from "./MobileBottomTabBar";
 import { WorkspaceShell } from "./WorkspaceShell";
 import { SessionsView } from "./SessionsView";
 import { SettingsView } from "./SettingsView";
@@ -44,6 +45,9 @@ export const AppLayout: Component = () => {
       }
       if ((e.key === "b" || e.key === "B") && !isMobile()) {
         navigationStore.toggleSidebar();
+      }
+      if (e.key === "Escape" && isMobile() && navigationStore.state.sidebarOpen) {
+        navigationStore.setSidebarOpen(false);
       }
       if (e.key === "?") {
         setShortcutsDialogOpen((prev) => !prev);
@@ -108,7 +112,7 @@ export const AppLayout: Component = () => {
       </div>
 
       {/* Main Content */}
-      <div class="flex-1 min-w-0 flex flex-col overflow-hidden">
+      <div class="flex-1 min-w-0 flex flex-col overflow-hidden pb-16 md:pb-0">
         <main class="flex-1 flex min-h-0 flex-col min-w-0">
           {/* Keyed wrapper forces re-mount on view change → animate-fade-in triggers */}
           <Switch>
@@ -120,6 +124,11 @@ export const AppLayout: Component = () => {
           </Switch>
         </main>
       </div>
+
+      {/* Mobile bottom tab bar — hidden when sidebar open to avoid double-tap */}
+      <Show when={!navigationStore.state.sidebarOpen}>
+        <MobileBottomTabBar />
+      </Show>
     </div>
   );
 };
