@@ -18,7 +18,6 @@ import {
 import { SessionSidebar } from "./SessionSidebar";
 import { WorkspaceShell } from "./WorkspaceShell";
 import { SessionsView } from "./SessionsView";
-import { DevicesView } from "./DevicesView";
 import { SettingsView } from "./SettingsView";
 import { HomeView } from "./HomeView";
 import { sessionStore } from "../stores/sessionStore";
@@ -114,7 +113,7 @@ export const AppLayout: Component = () => {
           {/* Keyed wrapper forces re-mount on view change → animate-fade-in triggers */}
           <Switch>
             <Match when={activeView() === "settings"}><div class="flex-1 flex min-h-0 animate-fade-in"><SettingsView /></div></Match>
-            <Match when={activeView() === "devices" || activeView() === "hosts" || activeView() === "proxies"}><div class="flex-1 flex min-h-0 animate-fade-in"><DevicesView /></div></Match>
+            <Match when={activeView() === "devices" || activeView() === "hosts" || activeView() === "proxies"}><div class="flex-1 flex min-h-0 animate-fade-in"><HomeView /></div></Match>
             <Match when={activeView() === "sessions"}><div class="flex-1 flex min-h-0 animate-fade-in"><SessionsView /></div></Match>
             <Match when={activeView() === "workspace" || activeView() === "chat"}><div class="flex-1 flex min-h-0 animate-fade-in"><WorkspaceShell /></div></Match>
             <Match when={true}><div class="flex-1 flex min-h-0 animate-fade-in"><HomeView /></div></Match>

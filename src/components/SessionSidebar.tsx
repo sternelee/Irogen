@@ -24,7 +24,6 @@ import {
   FiHome,
   FiList,
   FiMessageSquare,
-  FiMonitor,
   FiPlus,
   FiStopCircle,
   FiX,
@@ -83,7 +82,6 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: "home", label: () => t("sidebar.home") as string, icon: FiHome },
-  { id: "devices", label: () => t("sidebar.devices") as string, icon: FiMonitor },
 ];
 const FOOTER_NAV_ITEMS: NavItem[] = [
   { id: "settings", label: () => t("sidebar.settings") as string, icon: FiSettings },
