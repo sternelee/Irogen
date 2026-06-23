@@ -543,7 +543,7 @@ const AssistantMessage: Component<{
   const hasActions = () => props.onQuote || props.onResend;
 
   return (
-    <div class="group chat chat-start animate-fade-in">
+    <div class="group chat chat-start relative animate-fade-in">
       {/*
       <div class="chat-header">...</div>
       We put header inside card for richer layout
@@ -637,9 +637,9 @@ const AssistantMessage: Component<{
         </Show>
       </div>
 
-      {/* Actions Bar (Hover Reveal) */}
+      {/* Actions Bar (Hover Reveal) - absolute, vertical stack */}
       <Show when={hasActions() && !props.isStreaming}>
-        <div class="chat-footer opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center gap-1 px-1">
+        <div class="absolute right-0 top-2 -translate-x-full opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex flex-col gap-0.5 p-1 bg-base-100/80 backdrop-blur-sm border border-base-content/10 rounded-lg shadow-sm">
           {/* Copy */}
           <button
             type="button"
