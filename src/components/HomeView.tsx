@@ -99,7 +99,7 @@ export const HomeView: Component = () => {
             <h2 class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest mb-3">
               {t("home.quickActions")}
             </h2>
-            <div class="grid grid-cols-2 gap-2">
+            <div class="grid grid-cols-1 gap-2">
               <button
                 class="card card-bordered bg-base-100 flex-row items-center gap-3 p-4 text-left hover:bg-base-200/50 hover:border-base-content/30 transition-all duration-150"
                 onClick={() => sessionStore.openNewSessionModal()}
@@ -111,24 +111,6 @@ export const HomeView: Component = () => {
                   </div>
                   <div class="text-xs text-base-content/50">
                     {t("home.startNewSessionDesc")}
-                  </div>
-                </div>
-              </button>
-              <button
-                class="card card-bordered bg-base-100 flex-row items-center gap-3 p-4 text-left hover:bg-base-200/50 hover:border-base-content/30 transition-all duration-150"
-                onClick={() => {
-                  const el = document.getElementById("ticket-input");
-                  if (el) el.focus();
-                  window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-                }}
-              >
-                <FiServer size={16} class="text-base-content/40" />
-                <div>
-                  <div class="text-sm font-medium text-base-content">
-                    {t("home.connectToHost")}
-                  </div>
-                  <div class="text-xs text-base-content/50">
-                    {t("home.connectToHostDesc")}
                   </div>
                 </div>
               </button>
