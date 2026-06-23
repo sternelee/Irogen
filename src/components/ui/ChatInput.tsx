@@ -25,9 +25,7 @@ import {
   FiPlus,
   FiX,
   FiFolder,
-  FiZap,
   FiStopCircle,
-  FiChevronDown,
 } from "solid-icons/fi";
 
 // ============================================================================
@@ -69,7 +67,6 @@ export interface ChatInputProps {
 export const ChatInput: Component<ChatInputProps> = (props) => {
   let textareaRef: HTMLTextAreaElement | undefined;
   const [focused, setFocused] = createSignal(false);
-  const [showModeMenu, setShowModeMenu] = createSignal(false);
   const [activeSlashIndex, setActiveSlashIndex] = createSignal(0);
 
   const mentionSuggestions = () => props.mentionSuggestions ?? [];
@@ -79,15 +76,7 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
   const showMentionSuggestions = () => hasMentionSuggestions() && !hasSlashSuggestions();
   const showSlashSuggestions = () => hasSlashSuggestions();
 
-  const permissionOptions: { value: PermissionMode; label: string; desc: string }[] = [
-    { value: "AlwaysAsk", label: "Ask", desc: "Approve each action" },
-    { value: "AcceptEdits", label: "Edit", desc: "Allow file edits" },
-    { value: "Plan", label: "Plan", desc: "Auto-approve planning" },
-    { value: "AutoApprove", label: "Auto", desc: "Approve all" },
-  ];
-
-  const currentMode = () =>
-    permissionOptions.find((o) => o.value === props.permissionMode) ?? permissionOptions[0];
+  
 
   const handleAttach = async () => {
     if (!props.onAttach) return;
@@ -290,84 +279,6 @@ export const ChatInput: Component<ChatInputProps> = (props) => {
           >
             {props.isStreaming ? <FiStopCircle size={18} /> : <FiSend size={16} />}
           </button>
-        </div>
-
-        {/* Bottom Toolbar */}
-        <div class="flex items-center justify-between px-0.5">
-          {/* Left: Permission mode */}
-          <Show when={props.permissionMode}>
-            <div class="relative">
-              <button
-                type="button"
-                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors"
-                classList={{
-                  "bg-success/10 text-success": props.permissionMode === "AutoApprove",
-                  "bg-warning/10 text-warning": props.permissionMode === "AcceptEdits" || props.permissionMode === "Plan",
-                  "bg-info/10 text-info": props.permissionMode === "AlwaysAsk",
-                }}
-                onClick={() => setShowModeMenu((p) => !p)}
-              >
-                <FiZap size={10} />
-                {currentMode().label}
-                <FiChevronDown size={8} />
-              </button>
-
-              {/* Mode dropdown */}
-              <Show when={showModeMenu()}>
-                <>
-                  <div class="fixed inset-0 z-40" onClick={() => setShowModeMenu(false)} />
-                  <div class="absolute bottom-full left-0 mb-1 z-50 rounded-lg border border-base-content/10 bg-base-100 shadow-lg overflow-hidden min-w-[140px]">
-                    <For each={permissionOptions}>
-                      {(opt) => (
-                        <button
-                          type="button"
-                          class={cn(
-                            "w-full px-3 py-2 text-left text-xs transition-colors",
-                            "border-b border-base-content/5 last:border-b-0",
-                            opt.value === props.permissionMode
-                              ? "bg-base-200 text-base-content font-semibold"
-                              : "text-base-content/60 hover:bg-base-200/50 hover:text-base-content",
-                          )}
-                          onClick={() => {
-                            props.onPermissionModeChange?.(opt.value);
-                            setShowModeMenu(false);
-                          }}
-                        >
-                          {opt.label}
-                          <div class="text-[10px] text-base-content/40">{opt.desc}</div>
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </>
-              </Show>
-            </div>
-          </Show>
-
-          {/* Right: Panel toggles */}
-          <div class="flex items-center gap-1">
-            <Show when={props.onToggleFileBrowser}>
-              <button
-                type="button"
-                onClick={() => props.onToggleFileBrowser?.()}
-                class={cn(
-                  "p-1.5 rounded-md transition-colors",
-                  props.rightPanelView === "file"
-                    ? "text-primary bg-primary/10"
-                    : "text-base-content/30 hover:text-base-content hover:bg-base-200",
-                )}
-                title="File browser"
-              >
-                <FiFolder size={13} />
-              </button>
-            </Show>
-            <span class="flex gap-0.5 items-center">
-              <span class="network-bar" />
-              <span class="network-bar" />
-              <span class="network-bar" />
-              <span class="network-bar" />
-            </span>
-          </div>
         </div>
       </div>
     </div>

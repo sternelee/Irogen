@@ -109,7 +109,9 @@ export interface MessageBubbleProps {
 // Status Dot Component (for ToolCall)
 // ============================================================================
 
-const ToolCallStatusDot: Component<{ status: ToolCall["status"] }> = (props) => {
+const ToolCallStatusDot: Component<{ status: ToolCall["status"] }> = (
+  props,
+) => {
   const dotClass = createMemo(() => {
     switch (props.status) {
       case "started":
@@ -179,7 +181,11 @@ const ToolCallCard: Component<{
         <ToolCallStatusDot status={props.toolCall.status} />
         <Show when={props.toolCall.output}>
           <span class="ml-auto text-base-content/30">
-            {expanded() ? <FiChevronDown size={12} /> : <FiChevronRight size={12} />}
+            {expanded() ? (
+              <FiChevronDown size={12} />
+            ) : (
+              <FiChevronRight size={12} />
+            )}
           </span>
         </Show>
       </div>
@@ -220,10 +226,7 @@ const ThinkingBlock: Component<{ content: string }> = (props) => {
         onKeyDown={(e) => e.key === "Enter" && toggle()}
       >
         <span
-          class={cn(
-            "transition-transform duration-200",
-            open() && "rotate-90",
-          )}
+          class={cn("transition-transform duration-200", open() && "rotate-90")}
         >
           <FiChevronRight size={12} />
         </span>
@@ -263,7 +266,10 @@ const TokenBadge: Component<{
   if (!total()) return null;
 
   return (
-    <span class="token-badge" title={`Input: ${props.inputTokens ?? 0}, Output: ${props.outputTokens ?? 0}`}>
+    <span
+      class="token-badge"
+      title={`Input: ${props.inputTokens ?? 0}, Output: ${props.outputTokens ?? 0}`}
+    >
       <FiClock size={9} />
       {total().toLocaleString()} tokens
     </span>
@@ -289,9 +295,7 @@ const FileOperationIndicator: Component<{
     <div class="file-op-inline">
       <FiFile class="file-op-icon" />
       <span class="file-op-path">{props.path}</span>
-      <span class={`file-op-status ${statusClass()}`}>
-        {props.operation}
-      </span>
+      <span class={`file-op-status ${statusClass()}`}>{props.operation}</span>
     </div>
   );
 };
@@ -344,10 +348,7 @@ const ProgressInline: Component<{
         <span class="progress-inline-pct">{pct()}%</span>
       </div>
       <div class="progress-inline-bar">
-        <div
-          class="progress-inline-fill"
-          style={{ width: `${pct()}%` }}
-        />
+        <div class="progress-inline-fill" style={{ width: `${pct()}%` }} />
       </div>
       <Show when={props.message}>
         <div class="progress-inline-msg">{props.message}</div>
@@ -372,7 +373,12 @@ const SystemCardRenderer: Component<{
   return (
     <Switch>
       {/* Following Location */}
-      <Match when={props.systemCard.type === "following" && "locations" in props.systemCard}>
+      <Match
+        when={
+          props.systemCard.type === "following" &&
+          "locations" in props.systemCard
+        }
+      >
         <div class="mx-4 my-2 rounded-lg border border-info/20 bg-info/5 p-3">
           <div class="flex items-center gap-2 mb-2 text-xs font-medium text-base-content/60">
             <FiFile size={12} />
@@ -404,13 +410,23 @@ const SystemCardRenderer: Component<{
           <div class="flex gap-2">
             <button
               class="px-3 py-1 rounded text-xs font-medium bg-success text-success-content hover:brightness-110 transition-all"
-              onClick={() => props.onApplyEditReview?.((props.systemCard as any).path, "accept")}
+              onClick={() =>
+                props.onApplyEditReview?.(
+                  (props.systemCard as any).path,
+                  "accept",
+                )
+              }
             >
               Accept
             </button>
             <button
               class="px-3 py-1 rounded text-xs font-medium bg-error text-error-content hover:brightness-110 transition-all"
-              onClick={() => props.onApplyEditReview?.((props.systemCard as any).path, "reject")}
+              onClick={() =>
+                props.onApplyEditReview?.(
+                  (props.systemCard as any).path,
+                  "reject",
+                )
+              }
             >
               Reject
             </button>
@@ -425,15 +441,24 @@ const SystemCardRenderer: Component<{
           <For each={(props.systemCard as any).entries}>
             {(entry: { content: string; status: string }) => (
               <div class="flex items-center gap-2 py-1 text-xs text-base-content/50">
-                <span class={cn(
-                  "w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0",
-                  entry.status === "completed" ? "bg-success border-success" : "border-base-content/30"
-                )}>
+                <span
+                  class={cn(
+                    "w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0",
+                    entry.status === "completed"
+                      ? "bg-success border-success"
+                      : "border-base-content/30",
+                  )}
+                >
                   <Show when={entry.status === "completed"}>
                     <FiCheck size={8} class="text-success-content" />
                   </Show>
                 </span>
-                <span classList={{ "line-through text-base-content/30": entry.status === "completed" }}>
+                <span
+                  classList={{
+                    "line-through text-base-content/30":
+                      entry.status === "completed",
+                  }}
+                >
                   {entry.content}
                 </span>
               </div>
@@ -523,18 +548,33 @@ const AssistantMessage: Component<{
       <div class="chat-header">...</div>
       We put header inside card for richer layout
       */}
-      <div class="card card-bordered bg-base-100 w-full max-w-[90%] shadow-sm">
+      <div class="card card-bordered bg-base-100 w-full max-w-[96%] shadow-sm">
         {/* Header */}
         <div class="flex items-center gap-2 px-4 pt-3 pb-1">
-          <div class={cn("w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0", agentAvatarColor("AI"))}>
+          <div
+            class={cn(
+              "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
+              agentAvatarColor("AI"),
+            )}
+          >
             {agentInitial("AI")}
           </div>
-          <span class="text-xs font-semibold text-base-content">AI Assistant</span>
+          <span class="text-xs font-semibold text-base-content">
+            AI Assistant
+          </span>
           <span class="text-[10px] text-base-content/40 ml-auto">
             {formatTimestamp(props.timestamp)}
           </span>
-          <Show when={props.inputTokens !== undefined || props.outputTokens !== undefined}>
-            <TokenBadge inputTokens={props.inputTokens} outputTokens={props.outputTokens} />
+          <Show
+            when={
+              props.inputTokens !== undefined ||
+              props.outputTokens !== undefined
+            }
+          >
+            <TokenBadge
+              inputTokens={props.inputTokens}
+              outputTokens={props.outputTokens}
+            />
           </Show>
         </div>
 
@@ -554,10 +594,12 @@ const AssistantMessage: Component<{
 
         {/* Text Content */}
         <Show when={hasContent()}>
-          <div class={cn(
-            "px-4 pb-3 pt-1 text-sm leading-relaxed",
-            props.isStreaming && !hasToolCalls() && "streaming-cursor"
-          )}>
+          <div
+            class={cn(
+              "px-4 pb-3 pt-1 text-sm leading-relaxed",
+              props.isStreaming && !hasToolCalls() && "streaming-cursor",
+            )}
+          >
             <div class="prose prose-sm max-w-none">
               <SolidMarkdown
                 children={props.content}
@@ -573,7 +615,9 @@ const AssistantMessage: Component<{
                       );
                     }
                     const lang = className?.replace("language-", "") || "";
-                    return <ShikiCodeBlock code={String(children)} language={lang} />;
+                    return (
+                      <ShikiCodeBlock code={String(children)} language={lang} />
+                    );
                   },
                   pre: (preProps: any) => <>{preProps.children}</>,
                 }}
@@ -595,9 +639,7 @@ const AssistantMessage: Component<{
 
       {/* Actions Bar (Hover Reveal) */}
       <Show when={hasActions() && !props.isStreaming}>
-        <div
-          class="chat-footer opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center gap-1 px-1"
-        >
+        <div class="chat-footer opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center gap-1 px-1">
           {/* Copy */}
           <button
             type="button"
@@ -605,10 +647,7 @@ const AssistantMessage: Component<{
             title="Copy message"
             aria-label="Copy message"
           >
-            <Show
-              when={copied()}
-              fallback={<FiCopy size={13} />}
-            >
+            <Show when={copied()} fallback={<FiCopy size={13} />}>
               <FiCheck size={13} class="text-success" />
             </Show>
           </button>
@@ -650,7 +689,9 @@ export const FileOperationMessage: Component<{
   path: string;
   operation: string;
 }> = (props) => {
-  return <FileOperationIndicator path={props.path} operation={props.operation} />;
+  return (
+    <FileOperationIndicator path={props.path} operation={props.operation} />
+  );
 };
 
 // ============================================================================
@@ -662,7 +703,13 @@ export const TerminalOutputMessage: Component<{
   output: string;
   exitCode?: number;
 }> = (props) => {
-  return <TerminalEmbed command={props.command} output={props.output} exitCode={props.exitCode} />;
+  return (
+    <TerminalEmbed
+      command={props.command}
+      output={props.output}
+      exitCode={props.exitCode}
+    />
+  );
 };
 
 // ============================================================================
@@ -674,7 +721,13 @@ export const ProgressUpdateMessage: Component<{
   progress: number;
   message?: string;
 }> = (props) => {
-  return <ProgressInline operation={props.operation} progress={props.progress} message={props.message} />;
+  return (
+    <ProgressInline
+      operation={props.operation}
+      progress={props.progress}
+      message={props.message}
+    />
+  );
 };
 
 // ============================================================================

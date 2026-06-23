@@ -26,8 +26,7 @@
     "solid-icons": "^1.2.0",
     "solid-js": "^1.9.11",
     "solid-markdown": "^2.1.1",
-    "solid-transition-group": "^0.3.0",
-    "virtua": "^0.48.6"
+    "solid-transition-group": "^0.3.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.0",

@@ -7,6 +7,7 @@
 
 import {
   Show,
+  For,
   createEffect,
   createMemo,
   createSignal,
@@ -16,7 +17,6 @@ import {
 } from "solid-js";
 import { FiAlertTriangle, FiRefreshCw } from "solid-icons/fi";
 import { invoke } from "@tauri-apps/api/core";
-import { Virtualizer } from "virtua/solid";
 import { chatStore } from "../stores/chatStore";
 import {
   sessionStore,
@@ -1813,14 +1813,9 @@ export function ChatView(props: ChatViewProps) {
             {/* Messages */}
             <div class="max-w-3xl 2xl:max-w-4xl mx-auto w-full space-y-5">
               <Show when={messages().length > 0}>
-                <Virtualizer
-                  scrollRef={messageScrollEl()}
-                  data={messages()}
-                  bufferSize={400}
-                >
+                <For each={messages()}>
                   {(message: ReturnType<typeof messages>[number]) => (
                     <VirtualMessageRow
-                      key={message.id}
                       message={message}
                       onQuote={handleQuoteMessage}
                       onResend={handleResendMessage}
@@ -1831,7 +1826,7 @@ export function ChatView(props: ChatViewProps) {
                       onTerminalAction={handleTerminalAction}
                     />
                   )}
-                </Virtualizer>
+                </For>
               </Show>
 
               {/* Skeleton loading when streaming and no messages yet */}
