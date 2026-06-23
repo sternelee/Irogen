@@ -245,7 +245,8 @@ impl AgentManager {
         mcp_servers: Option<serde_json::Value>,
         _source: String,
     ) -> Result<tokio::sync::broadcast::Receiver<AgentTurnEvent>> {
-        info!("Starting {:?} session with ID: {}", agent_type, session_id);
+        let start = std::time::Instant::now();
+        info!("[AGENT-MANAGER-START] {:?} session_id={}", agent_type, session_id);
 
         // Perform availability check before starting to provide better error messages
         let launch_config = AgentFactory::get_acp_launch(agent_type);
@@ -491,7 +492,7 @@ impl AgentManager {
         let mut metadata_map = self.session_metadata.write().await;
         metadata_map.insert(session_id.clone(), metadata);
 
-        info!("✅ ACP (External Agent) session started: {}", session_id);
+        info!("[AGENT-MANAGER-READY] session_id={} elapsed={:?}", session_id, start.elapsed());
         Ok(event_rx)
     }
 

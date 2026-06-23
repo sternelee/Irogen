@@ -10,7 +10,7 @@ use tauri::{Emitter, State};
 use tauri_plugin_notification::NotificationExt;
 use tokio::sync::{RwLock, broadcast};
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg(target_os = "macos")]
@@ -3885,6 +3885,7 @@ async fn local_start_agent(
     };
 
     // Start the agent session
+    info!("[local_start_agent] starting session {}", session_id);
     let agent_manager_guard = state.agent_manager.read().await;
     let manager = agent_manager_guard
         .as_ref()
@@ -3933,7 +3934,12 @@ async fn local_start_agent(
             "local".to_string(), // source
         )
         .await
-        .map_err(|e| format!("Failed to start local agent: {}", e))?;
+        .map_err(|e| {
+            error!("[local_start_agent] start_session_with_id failed: {}", e);
+            format!("Failed to start local agent: {}", e)
+        })?;
+
+    info!("[local_start_agent] session {} started successfully", session_id);
 
     // Broadcast agent events to frontend
     let session_id_for_spawn = session_id.clone();

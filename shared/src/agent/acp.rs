@@ -69,7 +69,7 @@ use std::process::{Command as StdCommand, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::message_protocol::AgentType;
 use agent_client_protocol as acp;
@@ -81,6 +81,7 @@ use tokio::io::AsyncBufReadExt;
 use tokio::io::BufReader;
 use tokio::process::Command as TokioCommand;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc, oneshot};
+use tokio::time::{Duration as TokioDuration, timeout as tokio_timeout};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -538,6 +539,7 @@ impl AcpStreamingSession {
         let runtime_session_options = session_options.clone();
 
         let _ = shared_runtime;
+        let command_for_error = command.clone();
         let thread_name = format!("irogen-acp-{}", &session_id[..session_id.len().min(8)]);
 
         std::thread::Builder::new()
@@ -589,8 +591,10 @@ impl AcpStreamingSession {
             })
             .with_context(|| format!("Failed to spawn ACP thread for session {session_id}"))?;
 
-        match ready_rx.await {
-            Ok(Ok(())) => Ok(Self {
+        let ready_timeout = TokioDuration::from_secs(60);
+        let ready_result = tokio_timeout(ready_timeout, ready_rx).await;
+        match ready_result {
+            Ok(Ok(Ok(()))) => Ok(Self {
                 session_id,
                 agent_type,
                 event_sender,
@@ -604,10 +608,20 @@ impl AcpStreamingSession {
                 processed_update_count,
                 suppress_session_updates,
             }),
-            Ok(Err(err)) => Err(anyhow!(err)),
-            Err(_) => Err(anyhow!(
+            Ok(Ok(Err(err))) => Err(anyhow!(err)),
+            Ok(Err(_)) => Err(anyhow!(
                 "ACP startup channel closed before session became ready"
             )),
+            Err(_) => {
+                error!(
+                    "ACP session {} ({:?}) failed to become ready within {:?}. The agent process may be hanging during initialize/new_session.",
+                    session_id, agent_type, ready_timeout
+                );
+                Err(anyhow!(
+                    "ACP startup timed out after {:?}. Check that '{}' starts correctly and is not waiting for interactive input.",
+                    ready_timeout, command_for_error
+                ))
+            }
         }
     }
 
@@ -1612,16 +1626,17 @@ fn parse_mcp_servers(value: Option<serde_json::Value>) -> Vec<acp::schema::McpSe
 }
 
 async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
+    let start = Instant::now();
     info!(
-        "Starting ACP runtime for session {} ({:?}) with command: {} {:?}",
+        "[ACP-START] session={} agent={:?} command={} args={:?}",
         params.session_id, params.agent_type, params.command, params.args
     );
 
     // Resolve command to full path (GUI apps on macOS may not have PATH set)
     let resolved_command = resolve_command_path(&params.command);
     info!(
-        "Resolved command '{}' -> '{}'",
-        params.command, resolved_command
+        "[ACP-RESOLVE] session={} resolved='{}' elapsed={:?}",
+        params.session_id, resolved_command, start.elapsed()
     );
 
     let mut cmd = TokioCommand::new(&resolved_command);
@@ -1646,6 +1661,7 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
         cmd.env(key, value);
     }
 
+    info!("[ACP-SPAWN] session={} spawning child", params.session_id);
     let mut child = cmd.spawn().with_context(|| {
         format!(
             "Failed to spawn ACP agent command '{}' (resolved: '{}'): {:#?}",
@@ -1693,6 +1709,7 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
     let session_id_for_stderr = params.session_id.clone();
     tokio::task::spawn_local(async move {
         let mut stderr_reader = BufReader::new(stderr).lines();
+        info!("[ACP-STDERR-READER] session={} started", session_id_for_stderr);
         while let Ok(Some(line)) = stderr_reader.next_line().await {
             if line.trim().is_empty() {
                 continue;
@@ -1712,6 +1729,7 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
     let client_for_kill_term = client.clone();
     let client_for_session_notif = client.clone();
 
+    info!("[ACP-CONNECT] session={} connecting to child", params.session_id);
     let connect_result = acp::Client
         .builder()
         .on_receive_request(
@@ -1780,6 +1798,7 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
         .connect_with(
             acp::ByteStreams::new(stdin.compat_write(), stdout.compat()),
             async |cx| {
+                info!("[ACP-INIT] session={} sending InitializeRequest", params.session_id);
                 // Initialize connection with retry logic
                 let init_result = with_retry(
                     params.retry_config.clone(),
@@ -1942,6 +1961,7 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
                     }
                 };
 
+                info!("[ACP-READY] session={} ready after {:?}", params.session_id, start.elapsed());
                 let _ = params.ready_tx.send(Ok(()));
 
                 let _ = params.event_sender.send(AgentTurnEvent {
@@ -1981,8 +2001,8 @@ async fn run_acp_runtime(params: AcpRuntimeParams) -> Result<()> {
     }
 
     info!(
-        "ACP runtime shutting down for session {}, killing agent process",
-        params.session_id
+        "[ACP-SHUTDOWN] session={} runtime shutting down after {:?}",
+        params.session_id, start.elapsed()
     );
     let _ = child.start_kill();
     let _ = child.wait().await;
