@@ -48,8 +48,8 @@ export const HomeView: Component = () => {
         </div>
       </header>
 
-      <div class="flex-1 overflow-y-auto p-6">
-        <div class="max-w-2xl mx-auto space-y-8">
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <div class="max-w-5xl mx-auto space-y-6">
           {/* Quick Actions */}
           <section>
             <h2 class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest mb-3">
@@ -94,9 +94,12 @@ export const HomeView: Component = () => {
             </h2>
             <div class="card card-bordered bg-base-100">
               {getRecentSessions().length === 0 ? (
-                <div class="py-12 text-center">
-                  <FiActivity size={24} class="text-base-content/20 mx-auto mb-2" />
-                  <p class="text-sm text-base-content/50">{t("home.noRecentSessions")}</p>
+                <div class="py-16 text-center">
+                  <div class="w-14 h-14 rounded-2xl bg-base-200/60 flex items-center justify-center mx-auto mb-4 text-base-content/20 shadow-sm">
+                    <FiActivity size={28} />
+                  </div>
+                  <p class="text-sm font-medium text-base-content/50">{t("home.noRecentSessions")}</p>
+                  <p class="text-xs text-base-content/40 mt-1">Start a session to see it here</p>
                 </div>
               ) : (
                 <For each={getRecentSessions()}>

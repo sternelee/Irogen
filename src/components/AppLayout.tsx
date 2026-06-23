@@ -11,10 +11,12 @@ import {
   Show,
   Switch,
   Match,
+  For,
   onMount,
   onCleanup,
   type Component,
 } from "solid-js";
+import { FiHome, FiMessageSquare, FiMonitor, FiSettings } from "solid-icons/fi";
 import { SessionSidebar } from "./SessionSidebar";
 import { WorkspaceShell } from "./WorkspaceShell";
 import { SessionsView } from "./SessionsView";
@@ -35,6 +37,7 @@ import { cn } from "~/lib/utils";
 
 export const AppLayout: Component = () => {
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = createSignal(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
 
   // Keyboard shortcuts
   onMount(() => {
@@ -92,8 +95,9 @@ export const AppLayout: Component = () => {
       {/* Sidebar */}
       <div
         class={cn(
-          "fixed inset-y-0 left-0 z-50 w-[280px] md:relative md:z-auto md:w-64 lg:w-64",
-          "transform transition-transform duration-200 md:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 w-[280px] md:relative md:z-auto transition-all duration-200",
+          sidebarCollapsed() ? "md:w-16" : "md:w-72 lg:w-80",
+          "transform md:translate-x-0",
           navigationStore.state.sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
         style={{ "padding-top": "env(safe-area-inset-top, 0px)" }}
@@ -101,12 +105,14 @@ export const AppLayout: Component = () => {
         <SessionSidebar
           isOpen={navigationStore.state.sidebarOpen}
           onToggle={() => navigationStore.toggleSidebar()}
+          collapsed={sidebarCollapsed()}
+          onCollapseToggle={() => setSidebarCollapsed((c) => !c)}
         />
       </div>
 
       {/* Main Content */}
       <div class="flex-1 min-w-0 flex flex-col overflow-hidden">
-        <main class="flex-1 flex min-h-0 flex-col min-w-0">
+        <main class="flex-1 flex min-h-0 flex-col min-w-0 pb-14 md:pb-0">
           {/* Keyed wrapper forces re-mount on view change → animate-fade-in triggers */}
           <Switch>
             <Match when={activeView() === "settings"}><div class="flex-1 flex min-h-0 animate-fade-in"><SettingsView /></div></Match>
@@ -116,6 +122,34 @@ export const AppLayout: Component = () => {
             <Match when={true}><div class="flex-1 flex min-h-0 animate-fade-in"><HomeView /></div></Match>
           </Switch>
         </main>
+
+        {/* Mobile bottom tab bar */}
+        <nav class="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center border-t border-base-content/10 bg-base-100/95 backdrop-blur-md safe-area-bottom">
+          <For each={[
+            { id: "home" as const, icon: FiHome, label: "Home" },
+            { id: "sessions" as const, icon: FiMessageSquare, label: "Sessions" },
+            { id: "devices" as const, icon: FiMonitor, label: "Devices" },
+            { id: "settings" as const, icon: FiSettings, label: "Settings" },
+          ]}>
+            {(tab) => {
+              const isActive = () => activeView() === tab.id || 
+                (tab.id === "devices" && (activeView() === "hosts" || activeView() === "proxies"));
+              return (
+                <button
+                  type="button"
+                  class={cn(
+                    "flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors duration-150",
+                    isActive() ? "text-primary" : "text-base-content/40 hover:text-base-content/60",
+                  )}
+                  onClick={() => navigationStore.setActiveView(tab.id)}
+                >
+                  <tab.icon size={18} />
+                  <span class="text-[9px] font-medium">{tab.label}</span>
+                </button>
+              );
+            }}
+          </For>
+        </nav>
       </div>
     </div>
   );

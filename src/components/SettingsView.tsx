@@ -49,8 +49,8 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
         </div>
       </header>
 
-      <div class="flex-1 overflow-y-auto p-6">
-        <div class="max-w-2xl mx-auto space-y-8">
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <div class="max-w-3xl mx-auto space-y-6">
           {/* Appearance */}
           <section>
             <h2 class="text-[10px] font-semibold text-base-content/40 uppercase tracking-widest mb-3 flex items-center gap-2">

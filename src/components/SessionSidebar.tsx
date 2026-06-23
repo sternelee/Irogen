@@ -140,6 +140,7 @@ const NavItemButton: Component<{
   item: NavItem;
   isActive: boolean;
   onClick: () => void;
+  collapsed?: boolean;
 }> = (props) => {
   const Icon = props.item.icon;
 
@@ -148,17 +149,23 @@ const NavItemButton: Component<{
       type="button"
       onClick={props.onClick}
       class={cn(
-        "flex w-full items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-lg transition-all duration-150",
+        "flex items-center transition-all duration-150",
+        props.collapsed
+          ? "w-full justify-center p-2 rounded-lg"
+          : "w-full gap-2.5 px-3 py-2 rounded-lg text-sm font-medium",
         props.isActive
           ? "bg-base-200 text-base-content"
           : "text-base-content/50 hover:text-base-content hover:bg-base-200/50",
       )}
+      title={props.collapsed ? props.item.label() : undefined}
     >
       <Icon
-        size={16}
+        size={props.collapsed ? 18 : 16}
         class={cn(props.isActive ? "text-primary" : "text-base-content/40")}
       />
-      <span>{props.item.label()}</span>
+      <Show when={!props.collapsed}>
+        <span>{props.item.label()}</span>
+      </Show>
     </button>
   );
 };
@@ -388,6 +395,8 @@ const ConnectionBadge: Component = () => {
 interface SessionSidebarProps {
   isOpen: boolean;
   onToggle: () => void;
+  collapsed?: boolean;
+  onCollapseToggle?: () => void;
 }
 
 const getProjectName = (projectPath: string) => {
@@ -397,6 +406,7 @@ const getProjectName = (projectPath: string) => {
 
 export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
   const [searchQuery, setSearchQuery] = createSignal("");
+  const collapsed = () => props.collapsed ?? false;
 
   const activeView = () => navigationStore.state.activeView;
   const sessions = createMemo(() => sessionStore.getSessions());
@@ -451,50 +461,64 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
   });
 
   return (
-    <aside class="flex h-full w-full flex-col bg-base-100 border-r border-base-content/10">
-      {/* Header */}
-      <div class="flex items-center justify-between px-4 py-3 border-b border-base-content/10">
-        <div class="flex items-center gap-3">
-          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content dark:from-primary/80 dark:to-secondary/80 text-sm font-bold shadow-sm">
+    <aside class={cn(
+      "flex h-full flex-col bg-base-100 border-r border-base-content/10 transition-all duration-200",
+      collapsed() ? "w-16" : "w-full",
+    )}>
+      {/* Header — collapsed shows only logo */}
+      <div class={cn(
+        "flex items-center border-b border-base-content/10",
+        collapsed() ? "justify-center px-0 py-3" : "justify-between px-4 py-3",
+      )}>
+        <div class={cn("flex items-center", collapsed() ? "" : "gap-3")}>
+          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content dark:from-primary/80 dark:to-secondary/80 text-sm font-bold shadow-sm shrink-0">
             I
           </div>
-          <div>
-            <h1 class="text-sm font-bold text-base-content leading-none">
-              Irogen
-            </h1>
-            <p class="text-[9px] text-base-content/40 mt-0.5 uppercase tracking-wider font-medium">
-              Agent Control
-            </p>
-          </div>
+          <Show when={!collapsed()}>
+            <div>
+              <h1 class="text-sm font-bold text-base-content leading-none">
+                Irogen
+              </h1>
+              <p class="text-[9px] text-base-content/40 mt-0.5 uppercase tracking-wider font-medium">
+                Agent Control
+              </p>
+            </div>
+          </Show>
         </div>
-        <button
-          type="button"
-          class="md:hidden h-8 w-8 flex items-center justify-center rounded-lg text-base-content/40 hover:text-base-content hover:bg-base-200 transition-colors"
-          onClick={props.onToggle}
-        >
-          <FiX size={15} />
-        </button>
+        <Show when={!collapsed()}>
+          <button
+            type="button"
+            class="md:hidden h-8 w-8 flex items-center justify-center rounded-lg text-base-content/40 hover:text-base-content hover:bg-base-200 transition-colors"
+            onClick={props.onToggle}
+          >
+            <FiX size={15} />
+          </button>
+        </Show>
       </div>
 
-      {/* Search */}
-      <SearchBar value={searchQuery()} onInput={setSearchQuery} />
+      {/* Search — hidden when collapsed */}
+      <Show when={!collapsed()}>
+        <SearchBar value={searchQuery()} onInput={setSearchQuery} />
+      </Show>
 
       {/* Navigation */}
-      <div class="px-2 py-1">
+      <div class={cn("py-1", collapsed() ? "px-1 space-y-1" : "px-2")}>
         <For each={NAV_ITEMS}>
           {(item) => (
             <NavItemButton
               item={item}
               isActive={activeView() === item.id}
               onClick={() => handleNavClick(item.id)}
+              collapsed={collapsed()}
             />
           )}
         </For>
       </div>
 
-      {/* Sessions section */}
-      <div class="flex-1 overflow-y-auto px-2 pb-2">
-        <div class="flex items-center justify-between px-1 py-2 mt-1">
+      {/* Sessions section — hidden when collapsed */}
+      <Show when={!collapsed()}>
+        <div class="flex-1 overflow-y-auto px-2 pb-2">
+          <div class="flex items-center justify-between px-1 py-2 mt-1">
           <div class="flex items-center gap-1.5">
             <FiMessageSquare size={11} class="text-base-content/40" />
             <span class="text-[10px] font-semibold text-base-content/40 uppercase tracking-wider">
@@ -524,14 +548,22 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
         <Show
           when={threadGroups().length > 0}
           fallback={
-            <div class="px-3 py-8 text-center">
-              <div class="w-10 h-10 rounded-xl bg-base-200/50 flex items-center justify-center mx-auto mb-3 text-base-content/20">
-                <FiMessageSquare size={18} />
+            <div class="px-3 py-10 text-center">
+              <div class="w-12 h-12 rounded-2xl bg-base-200/50 flex items-center justify-center mx-auto mb-3 text-base-content/20 shadow-sm">
+                <FiMessageSquare size={20} />
               </div>
               <p class="text-xs text-base-content/40 font-medium">No sessions yet</p>
-              <p class="text-[10px] text-base-content/30 mt-1">
+              <p class="text-[10px] text-base-content/30 mt-1 mb-3">
                 Start a new session to begin
               </p>
+              <button
+                type="button"
+                class="btn btn-primary btn-xs"
+                onClick={() => sessionStore.openNewSessionModal()}
+              >
+                <FiPlus size={11} />
+                New Session
+              </button>
             </div>
           }
         >
@@ -576,9 +608,35 @@ export const SessionSidebar: Component<SessionSidebarProps> = (props) => {
           </button>
         </Show>
       </div>
+      </Show> {/* end !collapsed() */}
 
       {/* Footer */}
-      <ConnectionBadge />
+      <div class="mt-auto">
+        {/* Collapse toggle — desktop only */}
+        <button
+          type="button"
+          class={cn(
+            "hidden md:flex items-center w-full border-t border-base-content/10 text-base-content/30 hover:text-base-content hover:bg-base-200/50 transition-colors",
+            collapsed() ? "justify-center py-3" : "justify-between px-3 py-2",
+          )}
+          onClick={props.onCollapseToggle}
+          title={collapsed() ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <svg
+            class={cn("w-4 h-4 transition-transform duration-200", collapsed() && "rotate-180")}
+            fill="none" stroke="currentColor" stroke-width="2"
+            viewBox="0 0 24 24"
+          >
+            <path d="M15 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <Show when={!collapsed()}>
+            <span class="text-[10px]">Collapse</span>
+          </Show>
+        </button>
+
+        {/* Connection status */}
+        <ConnectionBadge />
+      </div>
     </aside>
   );
 };

@@ -51,8 +51,8 @@ export const DevicesView: Component = () => {
   };
 
   return (
-    <div class="flex h-full flex-col overflow-y-auto bg-base-100 p-4 sm:p-8">
-      <div class="mx-auto w-full max-w-4xl space-y-8">
+    <div class="flex h-full flex-col overflow-y-auto bg-base-100 p-4 sm:p-6 lg:p-8">
+      <div class="mx-auto w-full max-w-6xl space-y-8">
         <header class="flex items-start sm:items-center gap-3">
           <button
             type="button"

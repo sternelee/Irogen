@@ -139,7 +139,7 @@ export const WorkspaceShell: Component = () => {
 
       {/* Desktop: side-by-side right panel */}
       <Show when={!mobile() && isOpen()}>
-        <div class="w-80 xl:w-96 flex flex-col border-l border-base-content/10 bg-base-100 animate-slide-in-right shrink-0">
+        <div class="w-96 lg:w-[420px] xl:w-[480px] flex flex-col border-l border-base-content/10 bg-base-100 animate-slide-in-right shrink-0">
           <RightPanelHeader view={rightPanelView()} onClose={closeRightPanel} />
           <RightPanelContent view={rightPanelView()} activeSession={activeSession()} />
         </div>

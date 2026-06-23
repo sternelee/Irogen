@@ -60,8 +60,8 @@ export const SessionsView: Component = () => {
   };
 
   return (
-    <div class="flex h-full flex-col overflow-y-auto bg-base-100 p-4 sm:p-8">
-      <div class="mx-auto w-full max-w-4xl space-y-6">
+    <div class="flex h-full flex-col overflow-y-auto bg-base-100 p-4 sm:p-6 lg:p-8">
+      <div class="mx-auto w-full max-w-6xl space-y-6">
         <header class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div class="flex items-start sm:items-center gap-3">
             <button
@@ -136,18 +136,27 @@ export const SessionsView: Component = () => {
           <Show
             when={sessions().length > 0}
             fallback={
-              <div class="flex flex-col items-center justify-center py-16 px-4 text-center">
-                <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border border-base-content/10 text-base-content/40">
-                  <FiActivity size={28} />
+              <div class="flex flex-col items-center justify-center py-20 px-4 text-center">
+                <div class="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-base-200/60 text-base-content/30 shadow-sm">
+                  <FiActivity size={32} />
                 </div>
-                <h3 class="text-base font-semibold text-base-content">
+                <h3 class="text-base font-semibold text-base-content mb-1">
                   {t("sessionsView.noSessions")}
                 </h3>
-                <p class="mt-1 max-w-xs text-sm text-base-content/50">
+                <p class="max-w-xs text-sm text-base-content/50">
                   {searchQuery() || filter() !== "all"
                     ? t("sessionsView.noSessionsDesc")
                     : t("home.noRecentSessionsDesc")}
                 </p>
+                <Show when={!searchQuery() && filter() === "all"}>
+                  <button
+                    class="btn btn-primary btn-sm mt-5"
+                    onClick={() => sessionStore.openNewSessionModal()}
+                  >
+                    <FiPlus size={15} />
+                    {t("sessionsView.startNew")}
+                  </button>
+                </Show>
               </div>
             }
           >
