@@ -93,6 +93,19 @@ const loadSettings = (): UserSettings => {
   } catch (error) {
     console.error("Failed to load settings from localStorage:", error);
   }
+  // No stored settings: auto-pick dark theme if OS prefers dark
+  if (typeof window !== "undefined" && window.matchMedia) {
+    try {
+      const prefersDark = window.matchMedia(
+        "(prefers-color-scheme: dark)",
+      ).matches;
+      if (prefersDark) {
+        return { ...defaultSettings, theme: "abyss" };
+      }
+    } catch {
+      // matchMedia can throw in non-browser environments
+    }
+  }
   return defaultSettings;
 };
 

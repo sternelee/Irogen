@@ -490,8 +490,11 @@ const UserMessage: Component<{
   return (
     <div class="chat chat-end animate-fade-in">
       <Show when={props.timestamp}>
-        <div class="chat-header text-[10px] text-base-content/30 opacity-70">
-          {formatTimestamp(props.timestamp)}
+        <div class="chat-header flex items-center justify-end gap-2 text-[10px] text-base-content/30 opacity-70">
+          <span>{formatTimestamp(props.timestamp)}</span>
+          <div class="w-5 h-5 rounded-full bg-primary text-primary-content flex items-center justify-center text-[9px] font-bold shadow-sm">
+            U
+          </div>
         </div>
       </Show>
       <div class="chat-bubble chat-bubble-primary text-[14px] leading-relaxed p-3.5">
