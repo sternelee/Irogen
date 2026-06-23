@@ -123,7 +123,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
             </h2>
             <div class="card card-bordered bg-base-100 px-4 py-3 flex flex-row items-center justify-between">
               <div>
-                <p class="text-sm font-medium text-base-content">Acpx</p>
+                <p class="text-sm font-medium text-base-content">Irogen</p>
                 <p class="text-xs text-base-content/50">Multi-agent local/remote management platform</p>
                 <p class="text-xs text-base-content/40 font-mono mt-1">v0.8.0</p>
               </div>

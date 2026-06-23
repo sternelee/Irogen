@@ -126,14 +126,14 @@ const dictionaries = {
       justNow: "just now",
     },
     home: {
-      welcomeTitle: "Welcome to Acpx",
+      welcomeTitle: "Welcome to Irogen",
       welcomeDescription:
         "Your unified workspace for local and remote AI agents.",
       quickActions: "Quick Actions",
       startNewSession: "Start New Session",
       startNewSessionDesc: "Launch a local or remote AI agent",
       connectToHost: "Connect to Host",
-      connectToHostDesc: "Connect to a remote Acpx daemon",
+      connectToHostDesc: "Connect to a remote Irogen daemon",
       recentSessions: "Recent Sessions",
       noRecentSessions: "No recent sessions.",
       noRecentSessionsDesc: "Your activity will appear here.",
@@ -200,7 +200,7 @@ const dictionaries = {
       copySuccessTitle: "Success",
       back: "Back",
       step1: {
-        title: "What is Acpx?",
+        title: "What is Irogen?",
         desc: "Securely control computer-side AI assistants (Claude, Codex, Gemini, etc.) on your phone through P2P encrypted direct connection.",
         howItWorks: "HOW IT WORKS",
         mobile: "Mobile",
@@ -211,7 +211,7 @@ const dictionaries = {
       },
       step2: {
         title: "Install CLI Tool",
-        desc: "First, install the Acpx CLI on your computer. Open a terminal and run:",
+        desc: "First, install the Irogen CLI on your computer. Open a terminal and run:",
         windowsNote:
           "Windows users please refer to the GitHub documentation for installation",
       },
@@ -397,13 +397,13 @@ const dictionaries = {
       justNow: "刚刚",
     },
     home: {
-      welcomeTitle: "欢迎使用 Acpx",
+      welcomeTitle: "欢迎使用 Irogen",
       welcomeDescription: "用于本地和远程 AI Agent 的统一工作台。",
       quickActions: "快捷操作",
       startNewSession: "开始新会话",
       startNewSessionDesc: "启动本地或远程 AI Agent",
       connectToHost: "连接到主机",
-      connectToHostDesc: "连接到远程 Acpx 守护进程",
+      connectToHostDesc: "连接到远程 Irogen 守护进程",
       recentSessions: "最近会话",
       noRecentSessions: "暂无最近会话。",
       noRecentSessionsDesc: "您的活动将显示在这里。",
@@ -469,7 +469,7 @@ const dictionaries = {
       copySuccessTitle: "成功",
       back: "返回",
       step1: {
-        title: "什么是 Acpx?",
+        title: "什么是 Irogen?",
         desc: "通过 P2P 加密直连，在手机上安全地控制电脑端的 AI 助理 (Claude, Codex, Gemini 等)。",
         howItWorks: "工作原理",
         mobile: "手机端",
@@ -479,7 +479,7 @@ const dictionaries = {
       },
       step2: {
         title: "安装 CLI 工具",
-        desc: "首先，在你的电脑上安装 Acpx CLI。打开终端并运行：",
+        desc: "首先，在你的电脑上安装 Irogen CLI。打开终端并运行：",
         windowsNote: "Windows 用户请参考 GitHub 文档进行安装",
       },
       step3: {
