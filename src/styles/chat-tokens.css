@@ -1,0 +1,231 @@
+/* ============================================================================
+ * Chat Design Tokens
+ *
+ * LobeHub-inspired chat component styling atop DaisyUI theme tokens.
+ * ============================================================================ */
+
+@layer components {
+  /* ---- Thinking / Reasoning Block ---- */
+
+  .thinking-block {
+    @apply mx-4 my-2 rounded-lg border border-base-content/10 overflow-hidden;
+    @apply transition-all duration-200 ease-out;
+  }
+
+  .thinking-block-header {
+    @apply flex items-center gap-2 px-3 py-2 cursor-pointer select-none;
+    @apply text-xs font-medium text-base-content/50;
+    @apply hover:bg-base-200/50 transition-colors duration-150;
+  }
+
+  .thinking-block-content {
+    @apply px-3 pb-3 text-xs leading-relaxed text-base-content/60;
+    @apply border-t border-base-content/5;
+    @apply overflow-hidden transition-all duration-300 ease-out;
+  }
+
+  .thinking-block-content-inner {
+    @apply pt-2;
+  }
+
+  /* ---- Streaming Indicator ---- */
+
+  .streaming-cursor::after {
+    content: "";
+    @apply inline-block w-1.5 h-4 ml-0.5 align-middle;
+    background: oklch(var(--p));
+    animation: blink-cursor 0.8s step-end infinite;
+  }
+
+  @keyframes blink-cursor {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* ---- Tool Call Card ---- */
+
+  .tool-call-card {
+    @apply mx-4 my-1.5 rounded-lg border border-base-content/10;
+    @apply transition-all duration-200;
+  }
+
+  .tool-call-card:hover {
+    @apply border-base-content/20;
+  }
+
+  .tool-call-card-header {
+    @apply flex items-center gap-2 px-3 py-2;
+  }
+
+  .tool-call-status-dot {
+    @apply w-2 h-2 rounded-full shrink-0;
+  }
+
+  .tool-call-status-dot.running {
+    @apply bg-warning;
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+
+  .tool-call-status-dot.success { @apply bg-success; }
+  .tool-call-status-dot.error { @apply bg-error; }
+  .tool-call-status-dot.pending { @apply bg-base-content/30; }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .tool-call-name {
+    @apply text-xs font-medium text-base-content truncate;
+  }
+
+  .tool-call-body {
+    @apply px-3 pb-2;
+  }
+
+  .tool-call-output {
+    @apply text-[11px] font-mono text-base-content/60;
+    @apply bg-base-200/50 rounded p-1.5 mt-1 overflow-x-auto;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  /* ---- Token Usage Badge ---- */
+
+  .token-badge {
+    @apply inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium;
+    @apply bg-base-200/70 text-base-content/40;
+  }
+
+  /* ---- File Operation Inline ---- */
+
+  .file-op-inline {
+    @apply flex items-center gap-2 px-3 py-1.5 mx-4 my-1;
+    @apply rounded-lg bg-base-200/50 border border-base-content/5;
+    @apply text-xs text-base-content/50;
+  }
+
+  .file-op-icon { @apply w-3.5 h-3.5 shrink-0; }
+  .file-op-path { @apply truncate font-mono text-[11px]; }
+  .file-op-status.created { @apply text-success; }
+  .file-op-status.modified { @apply text-warning; }
+  .file-op-status.deleted { @apply text-error; }
+
+  /* ---- Terminal Output Embed ---- */
+
+  .terminal-embed {
+    @apply mx-4 my-1.5 rounded-lg overflow-hidden;
+    @apply border border-base-content/10 bg-base-300/80;
+  }
+
+  .terminal-embed-header {
+    @apply flex items-center gap-2 px-3 py-1.5;
+    @apply text-[10px] font-mono text-base-content/40;
+    @apply border-b border-base-content/5;
+  }
+
+  .terminal-embed-body {
+    @apply p-3 text-xs font-mono leading-relaxed;
+    @apply overflow-x-auto whitespace-pre;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  /* ---- Progress Bar ---- */
+
+  .progress-inline {
+    @apply mx-4 my-1.5 rounded-lg border border-base-content/10 p-3;
+  }
+
+  .progress-inline-header {
+    @apply flex items-center justify-between mb-1.5;
+  }
+
+  .progress-inline-label {
+    @apply text-xs font-medium text-base-content/60;
+  }
+
+  .progress-inline-pct {
+    @apply text-[10px] text-base-content/40;
+  }
+
+  .progress-inline-bar {
+    @apply h-1 rounded-full bg-base-200 overflow-hidden;
+  }
+
+  .progress-inline-fill {
+    @apply h-full rounded-full bg-primary transition-all duration-300 ease-out;
+  }
+
+  .progress-inline-msg {
+    @apply text-[10px] text-base-content/40 mt-1;
+  }
+
+  /* ---- Loading / Skeleton ---- */
+
+  .message-skeleton {
+    @apply flex flex-col gap-2 max-w-[70%];
+  }
+
+  .message-skeleton-line {
+    @apply h-3 rounded bg-base-200/70 animate-pulse;
+  }
+
+  .message-skeleton-line:last-child { @apply w-2/3; }
+
+  /* ---- Permission Request Card ---- */
+
+  .permission-card {
+    @apply mx-4 my-2 rounded-xl border border-warning/20 bg-warning/5 p-4;
+  }
+
+  .permission-card-header {
+    @apply flex items-center gap-2 mb-2;
+  }
+
+  .permission-card-title {
+    @apply text-xs font-semibold text-base-content;
+  }
+
+  .permission-card-desc {
+    @apply text-xs text-base-content/60 mb-3;
+    @apply bg-base-100/50 rounded-lg p-2 font-mono text-[11px];
+  }
+
+  .permission-card-actions { @apply flex flex-wrap gap-2; }
+
+  .permission-card-btn {
+    @apply px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150;
+  }
+
+  .permission-card-btn.approve {
+    @apply bg-success text-success-content hover:brightness-110;
+  }
+
+  .permission-card-btn.deny {
+    @apply bg-error text-error-content hover:brightness-110;
+  }
+
+  .permission-card-btn.always {
+    @apply bg-base-200 text-base-content hover:bg-base-300;
+  }
+
+  /* ---- User Question Card ---- */
+
+  .question-card {
+    @apply mx-4 my-2 rounded-xl border border-info/20 bg-info/5 p-4;
+  }
+
+  .question-card-text {
+    @apply text-sm font-medium text-base-content mb-3;
+  }
+
+  .question-card-options { @apply flex flex-wrap gap-2; }
+
+  .question-card-option {
+    @apply px-4 py-2 rounded-lg text-xs font-medium;
+    @apply bg-base-200/70 text-base-content/60 border border-base-content/10;
+    @apply hover:bg-base-200 hover:text-base-content hover:border-base-content/20;
+    @apply transition-all duration-150 cursor-pointer;
+  }
+}

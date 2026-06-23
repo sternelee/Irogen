@@ -144,7 +144,7 @@ const VirtualMessageRow = (props: VirtualMessageRowProps) => {
 // Skeleton loader for streaming messages
 const MessageSkeleton: Component = () => (
   <div class="flex flex-col gap-3 max-w-[90%]">
-    <div class="inline-block bg-base-200 border border-base-content/10 px-4 py-3">
+    <div class="card card-bordered bg-base-200 px-4 py-3">
       <div class="flex flex-col gap-2">
         <div class="h-4 bg-base-300 w-3/4" />
         <div class="h-4 bg-base-300 w-1/2" />

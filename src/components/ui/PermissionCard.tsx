@@ -249,7 +249,7 @@ function PermissionCard(props: PermissionCardProps) {
             >
               <FiCheck class="w-4 h-4 mr-1" />
               Allow
-              <span class="ml-auto border border-current px-1 text-[10px]">Y</span>
+              <kbd class="kbd kbd-xs ml-auto">Y</kbd>
             </button>
 
             <Show when={shouldShowAllowForSession()}>

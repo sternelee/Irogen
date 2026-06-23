@@ -57,7 +57,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               <FiMoon size={12} />
               {t("settings.appearance")}
             </h2>
-            <div class="border border-base-content/10">
+            <div class="card card-bordered bg-base-100">
               <div class="flex items-center justify-between px-4 py-3 border-b border-base-content/5">
                 <div>
                   <p class="text-sm font-medium text-base-content">{t("settings.theme")}</p>
@@ -72,7 +72,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
                 </div>
                 <select
                   id="font-size-select"
-                  class="border border-base-content/10 px-2 py-1 text-sm bg-base-100 focus:outline-none focus:border-base-content/30"
+                  class="border border-base-content/10 px-2 py-1 text-sm bg-base-100 rounded-lg focus:outline-none focus:border-base-content/30 transition-colors duration-150"
                   value={settingsStore.get().fontSize}
                   onChange={(e) => settingsStore.setFontSize(e.currentTarget.value as FontSizeType)}
                 >
@@ -104,7 +104,7 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               <FiGlobe size={12} />
               {t("settings.language")}
             </h2>
-            <div class="border border-base-content/10">
+            <div class="card card-bordered bg-base-100">
               <div class="flex items-center justify-between px-4 py-3">
                 <div>
                   <p class="text-sm font-medium text-base-content">{t("settings.language")}</p>
@@ -121,14 +121,14 @@ export const SettingsView: Component<SettingsViewProps> = (props) => {
               <FiInfo size={12} />
               {t("settings.about")}
             </h2>
-            <div class="border border-base-content/10 px-4 py-3 flex items-center justify-between">
+            <div class="card card-bordered bg-base-100 px-4 py-3 flex flex-row items-center justify-between">
               <div>
                 <p class="text-sm font-medium text-base-content">Acpx</p>
                 <p class="text-xs text-base-content/50">Multi-agent local/remote management platform</p>
                 <p class="text-xs text-base-content/40 font-mono mt-1">v0.8.0</p>
               </div>
               <button
-                class="text-xs text-error border border-error/20 px-3 py-1.5 hover:bg-error hover:text-error-content"
+                class="text-xs text-error border border-error/20 px-3 py-1.5 rounded-lg hover:bg-error hover:text-error-content transition-all duration-150"
                 onClick={handleResetSettings}
               >
                 <FiRefreshCw size={12} class="inline mr-1" />

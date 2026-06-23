@@ -1,20 +1,53 @@
 /**
  * ChatHeader Component
  *
- * Zed-inspired: hard lines, high contrast, no gradients/shadows/animations.
+ * LobeHub-inspired redesign:
+ * - Agent avatar with colored initial
+ * - Status indicator (online/streaming/offline)
+ * - Project path breadcrumb
+ * - Connection info for remote sessions
+ * - Compact permission mode switcher
+ * - Tool panel toggle buttons
  */
 
-import { type Component, Show, createMemo } from "solid-js";
+import { type Component, Show, For, createMemo } from "solid-js";
 import {
-  FiTerminal,
   FiSidebar,
   FiFolder,
   FiGitBranch,
+  FiChevronRight,
 } from "solid-icons/fi";
 import { sessionStore, type PermissionMode } from "../../stores/sessionStore";
 import { sessionEventRouter } from "../../stores/sessionEventRouter";
 import { PermissionModeSwitcher } from "../ui/PermissionModeSwitcher";
 import { cn } from "~/lib/utils";
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function agentAvatarColor(name: string): string {
+  const colors = [
+    "bg-primary text-primary-content",
+    "bg-secondary text-secondary-content",
+    "bg-accent text-accent-content",
+    "bg-info text-info-content",
+    "bg-success text-success-content",
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function agentInitial(name: string): string {
+  return name.charAt(0).toUpperCase();
+}
+
+// ============================================================================
+// Types
+// ============================================================================
 
 interface ChatHeaderProps {
   onToggleSidebar?: () => void;
@@ -27,6 +60,10 @@ interface ChatHeaderProps {
   onToggleFileBrowser?: () => void;
   onToggleGitPanel?: () => void;
 }
+
+// ============================================================================
+// Component
+// ============================================================================
 
 export const ChatHeader: Component<ChatHeaderProps> = (props) => {
   const session = createMemo(() => sessionStore.getSession(props.sessionId));
@@ -50,20 +87,16 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
     const host = connectedHost();
     if (!host) return null;
     switch (host.status) {
-      case "online":
-        return "bg-success";
-      case "reconnecting":
-        return "bg-warning";
-      case "offline":
-        return "bg-error";
-      default:
-        return "bg-base-content/40";
+      case "online": return "bg-success";
+      case "reconnecting": return "bg-warning animate-pulse";
+      case "offline": return "bg-error";
+      default: return "bg-base-content/30";
     }
   });
 
   const statusColor = createMemo(() => {
     const sess = session();
-    if (!sess?.active) return "bg-base-content/40";
+    if (!sess?.active) return "bg-base-content/30";
     const routerState = sessionEventRouter.getStreamingState(props.sessionId);
     if (routerState?.isStreaming) return "bg-info";
     return "bg-success";
@@ -77,131 +110,139 @@ export const ChatHeader: Component<ChatHeaderProps> = (props) => {
     return "Online";
   });
 
-  const projectName = createMemo(() => {
+  const statusBg = createMemo(() => {
+    const txt = statusText();
+    if (txt === "Streaming") return "bg-info/10 text-info";
+    if (txt === "Online") return "bg-success/10 text-success";
+    return "bg-base-200/50 text-base-content/40";
+  });
+
+  const projectParts = createMemo(() => {
     const path = props.projectPath || session()?.projectPath;
-    if (!path) return null;
-    return path.split("/").pop() || path;
+    if (!path) return [] as string[];
+    return path.split("/").filter(Boolean);
+  });
+
+  const agentDisplay = createMemo(() => {
+    const agentType = props.agentType || session()?.agentType || "agent";
+    return agentType.charAt(0).toUpperCase() + agentType.slice(1);
   });
 
   return (
-    <header class="z-20 flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-base-content/10 px-4 py-3 sm:min-h-14">
-      {/* Left: Sidebar toggle (mobile) + Session info */}
-      <div class="flex items-center gap-3 min-w-0 flex-1">
-        {/* Sidebar toggle button */}
+    <header class="z-20 flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-base-content/10 px-3 py-2.5 bg-base-100">
+      {/* Left: Sidebar toggle + Session info */}
+      <div class="flex items-center gap-2.5 min-w-0 flex-1">
+        {/* Sidebar toggle */}
         <button
           type="button"
-          class="h-11 w-11 border border-base-content/10 flex items-center justify-center text-base-content/50 hover:text-base-content hover:border-base-content/40 shrink-0"
+          class="btn btn-ghost btn-square btn-sm"
           onClick={props.onToggleSidebar}
           aria-label="Toggle sidebar"
         >
-          <FiSidebar size={18} />
+          <FiSidebar size={15} />
         </button>
 
-        {/* Session info */}
-        <Show when={props.agentType}>
-          <div class="flex items-center gap-3 min-w-0">
-            {/* Agent icon */}
-            <div class="hidden sm:flex h-9 w-9 items-center justify-center border border-base-content/10 shrink-0">
-              <FiTerminal size={17} class="text-base-content/60" />
+        {/* Agent Avatar + Info */}
+        <div class="flex items-center gap-2.5 min-w-0">
+          {/* Avatar */}
+          <div class={cn(
+            "w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0",
+            agentAvatarColor(agentDisplay()),
+          )}>
+            {agentInitial(agentDisplay())}
+          </div>
+
+          {/* Name + Status */}
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-semibold text-base-content truncate">
+                {agentDisplay()}
+              </span>
+              <span class={cn(
+                "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium",
+                statusBg(),
+              )}>
+                <span class={cn("w-1.5 h-1.5 rounded-full", statusColor())} />
+                {statusText()}
+              </span>
             </div>
 
-            {/* Session details */}
-            <div class="min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="font-semibold text-sm truncate max-w-[100px] sm:max-w-[180px] text-base-content">
-                  {props.agentType?.charAt(0).toUpperCase() +
-                    (props.agentType?.slice(1) || "")}
-                </span>
-                {/* Status indicator */}
-                <span
-                  class={cn(
-                    "inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider shrink-0",
-                    statusText() === "Online" &&
-                      "bg-success/10 text-success",
-                    statusText() === "Streaming" &&
-                      "bg-info/10 text-info",
-                    statusText() === "Offline" && "bg-base-200 text-base-content/60",
+            {/* Project path breadcrumb */}
+            <div class="flex items-center gap-1 text-[10px] text-base-content/40 truncate">
+              <Show
+                when={projectParts().length > 0}
+                fallback={<span class="italic">No project</span>}
+              >
+                <For each={projectParts()}>
+                  {(part, i) => (
+                    <>
+                      <Show when={i() > 0}>
+                        <FiChevronRight size={8} class="text-base-content/20" />
+                      </Show>
+                      <span class="truncate max-w-[80px]">{part}</span>
+                    </>
                   )}
-                >
-                  <span class={cn("h-1.5 w-1.5", statusColor())} />
-                  <span class="hidden xs:inline">{statusText()}</span>
-                </span>
-              </div>
-              <Show when={projectName()}>
-                <span class="text-[11px] text-base-content/50 truncate block max-w-[140px] sm:max-w-[220px] font-mono">
-                  {projectName()}
-                </span>
-              </Show>
-              <Show when={hostName()}>
-                <span class="flex items-center gap-1 mt-0.5">
-                  <span
-                    class={cn(
-                      "h-1.5 w-1.5 shrink-0",
-                      hostStatusDot() ?? "bg-base-content/40",
-                    )}
-                  />
-                  <span class="text-[11px] text-base-content/50 font-medium truncate max-w-[120px] sm:max-w-[180px]">
-                    {hostName()}
-                  </span>
-                </span>
+                </For>
               </Show>
             </div>
+          </div>
+        </div>
+
+        {/* Remote host indicator */}
+        <Show when={props.sessionMode === "remote" && hostName()}>
+          <div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-base-200/70 text-[10px] text-base-content/50">
+            <span class={cn("w-1.5 h-1.5 rounded-full", hostStatusDot())} />
+            {hostName()}
           </div>
         </Show>
       </div>
 
-      {/* Right: Tool toggles + Settings */}
-      <div class="flex items-center gap-1.5">
-        {/* Mobile agent indicator */}
-        <Show when={!props.agentType}>
-          <span class="text-sm font-medium text-base-content/50 mr-2">Chat</span>
+      {/* Right: Controls */}
+      <div class="flex items-center gap-1">
+        {/* Permission mode */}
+        <Show when={permissionMode()}>
+          <div class="hidden sm:block">
+            <PermissionModeSwitcher
+              mode={permissionMode()}
+              onChange={props.onPermissionModeChange ?? (() => {})}
+            />
+          </div>
         </Show>
 
-        {/* Permission mode switcher */}
-        <Show when={props.agentType && props.onPermissionModeChange}>
-          <PermissionModeSwitcher
-            mode={permissionMode()}
-            compact
-            onChange={(mode) => props.onPermissionModeChange?.(mode)}
-          />
-        </Show>
-
-        {/* File browser toggle */}
-        <Show when={props.agentType && props.onToggleFileBrowser}>
-          <button
-            type="button"
-            class={cn(
-              "h-11 w-11 flex items-center justify-center border",
-              props.rightPanelView === "file"
-                ? "text-base-content border-base-content dark:text-base-content dark:border-white"
-                : "text-base-content/50 border-base-content/10 hover:border-base-content/40",
-            )}
-            onClick={props.onToggleFileBrowser}
-            title="Files"
-          >
-            <FiFolder size={16} />
-          </button>
-        </Show>
-
-        {/* Git toggle */}
-        <Show when={props.agentType && props.onToggleGitPanel}>
-          <button
-            type="button"
-            class={cn(
-              "h-11 w-11 flex items-center justify-center border",
-              props.rightPanelView === "git"
-                ? "text-base-content border-base-content dark:text-base-content dark:border-white"
-                : "text-base-content/50 border-base-content/10 hover:border-base-content/40",
-            )}
-            onClick={props.onToggleGitPanel}
-            title="Git"
-          >
-            <FiGitBranch size={16} />
-          </button>
-        </Show>
+        {/* Tool panel buttons */}
+        <div class="flex items-center gap-0.5">
+          <Show when={props.onToggleFileBrowser}>
+            <button
+              type="button"
+              onClick={() => props.onToggleFileBrowser?.()}
+              class={cn(
+                "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+                props.rightPanelView === "file"
+                  ? "text-primary bg-primary/10"
+                  : "text-base-content/30 hover:text-base-content hover:bg-base-200",
+              )}
+              title="Files"
+            >
+              <FiFolder size={14} />
+            </button>
+          </Show>
+          <Show when={props.onToggleGitPanel}>
+            <button
+              type="button"
+              onClick={() => props.onToggleGitPanel?.()}
+              class={cn(
+                "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+                props.rightPanelView === "git"
+                  ? "text-primary bg-primary/10"
+                  : "text-base-content/30 hover:text-base-content hover:bg-base-200",
+              )}
+              title="Git"
+            >
+              <FiGitBranch size={14} />
+            </button>
+          </Show>
+        </div>
       </div>
     </header>
   );
 };
-
-export default ChatHeader;
