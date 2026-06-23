@@ -57,7 +57,7 @@ interface RemoteConnectionOption {
 export const NewSessionModal: Component = () => {
   const [dirEntries, setDirEntries] = createSignal<DirEntry[]>([]);
   const [rawDirEntries, setRawDirEntries] = createSignal<DirEntry[]>([]);
-  const [pathHistory, setPathHistory] = createSignal<string[]>([]);
+  const [pathHistory, setPathHistory] = createSignal<string[]>(getProjectPathHistory());
   const [listedDirectory, setListedDirectory] = createSignal<string>("");
   const [currentRequestId, setCurrentRequestId] = createSignal<string | null>(
     null,

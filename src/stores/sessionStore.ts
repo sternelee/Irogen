@@ -15,6 +15,7 @@ import { notificationStore } from "./notificationStore";
 import { sessionEventRouter } from "./sessionEventRouter";
 import {
   getLastTicket,
+  getProjectPathHistory,
   saveProjectPath,
   saveTicket,
 } from "../utils/localStorage";
@@ -203,7 +204,7 @@ const initialState: SessionState = {
   newSessionModeFromHost: false,
   newSessionProjectPathLocked: false,
   newSessionAgent: "claude",
-  newSessionPath: "",
+  newSessionPath: getProjectPathHistory()[0] ?? "",
   newSessionArgs: "",
   newSessionMcpServers: "",
   sessionTicket: getLastTicket() || "",
