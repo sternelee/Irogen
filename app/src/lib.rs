@@ -3061,6 +3061,7 @@ async fn send_slash_command(
 
 /// Execute a shell command directly on the connected host (bypasses agent)
 /// Used for `!command` prefix in chat input
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tyzen::command]
 #[tauri::command(rename_all = "camelCase")]
 async fn shell_exec(
@@ -4761,6 +4762,7 @@ pub fn run() {
             send_tcp_data,
             // AI Agent Commands
             send_slash_command,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             shell_exec,
             remote_spawn_session,
             remote_list_agents,

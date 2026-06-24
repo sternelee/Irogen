@@ -8,7 +8,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(feature = "std")]
 use sysinfo::{Disks, Networks, System};
 
-use crate::message_protocol::{LoadAverage, NetworkStats, SystemStats};
+#[cfg(feature = "std")]
+use crate::message_protocol::{LoadAverage, NetworkStats};
+use crate::message_protocol::SystemStats;
 
 /// 收集系统运行状态
 #[cfg(feature = "std")]
