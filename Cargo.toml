@@ -42,3 +42,9 @@ codegen-units = 1
 [profile.production]
 inherits = "release"
 panic = "abort"
+
+# Patch tyzen 0.2.4: gates std::os::unix::net::SocketAddr import behind
+# cfg(unix) so it compiles on Windows. Upstream bug:
+# https://github.com/tyzen-rs/tyzen (unreleased fix).
+[patch.crates-io]
+tyzen = { path = "patches/tyzen" }
